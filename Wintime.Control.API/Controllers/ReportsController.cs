@@ -1,6 +1,8 @@
+using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Wintime.Control.Core.DTOs.Report;
+using Wintime.Control.Core.Services.Reports;
 using Wintime.Control.Shared.Constants;
 
 namespace Wintime.Control.API.Controllers;
@@ -10,9 +12,13 @@ namespace Wintime.Control.API.Controllers;
 [Authorize]
 public class ReportsController : ControllerBase
 {
-    // TODO: Inject Report Service
-    public ReportsController()
+    private readonly IReportService _reportService;
+    private readonly IPdfReportService _pdfService;
+
+    public ReportsController(IReportService reportService, IPdfReportService pdfService)
     {
+        _reportService = reportService;
+        _pdfService = pdfService;
     }
 
     /// <summary>
@@ -24,14 +30,15 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime date,
         [FromQuery] Guid? immId = null)
     {
-        // TODO: Реализовать бизнес-логику отчёта
-        var report = new DailyReportDto
+        try
         {
-            Date = date,
-            ImmData = new List<DailyReportImmItemDto>()
-        };
-
-        return Ok(report);
+            var report = await _reportService.GetDailyReportAsync(date, immId);
+            return Ok(report);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Ошибка генерации отчёта", message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -44,19 +51,19 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime dateTo,
         [FromQuery] List<Guid>? immIds = null)
     {
-        // TODO: Реализовать бизнес-логику отчёта
-        var report = new EquipmentReportDto
+        try
         {
-            DateFrom = dateFrom,
-            DateTo = dateTo,
-            ImmData = new List<EquipmentReportImmItemDto>()
-        };
-
-        return Ok(report);
+            var report = await _reportService.GetEquipmentReportAsync(dateFrom, dateTo, immIds);
+            return Ok(report);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Ошибка генерации отчёта", message = ex.Message });
+        }
     }
 
     /// <summary>
-    /// Отчёт "Активы цеха" (ПФ и наладчики)
+    /// Отчёт "Активы цеха"
     /// </summary>
     [HttpGet("assets")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
@@ -65,15 +72,15 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime dateTo,
         [FromQuery] string reportType)
     {
-        // TODO: Реализовать бизнес-логику отчёта
-        var report = new AssetsReportDto
+        try
         {
-            DateFrom = dateFrom,
-            DateTo = dateTo,
-            ReportType = reportType
-        };
-
-        return Ok(report);
+            var report = await _reportService.GetAssetsReportAsync(dateFrom, dateTo, reportType);
+            return Ok(report);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Ошибка генерации отчёта", message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -83,8 +90,25 @@ public class ReportsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> ExportReportExcel([FromBody] ExportReportRequestDto request)
     {
-        // TODO: Реализовать генерацию Excel через ClosedXML
-        return NotImplemented;
+        try
+        {
+            object reportData = request.ReportType.ToLower() switch
+            {
+                "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault()),
+                "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds),
+                "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.ReportType),
+                _ => throw new ArgumentException("Неизвестный тип отчёта")
+            };
+
+            var excelBytes = await _reportService.ExportToExcelAsync(reportData, request.ReportType);
+
+            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                $"Report_{request.ReportType}_{request.DateFrom:yyyyMMdd}.xlsx");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Ошибка экспорта", message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -94,7 +118,29 @@ public class ReportsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> ExportReportPdf([FromBody] ExportReportRequestDto request)
     {
-        // TODO: Реализовать генерацию PDF
-        return NotImplemented;
+        try
+        {
+            object report = request.ReportType.ToLower() switch
+            {
+                "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault()),
+                "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds),
+                "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.ReportType),
+                _ => throw new ArgumentException("Неизвестный тип отчёта")
+            };
+
+            var pdfBytes = request.ReportType.ToLower() switch
+            {
+                "daily" => _pdfService.GenerateDailyReportPdf((DailyReportDto)report),
+                // TODO: Добавить генераторы для других типов отчётов
+                _ => throw new NotImplementedException($"PDF для {request.ReportType} не реализован")
+            };
+
+            return File(pdfBytes, "application/pdf", 
+                $"Report_{request.ReportType}_{request.DateFrom:yyyyMMdd}.pdf");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Ошибка генерации PDF", message = ex.Message });
+        }
     }
 }

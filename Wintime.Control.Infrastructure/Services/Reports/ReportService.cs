@@ -1,10 +1,9 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using Wintime.Control.Core.DTOs.Report;
-using Wintime.Control.Core.Entities;
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Core.DTOs.Report;
+using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Wintime.Control.Core.Entities;
 using ClosedXML.Excel;
-using System.Text;
 
 namespace Wintime.Control.Core.Services.Reports;
 
@@ -327,7 +326,7 @@ public class ReportService : IReportService
                     .ToListAsync(ct);
 
                 var totalCycles = usages.Sum(mu => mu.CyclesCount);
-                var totalSeconds = usages.Sum(mu => (mu.EndTime ?? DateTime.UtcNow) - mu.StartTime).TotalSeconds;
+                var totalSeconds = usages.Sum(mu => ((mu.EndTime ?? DateTime.UtcNow) - mu.StartTime).TotalSeconds);
                 var workHours = (decimal)totalSeconds / 3600;
 
                 report.MoldData.Add(new AssetsMoldItemDto
@@ -384,7 +383,7 @@ public class ReportService : IReportService
     /// <summary>
     /// Экспорт в Excel (ClosedXML)
     /// </summary>
-    public async Task<byte[]> ExportToExcelAsync<T>(T data, string reportType, CancellationToken ct = default)
+    public async Task<byte[]> ExportToExcelAsync<T>(T data, string reportType, CancellationToken ct = default) where T : class
     {
         using var workbook = new XLWorkbook();
         var worksheet = workbook.Worksheets.Add($"Report_{reportType}");

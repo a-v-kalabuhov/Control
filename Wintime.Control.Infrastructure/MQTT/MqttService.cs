@@ -3,7 +3,10 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
+using MQTTnet.Packets;
+using MQTTnet.Protocol;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
@@ -22,6 +25,7 @@ public class MqttService : IMqttService, IDisposable
     private readonly Dictionary<string, SensorThreshold> _thresholds;
     private bool _isConnected;
     private CancellationTokenSource? _reconnectCts;
+    private MqttClientOptions? _mqttOptions;
 
     public MqttService(
         IMqttClient mqttClient,
@@ -39,31 +43,14 @@ public class MqttService : IMqttService, IDisposable
         _thresholds = thresholds;
         _isConnected = false;
 
-        SetupMqttClientHandlers();
+        CreateMqttClientOptions();
     }
 
     public bool IsConnected => _isConnected;
 
-    private void SetupMqttClientHandlers()
+    private void CreateMqttClientOptions()
     {
-        _mqttClient.ApplicationMessageReceivedAsync += OnMessageReceived;
-        _mqttClient.ConnectedAsync += e =>
-        {
-            _logger.LogInformation("✅ MQTT connected to {Broker}", _settings.BrokerUrl);
-            _isConnected = true;
-            return System.Threading.Tasks.Task.CompletedTask;
-        };
-        _mqttClient.DisconnectedAsync += async e =>
-        {
-            _logger.LogWarning("⚠️ MQTT disconnected. Reason: {Reason}", e.Reason);
-            _isConnected = false;
-            await TryReconnect();
-        };
-    }
-
-    public async System.Threading.Tasks.Task ConnectAsync(CancellationToken cancellationToken = default)
-    {
-        var options = new MqttClientOptionsBuilder()
+        var builder = new MqttClientOptionsBuilder()
             .WithTcpServer(_settings.BrokerUrl, _settings.Port)
             .WithClientId(_settings.ClientId)
             .WithCleanSession()
@@ -71,17 +58,25 @@ public class MqttService : IMqttService, IDisposable
 
         if (!string.IsNullOrEmpty(_settings.Username))
         {
-            options.WithCredentials(_settings.Username, _settings.Password ?? string.Empty);
+            builder.WithCredentials(_settings.Username, _settings.Password ?? string.Empty);
         }
 
+        _mqttOptions = builder.Build();
+    }
+
+    public async System.Threading.Tasks.Task ConnectAsync(CancellationToken cancellationToken = default)
+    {
         try
         {
-            await _mqttClient.ConnectAsync(options.Options, cancellationToken);
+            await _mqttClient.ConnectAsync(_mqttOptions, cancellationToken);
+            _isConnected = true;
+            _logger.LogInformation("MQTT connected to {Broker}", _settings.BrokerUrl);
+
             await SubscribeToTopics(cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ MQTT connection failed");
+            _logger.LogError(ex, "MQTT connection failed");
             await TryReconnect();
         }
     }
@@ -103,9 +98,17 @@ public class MqttService : IMqttService, IDisposable
             _settings.Topics.Status
         };
 
+        var mqttFactory = new MqttClientFactory();
+        var mqttSubscribeOptions = mqttFactory.CreateSubscribeOptionsBuilder()
+            .WithTopicFilter(t => t.WithTopic(_settings.Topics.Telemetry).WithAtMostOnceQoS())
+            .WithTopicFilter(t => t.WithTopic(_settings.Topics.Events).WithAtMostOnceQoS())
+            .WithTopicFilter(t => t.WithTopic(_settings.Topics.Status).WithAtMostOnceQoS())
+            .WithTopicFilter(t => t.WithRetainHandling(MqttRetainHandling.DoNotSendOnSubscribe))
+            .Build();
+        
+        await _mqttClient.SubscribeAsync(mqttSubscribeOptions, cancellationToken);
         foreach (var topic in topics)
         {
-            await _mqttClient.SubscribeAsync(topic, cancellationToken);
             _logger.LogInformation("📡 Subscribed to topic: {Topic}", topic);
         }
     }
@@ -135,14 +138,14 @@ public class MqttService : IMqttService, IDisposable
         _reconnectCts = null;
     }
 
-    private async System.Threading.Tasks.Task OnMessageReceived(MqttApplicationMessageReceivedEventArgs e)
+    private async System.Threading.Tasks.Task OnMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs e)
     {
         try
         {
             var topic = e.ApplicationMessage.Topic;
-            var payload = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
+            var payload = Encoding.UTF8.GetString(e.ApplicationMessage.Payload);
 
-            _logger.LogDebug("📨 MQTT Message received. Topic: {Topic}, Payload: {Payload}", topic, payload);
+            _logger.LogDebug("MQTT Message received. Topic: {Topic}, Payload: {Payload}", topic, payload);
 
             if (topic.Contains("/telemetry"))
             {

@@ -2,7 +2,7 @@ namespace Wintime.Control.Core.DTOs.Downtime;
 
 public class EventDto
 {
-    public long Id { get; set; }
+    public Guid Id { get; set; }
     public Guid ImmId { get; set; }
     public string EventType { get; set; } = string.Empty;
     public Guid? ReasonId { get; set; }

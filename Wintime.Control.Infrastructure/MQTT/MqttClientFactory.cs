@@ -2,16 +2,16 @@ using MQTTnet;
 
 namespace Wintime.Control.Infrastructure.MQTT;
 
-public interface IMqttClientFactory
+public interface IWintimeMqttClientFactory
 {
     IMqttClient CreateClient();
 }
 
-public class MqttClientFactory : IMqttClientFactory
+public class WintimeMqttClientFactory : IWintimeMqttClientFactory
 {
     public IMqttClient CreateClient()
     {
-        var factory = new MqttFactory();
+        var factory = new MqttClientFactory();
         return factory.CreateMqttClient();
     }
 }

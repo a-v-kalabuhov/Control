@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Serilog;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Services.Reports;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Infrastructure.Auth;
 using Wintime.Control.Infrastructure.MQTT;
@@ -129,12 +130,13 @@ builder.Services.AddSwaggerGen(c =>
 
 // ========== Сервисы ==========
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-
+// ========== Report Service ==========
+builder.Services.AddScoped<IReportService, ReportService>();
 // ========== MQTT Service ==========
-builder.Services.AddSingleton<IMqttClientFactory, MqttClientFactory>();
+builder.Services.AddSingleton<IWintimeMqttClientFactory, WintimeMqttClientFactory>();
 builder.Services.AddSingleton(sp =>
 {
-    var factory = sp.GetRequiredService<IMqttClientFactory>();
+    var factory = sp.GetRequiredService<IWintimeMqttClientFactory>();
     return factory.CreateClient();
 });
 
