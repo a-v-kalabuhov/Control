@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wintime-control-postgres
+    environment:
+      POSTGRES_DB: WintimeControlDb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - wintime-control-network
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: wintime-control-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto_config:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+    restart: unless-stopped
+    networks:
+      - wintime-control-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Wintime.Control.API/Dockerfile
+    container_name: wintime-control-api
+    ports:
+      - "5000:8080"
+      - "5001:8081"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Docker
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=WintimeControlDb;Username=postgres;Password=password;
+      - MqttSettings__BrokerUrl=mosquitto
+    depends_on:
+      - postgres
+      - mosquitto
+    restart: unless-stopped
+    networks:
+      - wintime-control-network
+
+volumes:
+  postgres_data:
+  mosquitto_config:
+  mosquitto_data:
+
+networks:
+  wintime-control-network:
+    driver: bridge

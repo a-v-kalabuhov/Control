@@ -1,0 +1,58 @@
+# == VisualStudio / .NET / C# ==
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+logs/
+
+## NuGet
+*.nuget.props
+*.nuget.targets
+nuget.exe
+nuget.config
+NuGet.Config
+NuGet.Config.bak
+project.assets.json
+
+## IDE / misc
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.vs/
+.vs/
+
+## ASP.NET Core temporary files
+wwwroot/
+bin/Release/net*/
+bin/Debug/net*/
+obj/Release/net*/
+obj/Debug/net*/
+
+# == Node.js / Vue.js 3 ==
+node_modules/
+dist/
+/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Editors / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
