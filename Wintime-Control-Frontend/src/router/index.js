@@ -18,9 +18,86 @@ const routes = [
         name: 'Dashboard',
         component: () => import('@/views/dashboard/DashboardView.vue'),
         meta: { roles: ['Admin', 'Manager', 'Observer'] }
+      },
+      {
+        path: 'tasks',
+        name: 'Tasks',
+        component: () => import('@/views/tasks/TasksView.vue'),
+        meta: { roles: ['Admin', 'Manager'] }
+      },
+      {
+        path: 'reports',
+        name: 'Reports',
+        component: () => import('@/views/reports/ReportsView.vue'),
+        meta: { roles: ['Admin', 'Manager'] }
+      },
+      {
+        path: 'dictionary',
+        name: 'Dictionary',
+        children: [
+          {
+            path: 'imm',
+            name: 'DictionaryImm',
+            component: () => import('@/views/dictionary/ImmDictionary.vue'),
+            meta: { roles: ['Admin', 'Manager'] }
+          },
+          {
+            path: 'molds',
+            name: 'DictionaryMolds',
+            component: () => import('@/views/dictionary/MoldDictionary.vue'),
+            meta: { roles: ['Admin', 'Manager'] }
+          },
+          {
+            path: 'personnel',
+            name: 'DictionaryPersonnel',
+            component: () => import('@/views/dictionary/PersonnelDictionary.vue'),
+            meta: { roles: ['Admin', 'Manager'] }
+          }
+        ]
+      },
+      {
+        path: 'admin',
+        name: 'Admin',
+        children: [
+          {
+            path: 'settings',
+            name: 'AdminSettings',
+            component: () => import('@/views/admin/SettingsView.vue'),
+            meta: { roles: ['Admin'] }
+          },
+          {
+            path: 'templates',
+            name: 'AdminTemplates',
+            component: () => import('@/views/admin/TemplatesView.vue'),
+            meta: { roles: ['Admin'] }
+          }
+        ]
       }
-      // Остальные маршруты добавим позже
     ]
+  },
+  {
+    path: '/mobile',
+    component: () => import('@/layouts/MobileLayout.vue'),
+    meta: { requiresAuth: true, isMobile: true },
+    children: [
+      {
+        path: 'tasks',
+        name: 'MobileTasks',
+        component: () => import('@/views/mobile/MobileTasksView.vue'),
+        meta: { roles: ['Adjuster'] }
+      },
+      {
+        path: 'scanner',
+        name: 'MobileScanner',
+        component: () => import('@/views/mobile/MobileScannerView.vue'),
+        meta: { roles: ['Adjuster'] }
+      }
+    ]
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('@/views/errors/NotFoundView.vue')
   }
 ]
 
