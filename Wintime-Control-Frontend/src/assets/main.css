@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Глобальные стили */
+body {
+  @apply bg-gray-50 text-gray-900;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Стили для статусов ТПА */
+.status-auto {
+  @apply bg-status-auto text-white;
+}
+
+.status-manual {
+  @apply bg-status-manual text-white;
+}
+
+.status-alarm {
+  @apply bg-status-alarm text-white;
+}
+
+.status-offline {
+  @apply bg-status-offline text-white;
+}
+
+/* Кастомные утилиты */
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-md p-4;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded transition;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded transition;
+  }
+}
+
+/* Скроллбар */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}

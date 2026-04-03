@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Глобальные стили */
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Компоненты */
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-md p-4;
+  }
+}
