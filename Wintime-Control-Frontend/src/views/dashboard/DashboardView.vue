@@ -1,12 +1,46 @@
 <template>
   <div>
-    <div class="mb-6">
-      <h2 class="text-2xl font-bold text-gray-800">Мониторинг оборудования</h2>
-      <p class="text-gray-600 mt-1">Текущее состояние всех ТПА в реальном времени</p>
+    <!-- Заголовок -->
+    <div class="mb-6 flex items-center justify-between">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">Мониторинг оборудования</h2>
+        <p class="text-gray-600 mt-1">
+          Текущее состояние всех ТПА в реальном времени
+          <span v-if="dashboardStore.lastUpdate" class="text-sm ml-2">
+            (Обновлено: {{ lastUpdateTime }})
+          </span>
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <el-button 
+          :icon="dashboardStore.autoRefresh ? 'VideoPause' : 'VideoPlay'"
+          :type="dashboardStore.autoRefresh ? 'success' : 'info'"
+          circle
+          @click="toggleAutoRefresh"
+        />
+        <el-button 
+          icon="Refresh" 
+          circle 
+          :loading="dashboardStore.loading"
+          @click="refreshData"
+        />
+      </div>
     </div>
 
-    <!-- Статистика -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <!-- Статистика цеха -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div class="card">
+        <div class="flex items-center gap-4">
+          <div class="p-3 bg-blue-100 rounded-lg">
+            <el-icon class="text-blue-600 text-xl"><Monitor /></el-icon>
+          </div>
+          <div>
+            <p class="text-sm text-gray-500">Всего ТПА</p>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.totalImms }}</p>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="flex items-center gap-4">
           <div class="p-3 bg-green-100 rounded-lg">
@@ -14,7 +48,7 @@
           </div>
           <div>
             <p class="text-sm text-gray-500">В работе</p>
-            <p class="text-2xl font-bold text-gray-800">7</p>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.workingImms.length }}</p>
           </div>
         </div>
       </div>
@@ -26,7 +60,7 @@
           </div>
           <div>
             <p class="text-sm text-gray-500">Наладка</p>
-            <p class="text-2xl font-bold text-gray-800">2</p>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.setupImms.length }}</p>
           </div>
         </div>
       </div>
@@ -38,70 +72,157 @@
           </div>
           <div>
             <p class="text-sm text-gray-500">Авария</p>
-            <p class="text-2xl font-bold text-gray-800">1</p>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.alarmImms.length }}</p>
           </div>
         </div>
       </div>
 
       <div class="card">
         <div class="flex items-center gap-4">
-          <div class="p-3 bg-gray-100 rounded-lg">
-            <el-icon class="text-gray-600 text-xl"><Switch /></el-icon>
+          <div class="p-3 bg-purple-100 rounded-lg">
+            <el-icon class="text-purple-600 text-xl"><TrendCharts /></el-icon>
           </div>
           <div>
-            <p class="text-sm text-gray-500">Оффлайн</p>
-            <p class="text-2xl font-bold text-gray-800">0</p>
+            <p class="text-sm text-gray-500">Эффективность</p>
+            <p class="text-2xl font-bold" :class="efficiencyColor">{{ dashboardStore.overallEfficiency }}%</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Плитки ТПА (заглушка) -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <!-- Фильтры -->
+    <el-card class="mb-4">
+      <el-form :inline="true">
+        <el-form-item label="Поиск">
+          <el-input 
+            v-model="searchQuery" 
+            placeholder="Наименование, модель, ПФ"
+            clearable
+            prefix-icon="Search"
+            class="w-64"
+          />
+        </el-form-item>
+        <el-form-item label="Статус">
+          <el-select v-model="statusFilter" placeholder="Все" clearable class="w-40">
+            <el-option label="В работе" value="Auto" />
+            <el-option label="Наладка" value="Manual" />
+            <el-option label="Авария" value="Alarm" />
+            <el-option label="Оффлайн" value="Offline" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button @click="clearFilters">Сбросить</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <!-- Плитки ТПА -->
+    <div 
+      v-loading="dashboardStore.loading"
+      element-loading-text="Загрузка данных..."
+    >
       <div 
-        v-for="i in 10" 
-        :key="i"
-        class="card cursor-pointer hover:shadow-lg transition-shadow"
+        v-if="dashboardStore.filteredImms.length === 0"
+        class="text-center py-12"
       >
-        <div class="flex items-start justify-between mb-3">
-          <div>
-            <h3 class="font-semibold text-gray-800">ТПА-{{ String(i).padStart(2, '0') }}</h3>
-            <p class="text-sm text-gray-500">Siger 200s1</p>
-          </div>
-          <el-tag 
-            :type="i === 3 ? 'danger' : i === 2 ? 'warning' : 'success'"
-            size="small"
-          >
-            {{ i === 3 ? 'Авария' : i === 2 ? 'Наладка' : 'Авто' }}
-          </el-tag>
-        </div>
+        <el-empty description="Нет данных для отображения" />
+      </div>
 
-        <div class="space-y-2 text-sm">
-          <div class="flex justify-between">
-            <span class="text-gray-500">Задание:</span>
-            <span class="text-gray-800">КлипДак (48)</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500">Прогресс:</span>
-            <span class="text-gray-800">{{ Math.floor(Math.random() * 100) }}%</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500">Циклов:</span>
-            <span class="text-gray-800">{{ Math.floor(Math.random() * 10000) }}</span>
-          </div>
-        </div>
-
-        <el-progress 
-          :percentage="Math.floor(Math.random() * 100)" 
-          :stroke-width="6"
-          class="mt-3"
+      <div 
+        v-else
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+      >
+        <ImmCard
+          v-for="imm in dashboardStore.filteredImms"
+          :key="imm.id"
+          :imm="imm"
+          @click="openImmDetail(imm)"
         />
       </div>
     </div>
+
+    <!-- Модальное окно деталей -->
+    <ImmDetailModal
+      v-model="detailModalVisible"
+      :imm-id="selectedImmId"
+    />
   </div>
 </template>
 
 <script setup>
-// Заглушка для демонстрации
-// В Части 3 будет реальная загрузка данных ТПА
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useDashboardStore } from '@/stores/dashboard'
+import { ElMessage } from 'element-plus'
+import ImmCard from '@/components/dashboard/ImmCard.vue'
+import ImmDetailModal from './ImmDetailModal.vue'
+import dayjs from 'dayjs'
+
+const dashboardStore = useDashboardStore()
+
+const detailModalVisible = ref(false)
+const selectedImmId = ref(null)
+const searchQuery = ref('')
+const statusFilter = ref('')
+
+const lastUpdateTime = computed(() => {
+  if (!dashboardStore.lastUpdate) return '—'
+  return dayjs(dashboardStore.lastUpdate).format('HH:mm:ss')
+})
+
+const efficiencyColor = computed(() => {
+  const eff = dashboardStore.overallEfficiency
+  if (eff >= 85) return 'text-green-600'
+  if (eff >= 70) return 'text-yellow-600'
+  return 'text-red-600'
+})
+
+onMounted(async () => {
+  await dashboardStore.loadImms()
+  dashboardStore.startAutoRefresh()
+})
+
+onUnmounted(() => {
+  dashboardStore.stopAutoRefresh()
+})
+
+const toggleAutoRefresh = () => {
+  if (dashboardStore.autoRefresh) {
+    dashboardStore.stopAutoRefresh()
+    ElMessage.info('Автообновление остановлено')
+  } else {
+    dashboardStore.startAutoRefresh()
+    ElMessage.success('Автообновление включено')
+  }
+}
+
+const refreshData = async () => {
+  await dashboardStore.refreshAll()
+  ElMessage.success('Данные обновлены')
+}
+
+const openImmDetail = (imm) => {
+  selectedImmId.value = imm.id
+  detailModalVisible.value = true
+}
+
+const clearFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  dashboardStore.clearFilters()
+}
+
+// Синхронизация фильтров с хранилищем
+watch(searchQuery, (value) => {
+  dashboardStore.setFilter('search', value)
+})
+
+watch(statusFilter, (value) => {
+  dashboardStore.setFilter('status', value)
+})
 </script>
+
+<style scoped>
+.card {
+  @apply bg-white rounded-lg shadow-md p-4;
+}
+</style>

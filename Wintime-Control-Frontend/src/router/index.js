@@ -17,7 +17,10 @@ const routes = [
         path: '',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/DashboardView.vue'),
-        meta: { roles: ['Admin', 'Manager', 'Observer'] }
+        meta: { 
+          roles: ['Admin', 'Manager', 'Observer'],
+          title: 'Дашборд'
+        }
       },
       {
         path: 'tasks',
