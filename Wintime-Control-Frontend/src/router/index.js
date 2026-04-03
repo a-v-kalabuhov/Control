@@ -35,8 +35,28 @@ const routes = [
         path: 'reports',
         name: 'Reports',
         component: () => import('@/views/reports/ReportsView.vue'),
-        meta: { roles: ['Admin', 'Manager'] }
-      },
+        meta: { roles: ['Admin', 'Manager'], title: 'Отчёты' },
+        children: [
+          {
+            path: 'daily',
+            name: 'DailyReport',
+            component: () => import('@/views/reports/DailyReportView.vue'),
+            meta: { roles: ['Admin', 'Manager'] }
+          },
+          {
+            path: 'equipment',
+            name: 'EquipmentReport',
+            component: () => import('@/views/reports/EquipmentReportView.vue'),
+            meta: { roles: ['Admin', 'Manager'] }
+          },
+          {
+            path: 'assets',
+            name: 'AssetsReport',
+            component: () => import('@/views/reports/AssetsReportView.vue'),
+            meta: { roles: ['Admin', 'Manager'] }
+          }
+        ]
+      },      
       {
         path: 'dictionary',
         name: 'Dictionary',
