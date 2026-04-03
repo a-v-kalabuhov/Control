@@ -110,16 +110,16 @@ const routes = [
         path: 'tasks',
         name: 'MobileTasks',
         component: () => import('@/views/mobile/MobileTasksView.vue'),
-        meta: { roles: ['Adjuster'] }
+        meta: { roles: ['Adjuster'], title: 'Задания' }
       },
       {
         path: 'scanner',
         name: 'MobileScanner',
         component: () => import('@/views/mobile/MobileScannerView.vue'),
-        meta: { roles: ['Adjuster'] }
+        meta: { roles: ['Adjuster'], title: 'Сканер' }
       }
     ]
-  },
+},  
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
