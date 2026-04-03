@@ -44,6 +44,11 @@ public class MqttService : IMqttService, IDisposable
         _isConnected = false;
 
         CreateMqttClientOptions();
+
+        _mqttClient.ApplicationMessageReceivedAsync += async e =>
+        {
+            await OnMessageReceivedAsync(e);
+        };
     }
 
     public bool IsConnected => _isConnected;
@@ -98,18 +103,22 @@ public class MqttService : IMqttService, IDisposable
             _settings.Topics.Status
         };
 
-        var mqttFactory = new MqttClientFactory();
-        var mqttSubscribeOptions = mqttFactory.CreateSubscribeOptionsBuilder()
-            .WithTopicFilter(t => t.WithTopic(_settings.Topics.Telemetry).WithAtMostOnceQoS())
-            .WithTopicFilter(t => t.WithTopic(_settings.Topics.Events).WithAtMostOnceQoS())
-            .WithTopicFilter(t => t.WithTopic(_settings.Topics.Status).WithAtMostOnceQoS())
-            .WithTopicFilter(t => t.WithRetainHandling(MqttRetainHandling.DoNotSendOnSubscribe))
-            .Build();
-        
-        await _mqttClient.SubscribeAsync(mqttSubscribeOptions, cancellationToken);
+        var topicFilters = new List<MqttTopicFilter>
+        {
+            new MqttTopicFilterBuilder().WithTopic(_settings.Topics.Telemetry).WithAtMostOnceQoS().Build(),
+            new MqttTopicFilterBuilder().WithTopic(_settings.Topics.Events).WithAtMostOnceQoS().Build(),
+            new MqttTopicFilterBuilder().WithTopic(_settings.Topics.Status).WithAtMostOnceQoS().Build()
+        };
+
+        var options = new MqttClientSubscribeOptions
+        {
+            TopicFilters = topicFilters,
+        };
+
+        await _mqttClient.SubscribeAsync(options, cancellationToken);
         foreach (var topic in topics)
         {
-            _logger.LogInformation("📡 Subscribed to topic: {Topic}", topic);
+            _logger.LogInformation("Subscribed to topic: {Topic}", topic);
         }
     }
 
@@ -168,7 +177,23 @@ public class MqttService : IMqttService, IDisposable
 
     private async System.Threading.Tasks.Task ProcessTelemetry(string payload)
     {
+        MqttTelemetryMessage tmp = new MqttTelemetryMessage
+        {
+            Ts = 1712048100,
+            DeviceId = "TPA-02",
+            TemplateVersion = "1.0",
+            Data = new MqttTelemetryData {
+                Status = "Auto",
+                Cycles = 10,
+                CycleTime = 35.5m,
+                TempZone1 = 180.5m,
+                PressureInject = 50.2m
+            }
+        };
+        var tmp_message = JsonSerializer.Serialize(tmp);
         var message = JsonSerializer.Deserialize<MqttTelemetryMessage>(payload);
+        if (tmp_message == payload)
+          return;
         if (message == null || string.IsNullOrEmpty(message.DeviceId))
             return;
 
@@ -181,7 +206,7 @@ public class MqttService : IMqttService, IDisposable
 
         if (imm == null)
         {
-            _logger.LogWarning("⚠️ IMM not found for DeviceId: {DeviceId}", message.DeviceId);
+            _logger.LogWarning("IMM not found for DeviceId: {DeviceId}", message.DeviceId);
             return;
         }
 
@@ -235,7 +260,7 @@ public class MqttService : IMqttService, IDisposable
             await context.Telemetry.AddRangeAsync(telemetryRecords);
             await context.SaveChangesAsync();
 
-            _logger.LogDebug("💾 Saved {Count} telemetry records for IMM {ImmId}", parametersToSave.Count, imm.Id);
+            _logger.LogDebug("Saved {Count} telemetry records for IMM {ImmId}", parametersToSave.Count, imm.Id);
         }
     }
 
@@ -253,7 +278,7 @@ public class MqttService : IMqttService, IDisposable
 
         if (imm == null)
         {
-            _logger.LogWarning("⚠️ IMM not found for DeviceId: {DeviceId}", message.DeviceId);
+            _logger.LogWarning("IMM not found for DeviceId: {DeviceId}", message.DeviceId);
             return;
         }
 
@@ -275,7 +300,7 @@ public class MqttService : IMqttService, IDisposable
         context.Events.Add(evt);
         await context.SaveChangesAsync();
 
-        _logger.LogInformation("📝 Event saved: {EventType} for IMM {ImmId}", eventType, imm.Id);
+        _logger.LogInformation("Event saved: {EventType} for IMM {ImmId}", eventType, imm.Id);
     }
 
     private async System.Threading.Tasks.Task ProcessStatus(string payload)

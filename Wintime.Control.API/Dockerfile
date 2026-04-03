@@ -41,10 +41,8 @@ EXPOSE 80
 EXPOSE 443
 
 # Переменные окружения
-ENV ASPNETCORE_URLS=http://+:80;https://+:443
+ENV ASPNETCORE_URLS=http://+:80
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV ASPNETCORE_Kestrel__Certificates__Default__Password=changeit
-ENV ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
 
 # Точка входа
 ENTRYPOINT ["dotnet", "Wintime.Control.API.dll"]

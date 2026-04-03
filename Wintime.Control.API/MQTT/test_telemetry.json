@@ -1,0 +1,12 @@
+{
+  "ts": 1712048400,
+  "deviceId": "TPA-01",
+  "templateVersion": "1.0",
+  "data": {
+    "status": "Auto",
+    "cycles": 10,
+    "cycleTime": 35.5,
+    "temp_zone_1": 180.5,
+    "pressure_inject": 50.2
+  }
+}

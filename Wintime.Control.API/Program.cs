@@ -182,7 +182,7 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-    // db.Database.Migrate(); // Раскомментировать для авто-миграции
+    db.Database.Migrate();
 
     // Создание ролей, если они еще не существуют
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -213,9 +213,9 @@ using (var scope = app.Services.CreateScope())
         
         await userManager.CreateAsync(admin, "Admin123!");
         await userManager.AddToRoleAsync(admin, "Admin");
-        Log.Information("✅ Admin user created: admin / Admin123!");
+        Log.Information("Admin user created: admin / Admin123!");
     }
 }
 
-Log.Information("🚀 CONTROL API starting on {Urls}", string.Join(", ", app.Urls));
+Log.Information("CONTROL API starting on {Urls}", string.Join(", ", app.Urls));
 app.Run();
