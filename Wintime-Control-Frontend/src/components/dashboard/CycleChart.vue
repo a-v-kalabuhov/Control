@@ -83,7 +83,7 @@ const initChart = () => {
         name: props.title,
         type: 'line',
         smooth: true,
-         props.data.map(d => d.valueNumeric || 0),
+        data: props.data.map(d => d.valueNumeric || 0),
         itemStyle: {
           color: '#3b82f6'
         },
