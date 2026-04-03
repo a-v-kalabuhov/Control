@@ -26,7 +26,10 @@ const routes = [
         path: 'tasks',
         name: 'Tasks',
         component: () => import('@/views/tasks/TasksView.vue'),
-        meta: { roles: ['Admin', 'Manager'] }
+        meta: { 
+          roles: ['Admin', 'Manager'],
+          title: 'Диспетчерская'
+        }
       },
       {
         path: 'reports',
