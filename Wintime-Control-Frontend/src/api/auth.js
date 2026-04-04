@@ -13,7 +13,7 @@ export const authApi = {
     return apiClient.get('/auth/me')
   },
   
-  refreshToken(refreshToken) {
-    return apiClient.post('/auth/refresh', { refreshToken })
+  refreshToken({ accessToken, refreshToken }) {
+    return apiClient.post('/auth/refresh', { accessToken, refreshToken })
   }
 }

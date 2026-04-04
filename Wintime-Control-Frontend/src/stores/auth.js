@@ -51,14 +51,35 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     
+    async refreshTokens() {
+      try {
+        const response = await authApi.refreshToken({
+          accessToken: this.accessToken,
+          refreshToken: this.refreshToken
+        })
+        const { accessToken, refreshToken, user } = response.data
+        this.accessToken = accessToken
+        this.refreshToken = refreshToken
+        this.user = user
+        this.isAuthenticated = true
+        localStorage.setItem('access_token', accessToken)
+        localStorage.setItem('refresh_token', refreshToken)
+        return { success: true }
+      } catch (error) {
+        return { success: false, status: error.response?.status || null }
+      }
+    },
+
     async fetchCurrentUser() {
       try {
         const response = await authApi.getCurrentUser()
         this.user = response.data
         return { success: true }
       } catch (error) {
-        this.clearAuth()
-        return { success: false }
+        // Возвращаем HTTP-статус ошибки, чтобы вызывающий код мог различить
+        // истёкший токен (401) от сетевой ошибки или ошибки сервера (500, etc.)
+        const status = error.response?.status || null
+        return { success: false, status }
       }
     },
     
@@ -72,6 +93,17 @@ export const useAuthStore = defineStore('auth', {
       localStorage.removeItem('refresh_token')
       
       router.push('/login')
+    },
+
+    // Мягкая очистка аутентификации без перенаправления
+    softClearAuth() {
+      this.user = null
+      this.accessToken = null
+      this.refreshToken = null
+      this.isAuthenticated = false
+      
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
     }
   }
 })

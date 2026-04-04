@@ -18,7 +18,7 @@ public class MqttBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("🚀 MQTT Background Service starting...");
+        _logger.LogInformation("MQTT Background Service starting...");
 
         await _mqttService.ConnectAsync(stoppingToken);
 
@@ -28,12 +28,12 @@ public class MqttBackgroundService : BackgroundService
 
             if (!_mqttService.IsConnected)
             {
-                _logger.LogWarning("⚠️ MQTT is not connected. Attempting to reconnect...");
+                _logger.LogWarning("MQTT is not connected. Attempting to reconnect...");
                 await _mqttService.ConnectAsync(stoppingToken);
             }
         }
 
-        _logger.LogInformation("🛑 MQTT Background Service stopping...");
+        _logger.LogInformation("MQTT Background Service stopping...");
         await _mqttService.DisconnectAsync();
     }
 }

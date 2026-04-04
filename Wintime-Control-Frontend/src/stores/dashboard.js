@@ -94,8 +94,26 @@ export const useDashboardStore = defineStore('dashboard', {
 
         this.imms = immsWithStatus
         this.lastUpdate = new Date()
+        return { success: true }
       } catch (error) {
         console.error('Ошибка загрузки дашборда:', error)
+        
+        // Проверяем, является ли ошибка ошибкой авторизации
+        const isAuthError = error?.isAuthError || error?.response?.status === 401
+        
+        if (isAuthError) {
+          console.log('Ошибка авторизации при загрузке дашборда:', error.message)
+          return { 
+            success: false, 
+            isAuthError: true,
+            message: 'Сессия истекла. Пожалуйста, войдите снова.' 
+          }
+        }
+        
+        return { 
+          success: false, 
+          message: 'Ошибка загрузки данных' 
+        }
       } finally {
         this.loading = false
       }
@@ -120,7 +138,7 @@ export const useDashboardStore = defineStore('dashboard', {
 
     // Полное обновление всех данных
     async refreshAll() {
-      await this.loadImms()
+      return await this.loadImms()
     },
 
     // Запуск автообновления

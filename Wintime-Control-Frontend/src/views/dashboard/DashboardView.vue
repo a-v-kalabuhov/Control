@@ -150,8 +150,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import ImmCard from '@/components/dashboard/ImmCard.vue'
 import ImmDetailModal from './ImmDetailModal.vue'
@@ -196,8 +197,26 @@ const toggleAutoRefresh = () => {
 }
 
 const refreshData = async () => {
-  await dashboardStore.refreshAll()
-  ElMessage.success('Данные обновлены')
+  const result = await dashboardStore.refreshAll()
+  
+  if (result.success) {
+    ElMessage.success('Данные обновлены')
+  } else if (result.isAuthError) {
+    // Ошибка авторизации - показываем сообщение, но не перенаправляем сразу
+    ElMessage.warning({
+      message: result.message || 'Сессия истекла. Пожалуйста, войдите снова.',
+      duration: 5000,
+      showClose: true,
+      onClose: () => {
+        // После закрытия сообщения предлагаем пользователю перейти на страницу логина
+        // Но только если пользователь явно закрыл сообщение
+        const authStore = useAuthStore()
+        authStore.clearAuth()
+      }
+    })
+  } else {
+    ElMessage.error(result.message || 'Ошибка обновления данных')
+  }
 }
 
 const openImmDetail = (imm) => {
