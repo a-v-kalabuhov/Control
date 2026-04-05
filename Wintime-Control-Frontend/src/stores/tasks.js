@@ -116,7 +116,7 @@ export const useTasksStore = defineStore('tasks', {
         const response = await tasksApi.create(data)
         await this.loadTasks()
         ElMessage.success('Задание создано')
-        return { success: true,  response.data }
+        return { success: true, data: response.data }
       } catch (error) {
         const message = error.response?.data?.message || 'Ошибка создания задания'
         ElMessage.error(message)

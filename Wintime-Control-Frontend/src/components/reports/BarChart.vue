@@ -27,7 +27,7 @@ const initChart = () => {
       axisPointer: { type: 'shadow' }
     },
     legend: {
-       ['Работа', 'Простой'],
+      data: ['Работа', 'Простой'],
       top: '10%'
     },
     grid: {
@@ -39,7 +39,7 @@ const initChart = () => {
     },
     xAxis: {
       type: 'category',
-       props.data.map(d => d.immName)
+      data: props.data.map(d => d.immName)
     },
     yAxis: {
       type: 'value',
@@ -50,14 +50,14 @@ const initChart = () => {
         name: 'Работа',
         type: 'bar',
         stack: 'total',
-         props.data.map(d => (d.totalWorkSeconds / 3600).toFixed(2)),
+        data: props.data.map(d => (d.totalWorkSeconds / 3600).toFixed(2)),
         itemStyle: { color: '#10b981' }
       },
       {
         name: 'Простой',
         type: 'bar',
         stack: 'total',
-         props.data.map(d => (d.totalDowntimeSeconds / 3600).toFixed(2)),
+        data: props.data.map(d => (d.totalDowntimeSeconds / 3600).toFixed(2)),
         itemStyle: { color: '#ef4444' }
       }
     ]

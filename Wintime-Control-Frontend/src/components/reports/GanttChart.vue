@@ -81,7 +81,7 @@ const initChart = () => {
     },
     yAxis: {
       type: 'category',
-       props.data.map(i => i.immName)
+      data: props.data.map(i => i.immName)
     },
     series: seriesData
   }
