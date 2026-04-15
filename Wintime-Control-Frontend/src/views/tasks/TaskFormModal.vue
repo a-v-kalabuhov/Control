@@ -177,6 +177,16 @@ const selectedMoldInfo = computed(() => {
   return molds.value.find(m => m.id === form.moldId)
 })
 
+const resetForm = () => {
+  Object.assign(form, {
+    immId: '',
+    moldId: '',
+    personnelId: '',
+    planQuantity: 1000,
+    note: ''
+  })
+}
+
 watch(() => props.task, (newTask) => {
   if (newTask) {
     editingTask.value = newTask
@@ -192,16 +202,6 @@ watch(() => props.task, (newTask) => {
     resetForm()
   }
 }, { immediate: true })
-
-const resetForm = () => {
-  Object.assign(form, {
-    immId: '',
-    moldId: '',
-    personnelId: '',
-    planQuantity: 1000,
-    note: ''
-  })
-}
 
 const loadImms = async () => {
   if (imms.value.length > 0) return
