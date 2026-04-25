@@ -17,7 +17,7 @@
           v-model="localFilters.status" 
           placeholder="Все" 
           clearable
-          class="w-40"
+          class="w-52"
         >
           <el-option label="Черновик" value="Draft" />
           <el-option label="Выдано" value="Issued" />

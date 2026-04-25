@@ -38,7 +38,7 @@ public class TemplatesController : ControllerBase
             Version = t.Version,
             Author = t.Author,
             CreatedAt = t.CreatedAt,
-            SensorCount = 0 // TODO: Посчитать из JsonConfig
+            JsonConfig = t.JsonConfig // TODO: Посчитать из JsonConfig
         }).ToList();
 
         return Ok(dtos);
@@ -64,7 +64,7 @@ public class TemplatesController : ControllerBase
             Version = template.Version,
             Author = template.Author,
             CreatedAt = template.CreatedAt,
-            SensorCount = 0
+            JsonConfig = template.JsonConfig
         };
 
         return Ok(dto);
@@ -100,7 +100,7 @@ public class TemplatesController : ControllerBase
             Version = template.Version,
             Author = template.Author,
             CreatedAt = template.CreatedAt,
-            SensorCount = 0
+            JsonConfig = template.JsonConfig
         };
 
         return CreatedAtAction(nameof(GetTemplateById), new { id = template.Id }, dto);

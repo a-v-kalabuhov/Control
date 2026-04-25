@@ -6,12 +6,12 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Packets;
-using MQTTnet.Protocol;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Settings;
+using Wintime.Control.Infrastructure.Mqtt;
 
 namespace Wintime.Control.Infrastructure.MQTT;
 
@@ -19,10 +19,10 @@ public class MqttService : IMqttService, IDisposable
 {
     private readonly IMqttClient _mqttClient;
     private readonly MqttSettings _settings;
-    private readonly ICovFilter _covFilter;
+//    private readonly ICovFilter _covFilter;
     private readonly IServiceProvider _serviceProvider;
+    private readonly IMessageProcessor _messageProcessor;
     private readonly ILogger<MqttService> _logger;
-    private readonly Dictionary<string, SensorThreshold> _thresholds;
     private bool _isConnected;
     private CancellationTokenSource? _reconnectCts;
     private MqttClientOptions? _mqttOptions;
@@ -30,17 +30,17 @@ public class MqttService : IMqttService, IDisposable
     public MqttService(
         IMqttClient mqttClient,
         IOptions<MqttSettings> settings,
-        ICovFilter covFilter,
+//        ICovFilter covFilter,
         IServiceProvider serviceProvider,
-        ILogger<MqttService> logger,
-        Dictionary<string, SensorThreshold> thresholds)
+        IMessageProcessor messageProcessor,
+        ILogger<MqttService> logger)
     {
         _mqttClient = mqttClient;
         _settings = settings.Value;
-        _covFilter = covFilter;
+//        _covFilter = covFilter;
         _serviceProvider = serviceProvider;
+        _messageProcessor = messageProcessor;
         _logger = logger;
-        _thresholds = thresholds;
         _isConnected = false;
 
         CreateMqttClientOptions();
@@ -158,15 +158,16 @@ public class MqttService : IMqttService, IDisposable
 
             if (topic.Contains("/telemetry"))
             {
-                await ProcessTelemetry(payload);
+                await ProcessTelemetry(topic, payload);
             }
             else if (topic.Contains("/events"))
             {
+                // TODO : Убрать, как и статус. Оставить только телеметрию.
                 await ProcessEvent(payload);
             }
             else if (topic.Contains("/status"))
             {
-                await ProcessStatus(payload);
+                await ProcessStatus(topic, payload);
             }
         }
         catch (Exception ex)
@@ -175,94 +176,102 @@ public class MqttService : IMqttService, IDisposable
         }
     }
 
-    private async System.Threading.Tasks.Task ProcessTelemetry(string payload)
+    private async System.Threading.Tasks.Task ProcessTelemetry(string topic, string payload)
     {
-        MqttTelemetryMessage tmp = new MqttTelemetryMessage
+        // var message = JsonSerializer.Deserialize<MqttTelemetryMessage>(payload);
+        // if (message == null)
+        //     return;
+        // var deviceId = GetDeviceIdFromTopic(topic);
+        // if (deviceId == null)
+        //     return;
+        // message.DeviceId = deviceId;
+
+        var context = new MqttProcessingContext(Guid.NewGuid(), topic, payload, null, null, null);
+        if (!_messageProcessor.Enqueue(context))
         {
-            Ts = 1712048100,
-            DeviceId = "TPA-02",
-            TemplateVersion = "1.0",
-            Data = new MqttTelemetryData {
-                Status = "Auto",
-                Cycles = 10,
-                CycleTime = 35.5m,
-                TempZone1 = 180.5m,
-                PressureInject = 50.2m
-            }
-        };
-        var tmp_message = JsonSerializer.Serialize(tmp);
-        var message = JsonSerializer.Deserialize<MqttTelemetryMessage>(payload);
-        if (tmp_message == payload)
-          return;
-        if (message == null || string.IsNullOrEmpty(message.DeviceId))
-            return;
-
-        using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-
-        var imm = await context.Imms
-            .Include(i => i.Template)
-            .FirstOrDefaultAsync(i => i.Name == message.DeviceId || i.InventoryNumber == message.DeviceId);
-
-        if (imm == null)
-        {
-            _logger.LogWarning("IMM not found for DeviceId: {DeviceId}", message.DeviceId);
-            return;
+            _logger.LogWarning("Dropped message {MessageId} - queue full", context.MessageId);
         }
 
-        var timestamp = DateTimeOffset.FromUnixTimeSeconds(message.Ts).DateTime;
+        // using var scope = _serviceProvider.CreateScope();
+        // var context = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
 
-        // Обрабатываем каждый параметр через COV-фильтр
-        var parametersToSave = new List<(string Name, decimal? Numeric, string? Text)>();
+        // var imm = await context.Imms
+        //     .Include(i => i.Template)
+        //     .FirstOrDefaultAsync(i => i.Name == message.DeviceId || i.InventoryNumber == message.DeviceId);
 
-        if (message.Data.Status != null)
-        {
-            if (_covFilter.ShouldSave(imm.Id.ToString(), "status", message.Data.Status, timestamp))
-                parametersToSave.Add(("status", null, message.Data.Status));
-        }
+        // if (imm == null)
+        // {
+        //     _logger.LogWarning("IMM not found for DeviceId: {DeviceId}", message.DeviceId);
+        //     return;
+        // }
 
-        if (message.Data.Cycles.HasValue)
-        {
-            if (_covFilter.ShouldSave(imm.Id.ToString(), "cycles", message.Data.Cycles.Value, timestamp))
-                parametersToSave.Add(("cycles", message.Data.Cycles.Value, null));
-        }
+        // var timestamp = DateTimeOffset.FromUnixTimeSeconds(message.Timestamp).DateTime;
 
-        if (message.Data.CycleTime.HasValue)
-        {
-            if (_covFilter.ShouldSave(imm.Id.ToString(), "cycle_time", message.Data.CycleTime.Value, timestamp))
-                parametersToSave.Add(("cycle_time", message.Data.CycleTime.Value, null));
-        }
+        // // Обрабатываем каждый параметр через COV-фильтр
+        // var parametersToSave = new List<(string Name, decimal? Numeric, string? Text)>();
 
-        if (message.Data.TempZone1.HasValue)
-        {
-            if (_covFilter.ShouldSave(imm.Id.ToString(), "temp_zone_1", message.Data.TempZone1.Value, timestamp))
-                parametersToSave.Add(("temp_zone_1", message.Data.TempZone1.Value, null));
-        }
+        // if (message.Data.Status != null)
+        // {
+        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "status", message.Data.Status, timestamp))
+        //         parametersToSave.Add(("status", null, message.Data.Status));
+        // }
 
-        if (message.Data.PressureInject.HasValue)
-        {
-            if (_covFilter.ShouldSave(imm.Id.ToString(), "pressure_inject", message.Data.PressureInject.Value, timestamp))
-                parametersToSave.Add(("pressure_inject", message.Data.PressureInject.Value, null));
-        }
+        // if (message.Data.Cycles.HasValue)
+        // {
+        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "cycles", message.Data.Cycles.Value, timestamp))
+        //         parametersToSave.Add(("cycles", message.Data.Cycles.Value, null));
+        // }
 
-        // Сохраняем отфильтрованные данные
-        if (parametersToSave.Any())
-        {
-            var telemetryRecords = parametersToSave.Select(p => new Telemetry
-            {
-                ImmId = imm.Id,
-                Timestamp = timestamp,
-                ParameterName = p.Name,
-                ValueNumeric = p.Numeric,
-                ValueText = p.Text
-            }).ToList();
+        // if (message.Data.CycleTime.HasValue)
+        // {
+        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "cycle_time", message.Data.CycleTime.Value, timestamp))
+        //         parametersToSave.Add(("cycle_time", message.Data.CycleTime.Value, null));
+        // }
 
-            await context.Telemetry.AddRangeAsync(telemetryRecords);
-            await context.SaveChangesAsync();
+        // if (message.Data.TempZone1.HasValue)
+        // {
+        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "temp_zone_1", message.Data.TempZone1.Value, timestamp))
+        //         parametersToSave.Add(("temp_zone_1", message.Data.TempZone1.Value, null));
+        // }
 
-            _logger.LogDebug("Saved {Count} telemetry records for IMM {ImmId}", parametersToSave.Count, imm.Id);
-        }
+        // if (message.Data.PressureInject.HasValue)
+        // {
+        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "pressure_inject", message.Data.PressureInject.Value, timestamp))
+        //         parametersToSave.Add(("pressure_inject", message.Data.PressureInject.Value, null));
+        // }
+
+        // // Сохраняем отфильтрованные данные
+        // if (parametersToSave.Any())
+        // {
+        //     var telemetryRecords = parametersToSave.Select(p => new Telemetry
+        //     {
+        //         ImmId = imm.Id,
+        //         Timestamp = timestamp,
+        //         ParameterName = p.Name,
+        //         ValueNumeric = p.Numeric,
+        //         ValueText = p.Text
+        //     }).ToList();
+
+        //     await context.Telemetry.AddRangeAsync(telemetryRecords);
+        //     await context.SaveChangesAsync();
+
+        //     _logger.LogDebug("Saved {Count} telemetry records for IMM {ImmId}", parametersToSave.Count, imm.Id);
+        // }
     }
+
+    private static string GetDeviceIdFromTopic(string topic)
+    {
+        // control/imm/+/telemetry
+        var segments = topic.Split('/');
+        if (segments.Length < 3)
+            return string.Empty;
+        if ((segments[0] == "control") && (segments[1] == "imm"))
+        {
+            return segments[2];
+        }
+        return string.Empty;
+    }
+
 
     private async System.Threading.Tasks.Task ProcessEvent(string payload)
     {
@@ -303,10 +312,10 @@ public class MqttService : IMqttService, IDisposable
         _logger.LogInformation("Event saved: {EventType} for IMM {ImmId}", eventType, imm.Id);
     }
 
-    private async System.Threading.Tasks.Task ProcessStatus(string payload)
+    private async System.Threading.Tasks.Task ProcessStatus(string topic, string payload)
     {
         // Статус обрабатывается как часть телеметрии
-        await ProcessTelemetry(payload);
+        await ProcessTelemetry(topic, payload);
     }
 
     private static EventType MapEventType(string eventType)

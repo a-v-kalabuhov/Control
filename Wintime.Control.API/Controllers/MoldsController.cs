@@ -108,7 +108,7 @@ public class MoldsController : ControllerBase
     {
         var mold = new Mold
         {
-            FormId = $"PF-{Guid.NewGuid():N8}", // Генерируем уникальный FormID
+            FormId = $"PF-{Guid.NewGuid()}", // Генерируем уникальный FormID
             Name = request.Name,
             Cavities = request.Cavities,
             PartWeightGrams = request.PartWeightGrams,

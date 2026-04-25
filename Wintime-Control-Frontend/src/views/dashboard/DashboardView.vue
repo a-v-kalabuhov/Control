@@ -103,7 +103,7 @@
           />
         </el-form-item>
         <el-form-item label="Статус">
-          <el-select v-model="statusFilter" placeholder="Все" clearable class="w-40">
+          <el-select v-model="statusFilter" placeholder="Все" clearable class="w-52">
             <el-option label="В работе" value="Auto" />
             <el-option label="Наладка" value="Manual" />
             <el-option label="Авария" value="Alarm" />

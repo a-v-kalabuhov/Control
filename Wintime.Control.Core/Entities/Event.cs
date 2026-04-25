@@ -2,6 +2,9 @@ using Wintime.Control.Core.Enums;
 
 namespace Wintime.Control.Core.Entities;
 
+/// <summary>
+/// Запись в журнале событий.
+/// </summary>
 public class Event : BaseEntity
 {
     public Guid ImmId { get; set; }

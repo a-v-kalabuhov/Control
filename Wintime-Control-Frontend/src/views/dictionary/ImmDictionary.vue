@@ -13,17 +13,17 @@
 
     <!-- Фильтры -->
     <el-card class="mb-4">
-      <el-form :inline="true" :model="filters">
-        <el-form-item label="Статус">
-          <el-select v-model="filters.isActive" placeholder="Все" clearable>
-            <el-option label="Активные" :value="true" />
-            <el-option label="Не активные" :value="false" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadImms">Применить</el-button>
-        </el-form-item>
-      </el-form>
+        <el-form :inline="true" :model="filters">
+          <el-form-item label="Статус">
+            <el-select v-model="filters.isActive" placeholder="Все" clearable style="width: 160px;">
+              <el-option label="Активные" :value="true" />
+              <el-option label="Не активные" :value="false" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="loadImms">Применить</el-button>
+          </el-form-item>
+        </el-form>
     </el-card>
 
     <!-- Таблица ТПА -->

@@ -19,22 +19,3 @@ public class MqttTopics
     public string Events { get; set; } = "control/imm/+/events";
     public string Status { get; set; } = "control/imm/+/status";
 }
-
-public class SensorThreshold
-{
-    public string ParameterName { get; set; } = string.Empty;
-    public string ParameterType { get; set; } = "numeric"; // numeric, discrete, string
-    public decimal Threshold { get; set; } = 0;
-    public int TimeoutSeconds { get; set; } = 300;
-    public List<string>? AllowedValues { get; set; } // Для дискретных значений
-}
-
-public class TemplateConfig
-{
-    public string TemplateName { get; set; } = string.Empty;
-    public string Manufacturer { get; set; } = string.Empty;
-    public string Model { get; set; } = string.Empty;
-    public string Version { get; set; } = "1.0";
-    public string Author { get; set; } = string.Empty;
-    public List<SensorThreshold> Sensors { get; set; } = new();
-}

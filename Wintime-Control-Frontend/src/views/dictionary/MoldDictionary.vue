@@ -18,7 +18,7 @@
           <el-input v-model="filters.search" placeholder="Наименование или артикул" clearable />
         </el-form-item>
         <el-form-item label="Статус">
-          <el-select v-model="filters.isActive" placeholder="Все" clearable>
+          <el-select v-model="filters.isActive" placeholder="Все" clearable style="width: 160px;">
             <el-option label="Активные" :value="true" />
             <el-option label="Не активные" :value="false" />
           </el-select>

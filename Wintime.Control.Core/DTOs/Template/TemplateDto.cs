@@ -8,6 +8,6 @@ public class TemplateDto
     public string? Model { get; set; }
     public string Version { get; set; } = "1.0";
     public string? Author { get; set; }
+    public string JsonConfig { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
-    public int SensorCount { get; set; }
 }

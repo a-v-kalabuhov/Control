@@ -12,10 +12,11 @@ using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Infrastructure.Auth;
 using Wintime.Control.Infrastructure.MQTT;
 using Wintime.Control.Shared.Settings;
+using Wintime.Control.Infrastructure.Mqtt;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ========== Логирование (Serilog) ==========
+// Логирование (Serilog)
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
@@ -24,7 +25,7 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog();
 
-// ========== Настройки (Options Pattern) ==========
+// Настройки (Options Pattern)
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection(MqttSettings.SectionName));
 builder.Services.Configure<CorsSettings>(builder.Configuration.GetSection(CorsSettings.SectionName));
@@ -32,11 +33,11 @@ builder.Services.Configure<CorsSettings>(builder.Configuration.GetSection(CorsSe
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()!;
 var corsSettings = builder.Configuration.GetSection(CorsSettings.SectionName).Get<CorsSettings>()!;
 
-// ========== База данных ==========
+// База данных
 builder.Services.AddDbContext<ControlDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// ========== Identity ==========
+// Identity
 builder.Services.AddIdentity<User, IdentityRole>(options =>
 {
     options.Password.RequireDigit = false;
@@ -50,7 +51,7 @@ builder.Services.AddIdentity<User, IdentityRole>(options =>
 .AddDefaultTokenProviders()
 .AddRoleManager<RoleManager<IdentityRole>>();
 
-// ========== JWT Authentication ==========
+// JWT Authentication
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -74,13 +75,13 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// ========== Authorization Policies ==========
+// Authorization Policies
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
     .AddPolicy("ManagerOrAdmin", policy => policy.RequireRole("Manager", "Admin"))
     .AddPolicy("AdjusterOrHigher", policy => policy.RequireRole("Adjuster", "Manager", "Admin"));
 
-// ========== CORS ==========
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -92,7 +93,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-// ========== Controllers ==========
+// Controllers
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -100,7 +101,7 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.WriteIndented = false;
     });
 
-// ========== Swagger ==========
+// Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -132,30 +133,34 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// ========== Сервисы ==========
+// Сервисы
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-// ========== Report Service ==========
+// Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
-// ========== MQTT Service ==========
+// MQTT Service
 builder.Services.AddSingleton<IWintimeMqttClientFactory, WintimeMqttClientFactory>();
 builder.Services.AddSingleton(sp =>
 {
     var factory = sp.GetRequiredService<IWintimeMqttClientFactory>();
     return factory.CreateClient();
 });
+// Message processing
+builder.Services.AddScoped<IMessageProcessor, MessageProcessor>();
+builder.Services.AddMessageProcessing();
 
+// TODO : вместо этого делаем отдельный сервис для шаблонов и второй для оборудования
 // Загрузка порогов из БД (для MVP — из конфига)
-var thresholds = new Dictionary<string, SensorThreshold>
-{
-    { "temp_zone_1", new SensorThreshold { ParameterName = "temp_zone_1", ParameterType = "numeric", Threshold = 0.5m, TimeoutSeconds = 300 } },
-    { "temp_zone_2", new SensorThreshold { ParameterName = "temp_zone_2", ParameterType = "numeric", Threshold = 0.5m, TimeoutSeconds = 300 } },
-    { "pressure_inject", new SensorThreshold { ParameterName = "pressure_inject", ParameterType = "numeric", Threshold = 0.2m, TimeoutSeconds = 300 } },
-    { "status", new SensorThreshold { ParameterName = "status", ParameterType = "discrete", Threshold = 0, TimeoutSeconds = 60 } },
-    { "cycles", new SensorThreshold { ParameterName = "cycles", ParameterType = "numeric", Threshold = 1, TimeoutSeconds = 300 } }
-};
-builder.Services.AddSingleton(thresholds);
+// var thresholds = new Dictionary<string, SensorThreshold>
+// {
+//     { "temp_zone_1", new SensorThreshold { ParameterName = "temp_zone_1", ParameterType = "numeric", Threshold = 0.5m, TimeoutSeconds = 300 } },
+//     { "temp_zone_2", new SensorThreshold { ParameterName = "temp_zone_2", ParameterType = "numeric", Threshold = 0.5m, TimeoutSeconds = 300 } },
+//     { "pressure_inject", new SensorThreshold { ParameterName = "pressure_inject", ParameterType = "numeric", Threshold = 0.2m, TimeoutSeconds = 300 } },
+//     { "status", new SensorThreshold { ParameterName = "status", ParameterType = "discrete", Threshold = 0, TimeoutSeconds = 60 } },
+//     { "cycles", new SensorThreshold { ParameterName = "cycles", ParameterType = "numeric", Threshold = 1, TimeoutSeconds = 300 } }
+// };
+// builder.Services.AddSingleton(thresholds);
 
-builder.Services.AddSingleton<ICovFilter, CovFilter>();
+//builder.Services.AddSingleton<ICovFilter, CovFilter>();
 builder.Services.AddSingleton<IMqttService, MqttService>();
 builder.Services.AddHostedService<MqttBackgroundService>();
 builder.Services.AddMemoryCache(); // Для COV-фильтра
@@ -189,7 +194,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// ========== Инициализация БД (для разработки) ==========
+// Инициализация БД (для разработки)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
@@ -199,6 +204,7 @@ using (var scope = app.Services.CreateScope())
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
     var adminEmail = "admin@control.local";
+    var emulatorEmail = "emulator@control.local";
     
     // Создаем стандартные роли, если они еще не существуют
     string[] roleNames = { "Admin", "Manager", "Adjuster", "Observer" };
@@ -225,6 +231,23 @@ using (var scope = app.Services.CreateScope())
         await userManager.CreateAsync(admin, "Admin123!");
         await userManager.AddToRoleAsync(admin, "Admin");
         Log.Information("Admin user created: admin / Admin123!");
+    }
+    
+    // Создание роли эмулятора по умолчанию (для разработки)
+    if (await userManager.FindByNameAsync("emulator") == null)
+    {
+        var emulator = new User
+        {
+            UserName = "emulator",
+            Email = emulatorEmail,
+            FullName = "Эмутялор ТПА",
+            Role = Wintime.Control.Core.Enums.UserRole.Emulator,
+            IsActive = true
+        };
+        
+        await userManager.CreateAsync(emulator, "Emulator123!");
+        await userManager.AddToRoleAsync(emulator, "Emulator");
+        Log.Information("Emulator user created: emulator / Emulator123!");
     }
 }
 

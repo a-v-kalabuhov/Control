@@ -1,3 +1,5 @@
+using Wintime.Control.Shared.Settings;
+
 namespace Wintime.Control.Core.Entities;
 
 public class Template : BaseEntity
@@ -9,7 +11,10 @@ public class Template : BaseEntity
     public string Author { get; set; } = string.Empty;
     public string JsonConfig { get; set; } = "{}"; // Конфигурация датчиков
     public bool IsActive { get; set; } = true;
-
+    /// <summary>
+    /// Список шаблонов датчиков
+    /// </summary>
+    public IEnumerable<SensorTemplate> Sensors { get; }  = new List<SensorTemplate>();
     // Navigation
     public ICollection<Imm> Imms { get; set; } = new List<Imm>();
 }

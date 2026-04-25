@@ -5,5 +5,6 @@ public enum UserRole
     Admin = 0,
     Manager = 1,
     Adjuster = 2,
-    Observer = 3
+    Observer = 3,
+    Emulator = 4
 }
