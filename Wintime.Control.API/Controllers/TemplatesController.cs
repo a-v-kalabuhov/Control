@@ -73,6 +73,37 @@ public class TemplatesController : ControllerBase
     /// <summary>
     /// Загрузить новый шаблон (JSON)
     /// </summary>
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = $"{Roles.Admin}")]
+    public async Task<ActionResult> UpdateTemplate(Guid id, [FromBody] CreateTemplateRequestDto request)
+    {
+        var template = await _context.Templates.FindAsync(id);
+        if (template == null)
+        {
+            return NotFound();
+        }
+
+        // Применяем изменения вручную
+        template.Name = request.Name;
+        template.JsonConfig = request.JsonConfig?.ToString() ?? string.Empty;
+        template.Manufacturer = request.Manufacturer ?? string.Empty;
+        template.Model = request.Model ?? string.Empty;
+        template.Version = request.Version ?? string.Empty;
+        template.Author = request.Author ?? string.Empty;
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw;
+        }
+        return NoContent(); // или return Ok(template); если нужно вернуть обновлённые данные
+    }
+
+    /// <summary>
+    /// Загрузить новый шаблон (JSON)
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = $"{Roles.Admin}")]
     public async Task<ActionResult<TemplateDto>> CreateTemplate([FromBody] CreateTemplateRequestDto request)

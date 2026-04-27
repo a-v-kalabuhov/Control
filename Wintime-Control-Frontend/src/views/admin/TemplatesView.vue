@@ -140,6 +140,15 @@ const showCreateModal = () => {
   dialogVisible.value = true
 }
 
+function beautifyJson(jsonStr) {
+  try {
+    const obj = JSON.parse(jsonStr)
+    return JSON.stringify(obj, null, 2)
+  } catch {
+    return jsonStr // не JSON — оставляем как есть
+  }
+}
+
 const editTemplate = (template) => {
   editingTemplate.value = template
   Object.assign(form, {
@@ -148,7 +157,7 @@ const editTemplate = (template) => {
     model: template.model,
     version: template.version,
     author: template.author,
-    jsonConfigString: '' // TODO: Загрузить полный JSON из бэкенда
+    jsonConfigString: beautifyJson(template.jsonConfig)
   })
   dialogVisible.value = true
 }
