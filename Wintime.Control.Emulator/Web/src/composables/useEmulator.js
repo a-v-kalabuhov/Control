@@ -51,6 +51,7 @@ export function useEmulator() {
     try {
       const response = await emulatorApi.getTemplate(templateId)
       // Преобразуем сенсоры шаблона в конфиги эмуляции с дефолтными значениями
+      console.log('loadTemplateSensors', response.data);
       return response.data.sensors.map(s => ({
         name: s.name,
         type: s.type,

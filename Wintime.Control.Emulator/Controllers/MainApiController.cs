@@ -99,6 +99,7 @@ public class MainApiController : ControllerBase
         {
             _logger.LogDebug("Fetching template {TemplateId} from main API", id);
             var template = await _immApiClient.GetTemplateAsync(id, ct);
+            template.UpdateSensors();
             return Ok(template);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
