@@ -17,13 +17,13 @@
       <p><small>Модель: {{ imm.model || '—' }}</small></p>
       
       <div class="actions" v-if="status !== 'Running'">
-        <el-button size="small" @click="$emit('configure')">
+        <el-button size="small" @click="$emit('configure', imm)">
           <el-icon><Setting /></el-icon> Настроить
         </el-button>
         <el-button 
           type="primary" 
           size="small" 
-          @click="$emit('start')"
+          @click="$emit('start', imm)"
           :disabled="!status || status === 'Running'"
         >
           <el-icon><VideoPlay /></el-icon> Запустить
@@ -34,7 +34,7 @@
         v-else 
         type="danger" 
         size="small" 
-        @click="$emit('stop')"
+        @click="$emit('stop', imm)"
       >
         <el-icon><VideoPause /></el-icon> Остановить
       </el-button>

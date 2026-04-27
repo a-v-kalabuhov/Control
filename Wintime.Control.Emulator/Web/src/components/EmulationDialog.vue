@@ -67,7 +67,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ProfileEditor from './ProfileEditor.vue'
 import SensorEditor from './SensorEditor.vue'
@@ -140,6 +140,7 @@ const addProfileStep = () => {
 }
 
 const loadFromTemplate = async () => {
+  console.log('loadFromTemplate', props.imm)  
   if (!props.imm?.templateId) {
     ElMessage.warning('У ТПА не указан шаблон')
     return

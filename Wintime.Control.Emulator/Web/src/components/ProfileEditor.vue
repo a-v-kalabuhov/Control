@@ -42,6 +42,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { Delete } from '@element-plus/icons-vue'
 
 const props = defineProps({

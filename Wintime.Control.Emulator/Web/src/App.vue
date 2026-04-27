@@ -34,12 +34,13 @@ import { ElMessage } from 'element-plus'
 import ru from 'element-plus/es/locale/lang/ru'
 import { usePolling } from './composables/usePolling'
 import { useEmulator } from './composables/useEmulator'
+import { emulatorApi } from './api/client'
 import ImmList from './components/ImmList.vue'
 import EmulationDialog from './components/EmulationDialog.vue'
 
 // ← Получаем error из usePolling
 const { data: imms, loading, error: immsError, refresh: refreshImms } = usePolling(
-  () => import('./api/client').then(m => m.emulatorApi.getImms()),
+  () => emulatorApi.getImms(),
   null,
   true
 )
@@ -50,7 +51,7 @@ const { startEmulation, stopEmulation } = useEmulator()
 const statuses = ref({})
 const refreshStatuses = async () => {
   try {
-    const res = await import('./api/client').then(m => m.emulatorApi.getInstances())
+    const res = emulatorApi.getInstances()
     statuses.value = Object.fromEntries(
       (res.data || []).map(s => [s.immId, s.status])
     )
@@ -59,13 +60,19 @@ const refreshStatuses = async () => {
   }
 }
 // Polling статусов каждые 3 сек
-setInterval(refreshStatuses, 3000)
+const pollingInterval = parseInt(import.meta.env.VITE_API_TIMEOUT) || 3000
+setInterval(refreshStatuses, pollingInterval)
 refreshStatuses()
 
 const configDialogVisible = ref(false)
 const selectedImm = ref(null)
 
 const openConfig = (imm) => {
+  console.log('openConfig', imm)
+  if (!imm) {
+    ElMessage.error('Не выбран ТПА')
+    return
+  }
   selectedImm.value = imm
   configDialogVisible.value = true
 }
