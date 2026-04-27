@@ -2,7 +2,9 @@ namespace Wintime.Control.Emulator.Models;
 
 using System.Text.Json.Serialization;
 
-// Запрос на логин
+/// <summary>
+/// Запрос на логин
+/// </summary>
 public class LoginRequest
 {
     [JsonPropertyName("login")]
@@ -12,7 +14,9 @@ public class LoginRequest
     public string Password { get; set; } = "";
 }
 
-// Ответ на логин/рефреш
+/// <summary>
+/// Ответ на логин/рефреш
+/// </summary>
 public class LoginResponse
 {
     [JsonPropertyName("accessToken")]
@@ -28,6 +32,9 @@ public class LoginResponse
     public UserInfo? User { get; set; }
 }
 
+/// <summary>
+/// Информация о пользователе
+/// </summary>
 public class UserInfo
 {
     [JsonPropertyName("id")]
@@ -43,7 +50,9 @@ public class UserInfo
     public string Role { get; set; } = "";
 }
 
-// Запрос на рефреш
+/// <summary>
+/// Запрос на рефреш
+/// </summary>
 public class RefreshRequest
 {
     [JsonPropertyName("accessToken")]

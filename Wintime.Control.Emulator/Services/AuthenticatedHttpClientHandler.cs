@@ -3,20 +3,9 @@ using Wintime.Control.Emulator.Config;
 
 namespace Wintime.Control.Emulator.Services;
 
-// Custom Authorization Handler for Refit
-public class AuthenticatedHttpClientHandler2 : DelegatingHandler
-{
-    private readonly IJwtTokenService _tokenService;
-    public AuthenticatedHttpClientHandler2(IJwtTokenService tokenService) => _tokenService = tokenService;
-
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-    {
-        var token = await _tokenService.GetTokenAsync(ct);
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        return await base.SendAsync(request, ct);
-    }
-}
-
+/// <summary>
+/// Custom Authorization Handler for Refit
+/// </summary>
 public class AuthenticatedHttpClientHandler : DelegatingHandler
 {
     private readonly IJwtTokenService? _tokenService;

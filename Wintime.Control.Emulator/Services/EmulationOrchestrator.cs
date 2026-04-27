@@ -8,6 +8,10 @@ namespace Wintime.Control.Emulator.Services;
 /// </summary>
 public class EmulationOrchestrator
 {
+    /// <summary>
+    /// Список инстансов эмуляции IMM.
+    /// Ключом является ID IMM.
+    /// </summary>
     private readonly ConcurrentDictionary<string, ImmEmulationInstance> _instances = new();
     private readonly IMqttService _mqtt;
     private readonly ILoggerFactory _loggerFactory;

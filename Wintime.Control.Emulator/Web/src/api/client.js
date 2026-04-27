@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api', // Относительный путь для продакшена
-  timeout: 5000,
+  timeout: parseInt(import.meta.env.VITE_API_TIMEOUT) || 5000,
   headers: { 'Content-Type': 'application/json' }
 })
 
@@ -21,12 +21,10 @@ export const emulatorApi = {
   // Эмуляции
   getInstances: () => api.get('/emulator/instances'),
   startEmulation: (data) => api.post('/emulator/instances', data),
-  stopEmulation: (immId) => api.delete(`/emulator/instances/${immId}`),
-  
+  stopEmulation: (immId) => api.delete(`/emulator/instances/${immId}`),  
   // Основное API
-  getImms: () => api.get('/imm'),
-  getTemplate: (id) => api.get(`/templates/${id}`),
-  
+  getImms: () => api.get('/main/imm'),
+  getTemplate: (id) => api.get(`/main/templates/${id}`),
   // Пресеты
   getPreset: (immId) => api.get(`/presets/${immId}`),
   savePreset: (immId, data) => api.post(`/presets/${immId}`, data),

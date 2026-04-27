@@ -2,6 +2,11 @@ namespace Wintime.Control.Emulator.Models;
 
 using FluentValidation;
 
+/// <summary>
+/// Запрос на эмуляцию IMM.
+/// Используется контроллером EmulationController.
+/// Т.е. настройки инстанса можно задавать HTTP запросом через API.
+/// </summary>
 public class EmulationRequest
 {
     public string ImmId { get; set; } = "";
@@ -10,6 +15,10 @@ public class EmulationRequest
     public List<SensorEmulationConfig> SensorConfigs { get; set; } = new();
 }
 
+/// <summary>
+/// Шаг профиля эмуляции.
+/// Содержит режим работы и длительность этого режима.
+/// </summary>
 public class ProfileStep
 {
     public string Mode { get; set; } = ""; // auto, manual, idle

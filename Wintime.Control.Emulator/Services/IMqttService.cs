@@ -32,7 +32,7 @@ public class MqttService : IMqttService
         var options = new MqttClientOptionsBuilder()
             .WithTcpServer(_settings.BrokerUrl.Replace("mqtt://", "").Split(':')[0], 
                            int.Parse(_settings.BrokerUrl.Split(':')[^1]))
-            .WithClientId($"{_settings.ClientIdPrefix}_{Guid.NewGuid():N8}")
+            .WithClientId($"{_settings.ClientIdPrefix}_{Guid.NewGuid()}")
             .Build();
 
         await _client.ConnectAsync(options, ct);

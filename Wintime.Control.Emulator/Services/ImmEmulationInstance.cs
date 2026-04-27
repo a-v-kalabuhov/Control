@@ -2,7 +2,11 @@ namespace Wintime.Control.Emulator.Services;
 
 using Wintime.Control.Emulator.Models;
 
-
+/// <summary>
+/// Класс для эмуляции IMM.
+/// Эмуляция заключается в генерации данных для датчиков, описанных в конфиге, и отправке сгенерированных данных по MQTT.
+/// Бесконечно выполнет метод RunLoopAsync, в котором и происходит генерация данных. 
+/// </summary>
 public class ImmEmulationInstance : IAsyncDisposable
 {
     private readonly string _immId;

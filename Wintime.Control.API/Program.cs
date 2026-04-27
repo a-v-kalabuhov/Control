@@ -161,6 +161,7 @@ builder.Services.AddMessageProcessing();
 // builder.Services.AddSingleton(thresholds);
 
 //builder.Services.AddSingleton<ICovFilter, CovFilter>();
+builder.Services.AddSingleton<IMessageProcessor, MessageProcessor>();
 builder.Services.AddSingleton<IMqttService, MqttService>();
 builder.Services.AddHostedService<MqttBackgroundService>();
 builder.Services.AddMemoryCache(); // Для COV-фильтра

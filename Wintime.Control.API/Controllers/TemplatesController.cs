@@ -24,7 +24,7 @@ public class TemplatesController : ControllerBase
     /// Список шаблонов оборудования
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Emulator}")]
     public async Task<ActionResult<IEnumerable<TemplateDto>>> GetTemplates()
     {
         var templates = await _context.Templates.ToListAsync();
@@ -48,7 +48,7 @@ public class TemplatesController : ControllerBase
     /// Получить детали шаблона
     /// </summary>
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Emulator}")]
     public async Task<ActionResult<TemplateDto>> GetTemplateById(Guid id)
     {
         var template = await _context.Templates.FindAsync(id);

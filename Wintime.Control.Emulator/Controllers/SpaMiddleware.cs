@@ -1,5 +1,8 @@
 namespace Wintime.Control.Emulator.Middleware;
 
+/// <summary>
+/// Middleware для отдачи index.html при запросе к SPA.
+/// </summary>
 public class SpaMiddleware
 {
     private readonly RequestDelegate _next;

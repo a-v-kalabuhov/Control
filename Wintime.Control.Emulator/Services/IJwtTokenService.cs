@@ -5,15 +5,23 @@ using Wintime.Control.Emulator.Models;
 
 namespace Wintime.Control.Emulator.Services;
 
+/// <summary>
+/// Служба для получения JWT токена от основного веб-сервиса.
+/// </summary>
 public interface IJwtTokenService
 {
     Task<string> GetTokenAsync(CancellationToken ct);
 }
 
+/// <summary>
+/// Реализация сервиса полученяи токена.
+/// Если токена нет, то выполняет логин в основном веб-сервисе.
+/// Если токен пора обновить, то автоматически выполняет рефреш.
+/// </summary>
 public class JwtTokenService : IJwtTokenService
 {
     private readonly HttpClient _httpClient;
-    private readonly AuthSettings _auth;
+    private readonly MainApiSettings _mainApiSettings;
     private readonly ILogger<JwtTokenService> _logger;
     private readonly AsyncLock _lock = new();
     private string? _cachedAccessToken;
@@ -26,9 +34,10 @@ public class JwtTokenService : IJwtTokenService
         ILogger<JwtTokenService> logger)
     {
         _httpClient = httpClient;
-        _auth = settings.Value.MainApi.Auth;
+        _mainApiSettings = settings.Value.MainApi;
         _logger = logger;
     }
+
 
     public async Task<string> GetTokenAsync(CancellationToken ct)
     {
@@ -68,10 +77,11 @@ public class JwtTokenService : IJwtTokenService
             };
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(_auth.TimeoutSec));
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(_mainApiSettings.Auth.TimeoutSec));
 
+            var refreshEndpoint = _mainApiSettings.BaseUrl + _mainApiSettings.Auth.RefreshEndpoint;
             var response = await _httpClient.PostAsJsonAsync(
-                _auth.RefreshEndpoint, request, timeoutCts.Token);
+                refreshEndpoint, request, timeoutCts.Token);
             
             if (!response.IsSuccessStatusCode)
             {
@@ -96,20 +106,20 @@ public class JwtTokenService : IJwtTokenService
         }
     }
 
-
     private async Task LoginAsync(CancellationToken ct)
     {
         var request = new LoginRequest
         {
-            Login = _auth.Username,
-            Password = _auth.Password
+            Login = _mainApiSettings.Auth.Username,
+            Password = _mainApiSettings.Auth.Password
         };
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(_auth.TimeoutSec));
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(_mainApiSettings.Auth.TimeoutSec));
 
+        var loginEndpoint = _mainApiSettings.BaseUrl + _mainApiSettings.Auth.LoginEndpoint;
         var response = await _httpClient.PostAsJsonAsync(
-            _auth.LoginEndpoint, request, timeoutCts.Token);
+            loginEndpoint, request, timeoutCts.Token);
         
         response.EnsureSuccessStatusCode();
         
@@ -121,7 +131,7 @@ public class JwtTokenService : IJwtTokenService
         _tokenExpiry = tokens.ExpiresAt;
         
         _logger.LogInformation("Logged in as {Username}, token expires at {ExpiresAt}", 
-            _auth.Username, _tokenExpiry);
+            _mainApiSettings.Auth.Username, _tokenExpiry);
     }
 
 }

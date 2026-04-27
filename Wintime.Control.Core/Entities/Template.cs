@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using Wintime.Control.Shared.Settings;
 
 namespace Wintime.Control.Core.Entities;
@@ -14,6 +15,7 @@ public class Template : BaseEntity
     /// <summary>
     /// Список шаблонов датчиков
     /// </summary>
+    [NotMapped]
     public IEnumerable<SensorTemplate> Sensors { get; }  = new List<SensorTemplate>();
     // Navigation
     public ICollection<Imm> Imms { get; set; } = new List<Imm>();

@@ -2,6 +2,11 @@ using Wintime.Control.Emulator.Models;
 
 namespace Wintime.Control.Emulator.Services;
 
+/// <summary>
+/// Хранилище пресетов.
+/// Контроллер пресетов работает поверх эттого интерфейса.
+/// Каждый раз когда надо прочитать ихи сохранить пресет, он вызывает методы IPresetStorage.
+/// </summary>
 public interface IPresetStorage
 {
     Task<EmulationPreset?> LoadAsync(string immId, CancellationToken ct);

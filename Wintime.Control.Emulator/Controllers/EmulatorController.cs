@@ -7,7 +7,6 @@ namespace Wintime.Control.Emulator.Controllers;
 /// <summary>
 /// Emulator API
 /// </summary>
-
 [ApiController]
 [Route("api/[controller]")]
 public class EmulatorController : ControllerBase

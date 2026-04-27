@@ -5,6 +5,10 @@ using Microsoft.Extensions.Options;
 using Wintime.Control.Emulator.Config;
 using Wintime.Control.Emulator.Models;
 
+/// <summary>
+/// Хранение пресетов в файлах.
+/// Каждый пресет хранится в отдельном файле.
+/// </summary>
 public class FilePresetStorage : IPresetStorage
 {
     private readonly string _presetsPath;
@@ -21,8 +25,19 @@ public class FilePresetStorage : IPresetStorage
         _logger = logger;
     }
 
+    /// <summary>
+    /// Получить путь к файлу пресета конкретного инстанса эмуляции.
+    /// </summary>
+    /// <param name="immId"></param>
+    /// <returns></returns>
     private string GetFilePath(string immId) => Path.Combine(_presetsPath, $"{immId}.json");
 
+    /// <summary>
+    /// Загрузить пресет из файла по ID IMM.
+    /// </summary>
+    /// <param name="immId"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
     public async Task<EmulationPreset?> LoadAsync(string immId, CancellationToken ct)
     {
         var path = GetFilePath(immId);
@@ -33,6 +48,12 @@ public class FilePresetStorage : IPresetStorage
         return JsonSerializer.Deserialize<EmulationPreset>(json, _jsonOptions);
     }
 
+    /// <summary>
+    /// Сохранить пресет в файл.
+    /// </summary>
+    /// <param name="preset"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
     public async Task SaveAsync(EmulationPreset preset, CancellationToken ct)
     {
         preset.LastModified = DateTime.UtcNow;
@@ -42,9 +63,21 @@ public class FilePresetStorage : IPresetStorage
         _logger.LogInformation("Saved preset for {ImmId}", preset.ImmId);
     }
 
+    /// <summary>
+    /// Проверка существования пресета.
+    /// </summary>
+    /// <param name="immId"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
     public Task<bool> ExistsAsync(string immId, CancellationToken ct)
         => Task.FromResult(File.Exists(GetFilePath(immId)));
 
+    /// <summary>
+    /// Удалить пресет из хранилища.
+    /// </summary>
+    /// <param name="immId"></param>
+    /// <param name="ct"></param>
+    /// <remarks>Фактически удаляет файл пресета.</remarks>
     public Task DeleteAsync(string immId, CancellationToken ct)
     {
         var path = GetFilePath(immId);

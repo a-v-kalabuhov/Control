@@ -14,7 +14,7 @@ public class ControlDbContext : IdentityDbContext<User>
     // DbSets (Таблицы)
     public DbSet<Imm> Imms { get; set; }
     public DbSet<Mold> Molds { get; set; }
-    public DbSet<Wintime.Control.Core.Entities.Task> Tasks { get; set; }
+    public DbSet<Core.Entities.Task> Tasks { get; set; }
     public DbSet<Template> Templates { get; set; }
     public DbSet<MoldUsage> MoldUsages { get; set; }
     public DbSet<Event> Events { get; set; }

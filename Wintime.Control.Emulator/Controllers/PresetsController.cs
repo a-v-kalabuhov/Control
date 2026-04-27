@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Mvc;
 using Wintime.Control.Emulator.Models;
 using Wintime.Control.Emulator.Services;
 
-
+/// <summary>
+/// Контроллер пресетов.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class PresetsController : ControllerBase

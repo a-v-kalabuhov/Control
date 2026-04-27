@@ -1,8 +1,16 @@
 namespace Wintime.Control.Emulator.Config;
 
+/// <summary>
+/// Настройки хранилища.
+/// </summary>
 public class StorageSettings
 {
-    public string PresetsPath { get; set; } = "presets"; // Относительно папки запуска
+    /// <summary>
+    /// Путь к папке с пресетами.
+    /// Каждый пресет хранится в отдельнйо файле в этой папке.
+    /// Указывается относительно папки запуска.
+    /// </summary>
+    public string PresetsPath { get; set; } = "presets";
     
     public string GetAbsolutePresetsPath()
     {

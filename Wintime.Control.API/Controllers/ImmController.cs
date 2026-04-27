@@ -24,7 +24,7 @@ public class ImmController : ControllerBase
     /// Список всех ТПА (IMM)
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer},{Roles.Emulator}")]
     public async Task<ActionResult<IEnumerable<ImmDto>>> GetImmList([FromQuery] bool? isActive = null)
     {
         var query = _context.Imms
@@ -57,7 +57,7 @@ public class ImmController : ControllerBase
     /// Получить данные ТПА по ID
     /// </summary>
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer},{Roles.Emulator}")]
     public async Task<ActionResult<ImmDto>> GetImmById(Guid id)
     {
         var imm = await _context.Imms
@@ -146,7 +146,7 @@ public class ImmController : ControllerBase
     /// Текущий статус ТПА (для дашборда)
     /// </summary>
     [HttpGet("{id:guid}/status")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer},{Roles.Emulator}")]
     public async Task<ActionResult<ImmStatusDto>> GetImmStatus(Guid id)
     {
         var imm = await _context.Imms.FindAsync(id);

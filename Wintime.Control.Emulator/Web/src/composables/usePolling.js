@@ -1,6 +1,8 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 
-export function usePolling(fetchFn, intervalMs = 3000, immediate = true) {
+export function usePolling(fetchFn, intervalMs, immediate = true) {
+  const defaultInterval = parseInt(import.meta.env.VITE_API_POLLING_INTERVAL) || 3000
+  const interval = intervalMs || defaultInterval
   const data = ref(null)
   const loading = ref(false)
   const error = ref(null)
@@ -22,7 +24,7 @@ export function usePolling(fetchFn, intervalMs = 3000, immediate = true) {
 
   const start = () => {
     if (immediate) execute()
-    timer = setInterval(execute, intervalMs)
+    timer = setInterval(execute, interval)
   }
 
   const stop = () => {

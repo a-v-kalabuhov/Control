@@ -6,6 +6,7 @@ using FluentValidation.AspNetCore;
 using Wintime.Control.Emulator.Services;
 using Refit;
 using Wintime.Control.Emulator.Middleware;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 // Logging (Serilog)
@@ -25,7 +26,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<EmulationRequestValidator>();
 // Services
-
 /// <summary>
 /// Services are singletons cause emulator is standalone process with in-memory state.
 /// </summary>
@@ -33,16 +33,28 @@ builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IMqttService, MqttService>();
 builder.Services.AddSingleton<EmulationOrchestrator>();
 builder.Services.AddSingleton<IPresetStorage, FilePresetStorage>();
-// HTTP-client to Wintime.Control.API (Refit + authorization)
-builder.Services.AddRefitClient<IImmApiClient>()
-    .ConfigureHttpClient(c => 
+// HttpClient для Refit-клиента с авторизацией к Wintime.Control.API
+builder.Services.AddHttpClient("MainApi")
+    .ConfigureHttpClient((sp, client) =>
     {
-        var settings = builder.Configuration.GetSection("MainApi").Get<MainApiSettings>();
-        c.BaseAddress = new Uri(settings!.BaseUrl);
+        var settings = sp.GetRequiredService<IOptions<EmulatorSettings>>().Value;
+        client.BaseAddress = new Uri(settings.MainApi.BaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(settings.MainApi.TimeoutSec);
     })
     .AddHttpMessageHandler<AuthenticatedHttpClientHandler>();
 
-builder.Services.AddHttpClient<AuthenticatedHttpClientHandler>();
+// Refit-клиент к основному API
+builder.Services.AddRefitClient<IImmApiClient>()
+    .ConfigureHttpClient((sp, c) =>
+    {
+        // Наследуем настройки от "MainApi"
+        var settings = sp.GetRequiredService<IOptions<EmulatorSettings>>().Value;
+        c.BaseAddress = new Uri(settings.MainApi.BaseUrl);
+        c.Timeout = TimeSpan.FromSeconds(settings.MainApi.TimeoutSec);
+    })
+    .AddHttpMessageHandler<AuthenticatedHttpClientHandler>();
+
+builder.Services.AddScoped<AuthenticatedHttpClientHandler>();
 
 var app = builder.Build();
 

@@ -38,7 +38,8 @@ import EmulationDialog from './components/EmulationDialog.vue'
 
 const { data: imms, loading, refresh: refreshImms } = usePolling(
   () => import('./api/client').then(m => m.emulatorApi.getImms()),
-  3000
+  null,
+  tre
 )
 
 const { startEmulation, stopEmulation } = useEmulator()
@@ -56,7 +57,7 @@ const refreshStatuses = async () => {
   }
 }
 // Polling статусов каждые 3 сек
-setInterval(refreshStatuses, 3000)
+setInterval(refreshStatuses, 10000)
 refreshStatuses()
 
 const configDialogVisible = ref(false)
