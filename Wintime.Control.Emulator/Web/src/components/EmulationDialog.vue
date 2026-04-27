@@ -31,7 +31,7 @@
         </el-button>
       </el-divider>
       
-      <ProfileEditor v-model:steps="form.profile" />
+      <ProfileEditor v-model:steps="form.profile" :debug-mode="false" />
 
       <!-- Сенсоры -->
       <el-divider content-position="left">
@@ -44,23 +44,16 @@
       <SensorEditor 
         v-model:sensors="form.sensorConfigs" 
         :template-id="imm?.templateId"
+        :debug-mode="false"
       />
 
-      <!-- Пресеты -->
-      <el-divider content-position="left">Пресеты</el-divider>
-      <PresetManager 
-        :imm-id="imm?.id"
-        :form="form"
-        @load="onPresetLoad"
-        @save="onPresetSave"
-      />
 
     </el-form>
 
     <template #footer>
       <el-button @click="visible = false">Отмена</el-button>
-      <el-button type="primary" @click="onStart" :loading="starting">
-        {{ isEditing ? 'Сохранить' : 'Сохранить и запустить' }}
+      <el-button type="primary" @click="onSave" :loading="saving">
+        Сохранить
       </el-button>
     </template>
   </el-dialog>
@@ -71,7 +64,6 @@ import { ref, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ProfileEditor from './ProfileEditor.vue'
 import SensorEditor from './SensorEditor.vue'
-import PresetManager from './PresetManager.vue'
 import { useEmulator } from '../composables/useEmulator'
 import { useValidation } from '../composables/useValidation'
 
@@ -80,7 +72,7 @@ const props = defineProps({
   imm: Object
 })
 
-const emit = defineEmits(['update:modelValue', 'started'])
+const emit = defineEmits(['update:modelValue', 'saved', 'started'])
 
 const visible = computed({
   get: () => props.modelValue,
@@ -97,38 +89,37 @@ const form = ref({
 })
 
 const loadingTemplate = ref(false)
-const starting = ref(false)
+const saving = ref(false)  // ← Индикатор сохранения
 const isEditing = ref(false)
 
-// Загрузка пресета при открытии
+// Загрузка пресета при открытии диалога
 watch(
-  () => [props.imm?.id, visible.value], 
+  () => [props.imm?.id, visible.value],
   async ([immId, isVisible]) => {
-    console.log('loadPreset 1', immId, visible.value)
     if (!immId || !isVisible) return
-    console.log('loadPreset for', immId)    
+    
     try {
       const preset = await loadPreset(immId)
       if (preset) {
-        console.log('loadPreset ', preset)
         form.value = {
           messagesPerMinute: preset.messagesPerMinute || 10,
-          profile: [...preset.profile] || [],
-          sensorConfigs: [...preset.sensorConfigs] || []
+          profile: preset.profile || [],
+          sensorConfigs: [...(preset.sensorConfigs || [])]
         }
         isEditing.value = true
         ElMessage.info('Загружен сохранённый пресет')
       } else {
-        console.log('Пресет не найден')
         resetForm()
         isEditing.value = false
       }
     } catch (e) {
+      console.error('Error loading preset:', e)
       resetForm()
       isEditing.value = false
     }
-  }, 
-  { immediate: true })
+  },
+  { immediate: true }
+)
 
 const resetForm = () => {
   form.value = {
@@ -146,7 +137,6 @@ const addProfileStep = () => {
 }
 
 const loadFromTemplate = async () => {
-  console.log('loadFromTemplate', props.imm)  
   if (!props.imm?.templateId) {
     ElMessage.warning('У ТПА не указан шаблон')
     return
@@ -162,29 +152,13 @@ const loadFromTemplate = async () => {
   }
 }
 
-const onPresetLoad = (preset) => {
-  form.value = {
-    messagesPerMinute: preset.messagesPerMinute || 10,
-    profile: [...preset.profile] || [],
-    sensorConfigs: preset.sensorConfigs || []
-  }
-  isEditing.value = true
-  ElMessage.success('Пресет загружен')
-}
-
-const onPresetSave = async () => {
-  if (!props.imm?.id) return
-  await savePreset(props.imm.id, form.value)
-}
-
-const onStart = async () => {
-  // Валидация
+const onSave = async () => {
   const { isValid, errors } = validateEmulation(form.value.profile, form.value.sensorConfigs)
   
   if (!isValid) {
     ElMessageBox.alert(
       errors.join('<br>'),
-      'Невозможно запустить эмуляцию',
+      'Невозможно сохранить конфигурацию',
       { 
         confirmButtonText: 'Понятно',
         type: 'warning',
@@ -196,15 +170,18 @@ const onStart = async () => {
 
   if (!props.imm?.id) return
   
-  starting.value = true
+  saving.value = true
   try {
-    const success = await startEmulation(props.imm.id, form.value)
+    const success = await savePreset(props.imm.id, form.value)
     if (success) {
-      visible.value = false
-      emit('started')
+      visible.value = false  // ← Закрываем диалог
+      emit('saved')          // ← Уведомляем родителя о сохранении
+      ElMessage.success('Пресет сохранён')
     }
+  } catch (e) {
+    ElMessage.error('Ошибка сохранения пресета')
   } finally {
-    starting.value = false
+    saving.value = false
   }
 }
 

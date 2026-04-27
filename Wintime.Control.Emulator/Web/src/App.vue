@@ -22,7 +22,7 @@
       <EmulationDialog 
         v-model="configDialogVisible"
         :imm="selectedImm"
-        @started="onEmulationStarted"
+        @started="onEmulationSaved"
       />
     </div>
   </el-config-provider>
@@ -80,6 +80,11 @@ const openConfig = (imm) => {
 const onEmulationStarted = () => {
   refreshStatuses()
   ElMessage.success('Эмуляция запущена')
+}
+
+const onEmulationSaved = () => {
+  // Просто обновляем список (визуально ничего не меняется, но можно показать уведомление)
+  ElMessage.success('Конфигурация сохранена')
 }
 </script>
 
