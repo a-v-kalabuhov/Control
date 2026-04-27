@@ -3,9 +3,10 @@ import { ref, onMounted, onUnmounted } from 'vue'
 export function usePolling(fetchFn, intervalMs, immediate = true) {
   const defaultInterval = parseInt(import.meta.env.VITE_API_POLLING_INTERVAL) || 3000
   const interval = intervalMs || defaultInterval
+  
   const data = ref(null)
   const loading = ref(false)
-  const error = ref(null)
+  const error = ref(null)  // Структура: { code, message, details, status }
   let timer = null
 
   const execute = async () => {
@@ -15,7 +16,12 @@ export function usePolling(fetchFn, intervalMs, immediate = true) {
       const response = await fetchFn()
       data.value = response.data
     } catch (e) {
-      error.value = e.message || 'Ошибка загрузки'
+      // Сохраняем структурированную ошибку
+      error.value = e.errorData || {
+        code: 'NETWORK_ERROR',
+        message: e.message || 'Ошибка сети',
+        status: e.response?.status
+      }
       console.error('Polling error:', e)
     } finally {
       loading.value = false
@@ -35,9 +41,10 @@ export function usePolling(fetchFn, intervalMs, immediate = true) {
   }
 
   const refresh = () => execute()
+  const clearError = () => error.value = null
 
   onMounted(() => start())
   onUnmounted(() => stop())
 
-  return { data, loading, error, refresh, start, stop }
+  return { data, loading, error, refresh, start, stop, clearError }
 }

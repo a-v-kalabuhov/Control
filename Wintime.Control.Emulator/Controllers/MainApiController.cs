@@ -37,10 +37,55 @@ public class MainApiController : ControllerBase
             _logger.LogInformation("Retrieved {Count} active IMMs from main API", activeImms.Count);
             return Ok(activeImms);
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // 401 — Ошибка авторизации
+            _logger.LogError(ex, "Authentication failed: invalid credentials or token expired");
+            return StatusCode(401, new { 
+                code = "AUTH_FAILED",
+                message = "Ошибка авторизации. Проверьте логин/пароль в настройках эмулятора.",
+                details = ex.Message 
+            });
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            // 403 — Нет прав доступа
+            _logger.LogError(ex, "Access forbidden: insufficient permissions");
+            return StatusCode(403, new { 
+                code = "ACCESS_DENIED",
+                message = "Нет прав доступа. Убедитесь, что у пользователя есть роль для чтения ТПА.",
+                details = ex.Message 
+            });
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            // Таймаут подключения
+            _logger.LogError(ex, "Main API timeout");
+            return StatusCode(504, new { 
+                code = "API_TIMEOUT",
+                message = "Основной API не отвечает. Проверьте, запущен ли сервис и сетевое подключение.",
+                details = "Превышено время ожидания ответа" 
+            });
+        }
+        catch (HttpRequestException ex)
+        {
+            // Другие HTTP-ошибки (503, 502, и т.д.)
+            _logger.LogError(ex, "Main API unavailable");
+            return StatusCode(502, new { 
+                code = "API_UNAVAILABLE",
+                message = "Основной API недоступен. Проверьте, запущен ли сервис.",
+                details = ex.Message 
+            });
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch IMMs from main API");
-            return StatusCode(502, new { message = "Не удалось получить список ТПА из основного API", error = ex.Message });
+            // Неожиданные ошибки
+            _logger.LogError(ex, "Unexpected error fetching IMMs");
+            return StatusCode(500, new { 
+                code = "INTERNAL_ERROR",
+                message = "Не удалось получить список ТПА.",
+                details = ex.Message 
+            });
         }
     }
 
@@ -56,10 +101,29 @@ public class MainApiController : ControllerBase
             var template = await _immApiClient.GetTemplateAsync(id, ct);
             return Ok(template);
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            return StatusCode(401, new { 
+                code = "AUTH_FAILED",
+                message = "Ошибка авторизации при загрузке шаблона.",
+                details = ex.Message 
+            });
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(502, new { 
+                code = "API_UNAVAILABLE",
+                message = "Не удалось загрузить шаблон. Основной API недоступен.",
+                details = ex.Message 
+            });
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch template {TemplateId}", id);
-            return StatusCode(502, new { message = "Не удалось получить шаблон", error = ex.Message });
+            return StatusCode(500, new { 
+                code = "INTERNAL_ERROR",
+                message = "Внутренняя ошибка при загрузке шаблона.",
+                details = ex.Message 
+            });
         }
     }
 }

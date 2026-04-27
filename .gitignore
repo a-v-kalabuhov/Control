@@ -11,6 +11,7 @@ bld/
 [Oo]bj/
 [Ll]og/
 logs/
+[Tt]emp/
 
 ## NuGet
 *.nuget.props

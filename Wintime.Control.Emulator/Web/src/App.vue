@@ -10,6 +10,7 @@
           :imms="imms" 
           :statuses="statuses"
           :loading="loading"
+          :error="immsError"
           @refresh="refreshImms"
           @configure="openConfig"
           @start="startEmulation"
@@ -36,10 +37,11 @@ import { useEmulator } from './composables/useEmulator'
 import ImmList from './components/ImmList.vue'
 import EmulationDialog from './components/EmulationDialog.vue'
 
-const { data: imms, loading, refresh: refreshImms } = usePolling(
+// ← Получаем error из usePolling
+const { data: imms, loading, error: immsError, refresh: refreshImms } = usePolling(
   () => import('./api/client').then(m => m.emulatorApi.getImms()),
   null,
-  tre
+  true
 )
 
 const { startEmulation, stopEmulation } = useEmulator()
@@ -57,7 +59,7 @@ const refreshStatuses = async () => {
   }
 }
 // Polling статусов каждые 3 сек
-setInterval(refreshStatuses, 10000)
+setInterval(refreshStatuses, 3000)
 refreshStatuses()
 
 const configDialogVisible = ref(false)
