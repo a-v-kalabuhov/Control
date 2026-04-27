@@ -101,28 +101,34 @@ const starting = ref(false)
 const isEditing = ref(false)
 
 // Загрузка пресета при открытии
-watch(() => props.imm?.id, async (immId) => {
-  if (!immId || !visible.value) return
-  
-  try {
-    const preset = await loadPreset(immId)
-    if (preset) {
-      form.value = {
-        messagesPerMinute: preset.messagesPerMinute || 10,
-        profile: preset.profile || [],
-        sensorConfigs: preset.sensorConfigs || []
+watch(
+  () => [props.imm?.id, visible.value], 
+  async ([immId, isVisible]) => {
+    console.log('loadPreset 1', immId, visible.value)
+    if (!immId || !isVisible) return
+    console.log('loadPreset for', immId)    
+    try {
+      const preset = await loadPreset(immId)
+      if (preset) {
+        console.log('loadPreset ', preset)
+        form.value = {
+          messagesPerMinute: preset.messagesPerMinute || 10,
+          profile: [...preset.profile] || [],
+          sensorConfigs: [...preset.sensorConfigs] || []
+        }
+        isEditing.value = true
+        ElMessage.info('Загружен сохранённый пресет')
+      } else {
+        console.log('Пресет не найден')
+        resetForm()
+        isEditing.value = false
       }
-      isEditing.value = true
-      ElMessage.info('Загружен сохранённый пресет')
-    } else {
+    } catch (e) {
       resetForm()
       isEditing.value = false
     }
-  } catch (e) {
-    resetForm()
-    isEditing.value = false
-  }
-}, { immediate: true })
+  }, 
+  { immediate: true })
 
 const resetForm = () => {
   form.value = {
@@ -149,7 +155,7 @@ const loadFromTemplate = async () => {
   loadingTemplate.value = true
   try {
     const sensors = await loadTemplateSensors(props.imm.templateId)
-    form.value.sensorConfigs = sensors
+    form.value.sensorConfigs = [...sensors]
     ElMessage.success(`Загружено ${sensors.length} сенсоров. Требуется настройка базовых значений.`)
   } finally {
     loadingTemplate.value = false
@@ -159,7 +165,7 @@ const loadFromTemplate = async () => {
 const onPresetLoad = (preset) => {
   form.value = {
     messagesPerMinute: preset.messagesPerMinute || 10,
-    profile: preset.profile || [],
+    profile: [...preset.profile] || [],
     sensorConfigs: preset.sensorConfigs || []
   }
   isEditing.value = true
