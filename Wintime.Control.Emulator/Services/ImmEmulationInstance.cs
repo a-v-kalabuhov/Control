@@ -35,6 +35,11 @@ public class ImmEmulationInstance : IAsyncDisposable
 
         foreach (var cfg in request.SensorConfigs)
         {
+            if (cfg.Type == "cycleCounter")
+            {
+                continue;
+            }
+
             _generators[cfg.Name] = cfg.Type switch
             {
                 "float" => new FloatSignalGenerator(cfg),

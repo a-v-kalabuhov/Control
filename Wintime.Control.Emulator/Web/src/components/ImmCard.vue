@@ -24,7 +24,7 @@
           type="primary" 
           size="small" 
           @click="$emit('start', imm)"
-          :disabled="!status || status === 'Running'"
+          :disabled="status === 'Running'"
         >
           <el-icon><VideoPlay /></el-icon> Запустить
         </el-button>
@@ -57,8 +57,7 @@ const statusText = computed(() => {
   const map = {
     'Running': 'Работает',
     'Stopped': 'Остановлен',
-    'Error': 'Ошибка',
-    null: 'Неизвестно'
+    null: 'Не запущен'  // ← Изменили текст для null
   }
   return map[props.status] || 'Неизвестно'
 })
@@ -67,7 +66,7 @@ const statusTagType = computed(() => {
   const map = {
     'Running': 'success',
     'Stopped': 'info',
-    'Error': 'danger'
+    null: 'info'  // ← null теперь показывает как info
   }
   return map[props.status] || 'info'
 })

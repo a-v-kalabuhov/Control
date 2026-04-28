@@ -13,7 +13,7 @@
           :error="immsError"
           @refresh="refreshImms"
           @configure="openConfig"
-          @start="startEmulation"
+          @start="startEmulationWithCheck"
           @stop="stopEmulation"
         />
       </el-main>
@@ -30,7 +30,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import ru from 'element-plus/es/locale/lang/ru'
 import { usePolling } from './composables/usePolling'
 import { useEmulator } from './composables/useEmulator'
@@ -45,7 +45,7 @@ const { data: imms, loading, error: immsError, refresh: refreshImms } = usePolli
   true
 )
 
-const { startEmulation, stopEmulation } = useEmulator()
+const { startEmulation, stopEmulation, loadPreset } = useEmulator()
 
 // Статусы эмуляций (отдельный polling)
 const statuses = ref({})
@@ -85,6 +85,33 @@ const onEmulationStarted = () => {
 const onEmulationSaved = () => {
   // Просто обновляем список (визуально ничего не меняется, но можно показать уведомление)
   ElMessage.success('Конфигурация сохранена')
+}
+
+const startEmulationWithCheck = async (imm) => {
+  // ← Проверяем наличие пресета перед запуском
+  try {
+    const preset = await loadPreset(imm.id)
+    if (!preset || !preset.profile?.length || !preset.sensorConfigs?.length) {
+      ElMessageBox.alert(
+        'Сначала настройте эмуляцию (кнопка "Настроить") и сохраните конфигурацию.',
+        'Нет сохранённой конфигурации',
+        { 
+          confirmButtonText: 'Понятно',
+          type: 'warning'
+        }
+      )
+      return
+    }
+    
+    // Пресет есть — запускаем
+    const success = await startEmulation(imm.id, preset)
+    if (success) {
+      refreshStatuses()
+    }
+  } catch (e) {
+    ElMessage.error('Ошибка при запуске эмуляции')
+    console.error(e)
+  }
 }
 </script>
 
