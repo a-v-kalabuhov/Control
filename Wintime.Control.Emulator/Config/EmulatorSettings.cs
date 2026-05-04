@@ -60,7 +60,7 @@ public class AuthSettings
 public class MqttSettings
 {
     public string BrokerUrl { get; set; } = "mqtt://localhost:1883";
-    public string TopicTemplate { get; set; } = "imm/{immId}/telemetry";
+    public string TopicTemplate { get; set; } = "control/imm/{immId}/telemetry";
     // TODO : Не используется, нужно удалить.
     public string ClientIdPrefix { get; set; } = "imm_emulator";
 }

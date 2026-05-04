@@ -15,6 +15,16 @@ using Wintime.Control.Infrastructure.Mqtt;
 
 namespace Wintime.Control.Infrastructure.MQTT;
 
+/// <summary>
+/// Реализация сервиса для работы с MQTT-брокером через библиотеку MQTTnet.
+/// Обеспечивает подключение, подписку на топики, обработку входящих сообщений,
+/// автоматическое восстановление соединения и логирование событий.
+/// </summary>
+/// <remarks>
+/// Поддерживает три топика: <c>/telemetry</c>, <c>/events</c>, <c>/status</c>.
+/// Сообщения из топика <c>/telemetry</c> и <c>/status</c> обрабатываются одинаково.
+/// Сообщения из топика <c>/events</c> обрабатываются отдельно и сохраняются в БД.
+/// </remarks>
 public class MqttService : IMqttService, IDisposable
 {
     private readonly IMqttClient _mqttClient;
@@ -27,6 +37,14 @@ public class MqttService : IMqttService, IDisposable
     private CancellationTokenSource? _reconnectCts;
     private MqttClientOptions? _mqttOptions;
 
+    /// <summary>
+    /// Инициализирует новый экземпляр класса <see cref="MqttService"/>.
+    /// </summary>
+    /// <param name="mqttClient">Клиент MQTT, реализующий <see cref="IMqttClient"/>.</param>
+    /// <param name="settings">Настройки MQTT, полученные через <see cref="IOptions{MqttSettings}"/>.</param>
+    /// <param name="serviceProvider">Провайдер зависимостей для создания локальных контекстов.</param>
+    /// <param name="messageProcessor">Обработчик входящих сообщений через очередь.</param>
+    /// <param name="logger">Логгер для записи событий.</param>
     public MqttService(
         IMqttClient mqttClient,
         IOptions<MqttSettings> settings,
@@ -53,6 +71,9 @@ public class MqttService : IMqttService, IDisposable
 
     public bool IsConnected => _isConnected;
 
+    /// <summary>
+    /// Создаёт и сохраняет параметры подключения к MQTT-брокеру в объект <see cref="MqttClientOptions"/>.
+    /// </summary>
     private void CreateMqttClientOptions()
     {
         var builder = new MqttClientOptionsBuilder()
@@ -69,6 +90,12 @@ public class MqttService : IMqttService, IDisposable
         _mqttOptions = builder.Build();
     }
 
+    /// <summary>
+    /// Подключается к MQTT-брокеру и подписывается на заданные топики.
+    /// При ошибке подключения запускается автоматическая попытка переподключения.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены операции.</param>
+    /// <returns>Задача, представляющая асинхронную операцию подключения.</returns>
     public async System.Threading.Tasks.Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -86,6 +113,10 @@ public class MqttService : IMqttService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Разрывает соединение с MQTT-брокером и отменяет попытки переподключения.
+    /// </summary>
+    /// <returns>Задача, представляющая асинхронную операцию отключения.</returns>
     public async System.Threading.Tasks.Task DisconnectAsync()
     {
         _reconnectCts?.Cancel();
@@ -94,6 +125,11 @@ public class MqttService : IMqttService, IDisposable
         _logger.LogInformation("MQTT disconnected by request");
     }
 
+    /// <summary>
+    /// Подписывается на топики: /telemetry, /events, /status.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены операции.</param>
+    /// <returns>Задача, представляющая асинхронную операцию подписки.</returns>
     private async System.Threading.Tasks.Task SubscribeToTopics(CancellationToken cancellationToken)
     {
         var topics = new[]
@@ -122,6 +158,11 @@ public class MqttService : IMqttService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Пытается автоматически переподключиться к брокеру при потере соединения.
+    /// Повторяет попытки с интервалом, заданным в <see cref="MqttSettings.ReconnectDelaySeconds"/>.
+    /// </summary>
+    /// <returns>Задача, представляющая асинхронную попытку переподключения.</returns>
     private async System.Threading.Tasks.Task TryReconnect()
     {
         if (_reconnectCts != null)
@@ -147,6 +188,11 @@ public class MqttService : IMqttService, IDisposable
         _reconnectCts = null;
     }
 
+    /// <summary>
+    /// Обрабатывает входящее MQTT-сообщение, определяет тип по топику и делегирует обработку.
+    /// </summary>
+    /// <param name="e">Аргументы события получения сообщения.</param>
+    /// <returns>Задача, представляющая асинхронную обработку.</returns>
     private async System.Threading.Tasks.Task OnMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs e)
     {
         try
@@ -176,6 +222,13 @@ public class MqttService : IMqttService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Обрабатывает сообщение телеметрии: парсит JSON, извлекает DeviceId из топика,
+    /// и ставит сообщение в очередь на дальнейшую обработку.
+    /// </summary>
+    /// <param name="topic">Топик сообщения.</param>
+    /// <param name="payload">Тело сообщения в виде строки UTF-8.</param>
+    /// <returns>Задача, представляющая асинхронную обработку.</returns>
     private async System.Threading.Tasks.Task ProcessTelemetry(string topic, string payload)
     {
         // var message = JsonSerializer.Deserialize<MqttTelemetryMessage>(payload);
@@ -259,8 +312,14 @@ public class MqttService : IMqttService, IDisposable
         // }
     }
 
+    /// <summary>
+    /// Извлекает идентификатор устройства из MQTT-топика по шаблону <c>control/imm/{deviceId}/telemetry</c>.
+    /// </summary>
+    /// <param name="topic">Топик сообщения.</param>
+    /// <returns>Идентификатор устройства или пустая строка, если не удалось извлечь.</returns>
     private static string GetDeviceIdFromTopic(string topic)
     {
+        // DELETE : Не используется, надо удалить
         // control/imm/+/telemetry
         var segments = topic.Split('/');
         if (segments.Length < 3)
@@ -272,7 +331,11 @@ public class MqttService : IMqttService, IDisposable
         return string.Empty;
     }
 
-
+    /// <summary>
+    /// Обрабатывает сообщение события: сохраняет его в базу данных.
+    /// </summary>
+    /// <param name="payload">Тело сообщения в виде строки UTF-8.</param>
+    /// <returns>Задача, представляющая асинхронную обработку.</returns>
     private async System.Threading.Tasks.Task ProcessEvent(string payload)
     {
         var message = JsonSerializer.Deserialize<MqttEventMessage>(payload);
@@ -312,12 +375,23 @@ public class MqttService : IMqttService, IDisposable
         _logger.LogInformation("Event saved: {EventType} for IMM {ImmId}", eventType, imm.Id);
     }
 
+    /// <summary>
+    /// Обрабатывает сообщение статуса как телеметрию (дублирует вызов <see cref="ProcessTelemetry"/>).
+    /// </summary>
+    /// <param name="topic">Топик сообщения.</param>
+    /// <param name="payload">Тело сообщения в виде строки UTF-8.</param>
+    /// <returns>Задача, представляющая асинхронную обработку.</returns>
     private async System.Threading.Tasks.Task ProcessStatus(string topic, string payload)
     {
         // Статус обрабатывается как часть телеметрии
         await ProcessTelemetry(topic, payload);
     }
 
+    /// <summary>
+    /// Преобразует строковое представление типа события в перечисление <see cref="EventType"/>.
+    /// </summary>
+    /// <param name="eventType">Строковое значение типа события.</param>
+    /// <returns>Соответствующее значение <see cref="EventType"/>; по умолчанию — <see cref="EventType.Downtime"/>.</returns>
     private static EventType MapEventType(string eventType)
     {
         return eventType switch
@@ -341,3 +415,4 @@ public class MqttService : IMqttService, IDisposable
         _mqttClient.Dispose();
     }
 }
+

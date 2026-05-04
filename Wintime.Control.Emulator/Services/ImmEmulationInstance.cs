@@ -11,7 +11,7 @@ public class ImmEmulationInstance : IAsyncDisposable
 {
     private readonly string _immId;
     private readonly EmulationRequest _request;
-    private readonly IMqttService _mqtt;
+    private readonly IEmulatorMqttService _mqtt;
     private readonly ILogger<ImmEmulationInstance> _logger;
     private readonly CancellationTokenSource _cts = new();
     private readonly Dictionary<string, ISignalGenerator> _generators = [];
@@ -25,7 +25,7 @@ public class ImmEmulationInstance : IAsyncDisposable
     public ImmEmulationInstance(
         string immId,
         EmulationRequest request,
-        IMqttService mqtt,
+        IEmulatorMqttService mqtt,
         ILogger<ImmEmulationInstance> logger)
     {
         _immId = immId;

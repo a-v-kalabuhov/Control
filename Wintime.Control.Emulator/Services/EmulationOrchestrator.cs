@@ -13,12 +13,12 @@ public class EmulationOrchestrator
     /// Ключом является ID IMM.
     /// </summary>
     private readonly ConcurrentDictionary<string, ImmEmulationInstance> _instances = new();
-    private readonly IMqttService _mqtt;
+    private readonly IEmulatorMqttService _mqtt;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<EmulationOrchestrator> _logger;
 
     public EmulationOrchestrator(
-            IMqttService mqtt, 
+            IEmulatorMqttService mqtt, 
             ILoggerFactory loggerFactory,
             ILogger<EmulationOrchestrator> logger)
     {

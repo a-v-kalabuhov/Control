@@ -8,19 +8,19 @@ using Wintime.Control.Emulator.Config;
 using Wintime.Control.Emulator.Models;
 
 
-public interface IMqttService
+public interface IEmulatorMqttService
 {
     Task ConnectAsync(CancellationToken ct);
     Task PublishAsync(string immId, TelemetryPayload payload, CancellationToken ct);
 }
 
-public class MqttService : IMqttService
+public class EmulatorMqttService : IEmulatorMqttService
 {
     private readonly IMqttClient _client;
     private readonly MqttSettings _settings;
-    private readonly ILogger<MqttService> _logger;
+    private readonly ILogger<EmulatorMqttService> _logger;
 
-    public MqttService(IOptions<EmulatorSettings> settings, ILogger<MqttService> logger)
+    public EmulatorMqttService(IOptions<EmulatorSettings> settings, ILogger<EmulatorMqttService> logger)
     {
         _settings = settings.Value.Mqtt;
         _logger = logger;

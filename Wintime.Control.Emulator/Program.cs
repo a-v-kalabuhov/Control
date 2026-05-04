@@ -13,9 +13,9 @@ var builder = WebApplication.CreateBuilder(args);
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateBootstrapLogger();
-builder.Host.UseSerilog((ctx, lc) => lc
-    .ReadFrom.Configuration(ctx.Configuration)
-    .WriteTo.Console());
+// builder.Host.UseSerilog((ctx, lc) => lc
+//     .ReadFrom.Configuration(ctx.Configuration)
+//     .WriteTo.Console());
 // Configuraton: strongly-typed options
 builder.Services.Configure<EmulatorSettings>(builder.Configuration);
 builder.Services.Configure<StorageSettings>(builder.Configuration.GetSection("Storage"));
@@ -30,7 +30,7 @@ builder.Services.AddValidatorsFromAssemblyContaining<EmulationRequestValidator>(
 /// Services are singletons cause emulator is standalone process with in-memory state.
 /// </summary>
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
-builder.Services.AddSingleton<IMqttService, MqttService>();
+builder.Services.AddSingleton<IEmulatorMqttService, EmulatorMqttService>();
 builder.Services.AddSingleton<EmulationOrchestrator>();
 builder.Services.AddSingleton<IPresetStorage, FilePresetStorage>();
 // HttpClient для Refit-клиента с авторизацией к Wintime.Control.API
@@ -63,7 +63,8 @@ app.UseDefaultFiles(); // index.html по умолчанию
 app.UseStaticFiles();
 // Middleware для Vue Router
 app.UseMiddleware<SpaMiddleware>();
-app.UseSerilogRequestLogging();
+//app.UseSerilogRequestLogging();
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
@@ -72,7 +73,7 @@ app.MapControllers();
 /// <summary>
 /// Emulator uses just one MQTT connection.
 /// </summary>
-var mqttService = app.Services.GetRequiredService<IMqttService>();
+var mqttService = app.Services.GetRequiredService<IEmulatorMqttService>();
 await mqttService.ConnectAsync(CancellationToken.None);
 
 app.Run();
