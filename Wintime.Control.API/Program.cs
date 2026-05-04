@@ -147,6 +147,7 @@ builder.Services.AddSingleton(sp =>
 // Message processing
 builder.Services.AddScoped<IMessageProcessor, MessageProcessor>();
 builder.Services.AddMessageProcessing();
+builder.Services.AddMessageHandlers();
 
 // TODO : вместо этого делаем отдельный сервис для шаблонов и второй для оборудования
 // Загрузка порогов из БД (для MVP — из конфига)

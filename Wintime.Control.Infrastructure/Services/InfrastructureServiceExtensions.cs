@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Infrastructure.Workers;
+using Wintime.Control.Infrastructure.Handlers;
 
 public static class ServiceCollectionExtensions
 {
@@ -26,11 +27,16 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddMessageHandlers(this IServiceCollection services)
-    {
-        // TODO : реализовать хендлеры для обработки сообщений 
-        // Например, декодирование payload в объекты с показаниями датчика, валидация данных, сохранение в БД и т.д.
-        // Все хендлеры перечислены в классе MessageProcessingPipeline  
-        return services;
-    }
+     public static IServiceCollection AddMessageHandlers(this IServiceCollection services)
+     {
+         // Register handlers for processing messages
+         // For decoding payload into sensor readings objects, data validation, saving to database and etc.
+         // All handlers are listed in the MessageProcessingPipeline class
+         services.AddScoped<IDecodeTelemetryDataHandler, DecodeTelemetryDataHandler>();
+         services.AddScoped<IStoreTelemetryDataHandler, StoreTelemetryDataHandler>();
+         services.AddScoped<IValidateTelemetryDataHandler, ValidateTelemetryDataHandler>();
+         // Other handlers will be added here later as needed
+         
+         return services;
+     }
 }

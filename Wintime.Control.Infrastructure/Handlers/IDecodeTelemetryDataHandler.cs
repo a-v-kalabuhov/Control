@@ -10,7 +10,7 @@ public interface IDecodeTelemetryDataHandler
     /// <summary>
     /// Выполняет преобразование payload в объекты.
     /// </summary>
-    /// <param name="context"></param>
-    /// <returns>Возвращает false, если дальнейшая обработка не имеет смысла. Например, если сообщение пустое или содердит неинтерпретируемый формат payload.</returns>
-    Task<bool> DecodeAsync(MqttProcessingContext context);
+    /// <param name="context">Контекст обработки сообщения MQTT</param>
+    /// <returns>Возвращает кортеж из (bool - успешность операции, MqttProcessingContext - обновленный контекст)</returns>
+    Task<(bool Success, MqttProcessingContext UpdatedContext)> DecodeAsync(MqttProcessingContext context);
 }

@@ -40,17 +40,20 @@ public class MessageProcessingPipeline(IServiceProvider sp)
         /// После этого можно продолжать обработку.
         
         var decoder = _sp.GetRequiredService<IDecodeTelemetryDataHandler>();
-        if (!await decoder.DecodeAsync(context))
+        var (success, updatedContext) = await decoder.DecodeAsync(context);
+        if (!success)
             return;
+        context = updatedContext;
         // Validation - проверяем, что нам есть вообще то сохранять и что данные корректные (например, что привязан экземпляр оборудования)
         // если получится, то исправим данные - привяжем экземпляр
         // Также здесь заполняется список показаний датчиков - в него включаются только те, которые указаны в шаблоне оборудования.
         // Здесь же можно применить и CovFilter.
         var validator = _sp.GetRequiredService<IValidateTelemetryDataHandler>();
-        if (!await validator.ValidateAsync(context))
+        var (validationSuccess, validatedContext) = await validator.ValidateAsync(context);
+        if (!validationSuccess)
             return;
+        context = validatedContext;
         // Сохраняем полученное и обработанное сообщение в БД
-        await _sp.GetRequiredService<IStoreTelemetryDataHandler>()
-            .SaveAsync(context);           
+        await _sp.GetRequiredService<IStoreTelemetryDataHandler>().SaveAsync(context);           
     }
 }
