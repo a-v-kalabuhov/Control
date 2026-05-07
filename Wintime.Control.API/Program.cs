@@ -13,6 +13,9 @@ using Wintime.Control.Infrastructure.Auth;
 using Wintime.Control.Infrastructure.MQTT;
 using Wintime.Control.Shared.Settings;
 using Wintime.Control.Infrastructure.Mqtt;
+using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Infrastructure.Cache;
+using Wintime.Control.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -162,6 +165,9 @@ builder.Services.AddMessageHandlers();
 // builder.Services.AddSingleton(thresholds);
 
 //builder.Services.AddSingleton<ICovFilter, CovFilter>();
+// Template cache — must be registered before MqttBackgroundService starts
+builder.Services.AddSingleton<ITemplateCache, TemplateCache>();
+builder.Services.AddHostedService<TemplateCacheStartupService>();
 builder.Services.AddSingleton<IMessageProcessor, MessageProcessor>();
 builder.Services.AddSingleton<IMqttService, MqttService>();
 builder.Services.AddHostedService<MqttBackgroundService>();
@@ -169,7 +175,7 @@ builder.Services.AddMemoryCache(); // Для COV-фильтра
 
 var app = builder.Build();
 
-// ========== Pipeline ==========
+// Pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -182,7 +188,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseSerilogRequestLogging();
 
-// CORS должен быть перед HTTPS редиректом для обработки preflight запросов
+// CORS должен быть перед HTTPS-редиректом для обработки preflight запросов
 app.UseCors("AllowFrontend");
 
 // В development среде отключаем HTTPS редирект для корректной работы preflight запросов

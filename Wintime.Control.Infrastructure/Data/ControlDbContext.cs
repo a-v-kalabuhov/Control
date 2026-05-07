@@ -21,6 +21,15 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<DowntimeReason> DowntimeReasons { get; set; }
     public DbSet<Telemetry> Telemetry { get; set; }
 
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var entry in ChangeTracker.Entries<Template>()
+            .Where(e => e.State == EntityState.Modified))
+            entry.Entity.UpdatedAt = DateTime.UtcNow;
+
+        return await base.SaveChangesAsync(cancellationToken);
+    }
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

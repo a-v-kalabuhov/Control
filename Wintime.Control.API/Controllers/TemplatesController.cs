@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.DTOs.Template;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
 
@@ -14,10 +15,12 @@ namespace Wintime.Control.API.Controllers;
 public class TemplatesController : ControllerBase
 {
     private readonly ControlDbContext _context;
+    private readonly ITemplateCache _templateCache;
 
-    public TemplatesController(ControlDbContext context)
+    public TemplatesController(ControlDbContext context, ITemplateCache templateCache)
     {
         _context = context;
+        _templateCache = templateCache;
     }
 
     /// <summary>
@@ -38,7 +41,8 @@ public class TemplatesController : ControllerBase
             Version = t.Version,
             Author = t.Author,
             CreatedAt = t.CreatedAt,
-            JsonConfig = t.JsonConfig // TODO: Посчитать из JsonConfig
+            UpdatedAt = t.UpdatedAt,
+            JsonConfig = t.JsonConfig,
         }).ToList();
 
         return Ok(dtos);
@@ -64,14 +68,15 @@ public class TemplatesController : ControllerBase
             Version = template.Version,
             Author = template.Author,
             CreatedAt = template.CreatedAt,
-            JsonConfig = template.JsonConfig
+            UpdatedAt = template.UpdatedAt,
+            JsonConfig = template.JsonConfig,
         };
 
         return Ok(dto);
     }
 
     /// <summary>
-    /// Загрузить новый шаблон (JSON)
+    /// Обновить шаблон (JSON)
     /// </summary>
     [HttpPut("{id:guid}")]
     [Authorize(Roles = $"{Roles.Admin}")]
@@ -79,17 +84,15 @@ public class TemplatesController : ControllerBase
     {
         var template = await _context.Templates.FindAsync(id);
         if (template == null)
-        {
             return NotFound();
-        }
 
-        // Применяем изменения вручную
         template.Name = request.Name;
         template.JsonConfig = request.JsonConfig?.ToString() ?? string.Empty;
         template.Manufacturer = request.Manufacturer ?? string.Empty;
         template.Model = request.Model ?? string.Empty;
         template.Version = request.Version ?? string.Empty;
         template.Author = request.Author ?? string.Empty;
+
         try
         {
             await _context.SaveChangesAsync();
@@ -98,11 +101,14 @@ public class TemplatesController : ControllerBase
         {
             throw;
         }
-        return NoContent(); // или return Ok(template); если нужно вернуть обновлённые данные
+
+        _templateCache.Upsert(template);
+
+        return NoContent();
     }
 
     /// <summary>
-    /// Загрузить новый шаблон (JSON)
+    /// Создать новый шаблон (JSON)
     /// </summary>
     [HttpPost]
     [Authorize(Roles = $"{Roles.Admin}")]
@@ -122,6 +128,8 @@ public class TemplatesController : ControllerBase
         _context.Templates.Add(template);
         await _context.SaveChangesAsync();
 
+        _templateCache.Upsert(template);
+
         var dto = new TemplateDto
         {
             Id = template.Id,
@@ -131,7 +139,8 @@ public class TemplatesController : ControllerBase
             Version = template.Version,
             Author = template.Author,
             CreatedAt = template.CreatedAt,
-            JsonConfig = template.JsonConfig
+            UpdatedAt = template.UpdatedAt,
+            JsonConfig = template.JsonConfig,
         };
 
         return CreatedAtAction(nameof(GetTemplateById), new { id = template.Id }, dto);

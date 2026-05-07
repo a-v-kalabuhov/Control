@@ -10,4 +10,5 @@ public class TemplateDto
     public string? Author { get; set; }
     public string JsonConfig { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }

@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json;
 using Wintime.Control.Core.DTOs.Imm;
 using Wintime.Control.Core.DTOs.Mqtt;
-using Wintime.Control.Core.DTOs.Template;
+using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
 
 namespace Wintime.Control.Infrastructure.Handlers;
@@ -12,11 +12,16 @@ namespace Wintime.Control.Infrastructure.Handlers;
 public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
 {
     private readonly ControlDbContext _dbContext;
+    private readonly ITemplateCache _templateCache;
     private readonly ILogger<DecodeTelemetryDataHandler> _logger;
-    
-    public DecodeTelemetryDataHandler(ControlDbContext dbContext, ILogger<DecodeTelemetryDataHandler> logger)
+
+    public DecodeTelemetryDataHandler(
+        ControlDbContext dbContext,
+        ITemplateCache templateCache,
+        ILogger<DecodeTelemetryDataHandler> logger)
     {
         _dbContext = dbContext;
+        _templateCache = templateCache;
         _logger = logger;
     }
 
@@ -142,26 +147,13 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
             CreatedAt = immEntity.CreatedAt
         };
 
-        // 6. Find template for this imm
-        var templateEntity = await _dbContext.Templates.FirstOrDefaultAsync(x => x.Id == immEntity.TemplateId);
-        if (templateEntity == null)
+        // 6. Find template for this imm in cache
+        var cachedTemplate = _templateCache.GetById(immEntity.TemplateId);
+        if (cachedTemplate == null)
         {
-            _logger.LogError("Template with Id={TemplateId} not found in database for device: {deviceId}", immEntity.TemplateId, deviceId);
+            _logger.LogError("Template with Id={TemplateId} not found in cache for device: {deviceId}", immEntity.TemplateId, deviceId);
             return (false, context);
         }
-
-        // Create TemplateDto from entity
-        var templateDto = new TemplateDto
-        {
-            Id = templateEntity.Id,
-            Name = templateEntity.Name,
-            Manufacturer = templateEntity.Manufacturer,
-            Model = templateEntity.Model,
-            Version = templateEntity.Version,
-            Author = templateEntity.Author,
-            JsonConfig = templateEntity.JsonConfig,
-            CreatedAt = templateEntity.CreatedAt
-        };
 
         // Attempt to extract and convert timestamp
         try
@@ -190,31 +182,9 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                         context.Payload,
                         existingData,
                         immDto,
-                        templateDto
+                        cachedTemplate
                     );
                     
-                    // Since we're returning a record (struct-like),
-                    // we need to assign to the original context in some way
-                    // Actually, the pipeline pattern implies that the handler transforms the context
-                    // But our interface signature returns bool
-                    
-                    // Update context properties for next handlers in pipeline
-                    // We need to update context outside this method, so the return false/true means continue/stop
-                    // For struct records like MqttProcessingContext, we would need to pass back a modified instance
-                    // Since we can't do that with the current interface, the pipeline itself should handle updating the context
-                    
-                    // So update context via the method parameters would be by returning the result
-                    // Since the interface uses boolean, it implies the next handler in the chain will modify the object directly
-                    // In our case, update the MqttTelemetryMessage and set to context.Data, immDto to context.Device, templateDto to context.Template
-                    // We can only make changes via the context we have access to. If the context was a class instead of record, 
-                    // we could modify it directly. Since it's a record, changes need to be propagated differently.
-                    // Let's update the context directly via a custom approach - though in practice, the method signature may need adjustment
-        
-                    // Update the passed-in context Data, Device and Template properties
-                    // Note: Records are immutable, so we can't directly set props
-                    // The pipeline class uses a `with` expression to create new instances
-                    // So the return of success will allow the pipeline to create a new context with updated data 
-                    // while maintaining the same id, topic, and payload
                 return (true, newContext); 
                 }
                 else
@@ -236,53 +206,6 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                     Sensors = sensorsDict
                 };
                 
-                // Since our Decode method returns bool, not modified context
-                // we need to somehow update the original context.
-                // Looking again at the pipeline behavior - it says:
-                // "if (!await decoder.DecodeAsync(context)) return;"
-                // This suggests a 'false' stops processing but 'true' continues
-                // And then the context.Data, .Device, etc. might need to be set in the handler itself
-                // by returning a new context or setting some out parameter
-
-                // Actually, let me look at the implementation again:
-                // It seems like the pipeline expects the handler to update context directly or the context is meant to be mutable
-                // Or that with expression is used to update: context with {Data=newData,...}
-
-                // The actual solution: the context object is immutable (record), so individual properties can't be mutated
-                // The Decode method would need to return the modified context to the caller (pipeline)
-                // But it's bool according to interface.
-                // Given the comment in MessageProcessingPipeline:
-                // "На момент начала обработки context не заполнен полностью, заполнены только поля Topic и Payload..."
-
-                // This means our handler needs to update internal state.
-                // Perhaps we should change the implementation strategy by updating the record properties
-                // and using reflection or specific technique to modify immutable record.
-                // However in pipeline, maybe the approach is:
-                // var newContext = context with {Data=updatedMessage, Device=device, Template=template};
-
-                // Looking at pipeline again:
-                // var decoder = _sp.GetRequiredService<IDecodeTelemetryDataHandler>();
-                // if (!await decoder.DecodeAsync(context))
-                //     return;
-
-                // So this means the decoder doesn't return modified context - only success/failure!
-                // So the decoder needs to modify the context internally or use ref/out parameter or closure
-                
-                // Since Decode method interface has only bool - it indicates success/failure only.
-                // So it seems we need direct access to modify context or there's a different mechanism.
-                // Since it's a struct-like record with immutable props, it would need different handling.
-                // The solution probably involves the pipeline accepting the returned context.
-
-                // Actually, looking closely, MqttProcessingContext is a record with a primary constructor,
-                // meaning the fields are mutable in the way used by "with".
-                // I think the intent for the DecodeAsync is:
-                // 1. If decode/validation succeeds: return true AND the context is appropriately modified
-                // 2. If validation fails: write error info and return false to stop pipeline
-                
-                // However, the context record being immutable means we cannot modify its members during the method,
-                // instead, the pipeline should update the record with new values after calling DecodeAsync.
-                
-                // Maybe the context is accessed by ref somehow in calling code?
                 var newTelemetryMessage = new MqttTelemetryMessage
                 {
                     Timestamp = unixTimestamp,
@@ -292,14 +215,14 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                 
                 // Since records are immutable, we return success (true), 
                 // and expect MessageProcessingPipeline to update context
-                // by calling context with { Data = newTelemetryMessage, Device = immDto, Template = templateDto }
+                // by calling context with { Data = newTelemetryMessage, Device = immDto, Template = cachedTemplate }
                 // upon return from DecodeAsync when true is returned.
                 
                 return (true, context with 
                 {
                     Data = newTelemetryMessage,
                     Device = immDto,
-                    Template = templateDto
+                    Template = cachedTemplate
                 }); 
             }
             else

@@ -15,9 +15,7 @@ public class MessageProcessingPipeline(IServiceProvider sp)
     private readonly IServiceProvider _sp = sp;
     public async Task ProcessAsync(MqttProcessingContext context, CancellationToken ct)
     {
-        /// Напиши реализаци интерфейса IDecodeTelemetryDataHandler и зарегистрируй его в DI.
-        /// Реализация должна решать следующую задачу:
-        /// Сначала необходимо преобразовать данные из json в объект
+        /// Сначала необходимо преобразовать данные из json в объект - декодировать
         /// На момент начала обработки context не заполнен полностью, заполнены только поля Topic и Payload и присвоен уникальный id в поле MessageId.
         /// В поле Payload лежит именно сырые данные из сообщений MQTT, преобразованные в текст.
         /// Мы ожидаем, что это будет текст в формате json.
@@ -37,15 +35,15 @@ public class MessageProcessingPipeline(IServiceProvider sp)
         /// 5. надо определить deviceId, проверить, существует ли такой в БД и записать его в поле context.Data.DeviceId
         /// 6. надо найти экземпляр ImmDto и записать его в поле context.Data.Imm, если экземпляра нет, то пишем ошибку в лог и прекращаем обработку.
         /// 7. Для найденного ImmDto надо найти шаблон (экземлпяр TemplateDto) и записать его в context.Data.Template. Если шаблона нет, то пишем ошибку в лог и прекращаем обработку.
-        /// После этого можно продолжать обработку.
-        
+        /// После этого можно продолжать обработку.        
         var decoder = _sp.GetRequiredService<IDecodeTelemetryDataHandler>();
         var (success, updatedContext) = await decoder.DecodeAsync(context);
         if (!success)
             return;
         context = updatedContext;
-        // Validation - проверяем, что нам есть вообще то сохранять и что данные корректные (например, что привязан экземпляр оборудования)
-        // если получится, то исправим данные - привяжем экземпляр
+
+        // Validation - проверяем, что нам есть вообще что сохранять и что данные корректные (например, что привязан экземпляр оборудования)
+        // Если получится, то исправим данные - привяжем экземпляр IMM.
         // Также здесь заполняется список показаний датчиков - в него включаются только те, которые указаны в шаблоне оборудования.
         // Здесь же можно применить и CovFilter.
         var validator = _sp.GetRequiredService<IValidateTelemetryDataHandler>();
