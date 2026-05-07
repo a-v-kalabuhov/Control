@@ -43,7 +43,7 @@ const initChart = () => {
       trigger: 'axis',
       formatter: (params) => {
         const point = params[0]
-        return `${dayjs(point.name).format('HH:mm:ss')}<br/>${point.value}`
+        return `${point.name}<br/>${point.value}`
       }
     },
     grid: {
