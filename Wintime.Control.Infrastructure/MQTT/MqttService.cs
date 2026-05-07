@@ -29,7 +29,6 @@ public class MqttService : IMqttService, IDisposable
 {
     private readonly IMqttClient _mqttClient;
     private readonly MqttSettings _settings;
-//    private readonly ICovFilter _covFilter;
     private readonly IServiceProvider _serviceProvider;
     private readonly IMessageProcessor _messageProcessor;
     private readonly ILogger<MqttService> _logger;
@@ -48,14 +47,12 @@ public class MqttService : IMqttService, IDisposable
     public MqttService(
         IMqttClient mqttClient,
         IOptions<MqttSettings> settings,
-//        ICovFilter covFilter,
         IServiceProvider serviceProvider,
         IMessageProcessor messageProcessor,
         ILogger<MqttService> logger)
     {
         _mqttClient = mqttClient;
         _settings = settings.Value;
-//        _covFilter = covFilter;
         _serviceProvider = serviceProvider;
         _messageProcessor = messageProcessor;
         _logger = logger;

@@ -29,14 +29,10 @@ public static class ServiceCollectionExtensions
 
      public static IServiceCollection AddMessageHandlers(this IServiceCollection services)
      {
-         // Register handlers for processing messages
-         // For decoding payload into sensor readings objects, data validation, saving to database and etc.
-         // All handlers are listed in the MessageProcessingPipeline class
          services.AddScoped<IDecodeTelemetryDataHandler, DecodeTelemetryDataHandler>();
-         services.AddScoped<IStoreTelemetryDataHandler, StoreTelemetryDataHandler>();
          services.AddScoped<IValidateTelemetryDataHandler, ValidateTelemetryDataHandler>();
-         // Other handlers will be added here later as needed
-         
+         services.AddScoped<IStoreTelemetryDataHandler, StoreTelemetryDataHandler>();
+
          return services;
      }
 }

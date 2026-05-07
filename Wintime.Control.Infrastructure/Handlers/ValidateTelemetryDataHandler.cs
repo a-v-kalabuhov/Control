@@ -1,120 +1,214 @@
 using Microsoft.Extensions.Logging;
+using System.Globalization;
+using Task = System.Threading.Tasks.Task;
 using Wintime.Control.Core.DTOs.Mqtt;
-using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Interfaces;
 
 namespace Wintime.Control.Infrastructure.Handlers;
 
 public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
 {
+    private static readonly string[] MandatorySensors = ["counter", "mode"];
+
+    private readonly IImmCache _immCache;
     private readonly ILogger<ValidateTelemetryDataHandler> _logger;
-    
-    public ValidateTelemetryDataHandler(ILogger<ValidateTelemetryDataHandler> logger)
+
+    public ValidateTelemetryDataHandler(IImmCache immCache, ILogger<ValidateTelemetryDataHandler> logger)
     {
+        _immCache = immCache;
         _logger = logger;
     }
 
-    /// <summary>
-    /// Выполняет проверку типов данных полученных по MQTT. Они должны соответствовать шаблону.
-    /// После этого выполняет проверку на изменение показаний датчиков для типов данных поддерживающих такую проверку.
-    /// Если при проверке данных считаем, что показания датчика не изменились, то вносим в контекст предыдущее, кешированное показание.
-    /// Именно оно будет передано в следующий обработчик в pipeline'е.
-    /// Это позволяет уменьшить объём  хранимых данных при использовании колоночных СУБД в качестве хранилища показаний датчиков.
-    /// </summary>
-    public async Task<(bool, MqttProcessingContext)> ValidateAsync(MqttProcessingContext context)
+    public Task<(bool, MqttProcessingContext)> ValidateAsync(MqttProcessingContext context)
     {
-        /// TODO: реализовать описанный ниже алгоритм проверки
-        /// Как проходит проверка типа данных. Эта проверка может остановить выполнение pipeline'а.
-        /// 1. Перебираем все пары имя:значение контексте в свойстве context.Data.Sensors.
-        /// 2. По имени пары определяем сответствующий датчик в шаблоне.
-        /// 3. Пытаемся преобразовать значение пары в тип данных датчика из шаблона (сам шаблон получаем из ITemplateCache).
-        /// 4. Если не удалось, по запоминаем, какая пара не соотвествует шаблону по типу.
-        /// 4а. Если значение датчика подходит по типу, то нужно проверить его по допустимым значениям (поле SensorTemplate.AllowedValues).
-        /// 4б. Если список допустимых значений пуст, то такую проверку делать не надо. 
-        /// 4в. Если значение датчика совпадает с любым допустимым, то проверка считается успешной.
-        /// 4г. Если значение не совпадает ни с одним их допустимых, то провека не пройдена. Нужно также добавить сообщение об ошибке в лог.
-        /// 5. Неудачные пары удаляем из контекста.
-        /// 6. Проверяем наличие обязательных пар - counter и mode.
-        /// 7. Если не нашли, то пишем сообщение об ошибке в лог и возвращаем false. Обрабатывать дальше просто нечего - контекст некорректен.
-        /// 8. Если есть некорректные пары, но есть и все обязательные, то пишем сообщение об ошибке в лог, но продолжаем проверку.
-        /// 9. В дальнейшем надо будет добавить уведомление (event) о несоответствии шаблона и поступающих данных. Но сейчас это делать не будем, можно просто вставить комменнтарий TODO, чтобы не забыть.
-        /// 
-        /// Далее выполняем проверку на изменение показаний датчиков. Она не может остановить выполнение pipeline'а, но может изменить значение показаний.
-        /// Как проходит проверка на изменение показаний?
-        /// 0. Запрашиваем из кеша данные о показаниях датчиков для текущего IMM. В них будет отметка времени для этих значения и словарь датчиков.
-        /// 0а. Если IMM отсутствует в кеше, то её необходимо добавить в кеш. Таким образом кеш постепенно заполнится списком IMM, от которых приходят данные.
-        ///     Проверка в этом случае не проводится - просто нужно сохранить все полученные значения в кеш.
-        /// 0б. Если отметка времени кеша больше, чем отметка времени контекста, то пропускаем проверку. Данные контекста перейдут в следующий обработчик такими какие они есть.
-        /// 0в. Если статус IMM offline, то проверка не проводится - просто нужно сохранить все полученные значения в кеш и обновить метку времени кеша.
-        ///     Ведь получается, что пришло сообщение от IMM, а значит IMM перешла в состояние online.
-        /// 1. Перебираем все пары имя:значение контексте в свойстве context.Data.Sensors.
-        /// 2. По имени пары определяем сответствующий датчик в шаблоне (шаблон берём из ITemplateCache).
-        /// 3. Если у датчика не задан порог изменения, то переходим к следующему датчику.
-        /// 4. Преобразовываем значение пары к типу данных датчика.
-        /// 5. Получаем предыдущее значение датчика из кеша датчиков. 
-        /// 6. Сравниваем значение из кеша с текущим.
-        /// 7. Если разница больше порога, то запоминаем новое значение для кеша.
-        /// 8. Когда перебрали все пары, то записываем в кеш новые значения датчиков из списка запомненных.
-        /// 9. Обновляем отметку времени последнего сообщения в кеше, чтобы отслеживать статус IMM online/offline.
-        /// 10. В результате на выходе получаем копию context, в которой перечислены только корректные датчики, а значения согласованы с кешем. Такой context можно передать на дальнейшую обработку.
-        /// 
-        /// Дополнительная информация:
-        /// Как происходит валидация сообщения?
-        /// Если контекст дошёл до валидации, то все его поля заполнены данными. За это отвечает IDecodeTelemetryDataHandler.
-        /// Но при этом список показаний датчиков может быть заполнен неверно или неверными данными. Это может происходить из-за неверно составленного шаблона IMM.
-        /// IDecodeTelemetryDataHandler не отвечает за корркетное заполнение списка значений датчиков. Он заполняет его теми данными, которые пришли в сообщении MQTT.
-        /// Валидация - это как раз проверка списка показаний датчиков.
-        /// Во-первых, необходимо убедиться, что для каждого датчика тип полученных данных соотвествует указанному в шаблоне.
-        /// Во-вторых, надо проверить, что показания датчиков изменились по сравнению с предыдущим значением.
-        /// Проверка типа данных осуществляется первой.
-        /// Для этого в контексте есть ссылка на шаблон. Шаблон вытаскиваем из кеша шаблонов ITemlateCache.
-        /// Всего может быть четыре основных типа данных: string, float, int, boolean. Также есть особый тип cycleCounter - это счётчик производственных циклов IMM, является целым значением.
-        /// Для float и int можно задавать порог изменений. Порог изменений означает, что два значения считаются одинаковыми, если разница между ними меньше порога.
-        /// Если порог не задан или равен 0, то любое изменение значения считается существенным.
-        /// 
-        /// Для корректной работы валидации необходимо реализовать службу кеша датчиков.
-        /// Эта служба должна быть представлена интерфейсом IImmCache.
-        /// В неё должен быть передан список всех IMM, зарегистрированных в системе (хранящихся в БД).
-        /// При удалении IMM из БД, её данные удаляются также из кеша.
-        /// При добавлении новой IMM в БД, она должна быть добавлена в службу кеша.
-        /// Служба кеша также должна иметь метод получения значений датчиков из кеша. Этот метод возвращает не одно значение, а сразу весь список кешированных значений для выбранной IMM.
-        /// Служба кеша должна иметь метод для обновления отметки времени последнего сообщения.
-        /// Служба кеша хранит данные в памяти, то есть при перезапуске приложения данные теряются.
-        /// Служба кеша также должна иметь метод обновления значений датчиков. На вход он принимает словарь вида "имя датчика" : "значение".
-        /// Служба кеша выглядит как Singleton. Но необходимо учесть, что она может быть использована в нескольких worker'ах потоках. Т.е. необходимо использовать потокобезопасные структуры данных.
-        /// 
-        /// Особенность службы кеша в том, что она отслеживает новый параметр IMM - статус.
-        /// Что такое статус?
-        /// Это факт наличия связи с IMM. Булевское значение - есть связь или нет, offline устройство или online.
-        /// Система использует MQTT как протокол обмена данными. Поэтому она только пассивно принимает сообщения.
-        /// Если бы это было соединение по TCP/IP, то система всегда могла бы видеть разрыв связи.
-        /// Но по MQTT мы разрыва связи определить не можем, т.к. не во всех брокерах реализована фугкция Last Will And Testament.
-        /// Поэтому для IMM нужнно задать время таймаута, после которого при отсутствии сообщений система будет считать IMM упавшим в offline.
-        /// Значит в кеше нужно хранить время последнего сообщения, и сравнивать его с текущим.
-        /// Для этого может понадобится отдельный воркер. Но может быть ты предложишь другие варианты?
-        /// Этот воркер будет по таймеру заставлять службу кеша обновить статусы IMM.
-        /// Статус также обновляется при получении сообщения. Для этого в pipeline надо добавть отдельный хендлер или может лучше сделать это в хендлере валидации?
-        /// Статус также обновляется автоматически при записи новых значений в кеш. Раз система записывает что-то в кеш, значит она получила сообщение, значит устойство online.
-        /// 
-        /// Какие use case'ы возможны для службы кеша?
-        /// 1. Пользователь добавляет новый IMM. Нужно добавить его в кеш.
-        /// 2. Пользователь удаляет IMM. Нужно удалить его из кеша.
-        /// 3. Пользователь изменяет шаблон. Нужно обновить список датчиков в кеше.
-        /// 4. Пользователь помечает IMM как неактивный. Нужно удалить IMM из кеша.
-        /// 5. Пользователь помечает ранее неактивный IMM как активный. Нужно добавить IMM в кеш.
-        /// 6. Старт приложения. Нужно загрузить список всех IMM из БД и добавить их в кеш.
-        /// 7. Воркер иницирует проверку статуса IMM в кеше. Проверяемая IMM может быть удалена из кеша в момент проверки - это нужно учесть.
-        /// 
-        /// Что мне непонятно в данной реализации алгоритма???
-        /// 1. Раз у IMM появляется статус, то его надо как-то хранить, чтобы использовать в отчётах по работе оборудования.
-        /// 2. Сейчас в БД хранится телеметрия для каждого датчика в отдельной записи.
-        /// 3. Мне неясно как их этих заисей потом собрать отчёт с подсчётом того или иного состояния IMM.
-        /// 4. Состояние IMM включает не только offline/online, но и режим работы из параметра сообщения "mode" - рачной режим, автоматический или простой (idle).
-        /// 5. Может быть стоит создать отдельную таблицу для хранения режима и состояния IMM и из неё генерировать отчёты? 
-        /// Суть в том, чтобы получить plain table, в которой будут последовательно расположены все изменения состояния и режим работы с привязанной меткой времени.
-        /// Тогда можно будт очень простыми запросами SQL выполнить расчёт длительности каждого состояния/режима.
-        /// Так в картине дня нужно видеть сколько времени IMM была в режиме наладки (т.е. ручном режиме), простоя, автоматическом и оффлайн.
-        
-        _logger.LogError("Stab IValidateTelemetryDataHandler executed for context: {context}", context);
-        return (true, context);  // Stub return 
+        // Part 1: validate sensor types and allowed values
+        var (typeCheckPassed, validSensors) = ValidateTypes(context);
+        if (!typeCheckPassed)
+            return Task.FromResult<(bool, MqttProcessingContext)>((false, context));
+
+        // Part 2: COV filtering — unchanged sensors are replaced with cached values (Variant B)
+        var outputSensors = ApplyCovFilter(context, validSensors);
+
+        var newMessage = new MqttTelemetryMessage
+        {
+            Timestamp = context.Data!.Timestamp,
+            DeviceId = context.Data.DeviceId,
+            Sensors = outputSensors
+        };
+
+        return Task.FromResult((true, context with { Data = newMessage }));
+    }
+
+    // --- Part 1: Type validation ---
+
+    private (bool Success, Dictionary<string, string> Sensors) ValidateTypes(MqttProcessingContext context)
+    {
+        var sensors = context.Data!.Sensors;
+        var sensorsByName = context.Template!.Sensors.ToDictionary(s => s.ParameterName);
+        var invalidSensors = new List<string>();
+        var validSensors = new Dictionary<string, string>(sensors.Count);
+
+        foreach (var (name, value) in sensors)
+        {
+            if (!sensorsByName.TryGetValue(name, out var sensorTemplate))
+                continue; // датчик не описан в шаблоне — пропускаем молча
+
+            if (!TryValidateSensorValue(value, sensorTemplate, out var error))
+            {
+                invalidSensors.Add(name);
+                _logger.LogWarning(
+                    "IMM {ImmId}: sensor '{Sensor}' failed validation — {Error}",
+                    context.Device!.Id, name, error);
+                continue;
+            }
+
+            validSensors[name] = value;
+        }
+
+        // Mandatory sensors must survive type validation — if removed, the message is unusable
+        foreach (var required in MandatorySensors)
+        {
+            if (!validSensors.ContainsKey(required))
+            {
+                _logger.LogError(
+                    "IMM {ImmId}: mandatory sensor '{Sensor}' is missing or has invalid value, topic: {Topic}",
+                    context.Device!.Id, required, context.Topic);
+                return (false, validSensors);
+            }
+        }
+
+        if (invalidSensors.Count > 0)
+        {
+            // TODO: raise schema mismatch event to notify administrator when event infrastructure is ready
+            _logger.LogWarning(
+                "IMM {ImmId}: {Count} sensor(s) removed due to type/value mismatch: [{Sensors}]",
+                context.Device!.Id, invalidSensors.Count, string.Join(", ", invalidSensors));
+        }
+
+        return (true, validSensors);
+    }
+
+    private static bool TryValidateSensorValue(string value, SensorTemplate sensor, out string error)
+    {
+        error = string.Empty;
+
+        var typeValid = sensor.ParameterType switch
+        {
+            "string"       => true,
+            "float"        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
+            "int"          => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+            "boolean"      => bool.TryParse(value, out _),
+            "cycleCounter" => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+            _              => false
+        };
+
+        if (!typeValid)
+        {
+            error = $"cannot parse '{value}' as '{sensor.ParameterType}'";
+            return false;
+        }
+
+        if (sensor.AllowedValues is { Count: > 0 } && !sensor.AllowedValues.Contains(value))
+        {
+            error = $"'{value}' not in allowed values [{string.Join(", ", sensor.AllowedValues)}]";
+            return false;
+        }
+
+        return true;
+    }
+
+    // --- Part 2: COV filtering (Variant B) ---
+    // Sensors within threshold are replaced with the cached value so TimescaleDB/PostgreSQL
+    // receives repeated values and can compress them efficiently.
+
+    private Dictionary<string, string> ApplyCovFilter(
+        MqttProcessingContext context,
+        Dictionary<string, string> sensors)
+    {
+        var immId = context.Device!.Id;
+        var template = context.Template!;
+        var messageAt = DateTimeOffset.FromUnixTimeSeconds(context.Data!.Timestamp).UtcDateTime;
+
+        var entry = _immCache.GetEntry(immId);
+
+        if (entry == null)
+        {
+            // First message from this IMM — populate cache, skip filtering
+            _immCache.AddImm(immId, template.DeviceTimeoutSeconds);
+            _immCache.UpdateEntry(immId, messageAt, template.DeviceTimeoutSeconds, sensors);
+            return new Dictionary<string, string>(sensors);
+        }
+
+        if (entry.LastMessageAt > messageAt)
+        {
+            // Out-of-order message — pass through without filtering
+            _logger.LogWarning(
+                "IMM {ImmId}: out-of-order message (msg={MessageAt:O}, cache={CacheAt:O}), COV skipped",
+                immId, messageAt, entry.LastMessageAt);
+            return new Dictionary<string, string>(sensors);
+        }
+
+        if (!entry.IsOnline)
+        {
+            // First message after offline — treat all values as changed, update cache
+            _immCache.UpdateEntry(immId, messageAt, template.DeviceTimeoutSeconds, sensors);
+            return new Dictionary<string, string>(sensors);
+        }
+
+        // Normal path: compare each sensor against its cached value
+        var sensorsByName = template.Sensors.ToDictionary(s => s.ParameterName);
+        var outputSensors = new Dictionary<string, string>(sensors.Count);
+        // Start from existing cache so sensors absent in this message are preserved
+        var newCacheValues = new Dictionary<string, string>(entry.SensorValues);
+
+        foreach (var (name, value) in sensors)
+        {
+            if (!sensorsByName.TryGetValue(name, out var sensorTemplate))
+                continue; // датчик не описан в шаблоне — игнорируем
+
+            if (sensorTemplate.Threshold == 0)
+            {
+                // Порог не задан — всегда пропускаем текущее значение
+                outputSensors[name] = value;
+                newCacheValues[name] = value;
+                continue;
+            }
+
+            if (entry.SensorValues.TryGetValue(name, out var cachedValue) &&
+                !HasChangedBeyondThreshold(value, cachedValue, sensorTemplate))
+            {
+                // Change within threshold — substitute cached value (Variant B)
+                outputSensors[name] = cachedValue;
+                // newCacheValues[name] already holds cachedValue from entry.SensorValues
+            }
+            else
+            {
+                // Significant change or first appearance — use new value, update cache
+                outputSensors[name] = value;
+                newCacheValues[name] = value;
+            }
+        }
+
+        _immCache.UpdateEntry(immId, messageAt, template.DeviceTimeoutSeconds, newCacheValues);
+        return outputSensors;
+    }
+
+    private static bool HasChangedBeyondThreshold(string current, string cached, SensorTemplate sensor)
+    {
+        if (sensor.ParameterType is "float")
+        {
+            if (double.TryParse(current, NumberStyles.Float, CultureInfo.InvariantCulture, out var cur) &&
+                double.TryParse(cached, NumberStyles.Float, CultureInfo.InvariantCulture, out var cac))
+                return Math.Abs(cur - cac) > (double)sensor.Threshold;
+        }
+        else if (sensor.ParameterType is "int" or "cycleCounter")
+        {
+            if (int.TryParse(current, out var cur) && int.TryParse(cached, out var cac))
+                return Math.Abs(cur - cac) > (double)sensor.Threshold;
+        }
+
+        // string, boolean, or parse failure — any change is significant
+        return current != cached;
     }
 }

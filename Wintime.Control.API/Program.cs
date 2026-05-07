@@ -152,26 +152,13 @@ builder.Services.AddScoped<IMessageProcessor, MessageProcessor>();
 builder.Services.AddMessageProcessing();
 builder.Services.AddMessageHandlers();
 
-// TODO : вместо этого делаем отдельный сервис для шаблонов и второй для оборудования
-// Загрузка порогов из БД (для MVP — из конфига)
-// var thresholds = new Dictionary<string, SensorThreshold>
-// {
-//     { "temp_zone_1", new SensorThreshold { ParameterName = "temp_zone_1", ParameterType = "numeric", Threshold = 0.5m, TimeoutSeconds = 300 } },
-//     { "temp_zone_2", new SensorThreshold { ParameterName = "temp_zone_2", ParameterType = "numeric", Threshold = 0.5m, TimeoutSeconds = 300 } },
-//     { "pressure_inject", new SensorThreshold { ParameterName = "pressure_inject", ParameterType = "numeric", Threshold = 0.2m, TimeoutSeconds = 300 } },
-//     { "status", new SensorThreshold { ParameterName = "status", ParameterType = "discrete", Threshold = 0, TimeoutSeconds = 60 } },
-//     { "cycles", new SensorThreshold { ParameterName = "cycles", ParameterType = "numeric", Threshold = 1, TimeoutSeconds = 300 } }
-// };
-// builder.Services.AddSingleton(thresholds);
-
-//builder.Services.AddSingleton<ICovFilter, CovFilter>();
-// Template cache — must be registered before MqttBackgroundService starts
+// In-memory caches — must be registered before MqttBackgroundService starts
 builder.Services.AddSingleton<ITemplateCache, TemplateCache>();
+builder.Services.AddSingleton<IImmCache, MemoryImmCache>();
 builder.Services.AddHostedService<TemplateCacheStartupService>();
 builder.Services.AddSingleton<IMessageProcessor, MessageProcessor>();
 builder.Services.AddSingleton<IMqttService, MqttService>();
 builder.Services.AddHostedService<MqttBackgroundService>();
-builder.Services.AddMemoryCache(); // Для COV-фильтра
 
 var app = builder.Build();
 
