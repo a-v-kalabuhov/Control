@@ -6,10 +6,13 @@ export function useValidation() {
     
     switch (sensor.type) {
       case 'float':
-        // Не настроен, если ВСЕ три значения = 0
-        return !(sensor.baseValueAuto === 0 && 
-                 sensor.baseValueManual === 0 && 
+        return !(sensor.baseValueAuto === 0 &&
+                 sensor.baseValueManual === 0 &&
                  sensor.baseValueIdle === 0)
+      case 'integer':
+        return !(sensor.intBaseValueAuto === 0 &&
+                 sensor.intBaseValueManual === 0 &&
+                 sensor.intBaseValueIdle === 0)
       case 'boolean':
         // Любое значение валидно
         return true

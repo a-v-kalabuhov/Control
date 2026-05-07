@@ -28,7 +28,7 @@ public class ProfileStep
 public class SensorEmulationConfig
 {
     public string Name { get; set; } = "";
-    public string Type { get; set; } = ""; // float, boolean, string
+    public string Type { get; set; } = ""; // float, integer, boolean, string
     public float BaseValueAuto { get; set; }
     public float BaseValueManual { get; set; }
     public float BaseValueIdle { get; set; }
@@ -39,6 +39,9 @@ public class SensorEmulationConfig
     public string StringValueAuto { get; set; } = "";
     public string StringValueManual { get; set; } = "";
     public string StringValueIdle { get; set; } = "";
+    public int IntBaseValueAuto { get; set; }
+    public int IntBaseValueManual { get; set; }
+    public int IntBaseValueIdle { get; set; }
 }
 
 public class EmulationRequestValidator : AbstractValidator<EmulationRequest>

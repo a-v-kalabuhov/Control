@@ -51,22 +51,36 @@ export function useEmulator() {
     try {
       const response = await emulatorApi.getTemplate(templateId)
       // Преобразуем сенсоры шаблона в конфиги эмуляции с дефолтными значениями
-      console.log('loadTemplateSensors', response.data);
-      return response.data.sensors.map(s => ({
-        name: s.name,
-        type: s.type,
-        // Дефолтные значения (требуют настройки пользователем)
-        baseValueAuto: 0,
-        baseValueManual: 0,
-        baseValueIdle: 0,
-        variancePercent: 0,
-        valueAuto: false,
-        valueManual: false,
-        valueIdle: false,
-        stringValueAuto: '',
-        stringValueManual: '',
-        stringValueIdle: ''
-      }))
+      //console.log('loadTemplateSensors', response.data);
+      const profileModes = ['auto', 'manual', 'idle']
+      const isModeType = (s) =>
+        s.type === 'string' &&
+        Array.isArray(s.allowedValues) &&
+        s.allowedValues.length === profileModes.length &&
+        profileModes.every(m => s.allowedValues.includes(m))
+
+      return response.data.sensors.map(s => {
+        const type = s.type === 'int' ? 'integer' : s.type === 'bool' ? 'boolean' : s.type
+        const isMode = isModeType({ type, allowedValues: s.allowedValues })
+        return {
+          name: s.field,
+          label: s.name,
+          type,
+          baseValueAuto: 0,
+          baseValueManual: 0,
+          baseValueIdle: 0,
+          variancePercent: 0,
+          intBaseValueAuto: 0,
+          intBaseValueManual: 0,
+          intBaseValueIdle: 0,
+          valueAuto: false,
+          valueManual: false,
+          valueIdle: false,
+          stringValueAuto:   isMode ? 'auto'   : '',
+          stringValueManual: isMode ? 'manual' : '',
+          stringValueIdle:   isMode ? 'idle'   : ''
+        }
+      })
     } catch (e) {
       ElMessage.error(`Ошибка загрузки шаблона: ${e.message}`)
       throw e

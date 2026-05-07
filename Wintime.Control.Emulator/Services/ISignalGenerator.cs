@@ -46,6 +46,39 @@ public class FloatSignalGenerator : ISignalGenerator
 }
 
 /// <summary>
+/// Генератор значений типа int.
+/// Выдаёт случайные целочисленные значения в диапазоне от базового значения с учётом вариации.
+/// Для каждого из доступных режимов работы оборудования (авто, ручной, пауза), используется своё базовое значение.
+/// </summary>
+public class IntSignalGenerator : ISignalGenerator
+{
+    private readonly int _baseAuto, _baseManual, _baseIdle;
+    private readonly float _variance;
+    private readonly Random _random = new();
+
+    public IntSignalGenerator(SensorEmulationConfig cfg)
+    {
+        _baseAuto = cfg.IntBaseValueAuto;
+        _baseManual = cfg.IntBaseValueManual;
+        _baseIdle = cfg.IntBaseValueIdle;
+        _variance = cfg.VariancePercent / 100f;
+    }
+
+    public object GenerateValue(string mode)
+    {
+        var baseVal = mode switch
+        {
+            "auto" => _baseAuto,
+            "manual" => _baseManual,
+            "idle" => _baseIdle,
+            _ => 0
+        };
+        var deviation = (int)Math.Round(baseVal * _variance);
+        return baseVal + _random.Next(-deviation, deviation + 1);
+    }
+}
+
+/// <summary>
 /// Генератор значений типа bool.
 /// Возвращает значение, соответствующее режиму работы.
 /// Значения задаются в конфигурации.

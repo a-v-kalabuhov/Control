@@ -109,24 +109,12 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
         {
             if(prop.Value != null)
             {
-                sensorsDict[prop.Key] = prop.Value.GetValue<string>();
+                sensorsDict[prop.Key] = prop.Value.GetValueKind() == JsonValueKind.String
+                    ? prop.Value.GetValue<string>()
+                    : prop.Value.ToJsonString();
             }
         }
         
-        // TODO : нужно будет убрать эту проверку отсюда. Для шаблона датчика нужно ввести признак обязательности. Тогда надо будет проверять наичие всех ообязательных значений. Сейчас это получается hardcode.
-        // 4. Check for mandatory sensor values: counter and mode
-        if (!sensorsDict.ContainsKey("counter"))
-        {
-            _logger.LogError("Sensors array does not contain mandatory 'counter' field in topic: {Topic}", context.Topic);
-            return (false, context);
-        }
-
-        if (!sensorsDict.ContainsKey("mode"))
-        {
-            _logger.LogError("Sensors array does not contain mandatory 'mode' field in topic: {Topic}", context.Topic);
-            return (false, context);
-        }
-
         // 5. Find and validate device exists in DB
         var immEntity = await _dbContext.Imms.FirstOrDefaultAsync(x => x.Id == deviceId);
         if (immEntity == null)

@@ -15,6 +15,7 @@ public class ImmEmulationInstance : IAsyncDisposable
     private readonly ILogger<ImmEmulationInstance> _logger;
     private readonly CancellationTokenSource _cts = new();
     private readonly Dictionary<string, ISignalGenerator> _generators = [];
+    private string? _cycleCounterSensorName;
     private int _counter = 0;
     private Task? _runTask;
     private bool _disposed;
@@ -37,13 +38,15 @@ public class ImmEmulationInstance : IAsyncDisposable
         {
             if (cfg.Type == "cycleCounter")
             {
+                _cycleCounterSensorName = cfg.Name;
                 continue;
             }
 
             _generators[cfg.Name] = cfg.Type switch
             {
                 "float" => new FloatSignalGenerator(cfg),
-                "boolean" => new BooleanSignalGenerator(cfg),
+                "int" or "integer" => new IntSignalGenerator(cfg),
+                "bool" or "boolean" => new BooleanSignalGenerator(cfg),
                 "string" => new StringSignalGenerator(cfg),
                 _ => throw new ArgumentException($"Unknown type: {cfg.Type}")
             };
@@ -94,12 +97,11 @@ public class ImmEmulationInstance : IAsyncDisposable
                 var payload = new TelemetryPayload
                 {
                     Timestamp = DateTime.UtcNow,
-                    Sensors = new Dictionary<string, object>
-                    {
-                        ["counter"] = _counter,
-                        ["mode"] = step.Mode
-                    }
+                    Sensors = []
                 };
+
+                if (_cycleCounterSensorName != null)
+                    payload.Sensors[_cycleCounterSensorName] = _counter;
 
                 foreach (var gen in _generators)
                 {

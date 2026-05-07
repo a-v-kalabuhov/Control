@@ -32,7 +32,9 @@ public class TemplateDto
             .Select(s => new SensorConfig
                 {
                     Name = s.name,
-                    Type = s.type
+                    Field = s.field,
+                    Type = s.type,
+                    AllowedValues = s.allowed_values
                 })
                 .ToList();
     }
@@ -44,15 +46,23 @@ public class TemplateDto
 public class SensorConfig
 {
     /// <summary>
-    /// Имя датчика.
+    /// Отображаемое имя датчика.
     /// </summary>
     public string Name { get; set; } = "";
+    /// <summary>
+    /// Имя поля датчика в MQTT-payload.
+    /// </summary>
+    public string Field { get; set; } = "";
     /// <summary>
     /// Тип данных, передаваемых датчиком.
     /// Доступные значения float, boolean, string, cycleCounter.
     /// cycleCounter - целое число, счетчик циклов.
     /// </summary>
     public string Type { get; set; } = "";
+    /// <summary>
+    /// Допустимые значения для датчика типа string.
+    /// </summary>
+    public List<string>? AllowedValues { get; set; }
 }
 
 public class SensorConfigJson
@@ -66,4 +76,5 @@ public class SensorJson
     public string field { get; set; } = string.Empty;
     public string type { get; set; } = string.Empty;
     public double? threshold { get; set; }
+    public List<string>? allowed_values { get; set; }
 }

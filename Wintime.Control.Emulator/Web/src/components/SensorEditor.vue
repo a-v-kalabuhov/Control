@@ -25,7 +25,7 @@
       <el-table-column label="Сенсор" min-width="150" fixed="left">
         <template #default="{ row }">
           <div class="sensor-name">
-            <strong>{{ row.name }}</strong>
+            <strong>{{ row.label || row.name }}</strong>
             <el-tag 
               size="small" 
               :type="getSensorTypeTag(row.type)"
@@ -37,94 +37,129 @@
         </template>
       </el-table-column>
 
-      <!-- Float сенсоры: базовые значения + разброс -->
-      <template v-if="hasFloatSensors">
-        <el-table-column label="Авто" width="100">
+      <!-- Числовые/булевые/строковые сенсоры: базовые значения + разброс -->
+      <template v-if="hasNumericSensors">
+        <el-table-column label="Авто" width="110" align="left">
           <template #default="{ row }">
-            <el-input-number 
+            <el-input-number
               v-if="row.type === 'float'"
-              v-model="row.baseValueAuto" 
-              :step="0.1" 
-              :precision="1" 
+              v-model="row.baseValueAuto"
+              :step="0.1"
+              :precision="1"
+              :controls="false"
               size="small"
               :min="-999999"
               :max="999999"
-              placeholder="0"
+              class="full-width"
             />
-            <el-switch 
+            <el-input-number
+              v-else-if="row.type === 'integer'"
+              v-model="row.intBaseValueAuto"
+              :step="1"
+              :precision="0"
+              :controls="false"
+              size="small"
+              :min="-999999"
+              :max="999999"
+              class="full-width"
+            />
+            <el-switch
               v-else-if="row.type === 'boolean'"
-              v-model="row.valueAuto" 
-              size="small" 
+              v-model="row.valueAuto"
+              size="small"
               active-text="Вкл"
             />
-            <el-input 
+            <el-input
               v-else-if="row.type === 'string'"
-              v-model="row.stringValueAuto" 
-              size="small" 
+              v-model="row.stringValueAuto"
+              size="small"
               placeholder="значение"
+              class="full-width"
             />
           </template>
         </el-table-column>
 
-        <el-table-column label="Ручной" width="100">
+        <el-table-column label="Ручной" width="110" align="left">
           <template #default="{ row }">
-            <el-input-number 
+            <el-input-number
               v-if="row.type === 'float'"
-              v-model="row.baseValueManual" 
-              :step="0.1" 
-              :precision="1" 
+              v-model="row.baseValueManual"
+              :step="0.1"
+              :precision="1"
+              :controls="false"
               size="small"
-              placeholder="0"
+              class="full-width"
             />
-            <el-switch 
+            <el-input-number
+              v-else-if="row.type === 'integer'"
+              v-model="row.intBaseValueManual"
+              :step="1"
+              :precision="0"
+              :controls="false"
+              size="small"
+              class="full-width"
+            />
+            <el-switch
               v-else-if="row.type === 'boolean'"
-              v-model="row.valueManual" 
+              v-model="row.valueManual"
               size="small"
             />
-            <el-input 
+            <el-input
               v-else-if="row.type === 'string'"
-              v-model="row.stringValueManual" 
-              size="small" 
+              v-model="row.stringValueManual"
+              size="small"
               placeholder="значение"
+              class="full-width"
             />
           </template>
         </el-table-column>
 
-        <el-table-column label="Простой" width="100">
+        <el-table-column label="Простой" width="110" align="left">
           <template #default="{ row }">
-            <el-input-number 
+            <el-input-number
               v-if="row.type === 'float'"
-              v-model="row.baseValueIdle" 
-              :step="0.1" 
-              :precision="1" 
+              v-model="row.baseValueIdle"
+              :step="0.1"
+              :precision="1"
+              :controls="false"
               size="small"
-              placeholder="0"
+              class="full-width"
             />
-            <el-switch 
+            <el-input-number
+              v-else-if="row.type === 'integer'"
+              v-model="row.intBaseValueIdle"
+              :step="1"
+              :precision="0"
+              :controls="false"
+              size="small"
+              class="full-width"
+            />
+            <el-switch
               v-else-if="row.type === 'boolean'"
-              v-model="row.valueIdle" 
+              v-model="row.valueIdle"
               size="small"
             />
-            <el-input 
+            <el-input
               v-else-if="row.type === 'string'"
-              v-model="row.stringValueIdle" 
-              size="small" 
+              v-model="row.stringValueIdle"
+              size="small"
               placeholder="значение"
+              class="full-width"
             />
           </template>
         </el-table-column>
 
-        <el-table-column label="Разброс %" width="90" v-if="hasFloatSensors">
+        <el-table-column label="Разброс %" width="105" align="left" v-if="hasFloatSensors">
           <template #default="{ row }">
-            <el-input-number 
-              v-if="row.type === 'float'"
-              v-model="row.variancePercent" 
-              :min="0" 
-              :max="100" 
+            <el-input-number
+              v-if="row.type === 'float' || row.type === 'integer'"
+              v-model="row.variancePercent"
+              :min="0"
+              :max="100"
               size="small"
-            >
-              <template #suffix>%</template>
-            </el-input-number>
+              controls-position="right"
+              class="full-width"
+            />
             <span v-else class="text-gray">—</span>
           </template>
         </el-table-column>
@@ -187,13 +222,19 @@ watch(() => props.sensors, (newVal) => {
   }
 }, { deep: true })
 
-// Проверка, есть ли хоть один float-сенсор (для отображения колонки "Разброс")
-const hasFloatSensors = computed(() => 
-  sensors.value?.some(s => s.type === 'float')
+// Показывать колонки режимов, если есть хоть один числовой/булевый/строковый сенсор
+const hasNumericSensors = computed(() =>
+  sensors.value?.some(s => s.type !== 'cycleCounter')
+)
+
+// Показывать колонку "Разброс %", если есть float или integer сенсоры
+const hasFloatSensors = computed(() =>
+  sensors.value?.some(s => s.type === 'float' || s.type === 'integer')
 )
 
 const getSensorTypeLabel = (type) => ({
-  'float': 'Число',
+  'float': 'Дробное',
+  'integer': 'Целое',
   'boolean': 'Логика',
   'string': 'Строка',
   'cycleCounter': 'Счётчик'
@@ -201,6 +242,7 @@ const getSensorTypeLabel = (type) => ({
 
 const getSensorTypeTag = (type) => ({
   'float': '',
+  'integer': '',
   'boolean': 'info',
   'string': 'warning',
   'cycleCounter': 'success'
@@ -208,7 +250,7 @@ const getSensorTypeTag = (type) => ({
 </script>
 
 <style scoped>
-.sensor-editor { 
+.sensor-editor {
   width: 100%;
 }
 .sensor-name {
@@ -220,4 +262,15 @@ const getSensorTypeTag = (type) => ({
 .mb-2 { margin-bottom: 12px; }
 .py-4 { padding: 16px 0; }
 .text-gray { color: #909399; }
+
+/* Инпуты растягиваются по ширине ячейки */
+.full-width {
+  width: 100%;
+}
+
+/* Уменьшенные горизонтальные отступы ячеек */
+.sensor-editor :deep(.el-table__cell .cell) {
+  padding-left: 6px;
+  padding-right: 6px;
+}
 </style>
