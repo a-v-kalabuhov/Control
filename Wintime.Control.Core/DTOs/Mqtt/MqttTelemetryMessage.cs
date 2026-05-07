@@ -13,5 +13,5 @@ public class MqttTelemetryMessage
     /// <summary>
     /// Список показаний датчиков
     /// </summary>
-    public Dictionary<string, object> Sensors = [];
+    public Dictionary<string, string> Sensors = [];
 }

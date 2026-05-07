@@ -104,15 +104,16 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
         }
 
         // Build sensors dictionary from JSON
-        var sensorsDict = new Dictionary<string, object>();
+        var sensorsDict = new Dictionary<string, string>();
         foreach(var prop in sensorsAsObject)
         {
             if(prop.Value != null)
             {
-                sensorsDict[prop.Key] = prop.Value.GetValue<object>();
+                sensorsDict[prop.Key] = prop.Value.GetValue<string>();
             }
         }
         
+        // TODO : нужно будет убрать эту проверку отсюда. Для шаблона датчика нужно ввести признак обязательности. Тогда надо будет проверять наичие всех ообязательных значений. Сейчас это получается hardcode.
         // 4. Check for mandatory sensor values: counter and mode
         if (!sensorsDict.ContainsKey("counter"))
         {
