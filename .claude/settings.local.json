@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"e:\\\\Projects\\\\Moon\\\\Control\\\\\" 2>&1 | head -30)",
+      "Read(//e/Projects/Moon/**)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet run *)",
+      "Bash(Start-Sleep -Seconds 15)",
+      "Bash(Get-Content \"C:\\\\Users\\\\AD5D~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--Projects-Moon-Control\\\\3e7dcde7-2022-4575-a178-4d7c55a076f6\\\\tasks\\\\bkawl1izn.output\")",
+      "Bash(taskkill /F /IM \"dotnet.exe\" /T)"
+    ]
+  }
+}

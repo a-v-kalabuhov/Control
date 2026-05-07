@@ -5,5 +5,6 @@ public sealed record SensorTemplate(
     string ParameterName,
     string ParameterType,
     decimal Threshold,
-    IReadOnlyList<string>? AllowedValues = null
+    IReadOnlyList<string>? AllowedValues = null,
+    bool Required = false
 );

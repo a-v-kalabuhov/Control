@@ -54,7 +54,9 @@ public sealed class TemplateCache : ITemplateCache
                     if (s.TryGetProperty("allowed_values", out var av) && av.ValueKind == JsonValueKind.Array)
                         allowed = av.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
 
-                    sensors.Add(new SensorTemplate(name, field, type, threshold, allowed));
+                    var required = s.TryGetProperty("required", out var req) && req.ValueKind == JsonValueKind.True;
+
+                    sensors.Add(new SensorTemplate(name, field, type, threshold, allowed, required));
                 }
             }
         }

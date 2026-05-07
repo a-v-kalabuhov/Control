@@ -9,8 +9,6 @@ namespace Wintime.Control.Infrastructure.Handlers;
 
 public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
 {
-    private static readonly string[] MandatorySensors = ["counter", "mode"];
-
     private readonly IImmCache _immCache;
     private readonly ILogger<ValidateTelemetryDataHandler> _logger;
 
@@ -67,13 +65,13 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
         }
 
         // Mandatory sensors must survive type validation — if removed, the message is unusable
-        foreach (var required in MandatorySensors)
+        foreach (var sensor in sensorsByName.Values.Where(s => s.Required))
         {
-            if (!validSensors.ContainsKey(required))
+            if (!validSensors.ContainsKey(sensor.ParameterName))
             {
                 _logger.LogError(
                     "IMM {ImmId}: mandatory sensor '{Sensor}' is missing or has invalid value, topic: {Topic}",
-                    context.Device!.Id, required, context.Topic);
+                    context.Device!.Id, sensor.ParameterName, context.Topic);
                 return (false, validSensors);
             }
         }
