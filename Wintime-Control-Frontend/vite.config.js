@@ -9,6 +9,10 @@ export default defineConfig({
       '@': resolve(__dirname, 'src')
     },
   },
+  build: {
+    outDir: '../Wintime.Control.API/wwwroot',
+    emptyOutDir: true
+  },
   server: {
     port: 3000,
     proxy: {

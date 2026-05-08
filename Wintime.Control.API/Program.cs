@@ -175,6 +175,9 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseSerilogRequestLogging();
 
 // CORS должен быть перед HTTPS-редиректом для обработки preflight запросов
@@ -190,6 +193,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapFallbackToFile("index.html");
 
 // Инициализация БД (для разработки)
 using (var scope = app.Services.CreateScope())
