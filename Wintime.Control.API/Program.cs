@@ -205,7 +205,7 @@ using (var scope = app.Services.CreateScope())
     
     // TODO : убрать в продакшне
     // Создаем стандартные роли, если они еще не существуют
-    string[] roleNames = { "Admin", "Manager", "Adjuster", "Observer" };
+    string[] roleNames = { "Admin", "Manager", "Adjuster", "Observer", "Emulator" };
     foreach (var roleName in roleNames)
     {
         if (!await roleManager.RoleExistsAsync(roleName))
@@ -251,3 +251,5 @@ using (var scope = app.Services.CreateScope())
 
 Log.Information("CONTROL API starting on {Urls}", string.Join(", ", app.Urls));
 app.Run();
+
+public partial class Program { }
