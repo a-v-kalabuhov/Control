@@ -5,6 +5,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <FrontendDir>$(MSBuildProjectDirectory)\Web</FrontendDir>
+  </PropertyGroup>
+
+  <Target Name="BuildFrontend" BeforeTargets="Build">
+    <Exec Command="npm install" WorkingDirectory="$(FrontendDir)"
+          Condition="!Exists('$(FrontendDir)\node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="$(FrontendDir)" />
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
     <PackageReference Include="MQTTnet.AspNetCore" Version="4.3.7.1207" />

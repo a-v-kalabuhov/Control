@@ -18,7 +18,10 @@ export default {
           alarm: '#ef4444',
           offline: '#6b7280',
         }
-      }
+      },
+      scale: {
+        '98': '.98',
+      },
     },
   },
   plugins: [],

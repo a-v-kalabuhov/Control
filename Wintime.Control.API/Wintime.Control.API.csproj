@@ -7,6 +7,16 @@
     <RootNamespace>Wintime.Control.API</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <FrontendDir>$(MSBuildProjectDirectory)\..\Wintime-Control-Frontend</FrontendDir>
+  </PropertyGroup>
+
+  <Target Name="BuildFrontend" BeforeTargets="Build">
+    <Exec Command="npm install" WorkingDirectory="$(FrontendDir)"
+          Condition="!Exists('$(FrontendDir)\node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="$(FrontendDir)" />
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="..\Wintime.Control.Core\Wintime.Control.Core.csproj" />
     <ProjectReference Include="..\Wintime.Control.Infrastructure\Wintime.Control.Infrastructure.csproj" />
