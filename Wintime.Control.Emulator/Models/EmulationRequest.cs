@@ -28,6 +28,11 @@ public class ProfileStep
 public class SensorEmulationConfig
 {
     public string Name { get; set; } = "";
+    /// <summary>
+    /// Имя поля датчика в MQTT-payload. Соответствует полю "field" в шаблоне.
+    /// Если не задано, используется Name (обратная совместимость).
+    /// </summary>
+    public string Field { get; set; } = "";
     public string Type { get; set; } = ""; // float, integer, boolean, string
     public float BaseValueAuto { get; set; }
     public float BaseValueManual { get; set; }

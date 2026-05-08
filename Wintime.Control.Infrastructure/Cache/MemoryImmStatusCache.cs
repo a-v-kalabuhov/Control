@@ -25,6 +25,9 @@ public class MemoryImmStatusCache : IImmStatusCache
     public string? GetStatus(Guid immId)
         => _cache.TryGetValue(immId, out var entry) ? entry.Status : null;
 
+    public ImmStatusEntry? GetEntry(Guid immId)
+        => _cache.TryGetValue(immId, out var entry) ? entry : null;
+
     /// <summary>
     /// Устанавливает или перезаписывает статус ТПА в кеше.
     /// </summary>

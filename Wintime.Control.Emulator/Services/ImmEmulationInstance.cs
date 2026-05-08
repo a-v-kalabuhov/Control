@@ -36,13 +36,14 @@ public class ImmEmulationInstance : IAsyncDisposable
 
         foreach (var cfg in request.SensorConfigs)
         {
+            var mqttKey = string.IsNullOrEmpty(cfg.Field) ? cfg.Name : cfg.Field;
             if (cfg.Type == "cycleCounter")
             {
-                _cycleCounterSensorName = cfg.Name;
+                _cycleCounterSensorName = mqttKey;
                 continue;
             }
 
-            _generators[cfg.Name] = cfg.Type switch
+            _generators[mqttKey] = cfg.Type switch
             {
                 "float" => new FloatSignalGenerator(cfg),
                 "int" or "integer" => new IntSignalGenerator(cfg),

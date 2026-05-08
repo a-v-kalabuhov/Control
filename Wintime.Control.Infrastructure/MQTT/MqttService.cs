@@ -228,104 +228,11 @@ public class MqttService : IMqttService, IDisposable
     /// <returns>Задача, представляющая асинхронную обработку.</returns>
     private async System.Threading.Tasks.Task ProcessTelemetry(string topic, string payload)
     {
-        // var message = JsonSerializer.Deserialize<MqttTelemetryMessage>(payload);
-        // if (message == null)
-        //     return;
-        // var deviceId = GetDeviceIdFromTopic(topic);
-        // if (deviceId == null)
-        //     return;
-        // message.DeviceId = deviceId;
-
         var context = new MqttProcessingContext(Guid.NewGuid(), topic, payload, null, null, null);
         if (!_messageProcessor.Enqueue(context))
         {
             _logger.LogWarning("Dropped message {MessageId} - queue full", context.MessageId);
         }
-
-        // using var scope = _serviceProvider.CreateScope();
-        // var context = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-
-        // var imm = await context.Imms
-        //     .Include(i => i.Template)
-        //     .FirstOrDefaultAsync(i => i.Name == message.DeviceId || i.InventoryNumber == message.DeviceId);
-
-        // if (imm == null)
-        // {
-        //     _logger.LogWarning("IMM not found for DeviceId: {DeviceId}", message.DeviceId);
-        //     return;
-        // }
-
-        // var timestamp = DateTimeOffset.FromUnixTimeSeconds(message.Timestamp).DateTime;
-
-        // // Обрабатываем каждый параметр через COV-фильтр
-        // var parametersToSave = new List<(string Name, decimal? Numeric, string? Text)>();
-
-        // if (message.Data.Status != null)
-        // {
-        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "status", message.Data.Status, timestamp))
-        //         parametersToSave.Add(("status", null, message.Data.Status));
-        // }
-
-        // if (message.Data.Cycles.HasValue)
-        // {
-        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "cycles", message.Data.Cycles.Value, timestamp))
-        //         parametersToSave.Add(("cycles", message.Data.Cycles.Value, null));
-        // }
-
-        // if (message.Data.CycleTime.HasValue)
-        // {
-        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "cycle_time", message.Data.CycleTime.Value, timestamp))
-        //         parametersToSave.Add(("cycle_time", message.Data.CycleTime.Value, null));
-        // }
-
-        // if (message.Data.TempZone1.HasValue)
-        // {
-        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "temp_zone_1", message.Data.TempZone1.Value, timestamp))
-        //         parametersToSave.Add(("temp_zone_1", message.Data.TempZone1.Value, null));
-        // }
-
-        // if (message.Data.PressureInject.HasValue)
-        // {
-        //     if (_covFilter.ShouldSave(imm.Id.ToString(), "pressure_inject", message.Data.PressureInject.Value, timestamp))
-        //         parametersToSave.Add(("pressure_inject", message.Data.PressureInject.Value, null));
-        // }
-
-        // // Сохраняем отфильтрованные данные
-        // if (parametersToSave.Any())
-        // {
-        //     var telemetryRecords = parametersToSave.Select(p => new Telemetry
-        //     {
-        //         ImmId = imm.Id,
-        //         Timestamp = timestamp,
-        //         ParameterName = p.Name,
-        //         ValueNumeric = p.Numeric,
-        //         ValueText = p.Text
-        //     }).ToList();
-
-        //     await context.Telemetry.AddRangeAsync(telemetryRecords);
-        //     await context.SaveChangesAsync();
-
-        //     _logger.LogDebug("Saved {Count} telemetry records for IMM {ImmId}", parametersToSave.Count, imm.Id);
-        // }
-    }
-
-    /// <summary>
-    /// Извлекает идентификатор устройства из MQTT-топика по шаблону <c>control/imm/{deviceId}/telemetry</c>.
-    /// </summary>
-    /// <param name="topic">Топик сообщения.</param>
-    /// <returns>Идентификатор устройства или пустая строка, если не удалось извлечь.</returns>
-    private static string GetDeviceIdFromTopic(string topic)
-    {
-        // DELETE : Не используется, надо удалить
-        // control/imm/+/telemetry
-        var segments = topic.Split('/');
-        if (segments.Length < 3)
-            return string.Empty;
-        if ((segments[0] == "control") && (segments[1] == "imm"))
-        {
-            return segments[2];
-        }
-        return string.Empty;
     }
 
     /// <summary>

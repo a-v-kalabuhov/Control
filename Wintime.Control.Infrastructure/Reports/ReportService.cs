@@ -67,13 +67,15 @@ public class ReportService : IReportService
             .Include(e => e.Reason)
             .ToListAsync(ct);
 
+        // TODO : параметра "status" может не быть, вместо него надо испольовать историю статусов IMM.
         // Получаем телеметрию (статусы) за период
         var statusTelemetry = await _context.Telemetry
             .Where(t => t.ImmId == imm.Id && t.ParameterName == "status" && t.Timestamp >= periodStart && t.Timestamp < periodEnd)
             .OrderBy(t => t.Timestamp)
             .ToListAsync(ct);
 
-        // Получаем циклы за период
+       // TODO : параметра "cycles" может не быть, вместо него надо использовать сущность cycle, которую ещё предстоит написать.
+       // Получаем циклы за период
         var cycleTelemetry = await _context.Telemetry
             .Where(t => t.ImmId == imm.Id && t.ParameterName == "cycles" && t.Timestamp >= periodStart && t.Timestamp < periodEnd)
             .OrderBy(t => t.Timestamp)

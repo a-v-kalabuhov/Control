@@ -200,27 +200,20 @@ public class ImmController : ControllerBase
         if (imm == null)
             return NotFound();
 
-        // Получаем текущее активное задание
         var currentTask = await _context.Tasks
             .FirstOrDefaultAsync(t => t.ImmId == id && t.Status == Core.Enums.TaskStatus.InProgress);
 
-        // Получаем последний статус из телеметрии
-        var lastTelemetry = await _context.Telemetry
-            .Where(t => t.ImmId == id && t.ParameterName == "status")
-            .OrderByDescending(t => t.Timestamp)
-            .FirstOrDefaultAsync();
+        var entry = _statusCache.GetEntry(id);
 
-        var status = new ImmStatusDto
+        return Ok(new ImmStatusDto
         {
             ImmId = imm.Id,
-            Status = lastTelemetry?.ValueText ?? "Offline",
+            Status = entry?.Status ?? "Offline",
             CurrentTaskId = currentTask?.Id,
             CurrentMoldId = currentTask?.MoldId,
             CurrentCycleTime = 0, // TODO: Вычислить из телеметрии
-            LastUpdate = lastTelemetry?.Timestamp ?? DateTime.MinValue
-        };
-
-        return Ok(status);
+            LastUpdate = entry?.SinceUtc ?? DateTime.MinValue
+        });
     }
 
     /// <summary>

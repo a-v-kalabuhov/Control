@@ -27,6 +27,13 @@ public interface IImmStatusCache
     string? GetStatus(Guid immId);
 
     /// <summary>
+    /// Возвращает полную запись статуса ТПА, включая метку времени последней смены.
+    /// </summary>
+    /// <param name="immId">Идентификатор ТПА.</param>
+    /// <returns><see cref="ImmStatusEntry"/> или <see langword="null"/>, если ТПА не найден в кеше.</returns>
+    ImmStatusEntry? GetEntry(Guid immId);
+
+    /// <summary>
     /// Устанавливает или перезаписывает статус ТПА в кеше.
     /// </summary>
     /// <param name="immId">Идентификатор ТПА.</param>

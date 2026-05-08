@@ -70,29 +70,13 @@ export const useDashboardStore = defineStore('dashboard', {
       this.loading = true
       try {
         const response = await immApi.getList({ isActive: true })
-        
-        // Для каждого ТПА загружаем статус
-        const immsWithStatus = await Promise.all(
-          response.data.map(async (imm) => {
-            try {
-              const statusResponse = await dashboardApi.getImmStatus(imm.id)
-              return {
-                ...imm,
-                ...statusResponse.data,
-                status: statusResponse.data.status || 'Offline'
-              }
-            } catch (error) {
-              return {
-                ...imm,
-                status: 'Offline',
-                currentCycleTime: 0,
-                lastUpdate: null
-              }
-            }
-          })
-        )
 
-        this.imms = immsWithStatus
+        this.imms = response.data.map(imm => ({
+          ...imm,
+          status: imm.status || 'Offline',
+          currentCycleTime: 0,
+          lastUpdate: null
+        }))
         this.lastUpdate = new Date()
         return { success: true }
       } catch (error) {
