@@ -11,6 +11,9 @@ public class TelemetryPayload
     [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
+    [JsonPropertyName("mode")]
+    public string? Mode { get; set; }
+
     [JsonPropertyName("sensors")]
     public Dictionary<string, object> Sensors { get; set; } = new();
 }

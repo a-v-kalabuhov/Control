@@ -20,6 +20,8 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<Event> Events { get; set; }
     public DbSet<DowntimeReason> DowntimeReasons { get; set; }
     public DbSet<Telemetry> Telemetry { get; set; }
+    public DbSet<ImmStatusHistory> ImmStatusHistory { get; set; }
+    public DbSet<AppHeartbeat> AppHeartbeat { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -79,5 +81,30 @@ public class ControlDbContext : IdentityDbContext<User>
         builder.Entity<Mold>().ToTable("Molds");
         builder.Entity<Wintime.Control.Core.Entities.Task>().ToTable("Tasks");
         builder.Entity<User>().ToTable("Users");
+
+        // Конфигурация ImmStatusHistory
+        builder.Entity<ImmStatusHistory>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).UseIdentityByDefaultColumn();
+            entity.HasIndex(e => new { e.ImmId, e.ChangedAt });
+            entity.HasOne(e => e.Imm)
+                  .WithMany()
+                  .HasForeignKey(e => e.ImmId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ChangedAt).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.EndedAt).HasColumnType("timestamp with time zone");
+            entity.ToTable("ImmStatusHistory");
+        });
+
+        // Конфигурация AppHeartbeat (single-row sentinel, Id = 1 always)
+        builder.Entity<AppHeartbeat>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.LastHeartbeatAt).HasColumnType("timestamp with time zone");
+            entity.ToTable("AppHeartbeat");
+        });
     }
 }

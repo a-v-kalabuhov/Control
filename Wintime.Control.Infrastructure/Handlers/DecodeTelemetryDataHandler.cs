@@ -9,12 +9,36 @@ using Wintime.Control.Infrastructure.Data;
 
 namespace Wintime.Control.Infrastructure.Handlers;
 
+/// <summary>
+/// Первый обработчик конвейера телеметрии: разбирает входящее MQTT-сообщение,
+/// проверяет его структуру и обогащает контекст данными устройства и шаблона.
+/// </summary>
+/// <remarks>
+/// Выполняет следующие шаги по порядку:
+/// <list type="number">
+///   <item>Проверяет формат топика (<c>control/imm/{guid}/telemetry</c>) и извлекает <c>deviceId</c>.</item>
+///   <item>Парсит полезную нагрузку как JSON и проверяет наличие полей <c>timestamp</c> и <c>sensors</c>.</item>
+///   <item>Убеждается, что объект <c>sensors</c> не пуст, и строит из него словарь строковых значений.</item>
+///   <item>Проверяет существование устройства в БД и загружает его шаблон из кеша.</item>
+///   <item>
+///     Нормализует <c>timestamp</c>: принимает как Unix-число (секунды), так и ISO-строку,
+///     и возвращает обогащённый <see cref="MqttProcessingContext"/> для следующего обработчика.
+///   </item>
+/// </list>
+/// При любой ошибке возвращает <c>false</c> и исходный контекст без изменений.
+/// </remarks>
 public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
 {
     private readonly ControlDbContext _dbContext;
     private readonly ITemplateCache _templateCache;
     private readonly ILogger<DecodeTelemetryDataHandler> _logger;
 
+    /// <summary>
+    /// Инициализирует новый экземпляр <see cref="DecodeTelemetryDataHandler"/>.
+    /// </summary>
+    /// <param name="dbContext">Контекст EF Core для поиска устройства по <c>deviceId</c>.</param>
+    /// <param name="templateCache">Кеш шаблонов для получения конфигурации датчиков.</param>
+    /// <param name="logger">Логгер обработчика.</param>
     public DecodeTelemetryDataHandler(
         ControlDbContext dbContext,
         ITemplateCache templateCache,
@@ -25,6 +49,18 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
         _logger = logger;
     }
 
+    /// <summary>
+    /// Декодирует и валидирует входящее MQTT-сообщение телеметрии.
+    /// </summary>
+    /// <param name="context">
+    /// Исходный контекст обработки с топиком и сырой полезной нагрузкой.
+    /// </param>
+    /// <returns>
+    /// Кортеж: <c>true</c> и новый контекст с заполненными полями
+    /// <see cref="MqttProcessingContext.Data"/>, <see cref="MqttProcessingContext.Device"/>
+    /// и <see cref="MqttProcessingContext.Template"/> — при успехе;
+    /// <c>false</c> и исходный контекст — при любой ошибке валидации или парсинга.
+    /// </returns>
     public async Task<(bool Success, MqttProcessingContext UpdatedContext)> DecodeAsync(MqttProcessingContext context)
     {
         // 0. Check topic format
@@ -82,12 +118,21 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
         // 2. Verify JSON has required fields: timestamp and sensors
         var timestampToken = payloadObject?["timestamp"];
         var sensorsToken = payloadObject?["sensors"];
+        var modeToken = payloadObject?["mode"];
 
         if (timestampToken == null)
         {
             _logger.LogError("Payload does not contain 'timestamp' field in topic: {Topic}", context.Topic);
             return (false, context);
         }
+
+        if (modeToken == null)
+        {
+            _logger.LogError("Payload does not contain 'mode' field in topic: {Topic}", context.Topic);
+            return (false, context);
+        }
+        var mode = modeToken.GetValueKind() == JsonValueKind.String 
+            ? modeToken.GetValue<string>() : modeToken.ToJsonString();
 
         if (sensorsToken == null)
         {
@@ -161,6 +206,7 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                     {
                         Timestamp = unixTimestamp,
                         DeviceId = deviceId.ToString(),
+                        Mode = mode,
                         Sensors = sensorsDict
                     };
 
@@ -199,6 +245,7 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                 {
                     Timestamp = unixTimestamp,
                     DeviceId = deviceId.ToString(),
+                    Mode = mode,
                     Sensors = sensorsDict
                 };
                 

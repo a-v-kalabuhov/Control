@@ -151,11 +151,13 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddScoped<IMessageProcessor, MessageProcessor>();
 builder.Services.AddMessageProcessing();
 builder.Services.AddMessageHandlers();
+builder.Services.AddImmStatusTracking();
 
 // In-memory caches — must be registered before MqttBackgroundService starts
 builder.Services.AddSingleton<ITemplateCache, TemplateCache>();
 builder.Services.AddSingleton<IImmCache, MemoryImmCache>();
 builder.Services.AddHostedService<TemplateCacheStartupService>();
+builder.Services.AddImmStatusWorkers();
 builder.Services.AddSingleton<IMessageProcessor, MessageProcessor>();
 builder.Services.AddSingleton<IMqttService, MqttService>();
 builder.Services.AddHostedService<MqttBackgroundService>();

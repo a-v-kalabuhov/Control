@@ -10,4 +10,5 @@ public class ImmDto
     public string? Model { get; set; } // Из шаблона (денормализация)
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? Status { get; set; }
 }

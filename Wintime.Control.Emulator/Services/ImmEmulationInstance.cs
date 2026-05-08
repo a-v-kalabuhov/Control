@@ -100,6 +100,8 @@ public class ImmEmulationInstance : IAsyncDisposable
                     Sensors = []
                 };
 
+                payload.Mode = step.Mode;
+
                 if (_cycleCounterSensorName != null)
                     payload.Sensors[_cycleCounterSensorName] = _counter;
 

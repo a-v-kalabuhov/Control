@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.DTOs.Imm;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
 
@@ -14,10 +15,12 @@ namespace Wintime.Control.API.Controllers;
 public class ImmController : ControllerBase
 {
     private readonly ControlDbContext _context;
+    private readonly IImmStatusCache _statusCache;
 
-    public ImmController(ControlDbContext context)
+    public ImmController(ControlDbContext context, IImmStatusCache statusCache)
     {
         _context = context;
+        _statusCache = statusCache;
     }
 
     /// <summary>
@@ -27,14 +30,53 @@ public class ImmController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer},{Roles.Emulator}")]
     public async Task<ActionResult<IEnumerable<ImmDto>>> GetImmList([FromQuery] bool? isActive = null)
     {
+        /// Фронтэнд основного API требует получать статус IMM для корректного отображения. 
+        /// Смотри здесь:
+        /// @Wintime-Control-Frontend/src/components/dashboard/ImmCard.vue  
+        /// @Wintime-Control-Frontend/src/api/imm.js  
+        /// @Wintime-Control-Frontend/src/components/dashboard/ImmStatusBadge.vue  
+        /// @Wintime-Control-Frontend/src/constants/immStatus.js 
+        /// Но imm.js обращается к  контроллеру Imm в бекэнде. Запрос Get этого контроллера возвращает список объектов ImmDto, у которых нет поля "статус".
+        /// Как решить эту проблему? 
+        /// Можно ввести для IMM отдельную сущность "статус" и использовать её вместе с ImmDto. 
+        /// Статус - это по сути комбинация из режима работы и состояния доступности IMM.
+        /// Режим работы определяется датчиком mode.
+        /// А состояние доступности определяется в кеше IMM - у ImmCacheEntry есть функция IsOnline.
+        /// 
+        /// Тут есть проблема с датчиком mode. По сути он описывает некое глобальное состояние IMM.
+        /// Это уникалный вид датчика. Он может быть только один в списке датчиков IMM.
+        /// Сейчас он опписывается как строковой, но на самом деле надо ввести для него специальный тип "mode", по аналогии с типом "cycleCounter".
+        /// Данные при этом останутся строковыми, но можно будет выделить этот датчик из списка именно по его типу.
+        /// С другой стороны можно вынести датчик mode в отдельное поле в payload сообщения, по аналогии с полем timestamp.
+        /// Т.е. сделать его не датчиком, а отдельным полем в json.
+        /// Не знаю как лучше поступить.
+        /// Если сравнивать с cycleCounter, то у некоторых видов оборудования может не быть циклов.
+        /// Но режим работы у оборудования всегда есть. Сами строковые константы, описывающие режимы работы конкретного вида оборудоания могут быть разные, но сам редим есть у любого оборудования.
+        /// Всегда есть как минимум два режима работы:
+        /// 1. простой (idle - оборудование включено, но находится не под нагрузкой, потребление электроэнергии низкое, обрудование простаивает без пользы)
+        /// 2. работа по программе (auto - оборудование включено и потребляет много энергии, т.к. делает полезную работу)
+        /// Подскажи как лучше быть с датчиком mode? Сделать в конфиге уникальный тип датчика "mode" или вынести в отдельное поле в payload сообщения?
+        /// 
+        /// Состояние доступности оборудования имеет приоритет над режимом работы.
+        /// Если система определила, что оборудование упало в offline, то режим работы уже неважен - устройство недоступно и мы не можем определить его режим работы.
+        /// Если же устройство находится online, то статус оборудования определяется режимом работы.
+        /// 
+        /// Ещё один важный момент - статус оборудования надо хранить в БД, т.к. он потребуется для составления отчётов.
+        /// 
+        /// Я думаю, что надо вынести статус как отдельную сущность. 
+        /// Эта сущность будет по сути отображать факт изменения статуса IMM - устройство стало offline, устройство стало online с режимом работы таким-то.
+        /// Изменение статуса IMM происходит при обработке поступившего сообщения.
+        /// Также надо сделать отделного воркера (на базе IHostedService), 
+        /// который будет один раз в секунду выполнять проверку доступности IMM через IImmCache.
+        /// Если IMM была доступна, а в момент проверки выяснилось, что таймаут получения сообщений превышен и IMM считается недоступной, 
+        /// то воркер должен создать новый экземпляр статуса и сохранить его в БД.
+        /// Замечание: IImmCache не хранит статус IMM, а только вычисляет, поэтому возможно стоит сделать отдельный кеш для статусов IMM.
         var query = _context.Imms
             .Include(i => i.Template)
             .AsQueryable();
 
         if (isActive.HasValue)
-        {
             query = query.Where(i => i.IsActive == isActive.Value);
-        }
 
         var imms = await query
             .Select(i => new ImmDto
@@ -49,6 +91,9 @@ public class ImmController : ControllerBase
                 CreatedAt = i.CreatedAt
             })
             .ToListAsync();
+
+        foreach (var dto in imms)
+            dto.Status = _statusCache.GetStatus(dto.Id);
 
         return Ok(imms);
     }
@@ -76,7 +121,8 @@ public class ImmController : ControllerBase
             Manufacturer = imm.Template.Manufacturer,
             Model = imm.Template.Model,
             IsActive = imm.IsActive,
-            CreatedAt = imm.CreatedAt
+            CreatedAt = imm.CreatedAt,
+            Status = _statusCache.GetStatus(imm.Id)
         };
 
         return Ok(dto);
@@ -113,7 +159,8 @@ public class ImmController : ControllerBase
             Manufacturer = template.Manufacturer,
             Model = template.Model,
             IsActive = imm.IsActive,
-            CreatedAt = imm.CreatedAt
+            CreatedAt = imm.CreatedAt,
+            Status = _statusCache.GetStatus(imm.Id)
         };
 
         return CreatedAtAction(nameof(GetImmById), new { id = imm.Id }, dto);
