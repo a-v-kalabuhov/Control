@@ -203,6 +203,7 @@ using (var scope = app.Services.CreateScope())
     var adminEmail = "admin@control.local";
     var emulatorEmail = "emulator@control.local";
     
+    // TODO : убрать в продакшне
     // Создаем стандартные роли, если они еще не существуют
     string[] roleNames = { "Admin", "Manager", "Adjuster", "Observer" };
     foreach (var roleName in roleNames)

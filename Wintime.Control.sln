@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wintime.Control.Infrastruct
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wintime.Control.Emulator", "Wintime.Control.Emulator\Wintime.Control.Emulator.csproj", "{9E8E4966-DD1C-440F-8542-7414630C6BB6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wintime.Control.Tests.Unit", "Wintime.Control.Tests.Unit\Wintime.Control.Tests.Unit.csproj", "{CE42830C-ECEB-4959-BC0D-196B8602B302}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{9E8E4966-DD1C-440F-8542-7414630C6BB6}.Release|x64.Build.0 = Release|Any CPU
 		{9E8E4966-DD1C-440F-8542-7414630C6BB6}.Release|x86.ActiveCfg = Release|Any CPU
 		{9E8E4966-DD1C-440F-8542-7414630C6BB6}.Release|x86.Build.0 = Release|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Debug|x64.Build.0 = Debug|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Debug|x86.Build.0 = Debug|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Release|x64.ActiveCfg = Release|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Release|x64.Build.0 = Release|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Release|x86.ActiveCfg = Release|Any CPU
+		{CE42830C-ECEB-4959-BC0D-196B8602B302}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
