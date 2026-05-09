@@ -78,6 +78,12 @@ const routes = [
             name: 'DictionaryPersonnel',
             component: () => import('@/views/dictionary/PersonnelDictionary.vue'),
             meta: { roles: ['Admin', 'Manager'] }
+          },
+          {
+            path: 'shifts',
+            name: 'DictionaryShifts',
+            component: () => import('@/views/dictionary/ShiftsDictionary.vue'),
+            meta: { roles: ['Admin', 'Manager', 'Observer'] }
           }
         ]
       },

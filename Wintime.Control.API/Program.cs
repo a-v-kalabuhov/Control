@@ -139,6 +139,7 @@ builder.Services.AddSwaggerGen(c =>
 
 // Сервисы
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IShiftService, ShiftService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
 // MQTT Service
@@ -238,6 +239,20 @@ using (var scope = app.Services.CreateScope())
         await userManager.CreateAsync(user, seed.Password);
         await userManager.AddToRoleAsync(user, seed.RoleName);
         Log.Information("Seed user created: {UserName} / {Password}", seed.UserName, seed.Password);
+    }
+
+    // Дефолтная смена 08:00–17:00, перерыв 12:00–13:00
+    if (!db.Shifts.Any())
+    {
+        db.Shifts.Add(new Shift
+        {
+            StartMinutes = 480,
+            DurationMinutes = 540,
+            BreakStartMinutes = 720,
+            BreakDurationMinutes = 60
+        });
+        await db.SaveChangesAsync();
+        Log.Information("Создана дефолтная смена: 08:00–17:00, перерыв 12:00–13:00");
     }
 }
 

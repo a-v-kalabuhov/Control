@@ -55,8 +55,17 @@
             <el-menu-item index="/dictionary/imm">ТПА</el-menu-item>
             <el-menu-item index="/dictionary/molds">Пресс-формы</el-menu-item>
             <el-menu-item index="/dictionary/personnel">Персонал</el-menu-item>
+            <el-menu-item index="/dictionary/shifts">Смены</el-menu-item>
           </el-sub-menu>
-          <!-- В sidebar (DefaultLayout.vue) добавьте пункт меню: -->
+          <!-- Смены отдельно для Observer (для Admin/Manager — внутри Справочников) -->
+          <el-menu-item
+            v-if="canAccess(['Observer'])"
+            index="/dictionary/shifts"
+          >
+            <el-icon><Clock /></el-icon>
+            <span>Смены</span>
+          </el-menu-item>
+
           <el-sub-menu v-if="canAccess(['Admin'])" index="admin">
             <template #title>
               <el-icon><Setting /></el-icon>
@@ -162,7 +171,8 @@ const pageTitle = computed(() => {
     '/reports': 'Отчёты',
     '/dictionary/imm': 'Справочник ТПА',
     '/dictionary/molds': 'Справочник пресс-форм',
-    '/dictionary/personnel': 'Справочник персонала'
+    '/dictionary/personnel': 'Справочник персонала',
+    '/dictionary/shifts': 'Расписание смен'
   }
   return titles[route.path] || 'CONTROL'
 })

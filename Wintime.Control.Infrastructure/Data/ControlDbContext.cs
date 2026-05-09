@@ -22,6 +22,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<Telemetry> Telemetry { get; set; }
     public DbSet<ImmStatusHistory> ImmStatusHistory { get; set; }
     public DbSet<AppHeartbeat> AppHeartbeat { get; set; }
+    public DbSet<Shift> Shifts { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
