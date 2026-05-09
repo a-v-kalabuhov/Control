@@ -74,8 +74,7 @@ export const useDashboardStore = defineStore('dashboard', {
         this.imms = response.data.map(imm => ({
           ...imm,
           status: imm.status || 'Offline',
-          currentCycleTime: 0,
-          lastUpdate: null
+          currentCycleTime: 0
         }))
         this.lastUpdate = new Date()
         return { success: true }

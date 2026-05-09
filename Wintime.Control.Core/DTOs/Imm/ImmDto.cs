@@ -11,4 +11,5 @@ public class ImmDto
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? Status { get; set; }
+    public DateTime? LastUpdate { get; set; }
 }

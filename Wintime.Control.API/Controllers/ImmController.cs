@@ -93,7 +93,11 @@ public class ImmController : ControllerBase
             .ToListAsync();
 
         foreach (var dto in imms)
-            dto.Status = _statusCache.GetStatus(dto.Id);
+        {
+            var entry = _statusCache.GetEntry(dto.Id);
+            dto.Status = entry?.Status ?? "Offline";
+            dto.LastUpdate = entry?.SinceUtc;
+        }
 
         return Ok(imms);
     }
