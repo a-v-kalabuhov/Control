@@ -40,14 +40,11 @@
     </el-card>
 
     <!-- Список заданий -->
-    <div 
+    <div
       v-loading="mobileStore.loading"
-      class="space-y-3"
+      element-loading-text="Загрузка заданий..."
+      class="space-y-3 min-h-[80px]"
     >
-      <div v-if="mobileStore.filteredTasks.length === 0" class="text-center py-12">
-        <el-empty description="Заданий нет" />
-      </div>
-
       <MobileTaskCard
         v-for="task in mobileStore.filteredTasks"
         :key="task.id"
@@ -56,6 +53,10 @@
         @start="startTask(task)"
         @complete="completeTask(task)"
       />
+    </div>
+
+    <div v-if="!mobileStore.loading && mobileStore.filteredTasks.length === 0" class="text-center py-12">
+      <el-empty description="Заданий нет" />
     </div>
 
     <!-- Кнопка сканера -->

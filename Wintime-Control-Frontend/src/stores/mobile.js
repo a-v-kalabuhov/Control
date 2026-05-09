@@ -60,7 +60,7 @@ export const useMobileStore = defineStore('mobile', {
         const response = await mobileApi.getMyTasks({
           status: this.filters.status || undefined
         })
-        this.tasks = response.data
+        this.tasks = response.data ?? []
         return { success: true }
       } catch (error) {
         ElMessage.error('Ошибка загрузки заданий')

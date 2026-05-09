@@ -37,12 +37,17 @@ let isRefreshing = false
 let refreshSubscribers = []
 
 function onRefreshed(newToken) {
-  refreshSubscribers.forEach(cb => cb(newToken))
+  refreshSubscribers.forEach(({ resolve }) => resolve(newToken))
   refreshSubscribers = []
 }
 
-function addRefreshSubscriber(cb) {
-  refreshSubscribers.push(cb)
+function onRefreshFailed(error) {
+  refreshSubscribers.forEach(({ reject }) => reject(error))
+  refreshSubscribers = []
+}
+
+function addRefreshSubscriber(resolve, reject) {
+  refreshSubscribers.push({ resolve, reject })
 }
 
 // Интерсептор ответа - обработка ошибок и автообновление токена
@@ -105,30 +110,32 @@ apiClient.interceptors.response.use(
           return apiClient(originalRequest)
         } catch (refreshError) {
           isRefreshing = false
-          refreshSubscribers = []
-          
-          // Для не-аутентификационных запросов, не разлогиниваем пользователя сразу
-          // Вместо этого возвращаем специальную ошибку, чтобы вызывающий код мог решить
+
           const isAuthRequest = url.includes('/auth/')
           if (isAuthRequest) {
             authStore.clearAuth()
           }
-          
-          // Создаем специальную ошибку для обработки в вызывающем коде
+
           const authError = new Error('Токен аутентификации истёк и не может быть обновлен')
           authError.isAuthError = true
           authError.status = 401
           authError.originalError = refreshError
+
+          // Отклоняем все ожидающие запросы — иначе они зависнут навсегда
+          onRefreshFailed(authError)
           return Promise.reject(authError)
         }
       }
 
       // Если refresh уже идёт — ждём его завершения и повторяем запрос
-      return new Promise((resolve) => {
-        addRefreshSubscriber((newToken) => {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`
-          resolve(apiClient(originalRequest))
-        })
+      return new Promise((resolve, reject) => {
+        addRefreshSubscriber(
+          (newToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`
+            resolve(apiClient(originalRequest))
+          },
+          (error) => reject(error)
+        )
       })
     }
 
