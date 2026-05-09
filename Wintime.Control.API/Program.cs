@@ -14,6 +14,7 @@ using Wintime.Control.Infrastructure.MQTT;
 using Wintime.Control.Shared.Settings;
 using Wintime.Control.Infrastructure.Mqtt;
 using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Cache;
 using Wintime.Control.Infrastructure.Services;
 
@@ -201,55 +202,42 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
     db.Database.Migrate();
 
-    // Создание ролей, если они еще не существуют
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-    var adminEmail = "admin@control.local";
-    var emulatorEmail = "emulator@control.local";
-    
-    // TODO : убрать в продакшне
-    // Создаем стандартные роли, если они еще не существуют
+
+    // TODO: убрать в продакшне
     string[] roleNames = { "Admin", "Manager", "Adjuster", "Observer", "Emulator" };
     foreach (var roleName in roleNames)
     {
         if (!await roleManager.RoleExistsAsync(roleName))
-        {
             await roleManager.CreateAsync(new IdentityRole(roleName));
-        }
     }
-    
-    // Создание админа по умолчанию (для разработки)
-    if (await userManager.FindByNameAsync("admin") == null)
+
+    var seedUsers = new[]
     {
-        var admin = new User
+        new { UserName = "admin",    Email = "admin@control.local",    FullName = "Администратор Системы", Role = UserRole.Admin,    RoleName = "Admin",    Password = "Admin123!"    },
+        new { UserName = "manager",  Email = "manager@control.local",  FullName = "Начальник цеха",        Role = UserRole.Manager,  RoleName = "Manager",  Password = "Manager123!"  },
+        new { UserName = "adjuster", Email = "adjuster@control.local", FullName = "Наладчик Тестовый",    Role = UserRole.Adjuster, RoleName = "Adjuster", Password = "Adjuster123!" },
+        new { UserName = "emulator", Email = "emulator@control.local", FullName = "Эмулятор ТПА",         Role = UserRole.Emulator, RoleName = "Emulator", Password = "Emulator123!" },
+    };
+
+    foreach (var seed in seedUsers)
+    {
+        if (await userManager.FindByNameAsync(seed.UserName) != null)
+            continue;
+
+        var user = new User
         {
-            UserName = "admin",
-            Email = adminEmail,
-            FullName = "Администратор Системы",
-            Role = Wintime.Control.Core.Enums.UserRole.Admin,
+            UserName = seed.UserName,
+            Email = seed.Email,
+            FullName = seed.FullName,
+            Role = seed.Role,
             IsActive = true
         };
-        
-        await userManager.CreateAsync(admin, "Admin123!");
-        await userManager.AddToRoleAsync(admin, "Admin");
-        Log.Information("Admin user created: admin / Admin123!");
-    }
-    
-    // Создание роли эмулятора по умолчанию (для разработки)
-    if (await userManager.FindByNameAsync("emulator") == null)
-    {
-        var emulator = new User
-        {
-            UserName = "emulator",
-            Email = emulatorEmail,
-            FullName = "Эмутялор ТПА",
-            Role = Wintime.Control.Core.Enums.UserRole.Emulator,
-            IsActive = true
-        };
-        
-        await userManager.CreateAsync(emulator, "Emulator123!");
-        await userManager.AddToRoleAsync(emulator, "Emulator");
-        Log.Information("Emulator user created: emulator / Emulator123!");
+
+        await userManager.CreateAsync(user, seed.Password);
+        await userManager.AddToRoleAsync(user, seed.RoleName);
+        Log.Information("Seed user created: {UserName} / {Password}", seed.UserName, seed.Password);
     }
 }
 
