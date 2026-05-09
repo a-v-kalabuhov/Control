@@ -55,9 +55,10 @@ export const useMobileStore = defineStore('mobile', {
     // Загрузка моих заданий
     async loadMyTasks() {
       this.loading = true
+      this.tasks = []
       try {
-        const response = await mobileApi.getMyTasks({ 
-          status: this.filters.status || undefined 
+        const response = await mobileApi.getMyTasks({
+          status: this.filters.status || undefined
         })
         this.tasks = response.data
         return { success: true }

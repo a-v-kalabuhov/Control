@@ -77,6 +77,55 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
+    /// Мои задания — для текущего наладчика (по JWT)
+    /// </summary>
+    [HttpGet("my")]
+    [Authorize(Roles = $"{Roles.Adjuster},{Roles.Manager},{Roles.Admin}")]
+    public async Task<ActionResult<IEnumerable<TaskDto>>> GetMyTasks(
+        [FromQuery] Core.Enums.TaskStatus? status = null)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var query = _context.Tasks
+            .Include(t => t.Imm)
+            .Include(t => t.Mold)
+            .Include(t => t.Personnel)
+            .Where(t => t.PersonnelId == userId)
+            .Where(t => t.Status != Core.Enums.TaskStatus.Draft)
+            .AsQueryable();
+
+        if (status.HasValue)
+            query = query.Where(t => t.Status == status.Value);
+
+        var tasks = await query.ToListAsync();
+
+        var dtos = tasks.Select(t => new TaskDto
+        {
+            Id = t.Id,
+            ImmId = t.ImmId,
+            ImmName = t.Imm.Name,
+            MoldId = t.MoldId,
+            MoldName = t.Mold.Name,
+            PersonnelId = t.PersonnelId,
+            PersonnelName = t.Personnel?.FullName,
+            PlanQuantity = t.PlanQuantity,
+            ActualQuantity = t.ActualQuantity,
+            ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
+            Status = t.Status,
+            IssuedAt = t.IssuedAt,
+            StartedAt = t.StartedAt,
+            CompletedAt = t.CompletedAt,
+            ClosedAt = t.ClosedAt,
+            CloseReason = t.CloseReason,
+            Note = t.Note
+        }).ToList();
+
+        return Ok(dtos);
+    }
+
+    /// <summary>
     /// Получить детали задания
     /// </summary>
     [HttpGet("{id:guid}")]
