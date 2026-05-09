@@ -7,15 +7,16 @@ export const useAuthStore = defineStore('auth', {
     user: null,
     accessToken: localStorage.getItem('access_token') || null,
     refreshToken: localStorage.getItem('refresh_token') || null,
-    isAuthenticated: !!localStorage.getItem('access_token')
+    isAuthenticated: !!localStorage.getItem('access_token'),
+    userRole: localStorage.getItem('user_role') || null
   }),
-  
+
   getters: {
-    isAdmin: (state) => state.user?.role === 'Admin',
-    isManager: (state) => state.user?.role === 'Manager',
-    isAdjuster: (state) => state.user?.role === 'Adjuster',
-    isObserver: (state) => state.user?.role === 'Observer',
-    hasRole: (state) => (roles) => roles.includes(state.user?.role)
+    isAdmin: (state) => (state.user?.role ?? state.userRole) === 'Admin',
+    isManager: (state) => (state.user?.role ?? state.userRole) === 'Manager',
+    isAdjuster: (state) => (state.user?.role ?? state.userRole) === 'Adjuster',
+    isObserver: (state) => (state.user?.role ?? state.userRole) === 'Observer',
+    hasRole: (state) => (roles) => roles.includes(state.user?.role ?? state.userRole)
   },
   
   actions: {
@@ -27,11 +28,13 @@ export const useAuthStore = defineStore('auth', {
         this.accessToken = accessToken
         this.refreshToken = refreshToken
         this.user = user
+        this.userRole = user.role
         this.isAuthenticated = true
-        
+
         localStorage.setItem('access_token', accessToken)
         localStorage.setItem('refresh_token', refreshToken)
-        
+        localStorage.setItem('user_role', user.role)
+
         return { success: true }
       } catch (error) {
         return { 
@@ -61,9 +64,11 @@ export const useAuthStore = defineStore('auth', {
         this.accessToken = accessToken
         this.refreshToken = refreshToken
         this.user = user
+        this.userRole = user.role
         this.isAuthenticated = true
         localStorage.setItem('access_token', accessToken)
         localStorage.setItem('refresh_token', refreshToken)
+        localStorage.setItem('user_role', user.role)
         return { success: true }
       } catch (error) {
         return { success: false, status: error.response?.status || null }
@@ -74,6 +79,8 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await authApi.getCurrentUser()
         this.user = response.data
+        this.userRole = response.data.role
+        localStorage.setItem('user_role', response.data.role)
         return { success: true }
       } catch (error) {
         // Возвращаем HTTP-статус ошибки, чтобы вызывающий код мог различить
@@ -85,25 +92,29 @@ export const useAuthStore = defineStore('auth', {
     
     clearAuth() {
       this.user = null
+      this.userRole = null
       this.accessToken = null
       this.refreshToken = null
       this.isAuthenticated = false
-      
+
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
-      
+      localStorage.removeItem('user_role')
+
       router.push('/login')
     },
 
     // Мягкая очистка аутентификации без перенаправления
     softClearAuth() {
       this.user = null
+      this.userRole = null
       this.accessToken = null
       this.refreshToken = null
       this.isAuthenticated = false
-      
+
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
+      localStorage.removeItem('user_role')
     }
   }
 })

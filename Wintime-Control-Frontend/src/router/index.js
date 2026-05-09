@@ -132,15 +132,37 @@ const router = createRouter({
   routes
 })
 
-// Базовый guard
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
-  
+
+  // Аутентифицированный пользователь не должен попадать на страницу логина
+  if (to.name === 'Login' && authStore.isAuthenticated) {
+    next(authStore.isAdjuster ? '/mobile/tasks' : '/')
+    return
+  }
+
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
-  } else {
-    next()
+    return
   }
+
+  if (authStore.isAuthenticated) {
+    const isMobileRoute = to.matched.some(r => r.meta.isMobile)
+
+    // Наладчик не должен видеть десктопные страницы
+    if (authStore.isAdjuster && !isMobileRoute) {
+      next('/mobile/tasks')
+      return
+    }
+
+    // Другие роли не имеют доступа к мобильному интерфейсу
+    if (!authStore.isAdjuster && isMobileRoute) {
+      next('/')
+      return
+    }
+  }
+
+  next()
 })
 
 export default router
