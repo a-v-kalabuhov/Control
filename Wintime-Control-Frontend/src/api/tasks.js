@@ -36,6 +36,11 @@ export const tasksApi = {
     return apiClient.post(`/tasks/${id}/close`, data)
   },
 
+  // Выдать задание (Draft → Issued)
+  issue(id) {
+    return apiClient.post(`/tasks/${id}/issue`)
+  },
+
   // Удалить задание (отмена)
   delete(id) {
     return apiClient.delete(`/tasks/${id}`)

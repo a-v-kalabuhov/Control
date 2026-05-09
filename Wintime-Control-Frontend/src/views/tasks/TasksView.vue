@@ -126,17 +126,36 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="Действия" width="200" fixed="right">
+        <el-table-column label="Действия" width="240" fixed="right">
           <template #default="{ row }">
-            <el-button 
-              size="small" 
+            <el-button
+              size="small"
               @click.stop="openDetail(row)"
             >
               Детали
             </el-button>
-            <el-button 
+            <el-popconfirm
+              v-if="canIssueTask(row)"
+              :title="`${row.immName} / ${row.moldName}`"
+              confirm-button-text="Выдать"
+              cancel-button-text="Отмена"
+              confirm-button-type="warning"
+              width="260"
+              @confirm="issueTask(row)"
+            >
+              <template #reference>
+                <el-button
+                  size="small"
+                  type="warning"
+                  @click.stop
+                >
+                  Выдать
+                </el-button>
+              </template>
+            </el-popconfirm>
+            <el-button
               v-if="canEditTask(row)"
-              size="small" 
+              size="small"
               type="primary"
               @click.stop="editTask(row)"
             >
@@ -158,6 +177,7 @@
       v-model="detailModalVisible"
       :task="selectedTask"
       @edit="editTask"
+      @issue="issueTask"
       @complete="completeTask"
       @close="closeTask"
     />
@@ -247,6 +267,15 @@ const closeTask = async (task) => {
       ElMessage.error('Ошибка закрытия задания')
     }
   }
+}
+
+const canIssueTask = (task) => {
+  return task.status === 'Draft' && canCreate.value
+}
+
+const issueTask = async (task) => {
+  await tasksStore.issueTask(task.id)
+  detailModalVisible.value = false
 }
 
 const canEditTask = (task) => {

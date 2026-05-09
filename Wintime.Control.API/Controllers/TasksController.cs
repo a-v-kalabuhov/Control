@@ -227,6 +227,28 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
+    /// Выдать задание (перевести из черновика в статус Issued)
+    /// </summary>
+    [HttpPost("{id:guid}/issue")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<IActionResult> IssueTask(Guid id)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+            return NotFound();
+
+        if (task.Status != Core.Enums.TaskStatus.Draft)
+            return BadRequest("Задание не является черновиком");
+
+        task.Status = Core.Enums.TaskStatus.Issued;
+        task.IssuedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Задание выдано" });
+    }
+
+    /// <summary>
     /// Начать выполнение задания (сканирование QR)
     /// </summary>
     [HttpPost("{id:guid}/start")]

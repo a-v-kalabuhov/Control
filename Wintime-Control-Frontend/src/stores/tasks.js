@@ -124,6 +124,20 @@ export const useTasksStore = defineStore('tasks', {
       }
     },
 
+    // Выдача задания (Draft → Issued)
+    async issueTask(id) {
+      try {
+        await tasksApi.issue(id)
+        await this.loadTasks()
+        ElMessage.success('Задание выдано в работу')
+        return { success: true }
+      } catch (error) {
+        const message = error.response?.data?.message || 'Ошибка выдачи задания'
+        ElMessage.error(message)
+        return { success: false, message }
+      }
+    },
+
     // Обновление задания
     async updateTask(id, data) {
       try {

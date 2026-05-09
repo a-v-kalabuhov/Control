@@ -57,23 +57,36 @@
       </el-card>
 
       <!-- Действия -->
-      <div class="flex justify-end gap-4 mt-6" v-if="canEdit || canComplete || canClose">
-        <el-button 
-          v-if="canEdit" 
+      <div class="flex justify-end gap-4 mt-6" v-if="canEdit || canIssue || canComplete || canClose">
+        <el-button
+          v-if="canEdit"
           @click="$emit('edit', task)"
         >
           Редактировать
         </el-button>
-        <el-button 
-          v-if="canComplete" 
-          type="success" 
+        <el-popconfirm
+          v-if="canIssue"
+          title="Выдать задание в работу?"
+          confirm-button-text="Выдать"
+          cancel-button-text="Отмена"
+          confirm-button-type="warning"
+          width="240"
+          @confirm="$emit('issue', task)"
+        >
+          <template #reference>
+            <el-button type="warning">Выдать</el-button>
+          </template>
+        </el-popconfirm>
+        <el-button
+          v-if="canComplete"
+          type="success"
           @click="$emit('complete', task)"
         >
           Завершить
         </el-button>
-        <el-button 
-          v-if="canClose" 
-          type="info" 
+        <el-button
+          v-if="canClose"
+          type="info"
           @click="$emit('close', task)"
         >
           Закрыть
@@ -101,7 +114,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'edit', 'complete', 'close'])
+const emit = defineEmits(['update:modelValue', 'edit', 'issue', 'complete', 'close'])
 
 const authStore = useAuthStore()
 const loading = ref(false)
@@ -112,6 +125,11 @@ const visible = computed({
 })
 
 const canEdit = computed(() => {
+  if (!props.task) return false
+  return props.task.status === 'Draft' && authStore.isManager
+})
+
+const canIssue = computed(() => {
   if (!props.task) return false
   return props.task.status === 'Draft' && authStore.isManager
 })
