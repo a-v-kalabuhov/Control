@@ -88,7 +88,7 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed } from 'vue'
+import { ref, shallowRef, computed, onUnmounted } from 'vue'
 import { dashboardApi } from '@/api/dashboard'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage } from 'element-plus'
@@ -196,9 +196,19 @@ const loadData = async () => {
   }
 }
 
-const onOpen   = () => loadData()
+let refreshTimer = null
+
+const onOpen = () => {
+  loadData()
+  refreshTimer = setInterval(loadData, 60_000)
+}
+
 const onClosed = () => {
+  clearInterval(refreshTimer)
+  refreshTimer = null
   statusSegments.value = []
   tasks.value          = []
 }
+
+onUnmounted(() => clearInterval(refreshTimer))
 </script>
