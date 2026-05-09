@@ -21,6 +21,11 @@ export const dashboardApi = {
     return apiClient.get(`/imm/${id}/statistics`, { params })
   },
 
+  // История статусов ТПА за период (для таймлайна смены)
+  getImmStatusHistory(id, params) {
+    return apiClient.get(`/imm/${id}/status-history`, { params })
+  },
+
   // Получить активные задания
   getActiveTasks() {
     return apiClient.get('/tasks', { 

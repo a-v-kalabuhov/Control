@@ -251,6 +251,34 @@ public class ImmController : ControllerBase
     }
 
     /// <summary>
+    /// История статусов ТПА за период (для таймлайна смены)
+    /// </summary>
+    [HttpGet("{id:guid}/status-history")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
+    public async Task<ActionResult<IEnumerable<ImmStatusSegmentDto>>> GetImmStatusHistory(
+        Guid id,
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to)
+    {
+        var immExists = await _context.Imms.AnyAsync(i => i.Id == id);
+        if (!immExists)
+            return NotFound();
+
+        var segments = await _context.ImmStatusHistory
+            .Where(h => h.ImmId == id && h.ChangedAt < to && (h.EndedAt == null || h.EndedAt > from))
+            .OrderBy(h => h.ChangedAt)
+            .Select(h => new ImmStatusSegmentDto
+            {
+                Status = h.Status,
+                ChangedAt = h.ChangedAt,
+                EndedAt = h.EndedAt
+            })
+            .ToListAsync();
+
+        return Ok(segments);
+    }
+
+    /// <summary>
     /// Получить статистику по циклам за период
     /// </summary>
     [HttpGet("{id:guid}/statistics")]
