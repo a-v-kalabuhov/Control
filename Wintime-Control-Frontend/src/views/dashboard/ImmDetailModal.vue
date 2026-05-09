@@ -136,8 +136,8 @@ const STATUS_LEGEND = [
 ]
 
 function segDurationMs(seg) {
-  const startMs      = new Date(seg.ChangedAt).getTime()
-  const endMs        = seg.EndedAt ? new Date(seg.EndedAt).getTime() : Date.now()
+  const startMs      = new Date(seg.changedAt).getTime()
+  const endMs        = seg.endedAt ? new Date(seg.endedAt).getTime() : Date.now()
   const shiftStartMs = shift.value.start.getTime()
   const shiftEndMs   = shift.value.end.getTime()
   const clampS = Math.max(startMs, shiftStartMs)
@@ -159,9 +159,9 @@ const summary = computed(() => {
   const totals = { auto: 0, manual: 0, alarm: 0, offline: 0 }
   for (const seg of statusSegments.value) {
     const ms = segDurationMs(seg)
-    if (seg.Status === 'Auto')             totals.auto   += ms
-    else if (seg.Status === 'Manual')      totals.manual += ms
-    else if (seg.Status === 'Alarm')       totals.alarm  += ms
+    if (seg.status === 'Auto')             totals.auto   += ms
+    else if (seg.status === 'Manual')      totals.manual += ms
+    else if (seg.status === 'Alarm')       totals.alarm  += ms
     else /* Offline / Idle */              totals.offline += ms
   }
   return {

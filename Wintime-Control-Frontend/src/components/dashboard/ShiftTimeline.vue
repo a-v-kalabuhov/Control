@@ -22,7 +22,7 @@
             v-for="(seg, i) in statusSegments"
             :key="i"
             class="seg-block"
-            :style="{ width: segWidth(seg.ChangedAt, seg.EndedAt), background: statusColor(seg.Status) }"
+            :style="{ width: segWidth(seg.changedAt, seg.endedAt), background: statusColor(seg.status) }"
             :title="segTitle(seg)"
           ></div>
           <!-- Ещё не прошедшее время смены -->
@@ -91,7 +91,7 @@ const nowPct     = computed(() => toPct(nowClamped.value))
 const nowLabel   = computed(() => formatTime(nowClamped.value))
 const futureWidth = computed(() => {
   const lastEnd = props.statusSegments.length
-    ? new Date(props.statusSegments[props.statusSegments.length - 1].EndedAt ?? nowClamped.value)
+    ? new Date(props.statusSegments[props.statusSegments.length - 1].endedAt ?? nowClamped.value)
     : props.shiftStart
   const effectiveLast = lastEnd > nowClamped.value ? nowClamped.value : lastEnd
   if (effectiveLast >= props.shiftEnd) return null
@@ -167,9 +167,9 @@ function durStr(ms) {
 const STATUS_LABELS = { Auto: 'Авто', Manual: 'Наладка', Alarm: 'Авария', Offline: 'Оффлайн', Idle: 'Ожидание' }
 
 function segTitle(seg) {
-  const start = new Date(seg.ChangedAt)
-  const end   = seg.EndedAt ? new Date(seg.EndedAt) : now
-  return `${STATUS_LABELS[seg.Status] ?? seg.Status}\n${formatTime(start)} — ${formatTime(end)}\n${durStr(end - start)}`
+  const start = new Date(seg.changedAt)
+  const end   = seg.endedAt ? new Date(seg.endedAt) : now
+  return `${STATUS_LABELS[seg.status] ?? seg.status}\n${formatTime(start)} — ${formatTime(end)}\n${durStr(end - start)}`
 }
 
 function taskTitle(task) {

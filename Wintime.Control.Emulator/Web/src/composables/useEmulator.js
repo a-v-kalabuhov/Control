@@ -51,7 +51,6 @@ export function useEmulator() {
     try {
       const response = await emulatorApi.getTemplate(templateId)
       // Преобразуем сенсоры шаблона в конфиги эмуляции с дефолтными значениями
-      //console.log('loadTemplateSensors', response.data);
       const profileModes = ['auto', 'manual', 'idle']
       const isModeType = (s) =>
         s.type === 'string' &&
