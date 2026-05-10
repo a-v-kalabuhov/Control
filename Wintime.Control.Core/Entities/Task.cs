@@ -13,6 +13,7 @@ public class Task : BaseEntity
     public string? Note { get; set; }
     public string? CloseReason { get; set; }
 
+    public DateTime? PlannedDate { get; set; }
     public DateTime? IssuedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }

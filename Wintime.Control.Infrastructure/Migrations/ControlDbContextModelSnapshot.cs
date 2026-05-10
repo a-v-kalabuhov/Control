@@ -461,6 +461,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<int>("PlanQuantity")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("PlannedDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 

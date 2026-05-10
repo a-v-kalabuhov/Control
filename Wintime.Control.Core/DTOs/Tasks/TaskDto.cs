@@ -13,6 +13,7 @@ public class TaskDto
     public int ActualQuantity { get; set; }
     public decimal ProgressPercent { get; set; }
     public Enums.TaskStatus Status { get; set; }
+    public DateTime? PlannedDate { get; set; }
     public DateTime? IssuedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }

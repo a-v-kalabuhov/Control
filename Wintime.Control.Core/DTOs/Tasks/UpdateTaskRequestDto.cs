@@ -6,5 +6,6 @@ public class UpdateTaskRequestDto
 {
     public int? PlanQuantity { get; set; }
     public string? Note { get; set; }
+    public DateTime? PlannedDate { get; set; }
     public Enums.TaskStatus? Status { get; set; }
 }

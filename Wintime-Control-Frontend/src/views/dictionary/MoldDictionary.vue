@@ -58,8 +58,8 @@
       </el-table-column>
       <el-table-column label="Действия" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="editMold(row)">Редактировать</el-button>
-          <el-button size="small" type="danger" @click="deleteMold(row)">Удалить</el-button>
+          <el-button size="small" style="width: 120px" @click="editMold(row)">Редактировать</el-button>
+          <el-button size="small" style="width: 120px" type="danger" @click="deleteMold(row)">Удалить</el-button>
         </template>
       </el-table-column>
     </el-table>

@@ -65,6 +65,7 @@ public class TasksController : ControllerBase
             ActualQuantity = t.ActualQuantity,
             ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
             Status = t.Status,
+            PlannedDate = t.PlannedDate,
             IssuedAt = t.IssuedAt,
             StartedAt = t.StartedAt,
             CompletedAt = t.CompletedAt,
@@ -114,6 +115,7 @@ public class TasksController : ControllerBase
             ActualQuantity = t.ActualQuantity,
             ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
             Status = t.Status,
+            PlannedDate = t.PlannedDate,
             IssuedAt = t.IssuedAt,
             StartedAt = t.StartedAt,
             CompletedAt = t.CompletedAt,
@@ -154,6 +156,7 @@ public class TasksController : ControllerBase
             ActualQuantity = task.ActualQuantity,
             ProgressPercent = task.PlanQuantity > 0 ? (decimal)task.ActualQuantity / task.PlanQuantity * 100 : 0,
             Status = task.Status,
+            PlannedDate = task.PlannedDate,
             IssuedAt = task.IssuedAt,
             StartedAt = task.StartedAt,
             CompletedAt = task.CompletedAt,
@@ -180,6 +183,7 @@ public class TasksController : ControllerBase
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
             Status = Core.Enums.TaskStatus.Draft,
+            PlannedDate = request.PlannedDate,
             IssuedAt = DateTime.UtcNow
         };
 
@@ -196,6 +200,7 @@ public class TasksController : ControllerBase
             ActualQuantity = task.ActualQuantity,
             ProgressPercent = 0,
             Status = task.Status,
+            PlannedDate = task.PlannedDate,
             IssuedAt = task.IssuedAt,
             Note = task.Note
         };
@@ -218,6 +223,15 @@ public class TasksController : ControllerBase
             task.PlanQuantity = request.PlanQuantity.Value;
         if (request.Note != null)
             task.Note = request.Note;
+        if (request.PlannedDate.HasValue)
+        {
+            if (task.Status != Core.Enums.TaskStatus.Draft)
+                return BadRequest("Плановую дату можно изменить только в черновике");
+            var today = DateTime.UtcNow.Date;
+            if (request.PlannedDate.Value.Date < today)
+                return BadRequest("Плановая дата не может быть в прошлом");
+            task.PlannedDate = request.PlannedDate.Value;
+        }
         if (request.Status.HasValue)
             task.Status = request.Status.Value;
 

@@ -7,4 +7,5 @@ public class CreateTaskRequestDto
     public string? PersonnelId { get; set; }
     public int PlanQuantity { get; set; }
     public string? Note { get; set; }
+    public DateTime? PlannedDate { get; set; }
 }

@@ -84,19 +84,44 @@
 
     <!-- Таблица заданий -->
     <el-card>
-      <el-table 
-        :data="tasksStore.filteredTasks" 
-        stripe 
-        style="width: 100%" 
+      <el-table
+        :data="sortedTasks"
+        stripe
+        style="width: 100%"
         v-loading="tasksStore.loading"
         @row-click="openDetail"
         class="cursor-pointer"
       >
-        <el-table-column prop="immName" label="ТПА" width="150" />
-        <el-table-column prop="moldName" label="Пресс-форма" min-width="200" />
-        <el-table-column prop="personnelName" label="Наладчик" width="180" />
-        
-        <el-table-column label="План / Факт" width="150">
+        <el-table-column prop="immName" width="150">
+          <template #header>
+            <span class="col-header" @click="handleSort('immName')">
+              ТПА <span class="sort-icon">{{ sortIcon('immName') }}</span>
+            </span>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="moldName" min-width="200">
+          <template #header>
+            <span class="col-header" @click="handleSort('moldName')">
+              Пресс-форма <span class="sort-icon">{{ sortIcon('moldName') }}</span>
+            </span>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="personnelName" width="180">
+          <template #header>
+            <span class="col-header" @click="handleSort('personnelName')">
+              Наладчик <span class="sort-icon">{{ sortIcon('personnelName') }}</span>
+            </span>
+          </template>
+        </el-table-column>
+
+        <el-table-column width="150">
+          <template #header>
+            <span class="col-header" @click="handleSort('planQuantity')">
+              План / Факт <span class="sort-icon">{{ sortIcon('planQuantity') }}</span>
+            </span>
+          </template>
           <template #default="{ row }">
             <div class="text-sm">
               <div class="font-medium">{{ row.actualQuantity || 0 }} / {{ row.planQuantity }}</div>
@@ -107,20 +132,30 @@
 
         <el-table-column label="Прогресс" width="180">
           <template #default="{ row }">
-            <TaskProgress 
-              :plan-quantity="row.planQuantity" 
-              :actual-quantity="row.actualQuantity || 0" 
+            <TaskProgress
+              :plan-quantity="row.planQuantity"
+              :actual-quantity="row.actualQuantity || 0"
             />
           </template>
         </el-table-column>
 
-        <el-table-column prop="status" label="Статус" width="120">
+        <el-table-column prop="status" width="120">
+          <template #header>
+            <span class="col-header" @click="handleSort('status')">
+              Статус <span class="sort-icon">{{ sortIcon('status') }}</span>
+            </span>
+          </template>
           <template #default="{ row }">
             <TaskStatusBadge :status="row.status" />
           </template>
         </el-table-column>
 
-        <el-table-column prop="issuedAt" label="Выдано" width="160">
+        <el-table-column prop="issuedAt" width="160">
+          <template #header>
+            <span class="col-header" @click="handleSort('issuedAt')">
+              Выдано <span class="sort-icon">{{ sortIcon('issuedAt') }}</span>
+            </span>
+          </template>
           <template #default="{ row }">
             {{ formatDate(row.issuedAt) }}
           </template>
@@ -206,7 +241,67 @@ const selectedTask = ref(null)
 
 const canCreate = computed(() => authStore.isManager || authStore.isAdmin)
 
+// ── Сортировка ────────────────────────────────────────────────────────────────
+
+const SORT_COOKIE = 'tasks_sort_v1'
+
+const readCookie = (name) => {
+  const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+  return m ? decodeURIComponent(m[2]) : null
+}
+
+const writeCookie = (name, value) => {
+  const exp = new Date(Date.now() + 365 * 864e5).toUTCString()
+  document.cookie = `${name}=${encodeURIComponent(value)};expires=${exp};path=/`
+}
+
+const sort = ref({ field: 'issuedAt', dir: 'desc' })
+
+const handleSort = (field) => {
+  if (sort.value.field !== field) {
+    sort.value = { field, dir: 'desc' }
+  } else if (sort.value.dir === 'desc') {
+    sort.value = { field, dir: 'asc' }
+  } else {
+    sort.value = { field: null, dir: null }
+  }
+  writeCookie(SORT_COOKIE, JSON.stringify(sort.value))
+}
+
+const sortIcon = (field) => {
+  if (sort.value.field !== field) return ''
+  return sort.value.dir === 'desc' ? '▼' : '▲'
+}
+
+const compareValues = (a, b) => {
+  if (a == null && b == null) return 0
+  if (a == null) return -1
+  if (b == null) return 1
+  const da = typeof a === 'string' ? Date.parse(a) : NaN
+  const db = typeof b === 'string' ? Date.parse(b) : NaN
+  if (!isNaN(da) && !isNaN(db)) return da - db
+  if (typeof a === 'string') return a.localeCompare(b, 'ru')
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+const sortedTasks = computed(() => {
+  const tasks = tasksStore.filteredTasks
+  if (!sort.value.field) return tasks
+  const { field, dir } = sort.value
+  const sign = dir === 'desc' ? -1 : 1
+  return [...tasks].sort((a, b) => {
+    const primary = compareValues(a[field], b[field]) * sign
+    return primary !== 0 ? primary : compareValues(a.immName, b.immName)
+  })
+})
+
+// ── Жизненный цикл ────────────────────────────────────────────────────────────
+
 onMounted(() => {
+  const saved = readCookie(SORT_COOKIE)
+  if (saved) {
+    try { sort.value = JSON.parse(saved) } catch {}
+  }
   loadTasks()
 })
 
@@ -299,5 +394,24 @@ const formatDate = (date) => {
 
 :deep(.el-table__row:hover) {
   @apply bg-blue-50;
+}
+
+.col-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.col-header:hover {
+  color: var(--el-color-primary);
+}
+
+.sort-icon {
+  font-size: 10px;
+  color: var(--el-color-primary);
+  min-width: 10px;
 }
 </style>

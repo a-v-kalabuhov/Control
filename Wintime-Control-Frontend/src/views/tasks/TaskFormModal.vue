@@ -87,10 +87,22 @@
         />
       </el-form-item>
 
+      <el-form-item label="Плановая дата" prop="plannedDate">
+        <el-date-picker
+          v-model="form.plannedDate"
+          type="date"
+          placeholder="Выберите дату"
+          format="DD.MM.YYYY"
+          value-format="YYYY-MM-DD"
+          :disabled-date="isPastDate"
+          class="w-full"
+        />
+      </el-form-item>
+
       <el-form-item label="Примечание">
-        <el-input 
-          v-model="form.note" 
-          type="textarea" 
+        <el-input
+          v-model="form.note"
+          type="textarea"
           :rows="3"
           placeholder="Дополнительная информация"
         />
@@ -160,6 +172,7 @@ const form = reactive({
   moldId: '',
   personnelId: '',
   planQuantity: 1000,
+  plannedDate: null,
   note: ''
 })
 
@@ -183,25 +196,45 @@ const resetForm = () => {
     moldId: '',
     personnelId: '',
     planQuantity: 1000,
+    plannedDate: null,
     note: ''
+  })
+}
+
+const isPastDate = (date) => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return date < today
+}
+
+const populateForm = (task) => {
+  editingTask.value = task
+  Object.assign(form, {
+    immId: task.immId,
+    moldId: task.moldId,
+    personnelId: task.personnelId,
+    planQuantity: task.planQuantity,
+    plannedDate: task.plannedDate ? task.plannedDate.slice(0, 10) : null,
+    note: task.note || ''
   })
 }
 
 watch(() => props.task, (newTask) => {
   if (newTask) {
-    editingTask.value = newTask
-    Object.assign(form, {
-      immId: newTask.immId,
-      moldId: newTask.moldId,
-      personnelId: newTask.personnelId,
-      planQuantity: newTask.planQuantity,
-      note: newTask.note || ''
-    })
+    populateForm(newTask)
   } else {
     editingTask.value = null
     resetForm()
   }
 }, { immediate: true })
+
+// Перезаполняем при каждом открытии диалога, так как task может быть
+// тем же объектом (та же ссылка) — watch выше не сработает повторно.
+watch(() => props.modelValue, (isVisible) => {
+  if (isVisible && props.task) {
+    populateForm(props.task)
+  }
+})
 
 const loadImms = async () => {
   if (imms.value.length > 0) return
