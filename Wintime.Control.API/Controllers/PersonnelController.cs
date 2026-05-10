@@ -45,6 +45,7 @@ public class PersonnelController : ControllerBase
             EmployeeId = u.EmployeeId,
             FullName = u.FullName,
             Qualification = u.Qualification,
+            Login = u.UserName,
             Role = u.Role.ToString(),
             IsActive = u.IsActive
         }).ToList();
@@ -87,6 +88,7 @@ public class PersonnelController : ControllerBase
             EmployeeId = user.EmployeeId,
             FullName = user.FullName,
             Qualification = user.Qualification,
+            Login = user.UserName,
             Role = user.Role.ToString(),
             IsActive = user.IsActive
         };

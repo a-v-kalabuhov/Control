@@ -6,6 +6,7 @@ public class PersonnelDto
     public string? EmployeeId { get; set; }
     public string FullName { get; set; } = string.Empty;
     public string? Qualification { get; set; }
+    public string? Login { get; set; }
     public string Role { get; set; } = string.Empty;
     public bool IsActive { get; set; }
 }
