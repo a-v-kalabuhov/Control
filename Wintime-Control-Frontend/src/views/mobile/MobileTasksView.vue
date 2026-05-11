@@ -4,7 +4,7 @@
     <div class="mb-4">
       <h2 class="text-xl font-bold text-gray-800">Мои задания</h2>
       <p class="text-sm text-gray-600 mt-1">
-        {{ mobileStore.activeTasks.length }} активных | 
+        {{ mobileStore.activeTasks.length }} активных |
         {{ mobileStore.completedTasks.length }} завершённых
       </p>
     </div>
@@ -13,8 +13,8 @@
     <el-card class="mb-4">
       <el-form :inline="true" class="mobile-filters">
         <el-form-item>
-          <el-input 
-            v-model="mobileStore.filters.search" 
+          <el-input
+            v-model="mobileStore.filters.search"
             placeholder="Поиск ТПА, ПФ"
             clearable
             prefix-icon="Search"
@@ -23,14 +23,15 @@
           />
         </el-form-item>
         <el-form-item>
-          <el-select 
-            v-model="mobileStore.filters.status" 
+          <el-select
+            v-model="mobileStore.filters.status"
             placeholder="Все статусы"
             clearable
             class="w-full"
             @change="loadTasks"
           >
             <el-option label="Выдано" value="Issued" />
+            <el-option label="Наладка" value="Setup" />
             <el-option label="В работе" value="InProgress" />
             <el-option label="Выполнено" value="Completed" />
             <el-option label="Закрыто" value="Closed" />
@@ -51,6 +52,8 @@
         :task="task"
         @click="openTaskDetail(task)"
         @start="startTask(task)"
+        @complete-setup="completeSetup(task)"
+        @cancel-setup="cancelSetup(task)"
         @complete="completeTask(task)"
       />
     </div>
@@ -60,8 +63,8 @@
     </div>
 
     <!-- Кнопка сканера -->
-    <el-button 
-      type="primary" 
+    <el-button
+      type="primary"
       size="large"
       class="fixed bottom-6 right-6 w-16 h-16 rounded-full shadow-lg text-2xl"
       @click="openScanner"
@@ -74,6 +77,8 @@
       v-model="detailVisible"
       :task="selectedTask"
       @start="startTask"
+      @complete-setup="completeSetup"
+      @cancel-setup="cancelSetup"
       @complete="completeTask"
       @close="closeTask"
     />
@@ -84,7 +89,6 @@
       title="Сканирование QR-кода"
       width="90%"
       :close-on-click-modal="false"
-      @closed="onScannerClosed"
     >
       <QrScanner
         @confirm="handleScanConfirm"
@@ -99,19 +103,16 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useMobileStore } from '@/stores/mobile'
-import { useAuthStore } from '@/stores/auth'
 import { mobileApi } from '@/api/mobile'
 import MobileTaskCard from '@/components/mobile/MobileTaskCard.vue'
 import MobileTaskDetailView from './MobileTaskDetailView.vue'
 import QrScanner from '@/components/mobile/QrScanner.vue'
 
 const mobileStore = useMobileStore()
-const authStore = useAuthStore()
 
 const detailVisible = ref(false)
 const scannerVisible = ref(false)
 const selectedTask = ref(null)
-const scanContext = ref(null) // 'start-task', 'complete-task', 'downtime'
 
 onMounted(async () => {
   await loadTasks()
@@ -129,12 +130,52 @@ const openTaskDetail = (task) => {
 
 const startTask = async (task) => {
   try {
-    // Требуем сканирование QR перед началом
-    scanContext.value = 'start-task'
-    selectedTask.value = task
-    scannerVisible.value = true
+    await mobileApi.startSetup(task.id)
+    ElMessage.success('Наладка начата')
+    await loadTasks()
+    detailVisible.value = false
   } catch (error) {
-    ElMessage.error('Ошибка начала задания')
+    ElMessage.error('Ошибка начала наладки')
+  }
+}
+
+const completeSetup = async (task) => {
+  try {
+    if (!task.moldVerifiedAt) {
+      await ElMessageBox.confirm(
+        'Пресс-форма не была отсканирована. Завершить наладку без верификации?',
+        'Предупреждение',
+        { type: 'warning', confirmButtonText: 'Завершить', cancelButtonText: 'Отмена' }
+      )
+    }
+
+    await mobileApi.completeSetup(task.id)
+    ElMessage.success('Наладка завершена, задание в работе')
+    await loadTasks()
+    detailVisible.value = false
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('Ошибка завершения наладки')
+    }
+  }
+}
+
+const cancelSetup = async (task) => {
+  try {
+    await ElMessageBox.confirm(
+      'Отменить наладку? Задание вернётся в статус «Выдано».',
+      'Подтверждение',
+      { type: 'warning', confirmButtonText: 'Отменить наладку', cancelButtonText: 'Назад' }
+    )
+
+    await mobileApi.cancelSetup(task.id)
+    ElMessage.info('Наладка отменена')
+    await loadTasks()
+    detailVisible.value = false
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('Ошибка отмены наладки')
+    }
   }
 }
 
@@ -198,7 +239,6 @@ const closeTask = async (task) => {
 }
 
 const openScanner = () => {
-  scanContext.value = 'manual-scan'
   scannerVisible.value = true
 }
 
@@ -207,43 +247,39 @@ const handleScanConfirm = async (qrData) => {
 
   try {
     const parsed = JSON.parse(qrData)
-    
-    if (scanContext.value === 'start-task' && selectedTask.value) {
-      // Валидация QR
-      if (parsed.entity === 'mold' && parsed.id === selectedTask.value.moldId) {
-        await mobileApi.startTask(selectedTask.value.id, {
-          moldQr: qrData,
-          immQr: '' // TODO: Сканировать QR ТПА
-        })
-        ElMessage.success('Задание начато')
-        await loadTasks()
-        detailVisible.value = false
-      } else if (parsed.entity === 'machine' && parsed.id === selectedTask.value.immId) {
-        await mobileApi.startTask(selectedTask.value.id, {
-          moldQr: '',
-          immQr: qrData
-        })
-        ElMessage.success('Задание начато')
-        await loadTasks()
-        detailVisible.value = false
-      } else {
-        ElMessage.warning('QR-код не соответствует заданию')
-      }
-    } else {
-      ElMessage.success('QR распознан: ' + parsed.entity)
+
+    if (parsed.entity !== 'mold') {
+      ElMessage.warning('QR-код имеет неверный формат')
+      return
     }
-  } catch (error) {
+
+    const setupTask = mobileStore.setupTask
+
+    if (!setupTask) {
+      ElMessage.info(`Пресс-форма: ${parsed.name || parsed.id}`)
+      return
+    }
+
+    if (parsed.id === setupTask.moldId) {
+      await mobileApi.verifyMold(setupTask.id)
+      await loadTasks()
+      // Обновить selectedTask если открыт
+      if (selectedTask.value?.id === setupTask.id) {
+        selectedTask.value = mobileStore.tasks.find(t => t.id === setupTask.id) ?? selectedTask.value
+      }
+      ElMessage.success(`Пресс-форма верифицирована: ${setupTask.moldName}`)
+    } else {
+      ElMessage.error(
+        `Неверная пресс-форма.\nОтсканирована: ${parsed.name || parsed.id}\nЗадание ожидает: ${setupTask.moldName}`
+      )
+    }
+  } catch {
     ElMessage.error('Ошибка обработки QR-кода')
   }
 }
 
 const handleScanError = (error) => {
   ElMessage.error('Ошибка сканирования: ' + error.message)
-}
-
-const onScannerClosed = () => {
-  scanContext.value = null
-  selectedTask.value = null
 }
 </script>
 

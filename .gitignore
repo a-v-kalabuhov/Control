@@ -29,6 +29,8 @@ project.assets.json
 *.userprefs
 *.vs/
 .vs/
+*.claude/
+.claude/
 
 ## ASP.NET Core temporary files
 wwwroot/

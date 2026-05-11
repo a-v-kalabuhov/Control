@@ -46,25 +46,45 @@
       <span>{{ task.personnelName || 'Не назначен' }}</span>
     </div>
 
-    <!-- Кнопка действия (если в работе) -->
-    <el-button 
-      v-if="task.status === 'InProgress'"
-      type="primary" 
-      size="large"
-      class="w-full mt-4 h-14 text-lg"
-      @click.stop="$emit('complete', task)"
-    >
-      Завершить
-    </el-button>
-
-    <el-button 
-      v-else-if="task.status === 'Issued'"
-      type="success" 
+    <!-- Кнопки действий -->
+    <el-button
+      v-if="task.status === 'Issued'"
+      type="success"
       size="large"
       class="w-full mt-4 h-14 text-lg"
       @click.stop="$emit('start', task)"
     >
       Начать
+    </el-button>
+
+    <template v-else-if="task.status === 'Setup'">
+      <el-button
+        type="primary"
+        size="large"
+        class="w-full mt-4 h-12 text-base"
+        @click.stop="$emit('complete-setup', task)"
+      >
+        Завершить наладку
+      </el-button>
+      <el-button
+        type="danger"
+        plain
+        size="default"
+        class="w-full mt-2"
+        @click.stop="$emit('cancel-setup', task)"
+      >
+        Отменить наладку
+      </el-button>
+    </template>
+
+    <el-button
+      v-else-if="task.status === 'InProgress'"
+      type="primary"
+      size="large"
+      class="w-full mt-4 h-14 text-lg"
+      @click.stop="$emit('complete', task)"
+    >
+      Завершить
     </el-button>
   </div>
 </template>
@@ -80,7 +100,7 @@ const props = defineProps({
   }
 })
 
-defineEmits(['click', 'start', 'complete'])
+defineEmits(['click', 'start', 'complete', 'complete-setup', 'cancel-setup'])
 
 const progressPercent = computed(() => {
   if (!props.task.planQuantity || props.task.planQuantity === 0) return 0
@@ -105,6 +125,7 @@ const statusBorderClass = computed(() => {
   const classes = {
     Draft: 'border-l-4 border-gray-400',
     Issued: 'border-l-4 border-blue-500',
+    Setup: 'border-l-4 border-orange-500',
     InProgress: 'border-l-4 border-yellow-500',
     Completed: 'border-l-4 border-green-500',
     Closed: 'border-l-4 border-gray-400'

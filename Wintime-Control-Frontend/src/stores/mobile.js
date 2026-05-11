@@ -18,10 +18,13 @@ export const useMobileStore = defineStore('mobile', {
   }),
 
   getters: {
-    // Активные задания
-    activeTasks: (state) => state.tasks.filter(t => 
-      ['Issued', 'InProgress'].includes(t.status)
+    // Активные задания (включая наладку)
+    activeTasks: (state) => state.tasks.filter(t =>
+      ['Issued', 'Setup', 'InProgress'].includes(t.status)
     ),
+
+    // Задание в состоянии наладки (не более одного)
+    setupTask: (state) => state.tasks.find(t => t.status === 'Setup') ?? null,
 
     // Завершённые задания
     completedTasks: (state) => state.tasks.filter(t => 

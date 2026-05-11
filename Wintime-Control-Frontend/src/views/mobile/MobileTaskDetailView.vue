@@ -52,22 +52,60 @@
         {{ task.note }}
       </el-alert>
 
-      <!-- Кнопки действий -->
-      <div class="grid grid-cols-2 gap-3">
-        <el-button 
-          v-if="task?.status === 'Issued'"
-          type="success" 
+      <!-- Кнопки: Выдано -->
+      <div v-if="task?.status === 'Issued'" class="mt-4">
+        <el-button
+          type="success"
           size="large"
-          class="h-14 text-lg"
+          class="w-full h-14 text-lg"
           @click="$emit('start', task)"
         >
           <el-icon class="mr-1"><VideoPlay /></el-icon>
           Начать
         </el-button>
+      </div>
 
-        <el-button 
-          v-if="task?.status === 'InProgress'"
-          type="primary" 
+      <!-- Кнопки: Наладка -->
+      <div v-else-if="task?.status === 'Setup'" class="mt-4 space-y-3">
+        <!-- Индикатор верификации пресс-формы -->
+        <div
+          class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+          :class="task?.moldVerifiedAt ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'"
+        >
+          <el-icon>
+            <CircleCheck v-if="task?.moldVerifiedAt" />
+            <Warning v-else />
+          </el-icon>
+          <span v-if="task?.moldVerifiedAt">
+            Пресс-форма верифицирована ({{ formatDate(task.moldVerifiedAt) }})
+          </span>
+          <span v-else>Пресс-форма не отсканирована</span>
+        </div>
+
+        <el-button
+          type="primary"
+          size="large"
+          class="w-full h-14 text-lg"
+          @click="$emit('complete-setup', task)"
+        >
+          <el-icon class="mr-1"><CircleCheck /></el-icon>
+          Завершить наладку
+        </el-button>
+        <el-button
+          type="danger"
+          plain
+          size="large"
+          class="w-full h-12"
+          @click="$emit('cancel-setup', task)"
+        >
+          Отменить наладку
+        </el-button>
+      </div>
+
+      <!-- Кнопки: В работе -->
+      <div v-else-if="task?.status === 'InProgress'" class="grid grid-cols-2 gap-3 mt-4">
+        <el-button
+          type="primary"
           size="large"
           class="h-14 text-lg"
           @click="$emit('complete', task)"
@@ -76,9 +114,8 @@
           Завершить
         </el-button>
 
-        <el-button 
-          v-if="task?.status === 'InProgress'"
-          type="warning" 
+        <el-button
+          type="warning"
           size="large"
           class="h-14 text-lg"
           @click="openDowntime"
@@ -87,11 +124,24 @@
           Простой
         </el-button>
 
-        <el-button 
+        <el-button
           v-if="canClose"
-          type="info" 
+          type="info"
           size="large"
-          class="h-14 text-lg"
+          class="h-14 text-lg col-span-2"
+          @click="$emit('close', task)"
+        >
+          <el-icon class="mr-1"><DocumentDelete /></el-icon>
+          Закрыть
+        </el-button>
+      </div>
+
+      <!-- Кнопка Закрыть для Completed -->
+      <div v-else-if="task?.status === 'Completed' && canClose" class="mt-4">
+        <el-button
+          type="info"
+          size="large"
+          class="w-full h-14 text-lg"
           @click="$emit('close', task)"
         >
           <el-icon class="mr-1"><DocumentDelete /></el-icon>
@@ -162,7 +212,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'start', 'complete', 'close'])
+const emit = defineEmits(['update:modelValue', 'start', 'complete', 'complete-setup', 'cancel-setup', 'close'])
 
 const mobileStore = useMobileStore()
 const authStore = useAuthStore()

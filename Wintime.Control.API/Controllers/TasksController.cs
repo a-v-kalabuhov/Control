@@ -67,6 +67,8 @@ public class TasksController : ControllerBase
             Status = t.Status,
             PlannedDate = t.PlannedDate,
             IssuedAt = t.IssuedAt,
+            SetupStartedAt = t.SetupStartedAt,
+            MoldVerifiedAt = t.MoldVerifiedAt,
             StartedAt = t.StartedAt,
             CompletedAt = t.CompletedAt,
             ClosedAt = t.ClosedAt,
@@ -117,6 +119,8 @@ public class TasksController : ControllerBase
             Status = t.Status,
             PlannedDate = t.PlannedDate,
             IssuedAt = t.IssuedAt,
+            SetupStartedAt = t.SetupStartedAt,
+            MoldVerifiedAt = t.MoldVerifiedAt,
             StartedAt = t.StartedAt,
             CompletedAt = t.CompletedAt,
             ClosedAt = t.ClosedAt,
@@ -158,6 +162,8 @@ public class TasksController : ControllerBase
             Status = task.Status,
             PlannedDate = task.PlannedDate,
             IssuedAt = task.IssuedAt,
+            SetupStartedAt = task.SetupStartedAt,
+            MoldVerifiedAt = task.MoldVerifiedAt,
             StartedAt = task.StartedAt,
             CompletedAt = task.CompletedAt,
             ClosedAt = task.ClosedAt,
@@ -263,27 +269,91 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
-    /// Начать выполнение задания (сканирование QR)
+    /// Начать наладку — перевести задание в статус Setup
     /// </summary>
     [HttpPost("{id:guid}/start")]
     [Authorize(Roles = $"{Roles.Adjuster}")]
-    public async Task<IActionResult> StartTask(Guid id, [FromBody] StartTaskRequestDto request)
+    public async Task<IActionResult> StartTask(Guid id)
     {
         var task = await _context.Tasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Issued && task.Status != Core.Enums.TaskStatus.Draft)
-            return BadRequest("Задание уже в работе или завершено");
+        if (task.Status != Core.Enums.TaskStatus.Issued)
+            return BadRequest("Задание не в статусе «Выдано»");
 
-        // TODO: Валидировать QR-коды (совпадают ли с заданием)
-        
+        task.Status = Core.Enums.TaskStatus.Setup;
+        task.SetupStartedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Наладка начата" });
+    }
+
+    /// <summary>
+    /// Завершить наладку — перевести задание в статус InProgress
+    /// </summary>
+    [HttpPost("{id:guid}/complete-setup")]
+    [Authorize(Roles = $"{Roles.Adjuster}")]
+    public async Task<IActionResult> CompleteSetup(Guid id)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+            return NotFound();
+
+        if (task.Status != Core.Enums.TaskStatus.Setup)
+            return BadRequest("Задание не в статусе «Наладка»");
+
         task.Status = Core.Enums.TaskStatus.InProgress;
         task.StartedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        return Ok(new { message = "Задание начато" });
+        return Ok(new { message = "Наладка завершена, задание в работе" });
+    }
+
+    /// <summary>
+    /// Отменить наладку — вернуть задание в статус Issued
+    /// </summary>
+    [HttpPost("{id:guid}/cancel-setup")]
+    [Authorize(Roles = $"{Roles.Adjuster}")]
+    public async Task<IActionResult> CancelSetup(Guid id)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+            return NotFound();
+
+        if (task.Status != Core.Enums.TaskStatus.Setup)
+            return BadRequest("Задание не в статусе «Наладка»");
+
+        task.Status = Core.Enums.TaskStatus.Issued;
+        task.SetupStartedAt = null;
+        task.MoldVerifiedAt = null;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Наладка отменена" });
+    }
+
+    /// <summary>
+    /// Зафиксировать верификацию пресс-формы по QR-коду
+    /// </summary>
+    [HttpPost("{id:guid}/verify-mold")]
+    [Authorize(Roles = $"{Roles.Adjuster}")]
+    public async Task<IActionResult> VerifyMold(Guid id)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+            return NotFound();
+
+        if (task.Status != Core.Enums.TaskStatus.Setup)
+            return BadRequest("Задание не в статусе «Наладка»");
+
+        task.MoldVerifiedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Пресс-форма верифицирована" });
     }
 
     /// <summary>

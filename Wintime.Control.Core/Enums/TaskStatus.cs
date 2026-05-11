@@ -6,5 +6,6 @@ public enum TaskStatus
     Issued = 1,
     InProgress = 2,
     Completed = 3,
-    Closed = 4
+    Closed = 4,
+    Setup = 5
 }

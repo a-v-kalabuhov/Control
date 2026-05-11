@@ -11,9 +11,24 @@ export const mobileApi = {
     return apiClient.get(`/tasks/${id}`)
   },
 
-  // Начать задание (сканирование QR)
-  startTask(id, data) {
-    return apiClient.post(`/tasks/${id}/start`, data)
+  // Начать наладку (Issued → Setup)
+  startSetup(id) {
+    return apiClient.post(`/tasks/${id}/start`)
+  },
+
+  // Завершить наладку (Setup → InProgress)
+  completeSetup(id) {
+    return apiClient.post(`/tasks/${id}/complete-setup`)
+  },
+
+  // Отменить наладку (Setup → Issued)
+  cancelSetup(id) {
+    return apiClient.post(`/tasks/${id}/cancel-setup`)
+  },
+
+  // Верифицировать пресс-форму по QR
+  verifyMold(id) {
+    return apiClient.post(`/tasks/${id}/verify-mold`)
   },
 
   // Завершить задание

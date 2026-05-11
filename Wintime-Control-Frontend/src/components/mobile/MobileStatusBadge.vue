@@ -18,7 +18,7 @@ const props = defineProps({
   status: {
     type: String,
     required: true,
-    validator: (value) => ['Draft', 'Issued', 'InProgress', 'Completed', 'Closed'].includes(value)
+    validator: (value) => ['Draft', 'Issued', 'Setup', 'InProgress', 'Completed', 'Closed'].includes(value)
   }
 })
 
@@ -29,11 +29,17 @@ const statusConfig = {
     text: 'text-gray-700', 
     dot: 'bg-gray-500' 
   },
-  Issued: { 
-    label: 'Выдано', 
-    bg: 'bg-blue-100', 
-    text: 'text-blue-700', 
-    dot: 'bg-blue-500' 
+  Issued: {
+    label: 'Выдано',
+    bg: 'bg-blue-100',
+    text: 'text-blue-700',
+    dot: 'bg-blue-500'
+  },
+  Setup: {
+    label: 'Наладка',
+    bg: 'bg-orange-100',
+    text: 'text-orange-700',
+    dot: 'bg-orange-500 animate-pulse'
   },
   InProgress: { 
     label: 'В работе', 

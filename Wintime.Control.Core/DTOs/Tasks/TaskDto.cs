@@ -15,6 +15,8 @@ public class TaskDto
     public Enums.TaskStatus Status { get; set; }
     public DateTime? PlannedDate { get; set; }
     public DateTime? IssuedAt { get; set; }
+    public DateTime? SetupStartedAt { get; set; }
+    public DateTime? MoldVerifiedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
