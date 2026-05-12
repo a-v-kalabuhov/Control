@@ -16,35 +16,40 @@ const props = defineProps({
   status: {
     type: String,
     required: true,
-    validator: (value) => ['Draft', 'Issued', 'InProgress', 'Completed', 'Closed'].includes(value)
+    validator: (value) => ['Draft', 'Issued', 'Setup', 'InProgress', 'Completed', 'Closed'].includes(value)
   }
 })
 
 const statusConfig = {
-  Draft: { 
-    label: 'Черновик', 
-    type: 'info', 
-    effect: 'plain' 
+  Draft: {
+    label: 'Черновик',
+    type: 'info',
+    effect: 'plain'
   },
-  Issued: { 
-    label: 'Выдано', 
-    type: 'primary', 
-    effect: 'light' 
+  Issued: {
+    label: 'Выдано',
+    type: 'primary',
+    effect: 'light'
   },
-  InProgress: { 
-    label: 'В работе', 
-    type: 'warning', 
-    effect: 'light' 
+  Setup: {
+    label: 'Наладка',
+    type: 'warning',
+    effect: 'plain'
   },
-  Completed: { 
-    label: 'Выполнено', 
-    type: 'success', 
-    effect: 'light' 
+  InProgress: {
+    label: 'В работе',
+    type: 'warning',
+    effect: 'light'
   },
-  Closed: { 
-    label: 'Закрыто', 
-    type: 'info', 
-    effect: 'plain' 
+  Completed: {
+    label: 'Выполнено',
+    type: 'success',
+    effect: 'light'
+  },
+  Closed: {
+    label: 'Закрыто',
+    type: 'info',
+    effect: 'plain'
   }
 }
 

@@ -14,6 +14,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipBuild,
+    [switch]$SkipTests,
     [switch]$Dev
 )
 
@@ -84,7 +85,32 @@ if (-not $SkipBuild) {
     Write-Ok "Сборка успешна"
 }
 
-# ── 3. Запуск API ─────────────────────────────────────────────────────────────
+# ── 3. Тесты ──────────────────────────────────────────────────────────────────
+
+if (-not $SkipTests) {
+    Write-Step "Запуск тестов..."
+    dotnet test "$root\Wintime.Control.sln" --no-build --verbosity minimal
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "Тесты завершились с ошибками — запуск прерван"
+        exit 1
+    }
+    Write-Ok "Все тесты прошли"
+}
+
+# ── 4. Применение миграций ────────────────────────────────────────────────────
+
+Write-Step "Применение миграций БД..."
+dotnet ef database update `
+    --project "$root\Wintime.Control.Infrastructure" `
+    --startup-project "$root\Wintime.Control.API" `
+    --verbosity minimal
+if ($LASTEXITCODE -ne 0) {
+    Write-Fail "Применение миграций завершилось с ошибкой"
+    exit 1
+}
+Write-Ok "Миграции применены"
+
+# ── 5. Запуск API ─────────────────────────────────────────────────────────────
 
 Write-Step "Запуск API..."
 $apiProc = Start-Process -FilePath "dotnet" `
@@ -99,7 +125,7 @@ if (-not (Wait-ForService "http://localhost:5007/swagger/v1/swagger.json" 60)) {
 }
 Write-Ok "API готов → http://localhost:5007"
 
-# ── 4. Запуск Emulator ────────────────────────────────────────────────────────
+# ── 6. Запуск Emulator ────────────────────────────────────────────────────────
 
 Write-Step "Запуск Emulator..."
 $emulatorProc = Start-Process -FilePath "dotnet" `
@@ -114,7 +140,7 @@ if (-not (Wait-ForService "http://localhost:5000/api/emulator/instances" 30)) {
 }
 Write-Ok "Emulator готов → http://localhost:5000"
 
-# ── 5. Запуск IMM-инстансов ───────────────────────────────────────────────────
+# ── 7. Запуск IMM-инстансов ───────────────────────────────────────────────────
 
 Write-Step "Запуск IMM-инстансов..."
 
@@ -163,7 +189,7 @@ try {
 
 Write-Ok "Запущено IMM-инстансов: $started"
 
-# ── 6. Frontend dev-сервер (опционально) ──────────────────────────────────────
+# ── 8. Frontend dev-сервер (опционально) ──────────────────────────────────────
 
 $frontendProc = $null
 $browserUrl = "http://localhost:5007"
@@ -178,12 +204,12 @@ if ($Dev) {
     $browserUrl = "http://localhost:3000"
 }
 
-# ── 7. Открываем браузер ──────────────────────────────────────────────────────
+# ── 9. Открываем браузер ──────────────────────────────────────────────────────
 
 Start-Sleep -Seconds 1
 Start-Process $browserUrl
 
-# ── 8. Итоги ─────────────────────────────────────────────────────────────────
+# ── 10. Итоги ────────────────────────────────────────────────────────────────
 
 Write-Host "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
 Write-Host "  Dev-окружение запущено" -ForegroundColor Green
