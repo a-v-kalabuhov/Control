@@ -189,7 +189,9 @@ public class TasksController : ControllerBase
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
             Status = Core.Enums.TaskStatus.Draft,
-            PlannedDate = request.PlannedDate,
+            PlannedDate = request.PlannedDate.HasValue
+                ? DateTime.SpecifyKind(request.PlannedDate.Value, DateTimeKind.Utc)
+                : null,
             IssuedAt = DateTime.UtcNow
         };
 
@@ -236,7 +238,7 @@ public class TasksController : ControllerBase
             var today = DateTime.UtcNow.Date;
             if (request.PlannedDate.Value.Date < today)
                 return BadRequest("Плановая дата не может быть в прошлом");
-            task.PlannedDate = request.PlannedDate.Value;
+            task.PlannedDate = DateTime.SpecifyKind(request.PlannedDate.Value, DateTimeKind.Utc);
         }
         if (request.Status.HasValue)
             task.Status = request.Status.Value;

@@ -102,8 +102,7 @@ if (-not $SkipTests) {
 Write-Step "Применение миграций БД..."
 dotnet ef database update `
     --project "$root\Wintime.Control.Infrastructure" `
-    --startup-project "$root\Wintime.Control.API" `
-    --verbosity minimal
+    --startup-project "$root\Wintime.Control.API"
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "Применение миграций завершилось с ошибкой"
     exit 1

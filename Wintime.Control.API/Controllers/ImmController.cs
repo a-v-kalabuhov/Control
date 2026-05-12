@@ -88,7 +88,27 @@ public class ImmController : ControllerBase
                 Manufacturer = i.Template.Manufacturer,
                 Model = i.Template.Model,
                 IsActive = i.IsActive,
-                CreatedAt = i.CreatedAt
+                CreatedAt = i.CreatedAt,
+                CurrentTaskId = i.Tasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Select(t => (Guid?)t.Id)
+                    .FirstOrDefault(),
+                CurrentMoldName = i.Tasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Select(t => t.Mold.Name)
+                    .FirstOrDefault(),
+                PersonnelName = i.Tasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Select(t => t.Personnel != null ? t.Personnel.FullName : null)
+                    .FirstOrDefault(),
+                PlanQuantity = i.Tasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Select(t => (int?)t.PlanQuantity)
+                    .FirstOrDefault(),
+                ActualQuantity = i.Tasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Select(t => (int?)t.ActualQuantity)
+                    .FirstOrDefault()
             })
             .ToListAsync();
 

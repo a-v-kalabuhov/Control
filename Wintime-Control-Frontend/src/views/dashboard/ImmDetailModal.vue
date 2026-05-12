@@ -91,9 +91,10 @@
 import { ref, shallowRef, computed, onUnmounted } from 'vue'
 import { dashboardApi } from '@/api/dashboard'
 import { tasksApi } from '@/api/tasks'
+import { shiftsApi } from '@/api/shifts'
 import { ElMessage } from 'element-plus'
 import { useDashboardStore } from '@/stores/dashboard'
-import { getCurrentShift } from '@/constants/shift'
+import { computeCurrentShift } from '@/constants/shift'
 import ImmCard from '@/components/dashboard/ImmCard.vue'
 import ShiftTimeline from '@/components/dashboard/ShiftTimeline.vue'
 
@@ -113,9 +114,10 @@ const dashboardStore = useDashboardStore()
 const loading        = ref(false)
 const statusSegments = ref([])
 const tasks          = ref([])
+const shiftSchedule  = ref([])
 // shallowRef: содержимое объекта не оборачивается в Proxy,
 // иначе Date-арифметика (clampE - clampS) ломается и даёт NaN
-const shift          = shallowRef(getCurrentShift())
+const shift          = shallowRef(computeCurrentShift([]))
 
 const immData = computed(() => dashboardStore.imms.find(i => i.id === props.immId) ?? null)
 
@@ -176,7 +178,7 @@ const summary = computed(() => {
 const loadData = async () => {
   if (!props.immId) return
   loading.value = true
-  shift.value = getCurrentShift()
+  shift.value = computeCurrentShift(shiftSchedule.value)
 
   const fromIso = shift.value.start.toISOString()
   const toIso   = shift.value.end.toISOString()
@@ -198,7 +200,13 @@ const loadData = async () => {
 
 let refreshTimer = null
 
-const onOpen = () => {
+const onOpen = async () => {
+  try {
+    const res = await shiftsApi.getShifts()
+    shiftSchedule.value = res.data ?? []
+  } catch {
+    shiftSchedule.value = []
+  }
   loadData()
   refreshTimer = setInterval(loadData, 60_000)
 }

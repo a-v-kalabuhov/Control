@@ -69,33 +69,35 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-        body.GetProperty("status").GetInt32().Should().Be(0, "0 = Draft");
+        body.GetProperty("status").GetString().Should().Be("Draft");
     }
 
     /// <summary>
     /// Наладчик запускает задание → статус InProgress, код ответа 200.
+    /// Полный цикл: Draft → Issue → Start (Setup) → CompleteSetup (InProgress).
     /// </summary>
     [Fact]
     public async Task StartTask_AsAdjuster_Returns200AndInProgressStatus()
     {
-        var managerClient = await CreateAuthenticatedClientAsync("test_manager",  "Manager123!");
+        var managerClient  = await CreateAuthenticatedClientAsync("test_manager",  "Manager123!");
         var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
 
         var taskId = await CreateTaskAsync(managerClient);
+        await IssueTaskAsync(managerClient, taskId);
 
-        var startResponse = await adjusterClient.PostAsJsonAsync(
-            $"/api/tasks/{taskId}/start",
-            new { moldQr = "TEST-QR", immQr = "IMM-QR" });
-
+        var startResponse = await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
         startResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var setupResponse = await adjusterClient.PostAsync($"/api/tasks/{taskId}/complete-setup", null);
+        setupResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var taskResponse = await adjusterClient.GetAsync($"/api/tasks/{taskId}");
         var body = await taskResponse.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-        body.GetProperty("status").GetInt32().Should().Be(2, "2 = InProgress");
+        body.GetProperty("status").GetString().Should().Be("InProgress");
     }
 
     /// <summary>
-    /// Попытка запустить задание повторно (уже InProgress) должна вернуть 400.
+    /// Попытка запустить задание повторно (уже Setup) должна вернуть 400.
     /// </summary>
     [Fact]
     public async Task StartTask_AlreadyInProgress_Returns400()
@@ -104,18 +106,17 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
 
         var taskId = await CreateTaskAsync(managerClient);
-        await adjusterClient.PostAsJsonAsync($"/api/tasks/{taskId}/start",
-            new { moldQr = "TEST-QR", immQr = "IMM-QR" });
+        await IssueTaskAsync(managerClient, taskId);
+        await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
 
-        var secondStart = await adjusterClient.PostAsJsonAsync(
-            $"/api/tasks/{taskId}/start",
-            new { moldQr = "TEST-QR", immQr = "IMM-QR" });
+        var secondStart = await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
 
         secondStart.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     /// <summary>
     /// Наладчик завершает задание → статус Completed, код ответа 200.
+    /// Полный цикл: Draft → Issue → Start (Setup) → CompleteSetup (InProgress) → Complete.
     /// </summary>
     [Fact]
     public async Task CompleteTask_AsAdjuster_Returns200AndCompletedStatus()
@@ -124,8 +125,9 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
 
         var taskId = await CreateTaskAsync(managerClient);
-        await adjusterClient.PostAsJsonAsync($"/api/tasks/{taskId}/start",
-            new { moldQr = "TEST-QR", immQr = "IMM-QR" });
+        await IssueTaskAsync(managerClient, taskId);
+        await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
+        await adjusterClient.PostAsync($"/api/tasks/{taskId}/complete-setup", null);
 
         var completeResponse = await adjusterClient.PostAsJsonAsync(
             $"/api/tasks/{taskId}/complete",
@@ -135,7 +137,7 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
 
         var taskResponse = await adjusterClient.GetAsync($"/api/tasks/{taskId}");
         var body = await taskResponse.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-        body.GetProperty("status").GetInt32().Should().Be(3, "3 = Completed");
+        body.GetProperty("status").GetString().Should().Be("Completed");
     }
 
     /// <summary>
@@ -175,7 +177,7 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
 
         var taskResponse = await managerClient.GetAsync($"/api/tasks/{taskId}");
         var body = await taskResponse.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-        body.GetProperty("status").GetInt32().Should().Be(4, "4 = Closed");
+        body.GetProperty("status").GetString().Should().Be("Closed");
     }
 
     // =========================================================================
@@ -221,5 +223,11 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         return Guid.Parse(body.GetProperty("id").GetString()!);
+    }
+
+    private static async Task IssueTaskAsync(HttpClient client, Guid taskId)
+    {
+        var response = await client.PostAsync($"/api/tasks/{taskId}/issue", null);
+        response.EnsureSuccessStatusCode();
     }
 }

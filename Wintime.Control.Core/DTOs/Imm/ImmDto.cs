@@ -12,4 +12,9 @@ public class ImmDto
     public DateTime CreatedAt { get; set; }
     public string? Status { get; set; }
     public DateTime? LastUpdate { get; set; }
+    public Guid? CurrentTaskId { get; set; }
+    public string? CurrentMoldName { get; set; }
+    public string? PersonnelName { get; set; }
+    public int? PlanQuantity { get; set; }
+    public int? ActualQuantity { get; set; }
 }
