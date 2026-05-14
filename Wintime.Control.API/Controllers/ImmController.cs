@@ -112,6 +112,35 @@ public class ImmController : ControllerBase
             })
             .ToListAsync();
 
+        var currentTaskIds = imms
+            .Where(i => i.CurrentTaskId.HasValue)
+            .Select(i => i.CurrentTaskId!.Value)
+            .ToList();
+
+        if (currentTaskIds.Count > 0)
+        {
+            var cycleStats = await _context.ImmCycles
+                .Where(c => c.TaskId.HasValue && currentTaskIds.Contains(c.TaskId.Value))
+                .GroupBy(c => c.TaskId!.Value)
+                .Select(g => new
+                {
+                    TaskId = g.Key,
+                    Count = g.Count(),
+                    AvgDuration = g.Average(c => (double)c.DurationSeconds)
+                })
+                .ToListAsync();
+
+            foreach (var dto in imms.Where(d => d.CurrentTaskId.HasValue))
+            {
+                var stats = cycleStats.FirstOrDefault(s => s.TaskId == dto.CurrentTaskId!.Value);
+                if (stats != null)
+                {
+                    dto.CycleCount = stats.Count;
+                    dto.AvgCycleTime = (decimal)stats.AvgDuration;
+                }
+            }
+        }
+
         foreach (var dto in imms)
         {
             var entry = _statusCache.GetEntry(dto.Id);

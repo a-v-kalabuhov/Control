@@ -17,4 +17,6 @@ public class ImmDto
     public string? PersonnelName { get; set; }
     public int? PlanQuantity { get; set; }
     public int? ActualQuantity { get; set; }
+    public int CycleCount { get; set; }
+    public decimal AvgCycleTime { get; set; }
 }
