@@ -56,5 +56,9 @@ public class MessageProcessingPipeline(IServiceProvider sp)
 
         // Обновляем статус IMM на основе поля mode из сообщения
         await _sp.GetRequiredService<IUpdateImmStatusHandler>().UpdateStatusAsync(context);
+
+        // Обрабатываем циклы: детектируем смыкания по cycleCounter, сохраняем цикл в БД,
+        // обновляем выработку задания и ресурс пресс-формы
+        await _sp.GetRequiredService<ICycleProcessingHandler>().ProcessAsync(context, ct);
     }
 }

@@ -57,6 +57,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidateTelemetryDataHandler, ValidateTelemetryDataHandler>();
         services.AddScoped<IStoreTelemetryDataHandler, StoreTelemetryDataHandler>();
         services.AddScoped<IUpdateImmStatusHandler, UpdateImmStatusHandler>();
+        services.AddScoped<ICycleProcessingHandler, CycleProcessingHandler>();
+        services.AddSingleton<ICycleTracker, CycleTracker>();
         return services;
     }
 

@@ -23,6 +23,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<ImmStatusHistory> ImmStatusHistory { get; set; }
     public DbSet<AppHeartbeat> AppHeartbeat { get; set; }
     public DbSet<Shift> Shifts { get; set; }
+    public DbSet<ImmCycle> ImmCycles { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -82,6 +83,19 @@ public class ControlDbContext : IdentityDbContext<User>
         builder.Entity<Mold>().ToTable("Molds");
         builder.Entity<Wintime.Control.Core.Entities.Task>().ToTable("Tasks");
         builder.Entity<User>().ToTable("Users");
+
+        // Конфигурация ImmCycle
+        builder.Entity<ImmCycle>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.ImmId, e.StartTime });
+            entity.HasOne(e => e.Imm).WithMany().HasForeignKey(e => e.ImmId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Task).WithMany().HasForeignKey(e => e.TaskId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.Mold).WithMany().HasForeignKey(e => e.MoldId).OnDelete(DeleteBehavior.SetNull);
+            entity.Property(e => e.StartTime).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.EndTime).HasColumnType("timestamp with time zone");
+            entity.ToTable("ImmCycles");
+        });
 
         // Конфигурация ImmStatusHistory
         builder.Entity<ImmStatusHistory>(entity =>
