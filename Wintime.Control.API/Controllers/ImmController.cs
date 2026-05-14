@@ -16,11 +16,13 @@ public class ImmController : ControllerBase
 {
     private readonly ControlDbContext _context;
     private readonly IImmStatusCache _statusCache;
+    private readonly IImmCache _immCache;
 
-    public ImmController(ControlDbContext context, IImmStatusCache statusCache)
+    public ImmController(ControlDbContext context, IImmStatusCache statusCache, IImmCache immCache)
     {
         _context = context;
         _statusCache = statusCache;
+        _immCache = immCache;
     }
 
     /// <summary>
@@ -143,9 +145,10 @@ public class ImmController : ControllerBase
 
         foreach (var dto in imms)
         {
-            var entry = _statusCache.GetEntry(dto.Id);
-            dto.Status = entry?.Status ?? "Offline";
-            dto.LastUpdate = entry?.SinceUtc;
+            var statusEntry = _statusCache.GetEntry(dto.Id);
+            var cacheEntry = _immCache.GetEntry(dto.Id);
+            dto.Status = statusEntry?.Status ?? "Offline";
+            dto.LastUpdate = MaxDateTime(statusEntry?.SinceUtc, cacheEntry?.LastMessageAt);
         }
 
         return Ok(imms);
@@ -259,6 +262,8 @@ public class ImmController : ControllerBase
 
         var entry = _statusCache.GetEntry(id);
 
+        var cacheEntry = _immCache.GetEntry(id);
+
         return Ok(new ImmStatusDto
         {
             ImmId = imm.Id,
@@ -266,7 +271,7 @@ public class ImmController : ControllerBase
             CurrentTaskId = currentTask?.Id,
             CurrentMoldId = currentTask?.MoldId,
             CurrentCycleTime = 0, // TODO: Вычислить из телеметрии
-            LastUpdate = entry?.SinceUtc ?? DateTime.MinValue
+            LastUpdate = MaxDateTime(entry?.SinceUtc, cacheEntry?.LastMessageAt) ?? DateTime.MinValue
         });
     }
 
@@ -357,5 +362,12 @@ public class ImmController : ControllerBase
         };
 
         return Ok(statistics);
+    }
+
+    private static DateTime? MaxDateTime(DateTime? a, DateTime? b)
+    {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a > b ? a : b;
     }
 }
