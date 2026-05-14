@@ -90,23 +90,23 @@ public class ImmController : ControllerBase
                 IsActive = i.IsActive,
                 CreatedAt = i.CreatedAt,
                 CurrentTaskId = i.Tasks
-                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => (Guid?)t.Id)
                     .FirstOrDefault(),
                 CurrentMoldName = i.Tasks
-                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => t.Mold.Name)
                     .FirstOrDefault(),
                 PersonnelName = i.Tasks
-                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => t.Personnel != null ? t.Personnel.FullName : null)
                     .FirstOrDefault(),
                 PlanQuantity = i.Tasks
-                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => (int?)t.PlanQuantity)
                     .FirstOrDefault(),
                 ActualQuantity = i.Tasks
-                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress)
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => (int?)t.ActualQuantity)
                     .FirstOrDefault()
             })
@@ -225,7 +225,8 @@ public class ImmController : ControllerBase
             return NotFound();
 
         var currentTask = await _context.Tasks
-            .FirstOrDefaultAsync(t => t.ImmId == id && t.Status == Core.Enums.TaskStatus.InProgress);
+            .FirstOrDefaultAsync(t => t.ImmId == id &&
+                (t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup));
 
         var entry = _statusCache.GetEntry(id);
 
