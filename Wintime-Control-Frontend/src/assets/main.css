@@ -21,6 +21,10 @@ body {
   @apply bg-status-alarm text-white;
 }
 
+.status-idle {
+  @apply bg-status-idle text-white;
+}
+
 .status-offline {
   @apply bg-status-offline text-white;
 }

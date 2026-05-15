@@ -34,6 +34,7 @@
             <el-option label="Авто (auto)" value="auto" />
             <el-option label="Ручной (manual)" value="manual" />
             <el-option label="Простой (idle)" value="idle" />
+            <el-option label="Авария (alarm)" value="alarm" />
           </el-select>
         </template>
       </el-table-column>

@@ -51,7 +51,7 @@ export function useEmulator() {
     try {
       const response = await emulatorApi.getTemplate(templateId)
       // Преобразуем сенсоры шаблона в конфиги эмуляции с дефолтными значениями
-      const profileModes = ['auto', 'manual', 'idle']
+      const profileModes = ['auto', 'manual', 'idle', 'alarm']
       const isModeType = (s) =>
         s.type === 'string' &&
         Array.isArray(s.allowedValues) &&
@@ -68,16 +68,20 @@ export function useEmulator() {
           baseValueAuto: 0,
           baseValueManual: 0,
           baseValueIdle: 0,
+          baseValueAlarm: 0,
           variancePercent: 0,
           intBaseValueAuto: 0,
           intBaseValueManual: 0,
           intBaseValueIdle: 0,
+          intBaseValueAlarm: 0,
           valueAuto: false,
           valueManual: false,
           valueIdle: false,
+          valueAlarm: false,
           stringValueAuto:   isMode ? 'auto'   : '',
           stringValueManual: isMode ? 'manual' : '',
-          stringValueIdle:   isMode ? 'idle'   : ''
+          stringValueIdle:   isMode ? 'idle'   : '',
+          stringValueIdle:   isMode ? 'alarm'  : ''
         }
       })
     } catch (e) {

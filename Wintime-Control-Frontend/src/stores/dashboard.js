@@ -29,6 +29,9 @@ export const useDashboardStore = defineStore('dashboard', {
     // ТПА в аварии (Alarm)
     alarmImms: (state) => state.imms.filter(i => i.status === 'Alarm'),
 
+    // ТПА в простое (Idle)
+    idleImms: (state) => state.imms.filter(i => i.status === 'Idle'),
+
     // ТПА оффлайн (Offline)
     offlineImms: (state) => state.imms.filter(i => i.status === 'Offline'),
 

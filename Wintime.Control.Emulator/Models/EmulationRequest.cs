@@ -21,7 +21,7 @@ public class EmulationRequest
 /// </summary>
 public class ProfileStep
 {
-    public string Mode { get; set; } = ""; // auto, manual, idle
+    public string Mode { get; set; } = ""; // auto, manual, alarm, idle
     public int DurationSeconds { get; set; }
 }
 
@@ -37,16 +37,20 @@ public class SensorEmulationConfig
     public float BaseValueAuto { get; set; }
     public float BaseValueManual { get; set; }
     public float BaseValueIdle { get; set; }
+    public float BaseValueAlarm { get; set; }
     public int VariancePercent { get; set; } // 0-100
     public bool ValueAuto { get; set; }
     public bool ValueManual { get; set; }
     public bool ValueIdle { get; set; }
+    public bool ValueAlarm { get; set; }
     public string StringValueAuto { get; set; } = "";
     public string StringValueManual { get; set; } = "";
     public string StringValueIdle { get; set; } = "";
+    public string StringValueAlarm { get; set; } = "";
     public int IntBaseValueAuto { get; set; }
     public int IntBaseValueManual { get; set; }
     public int IntBaseValueIdle { get; set; }
+    public int IntBaseValueAlarm { get; set; }
 }
 
 public class EmulationRequestValidator : AbstractValidator<EmulationRequest>
@@ -57,7 +61,7 @@ public class EmulationRequestValidator : AbstractValidator<EmulationRequest>
         RuleFor(x => x.Profile).NotEmpty();
         RuleForEach(x => x.Profile).ChildRules(step =>
         {
-            step.RuleFor(s => s.Mode).Must(m => m is "auto" or "manual" or "idle");
+            step.RuleFor(s => s.Mode).Must(m => m is "auto" or "manual" or "idle" or "alarm");
             step.RuleFor(s => s.DurationSeconds).GreaterThan(0);
         });
     }

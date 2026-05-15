@@ -23,6 +23,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Логирование (Serilog)
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .WriteTo.Console()
     .CreateLogger();
@@ -138,6 +140,20 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// Demo mode: route task state changes to emulator
+if (builder.Configuration.GetValue<bool>("DemoMode"))
+{
+    builder.Services.AddHttpClient<IEmulatorControlService, HttpEmulatorControlService>(client =>
+    {
+        client.BaseAddress = new Uri(
+            builder.Configuration["EmulatorSettings:BaseUrl"] ?? "http://localhost:5002");
+    });
+}
+else
+{
+    builder.Services.AddSingleton<IEmulatorControlService, NoOpEmulatorControlService>();
+}
+
 // Сервисы
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
@@ -151,7 +167,6 @@ builder.Services.AddSingleton(sp =>
     return factory.CreateClient();
 });
 // Message processing
-builder.Services.AddScoped<IMessageProcessor, MessageProcessor>();
 builder.Services.AddMessageProcessing();
 builder.Services.AddMessageHandlers();
 builder.Services.AddImmStatusTracking();
@@ -168,15 +183,12 @@ builder.Services.AddHostedService<MqttBackgroundService>();
 var app = builder.Build();
 
 // Pipeline
-if (app.Environment.IsDevelopment())
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CONTROL API v1");
-        c.RoutePrefix = "swagger";
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "CONTROL API v1");
+    c.RoutePrefix = "swagger";
+});
 
 app.UseDefaultFiles();
 app.UseStaticFiles();

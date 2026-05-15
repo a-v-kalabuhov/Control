@@ -14,7 +14,14 @@ public sealed record ImmCacheEntry(
     /// True если с момента последнего сообщения прошло меньше <see cref="TimeoutSeconds"/>.
     /// False также для новых записей, у которых <see cref="LastMessageAt"/> == <see cref="DateTime.MinValue"/>.
     /// </summary>
-    public bool IsOnline =>
-        LastMessageAt != DateTime.MinValue &&
-        (DateTime.UtcNow - LastMessageAt).TotalSeconds < TimeoutSeconds;
+    public bool IsOnline
+    {
+        get
+        {
+            if (LastMessageAt == DateTime.MinValue)
+                return false;
+            var period = (DateTime.UtcNow - LastMessageAt).TotalSeconds;
+            return period < TimeoutSeconds;
+        }
+    }
 }

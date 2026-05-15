@@ -16,6 +16,7 @@ export default {
           auto: '#10b981',
           manual: '#f59e0b', 
           alarm: '#ef4444',
+          idle: '#2563eb',
           offline: '#6b7280',
         }
       },

@@ -125,6 +125,7 @@ const borderColor = computed(() => {
     Auto: 'border-green-500',
     Manual: 'border-yellow-500',
     Alarm: 'border-red-500',
+    Idle: 'border-blue-400',
     Offline: 'border-gray-400'
   }
   return colors[props.imm.status] || 'border-gray-400'

@@ -5,7 +5,8 @@ using Wintime.Control.Emulator.Models;
 /// <summary>
 /// Класс для эмуляции IMM.
 /// Эмуляция заключается в генерации данных для датчиков, описанных в конфиге, и отправке сгенерированных данных по MQTT.
-/// Бесконечно выполнет метод RunLoopAsync, в котором и происходит генерация данных. 
+/// Бесконечно выполняет метод RunLoopAsync, в котором и происходит генерация данных.
+/// Режим инстанса (InstanceMode) управляется извне через SetMode.
 /// </summary>
 public class ImmEmulationInstance : IAsyncDisposable
 {
@@ -20,19 +21,33 @@ public class ImmEmulationInstance : IAsyncDisposable
     private Task? _runTask;
     private bool _disposed;
 
+    private volatile InstanceMode _mode;
+    private volatile TaskCompletionSource _modeChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private readonly object _logLock = new();
+    private readonly List<MessageLogEntry> _recentMessages = new(5);
+
     public string Status { get; private set; } = "Stopped";
     public DateTime StartedAt { get; private set; }
+    public InstanceMode Mode => _mode;
+
+    public IReadOnlyList<MessageLogEntry> RecentMessages
+    {
+        get { lock (_logLock) return _recentMessages.ToList(); }
+    }
 
     public ImmEmulationInstance(
         string immId,
         EmulationRequest request,
         IEmulatorMqttService mqtt,
-        ILogger<ImmEmulationInstance> logger)
+        ILogger<ImmEmulationInstance> logger,
+        InstanceMode initialMode = InstanceMode.Auto)
     {
         _immId = immId;
         _request = request;
         _mqtt = mqtt;
         _logger = logger;
+        _mode = initialMode;
 
         foreach (var cfg in request.SensorConfigs)
         {
@@ -54,9 +69,20 @@ public class ImmEmulationInstance : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Меняет режим инстанса. Немедленно прерывает текущую фазу выполнения.
+    /// </summary>
+    public void SetMode(InstanceMode mode)
+    {
+        _mode = mode;
+        var old = Interlocked.Exchange(ref _modeChanged,
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        old.TrySetResult();
+    }
+
     public void Start()
     {
-        if (_runTask != null) 
+        if (_runTask != null)
             return;
         Status = "Running";
         StartedAt = DateTime.UtcNow;
@@ -73,53 +99,106 @@ public class ImmEmulationInstance : IAsyncDisposable
 
     private async Task RunLoopAsync(CancellationToken ct)
     {
-        try
+        var intervalMs = 60000 / Math.Max(_request.MessagesPerMinute, 1);
+
+        while (!ct.IsCancellationRequested)
         {
-            var intervalMs = 60000 / Math.Max(_request.MessagesPerMinute, 1);
-            var profileIndex = 0;
-            var stepStart = DateTime.UtcNow;
-
-            while (!ct.IsCancellationRequested)
+            try
             {
-                var step = _request.Profile[profileIndex];
-                var elapsed = (DateTime.UtcNow - stepStart).TotalSeconds;
+                var currentMode = _mode;
 
-                if (elapsed >= step.DurationSeconds)
-                {
-                    profileIndex = (profileIndex + 1) % _request.Profile.Count;
-                    stepStart = DateTime.UtcNow;
-                    step = _request.Profile[profileIndex];
-                    // Increment counter on mode change to 'auto' if needed, 
-                    // but spec says counter increments on cycle end (mold open).
-                    if (step.Mode == "auto")
-                        _counter++;
-                }
-
-                var payload = new TelemetryPayload
-                {
-                    Timestamp = DateTime.UtcNow,
-                    Sensors = []
-                };
-
-                payload.Mode = step.Mode;
-
-                if (_cycleCounterSensorName != null)
-                    payload.Sensors[_cycleCounterSensorName] = _counter;
-
-                foreach (var gen in _generators)
-                {
-                    payload.Sensors[gen.Key] = gen.Value.GenerateValue(step.Mode);
-                }
-
-                await _mqtt.PublishAsync(_immId, payload, ct);
-                await Task.Delay(intervalMs, ct);
+                if (currentMode == InstanceMode.Auto)
+                    await RunAutoLoopAsync(intervalMs, ct);
+                else
+                    await RunFlatLoopAsync(currentMode, intervalMs, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Publish error for {ImmId}, retrying in 5s", _immId);
+                await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
+    }
+
+    /// <summary>
+    /// Генерирует сигналы для фиксированного режима (Idle или Manual) до смены InstanceMode.
+    /// </summary>
+    private async Task RunFlatLoopAsync(InstanceMode mode, int intervalMs, CancellationToken ct)
+    {
+        var mqttMode = mode == InstanceMode.Idle ? "idle" : "manual";
+
+        while (!ct.IsCancellationRequested && _mode == mode)
         {
-            _logger.LogError(ex, "Emulation error for {ImmId}", _immId);
+            await _mqtt.PublishAsync(_immId, BuildPayload(mqttMode), ct);
+            RecordMessage(mqttMode);
+
+            var modeChangedTask = _modeChanged.Task;
+            await Task.WhenAny(Task.Delay(intervalMs, ct), modeChangedTask);
         }
+    }
+
+    /// <summary>
+    /// Циклически выполняет шаги пресета. Поле mode в MQTT берётся из шага пресета.
+    /// Прерывается при смене InstanceMode.
+    /// </summary>
+    private async Task RunAutoLoopAsync(int intervalMs, CancellationToken ct)
+    {
+        var profileIndex = 0;
+        var firstStep = true;
+
+        while (!ct.IsCancellationRequested && _mode == InstanceMode.Auto)
+        {
+            var step = _request.Profile[profileIndex];
+            var stepEnd = DateTime.UtcNow.AddSeconds(step.DurationSeconds);
+
+            if (!firstStep && step.Mode == "auto")
+                _counter++;
+            firstStep = false;
+
+            while (DateTime.UtcNow < stepEnd && !ct.IsCancellationRequested && _mode == InstanceMode.Auto)
+            {
+                await _mqtt.PublishAsync(_immId, BuildPayload(step.Mode), ct);
+                RecordMessage(step.Mode);
+
+                var modeChangedTask = _modeChanged.Task;
+                var remainingMs = (int)(stepEnd - DateTime.UtcNow).TotalMilliseconds;
+                await Task.WhenAny(Task.Delay(Math.Min(intervalMs, Math.Max(remainingMs, 0)), ct), modeChangedTask);
+            }
+
+            profileIndex = (profileIndex + 1) % _request.Profile.Count;
+        }
+    }
+
+    private void RecordMessage(string mode)
+    {
+        lock (_logLock)
+        {
+            _recentMessages.Insert(0, new MessageLogEntry { Timestamp = DateTime.UtcNow, Mode = mode });
+            if (_recentMessages.Count > 5)
+                _recentMessages.RemoveAt(5);
+        }
+    }
+
+    private TelemetryPayload BuildPayload(string mode)
+    {
+        var payload = new TelemetryPayload
+        {
+            Timestamp = DateTime.UtcNow,
+            Mode = mode,
+            Sensors = []
+        };
+
+        if (_cycleCounterSensorName != null)
+            payload.Sensors[_cycleCounterSensorName] = _counter;
+
+        foreach (var gen in _generators)
+            payload.Sensors[gen.Key] = gen.Value.GenerateValue(mode);
+
+        return payload;
     }
 
     public async ValueTask DisposeAsync()

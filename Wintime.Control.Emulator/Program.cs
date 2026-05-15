@@ -70,10 +70,32 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Connect MQTT on startup
-/// <summary>
-/// Emulator uses just one MQTT connection.
-/// </summary>
 var mqttService = app.Services.GetRequiredService<IEmulatorMqttService>();
 await mqttService.ConnectAsync(CancellationToken.None);
+
+// Auto-start configured instances in Idle mode (retry until API is reachable)
+var apiClient = app.Services.GetRequiredService<IImmApiClient>();
+var orchestrator = app.Services.GetRequiredService<EmulationOrchestrator>();
+var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+_ = Task.Run(async () =>
+{
+    var delay = TimeSpan.FromSeconds(5);
+    while (true)
+    {
+        try
+        {
+            var imms = await apiClient.GetImmsAsync(CancellationToken.None);
+            var activeIds = imms.Where(i => i.IsActive).Select(i => i.Id);
+            await orchestrator.StartAllAsync(activeIds, CancellationToken.None);
+            startupLogger.LogInformation("Auto-start completed: {Count} IMM(s) started", activeIds.Count());
+            break;
+        }
+        catch (Exception ex)
+        {
+            startupLogger.LogWarning("API not reachable, retrying in {Delay}s: {Message}", delay.TotalSeconds, ex.Message);
+            await Task.Delay(delay);
+        }
+    }
+});
 
 app.Run();

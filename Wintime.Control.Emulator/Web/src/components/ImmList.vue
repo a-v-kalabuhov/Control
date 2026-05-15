@@ -2,17 +2,18 @@
   <div class="imm-list">
     <div class="header">
       <h2>Список ТПА</h2>
-      <el-button 
-        type="primary" 
-        @click="$emit('refresh')" 
+      <el-button
+        type="primary"
+        @click="$emit('refresh')"
         :loading="loading"
         :disabled="!!error"
+        style="width: 120px"
       >
-        <el-icon><Refresh /></el-icon> Обновить
+        <el-icon v-if="!loading"><Refresh /></el-icon><span>Обновить</span>
       </el-button>
     </div>
 
-    <!-- ОШИБКА: Показываем вместо пустого списка -->
+    <!-- Ошибка: показывается над списком, не вместо него -->
     <el-alert
       v-if="error"
       :title="errorTitle"
@@ -26,15 +27,15 @@
         <p v-if="error.details" class="error-details">
           <small>Детали: {{ error.details }}</small>
         </p>
-        <el-button 
-          type="primary" 
-          size="small" 
+        <el-button
+          type="primary"
+          size="small"
           @click="$emit('refresh')"
           style="margin-top: 10px"
         >
           <el-icon><Refresh /></el-icon> Повторить
         </el-button>
-        
+
         <!-- Подсказка для авторизации -->
         <el-collapse v-if="error.code === 'AUTH_FAILED'" style="margin-top: 15px">
           <el-collapse-item title="Как исправить?">
@@ -46,7 +47,7 @@
             </ol>
           </el-collapse-item>
         </el-collapse>
-        
+
         <!-- Подсказка для недоступности API -->
         <el-collapse v-if="error.code === 'API_UNAVAILABLE' || error.code === 'API_TIMEOUT'" style="margin-top: 15px">
           <el-collapse-item title="Как исправить?">
@@ -61,20 +62,10 @@
       </template>
     </el-alert>
 
-    <!-- Пустой список (только если нет ошибки) -->
-    <el-empty 
-      v-else-if="!loading && (!imms || imms.length === 0)" 
-      description="Нет доступных ТПА" 
-    >
-      <el-button type="primary" @click="$emit('refresh')">
-        <el-icon><Refresh /></el-icon> Обновить
-      </el-button>
-    </el-empty>
-
-    <!-- Список карточек -->
-    <el-row :gutter="20" v-else>
-      <el-col :xs="24" :sm="12" :lg="8" v-for="imm in imms" :key="imm.id">
-        <ImmCard 
+    <!-- Список карточек: показывается всегда, пока есть данные -->
+    <el-row :gutter="20" v-if="imms && imms.length > 0">
+      <el-col :xs="16" :sm="8" :lg="6" v-for="imm in imms" :key="imm.id">
+        <ImmCard
           :imm="imm"
           :status="statuses[imm.id]"
           @configure="$emit('configure', imm)"
@@ -84,8 +75,18 @@
       </el-col>
     </el-row>
 
-    <!-- Загрузка -->
-    <el-skeleton :rows="5" animated v-if="loading && !error" />
+    <!-- Пустой список: только если нет ошибки, не загружается и нет данных -->
+    <el-empty
+      v-else-if="!error && !loading"
+      description="Нет доступных ТПА"
+    >
+      <el-button type="primary" @click="$emit('refresh')">
+        <el-icon><Refresh /></el-icon> Обновить
+      </el-button>
+    </el-empty>
+
+    <!-- Скелетон: только при первой загрузке (нет данных) -->
+    <el-skeleton :rows="5" animated v-if="loading && (!imms || imms.length === 0)" />
   </div>
 </template>
 

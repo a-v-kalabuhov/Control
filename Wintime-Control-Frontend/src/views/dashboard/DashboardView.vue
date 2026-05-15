@@ -107,6 +107,7 @@
             <el-option label="В работе" value="Auto" />
             <el-option label="Наладка" value="Manual" />
             <el-option label="Авария" value="Alarm" />
+            <el-option label="Простой" value="Idle" />
             <el-option label="Оффлайн" value="Offline" />
           </el-select>
         </el-form-item>

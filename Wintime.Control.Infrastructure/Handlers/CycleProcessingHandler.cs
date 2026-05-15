@@ -14,15 +14,18 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 {
     private readonly ControlDbContext _db;
     private readonly ICycleTracker _tracker;
+    private readonly IEmulatorControlService _emulator;
     private readonly ILogger<CycleProcessingHandler> _logger;
 
     public CycleProcessingHandler(
         ControlDbContext db,
         ICycleTracker tracker,
+        IEmulatorControlService emulator,
         ILogger<CycleProcessingHandler> logger)
     {
         _db = db;
         _tracker = tracker;
+        _emulator = emulator;
         _logger = logger;
     }
 
@@ -93,6 +96,9 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             {
                 activeTask.ActualQuantity += activeTask.Mold.Cavities;
                 // TODO : здесь добавить вычисление расхода материала
+
+                if (activeTask.ActualQuantity >= activeTask.PlanQuantity)
+                    await _emulator.SetModeAsync(immId.ToString(), "idle", ct);
             }
 
 

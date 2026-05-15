@@ -64,6 +64,13 @@ public class MqttService : IMqttService, IDisposable
         {
             await OnMessageReceivedAsync(e);
         };
+
+        _mqttClient.DisconnectedAsync += async e =>
+        {
+            _isConnected = false;
+            _logger.LogWarning("MQTT disconnected: {Reason}", e.Reason);
+            await TryReconnect();
+        };
     }
 
     public bool IsConnected => _isConnected;

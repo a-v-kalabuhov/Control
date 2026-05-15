@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Wintime.Control.Emulator.Models;
 using Wintime.Control.Emulator.Services;
+using System.ComponentModel.DataAnnotations;
 
 namespace Wintime.Control.Emulator.Controllers;
 
@@ -49,4 +50,23 @@ public class EmulatorController : ControllerBase
     {
         return Ok(_orchestrator.GetStatuses());
     }
+
+    /// <summary>
+    /// Changes the InstanceMode of a running emulation instance.
+    /// </summary>
+    [HttpPatch("instances/{immId}/mode")]
+    public IActionResult SetMode(string immId, [FromBody] SetModeRequest request)
+    {
+        if (!Enum.TryParse<InstanceMode>(request.Mode, ignoreCase: true, out var mode))
+            return BadRequest($"Invalid mode '{request.Mode}'. Allowed: idle, manual, auto, alarm.");
+
+        _orchestrator.SetInstanceMode(immId, mode);
+        return NoContent();
+    }
+}
+
+public class SetModeRequest
+{
+    [Required]
+    public string Mode { get; set; } = "";
 }

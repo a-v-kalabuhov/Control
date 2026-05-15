@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.DTOs.Task;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
+using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
 
@@ -15,10 +16,12 @@ namespace Wintime.Control.API.Controllers;
 public class TasksController : ControllerBase
 {
     private readonly ControlDbContext _context;
+    private readonly IEmulatorControlService _emulator;
 
-    public TasksController(ControlDbContext context)
+    public TasksController(ControlDbContext context, IEmulatorControlService emulator)
     {
         _context = context;
+        _emulator = emulator;
     }
 
     /// <summary>
@@ -288,6 +291,7 @@ public class TasksController : ControllerBase
         task.SetupStartedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+        await _emulator.SetModeAsync(task.ImmId.ToString(), "manual");
 
         return Ok(new { message = "Наладка начата" });
     }
@@ -310,6 +314,7 @@ public class TasksController : ControllerBase
         task.StartedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+        await _emulator.SetModeAsync(task.ImmId.ToString(), "auto");
 
         return Ok(new { message = "Наладка завершена, задание в работе" });
     }
@@ -333,6 +338,7 @@ public class TasksController : ControllerBase
         task.MoldVerifiedAt = null;
 
         await _context.SaveChangesAsync();
+        await _emulator.SetModeAsync(task.ImmId.ToString(), "idle");
 
         return Ok(new { message = "Наладка отменена" });
     }
@@ -382,6 +388,7 @@ public class TasksController : ControllerBase
         task.CompletedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+        await _emulator.SetModeAsync(task.ImmId.ToString(), "idle");
 
         return Ok(new { message = "Задание завершено" });
     }

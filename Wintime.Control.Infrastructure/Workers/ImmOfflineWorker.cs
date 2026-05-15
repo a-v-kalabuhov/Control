@@ -57,11 +57,16 @@ public class ImmOfflineWorker : BackgroundService
                 var entries = _immCache.GetAll();
                 foreach (var entry in entries)
                 {
-                    if (!entry.IsOnline && _statusCache.GetStatus(entry.ImmId) != "Offline")
+                    var isOnline = entry.IsOnline;
+                    if (!isOnline)
                     {
-                        using var scope = _scopeFactory.CreateScope();
-                        var svc = scope.ServiceProvider.GetRequiredService<IImmStatusService>();
-                        await svc.UpdateStatusAsync(entry.ImmId, "Offline", DateTime.UtcNow);
+                        var status = _statusCache.GetStatus(entry.ImmId);
+                        if (status != "Offline")
+                        {
+                            using var scope = _scopeFactory.CreateScope();
+                            var svc = scope.ServiceProvider.GetRequiredService<IImmStatusService>();
+                            await svc.UpdateStatusAsync(entry.ImmId, "Offline", DateTime.UtcNow);
+                        }
                     }
                 }
             }

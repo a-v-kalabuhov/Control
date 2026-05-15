@@ -74,7 +74,7 @@ const STATUS_COLORS = {
   Manual:  '#eab308',
   Alarm:   '#ef4444',
   Offline: '#9ca3af',
-  Idle:    '#9ca3af',
+  Idle:    '#2563eb',
 }
 
 const TASK_COLORS = ['#3b82f6', '#7c3aed', '#0891b2', '#059669', '#d97706']
@@ -164,7 +164,7 @@ function durStr(ms) {
   return `${m}м`
 }
 
-const STATUS_LABELS = { Auto: 'Авто', Manual: 'Наладка', Alarm: 'Авария', Offline: 'Оффлайн', Idle: 'Ожидание' }
+const STATUS_LABELS = { Auto: 'Авто', Manual: 'Наладка', Alarm: 'Авария', Offline: 'Оффлайн', Idle: 'Простой' }
 
 function segTitle(seg) {
   const start = new Date(seg.changedAt)

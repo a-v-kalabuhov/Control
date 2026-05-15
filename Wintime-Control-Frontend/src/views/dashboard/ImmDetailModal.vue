@@ -37,7 +37,7 @@
             <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
               Итоги смены ({{ shiftLabel }})
             </div>
-            <div class="grid grid-cols-4 gap-3">
+            <div class="grid grid-cols-5 gap-3">
               <div class="bg-green-50 border border-green-100 rounded-lg p-3 text-center">
                 <div class="text-xl font-bold text-green-600">{{ summary.auto }}</div>
                 <div class="text-xs text-gray-500 mt-0.5">Авто</div>
@@ -49,6 +49,10 @@
               <div class="bg-red-50 border border-red-100 rounded-lg p-3 text-center">
                 <div class="text-xl font-bold text-red-600">{{ summary.alarm }}</div>
                 <div class="text-xs text-gray-500 mt-0.5">Аварии</div>
+              </div>
+              <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 text-center">
+                <div class="text-xl font-bold text-blue-600">{{ summary.idle }}</div>
+                <div class="text-xs text-gray-500 mt-0.5">Простой</div>
               </div>
               <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
                 <div class="text-xl font-bold text-gray-500">{{ summary.offline }}</div>
@@ -134,6 +138,7 @@ const STATUS_LEGEND = [
   { status: 'Auto',    label: 'Авто',     color: '#22c55e' },
   { status: 'Manual',  label: 'Наладка',  color: '#eab308' },
   { status: 'Alarm',   label: 'Авария',   color: '#ef4444' },
+  { status: 'Idle',    label: 'Простой',  color: '#2563eb' },
   { status: 'Offline', label: 'Оффлайн',  color: '#9ca3af' },
 ]
 
@@ -158,18 +163,20 @@ function msToHm(ms) {
 }
 
 const summary = computed(() => {
-  const totals = { auto: 0, manual: 0, alarm: 0, offline: 0 }
+  const totals = { auto: 0, manual: 0, alarm: 0, idle: 0, offline: 0 }
   for (const seg of statusSegments.value) {
     const ms = segDurationMs(seg)
     if (seg.status === 'Auto')             totals.auto   += ms
     else if (seg.status === 'Manual')      totals.manual += ms
     else if (seg.status === 'Alarm')       totals.alarm  += ms
+    else if (seg.status === 'Idle')        totals.idle += ms
     else /* Offline / Idle */              totals.offline += ms
   }
   return {
     auto:    msToHm(totals.auto),
     manual:  msToHm(totals.manual),
     alarm:   msToHm(totals.alarm),
+    idle:   msToHm(totals.idle),
     offline: msToHm(totals.offline),
   }
 })

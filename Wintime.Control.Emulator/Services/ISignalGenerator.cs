@@ -19,7 +19,7 @@ public interface ISignalGenerator
 /// </summary>
 public class FloatSignalGenerator : ISignalGenerator
 {
-    private readonly float _baseAuto, _baseManual, _baseIdle;
+    private readonly float _baseAuto, _baseManual, _baseIdle, _baseAlarm;
     private readonly float _variance;
     private readonly Random _random = new();
 
@@ -28,6 +28,7 @@ public class FloatSignalGenerator : ISignalGenerator
         _baseAuto = cfg.BaseValueAuto;
         _baseManual = cfg.BaseValueManual;
         _baseIdle = cfg.BaseValueIdle;
+        _baseAlarm = cfg.BaseValueAlarm;
         _variance = cfg.VariancePercent / 100f;
     }
 
@@ -38,6 +39,7 @@ public class FloatSignalGenerator : ISignalGenerator
             "auto" => _baseAuto,
             "manual" => _baseManual,
             "idle" => _baseIdle,
+            "alarm" => _baseAlarm,
             _ => 0
         };
         var deviation = baseVal * _variance;
@@ -52,7 +54,7 @@ public class FloatSignalGenerator : ISignalGenerator
 /// </summary>
 public class IntSignalGenerator : ISignalGenerator
 {
-    private readonly int _baseAuto, _baseManual, _baseIdle;
+    private readonly int _baseAuto, _baseManual, _baseIdle, _baseAlarm;
     private readonly float _variance;
     private readonly Random _random = new();
 
@@ -61,6 +63,7 @@ public class IntSignalGenerator : ISignalGenerator
         _baseAuto = cfg.IntBaseValueAuto;
         _baseManual = cfg.IntBaseValueManual;
         _baseIdle = cfg.IntBaseValueIdle;
+        _baseAlarm = cfg.IntBaseValueAlarm;
         _variance = cfg.VariancePercent / 100f;
     }
 
@@ -71,6 +74,7 @@ public class IntSignalGenerator : ISignalGenerator
             "auto" => _baseAuto,
             "manual" => _baseManual,
             "idle" => _baseIdle,
+            "alarm" => _baseAlarm,
             _ => 0
         };
         var deviation = (int)Math.Round(baseVal * _variance);
@@ -85,18 +89,20 @@ public class IntSignalGenerator : ISignalGenerator
 /// </summary>
 public class BooleanSignalGenerator : ISignalGenerator
 {
-    private readonly bool _valAuto, _valManual, _valIdle;
+    private readonly bool _valAuto, _valManual, _valIdle, _valAlarm;
     public BooleanSignalGenerator(SensorEmulationConfig cfg)
     {
         _valAuto = cfg.ValueAuto;
         _valManual = cfg.ValueManual;
         _valIdle = cfg.ValueIdle;
+        _valAlarm = cfg.ValueAlarm;
     }
     public object GenerateValue(string mode) => mode switch
     {
         "auto" => _valAuto,
         "manual" => _valManual,
         "idle" => _valIdle,
+        "alarm" => _valAlarm,
         _ => false
     };
 }
@@ -108,18 +114,20 @@ public class BooleanSignalGenerator : ISignalGenerator
 /// </summary>
 public class StringSignalGenerator : ISignalGenerator
 {
-    private readonly string _valAuto, _valManual, _valIdle;
+    private readonly string _valAuto, _valManual, _valIdle, _valAlarm;
     public StringSignalGenerator(SensorEmulationConfig cfg)
     {
         _valAuto = cfg.StringValueAuto;
         _valManual = cfg.StringValueManual;
         _valIdle = cfg.StringValueIdle;
+        _valAlarm = cfg.StringValueAlarm;
     }
     public object GenerateValue(string mode) => mode switch
     {
         "auto" => _valAuto,
         "manual" => _valManual,
         "idle" => _valIdle,
+         "alarm" => _valAlarm,
         _ => ""
     };
 }

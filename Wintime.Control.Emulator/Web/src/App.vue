@@ -51,9 +51,9 @@ const { startEmulation, stopEmulation, loadPreset } = useEmulator()
 const statuses = ref({})
 const refreshStatuses = async () => {
   try {
-    const res = emulatorApi.getInstances()
+    const res = await emulatorApi.getInstances()
     statuses.value = Object.fromEntries(
-      (res.data || []).map(s => [s.immId, s.status])
+      (res.data || []).map(s => [s.immId, s])
     )
   } catch (e) {
     console.error('Failed to fetch statuses:', e)

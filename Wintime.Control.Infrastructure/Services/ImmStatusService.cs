@@ -55,7 +55,7 @@ public class ImmStatusService : IImmStatusService
         var current = _statusCache.GetStatus(immId);
         if (current == newStatus)
             return;
-
+        
         var openRecord = await _dbContext.ImmStatusHistory
             .Where(h => h.ImmId == immId && h.EndedAt == null)
             .FirstOrDefaultAsync();

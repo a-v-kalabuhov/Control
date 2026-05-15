@@ -11,10 +11,10 @@ export function usePolling(fetchFn, intervalMs, immediate = true) {
 
   const execute = async () => {
     loading.value = true
-    error.value = null
     try {
       const response = await fetchFn()
       data.value = response.data
+      error.value = null
     } catch (e) {
       // Сохраняем структурированную ошибку
       error.value = e.errorData || {

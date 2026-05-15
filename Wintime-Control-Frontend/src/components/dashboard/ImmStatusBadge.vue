@@ -18,7 +18,7 @@ const props = defineProps({
   status: {
     type: String,
     required: true,
-    validator: (value) => ['Auto', 'Manual', 'Alarm', 'Offline'].includes(value)
+    validator: (value) => ['Auto', 'Manual', 'Alarm', 'Idle', 'Offline'].includes(value)
   }
 })
 
@@ -40,6 +40,12 @@ const statusConfig = {
     bg: 'bg-red-100', 
     text: 'text-red-800', 
     dot: 'bg-red-500' 
+  },
+  Idle: { 
+    label: 'Простой', 
+    bg: 'bg-blue-100', 
+    text: 'text-blue-800', 
+    dot: 'bg-blue-500' 
   },
   Offline: { 
     label: 'Оффлайн', 
