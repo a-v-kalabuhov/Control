@@ -41,25 +41,31 @@ public class MoldsController : ControllerBase
             query = query.Where(m => m.Name.Contains(search) || m.FormId.Contains(search));
         }
 
-        var molds = await query.ToListAsync();
+        var molds = await query
+            .Include(m => m.Usages)
+            .ToListAsync();
 
-        var dtos = molds.Select(m => new MoldDto
+        var dtos = molds.Select(m =>
         {
-            Id = m.Id,
-            FormId = m.FormId,
-            Name = m.Name,
-            Cavities = m.Cavities,
-            PartWeightGrams = m.PartWeightGrams,
-            RunnerWeightGrams = m.RunnerWeightGrams,
-            MaxResourceCycles = m.MaxResourceCycles,
-            To1Cycles = m.To1Cycles,
-            To2Cycles = m.To2Cycles,
-            StorageLocationIndex = m.StorageLocationIndex,
-            DrawingPath = m.DrawingPath,
-            PhotoPath = m.PhotoPath,
-            TotalCycles = 0, // TODO: Вычислить из MoldUsage
-            RemainingResource = 0, // TODO: Вычислить
-            IsActive = m.IsActive
+            var totalCycles = m.Usages.Sum(u => u.CyclesEnd - u.CyclesStart);
+            return new MoldDto
+            {
+                Id = m.Id,
+                FormId = m.FormId,
+                Name = m.Name,
+                Cavities = m.Cavities,
+                PartWeightGrams = m.PartWeightGrams,
+                RunnerWeightGrams = m.RunnerWeightGrams,
+                MaxResourceCycles = m.MaxResourceCycles,
+                To1Cycles = m.To1Cycles,
+                To2Cycles = m.To2Cycles,
+                StorageLocationIndex = m.StorageLocationIndex,
+                DrawingPath = m.DrawingPath,
+                PhotoPath = m.PhotoPath,
+                TotalCycles = totalCycles,
+                RemainingResource = m.MaxResourceCycles - totalCycles,
+                IsActive = m.IsActive
+            };
         }).ToList();
 
         return Ok(dtos);
@@ -72,11 +78,13 @@ public class MoldsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
     public async Task<ActionResult<MoldDto>> GetMoldById(Guid id)
     {
-        var mold = await _context.Molds.FindAsync(id);
+        var mold = await _context.Molds
+            .Include(m => m.Usages)
+            .FirstOrDefaultAsync(m => m.Id == id);
         if (mold == null)
             return NotFound();
 
-        // TODO: Вычислить TotalCycles и RemainingResource из MoldUsage
+        var totalCycles = mold.Usages.Sum(u => u.CyclesEnd - u.CyclesStart);
         var dto = new MoldDto
         {
             Id = mold.Id,
@@ -91,8 +99,8 @@ public class MoldsController : ControllerBase
             StorageLocationIndex = mold.StorageLocationIndex,
             DrawingPath = mold.DrawingPath,
             PhotoPath = mold.PhotoPath,
-            TotalCycles = 0,
-            RemainingResource = mold.MaxResourceCycles,
+            TotalCycles = totalCycles,
+            RemainingResource = mold.MaxResourceCycles - totalCycles,
             IsActive = mold.IsActive
         };
 
@@ -160,6 +168,16 @@ public class MoldsController : ControllerBase
             mold.Name = request.Name;
         if (request.Cavities.HasValue)
             mold.Cavities = request.Cavities.Value;
+        if (request.PartWeightGrams.HasValue)
+            mold.PartWeightGrams = request.PartWeightGrams.Value;
+        if (request.RunnerWeightGrams.HasValue)
+            mold.RunnerWeightGrams = request.RunnerWeightGrams.Value;
+        if (request.MaxResourceCycles.HasValue)
+            mold.MaxResourceCycles = request.MaxResourceCycles.Value;
+        if (request.To1Cycles.HasValue)
+            mold.To1Cycles = request.To1Cycles.Value;
+        if (request.To2Cycles.HasValue)
+            mold.To2Cycles = request.To2Cycles.Value;
         if (request.StorageLocationIndex != null)
             mold.StorageLocationIndex = request.StorageLocationIndex;
         if (request.IsActive.HasValue)

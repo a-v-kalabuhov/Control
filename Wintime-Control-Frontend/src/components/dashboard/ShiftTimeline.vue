@@ -60,7 +60,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   statusSegments: { type: Array, default: () => [] }, // ImmStatusSegmentDto[]
@@ -81,11 +81,15 @@ const TASK_COLORS = ['#3b82f6', '#7c3aed', '#0891b2', '#059669', '#d97706']
 
 const shiftDur = computed(() => props.shiftEnd - props.shiftStart)
 
-const now = new Date()
+const now = ref(new Date())
+let _nowTimer = null
+onMounted(() => { _nowTimer = setInterval(() => { now.value = new Date() }, 30_000) })
+onUnmounted(() => clearInterval(_nowTimer))
+
 const nowClamped = computed(() => {
-  if (now < props.shiftStart) return props.shiftStart
-  if (now > props.shiftEnd)   return props.shiftEnd
-  return now
+  if (now.value < props.shiftStart) return props.shiftStart
+  if (now.value > props.shiftEnd)   return props.shiftEnd
+  return now.value
 })
 const nowPct     = computed(() => toPct(nowClamped.value))
 const nowLabel   = computed(() => formatTime(nowClamped.value))
@@ -168,7 +172,7 @@ const STATUS_LABELS = { Auto: 'Авто', Manual: 'Наладка', Alarm: 'Ав
 
 function segTitle(seg) {
   const start = new Date(seg.changedAt)
-  const end   = seg.endedAt ? new Date(seg.endedAt) : now
+  const end   = seg.endedAt ? new Date(seg.endedAt) : now.value
   return `${STATUS_LABELS[seg.status] ?? seg.status}\n${formatTime(start)} — ${formatTime(end)}\n${durStr(end - start)}`
 }
 
