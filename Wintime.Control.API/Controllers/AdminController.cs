@@ -54,14 +54,15 @@ public class AdminController : ControllerBase
 
         var optionsBuilder = new MqttClientOptionsBuilder()
             .WithTcpServer(request.BrokerUrl, request.Port)
-            .WithTimeout(TimeSpan.FromSeconds(5));
+            .WithCleanSession();
 
         if (!string.IsNullOrEmpty(request.Username))
             optionsBuilder.WithCredentials(request.Username, request.Password);
 
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
-            var result = await client.ConnectAsync(optionsBuilder.Build());
+            var result = await client.ConnectAsync(optionsBuilder.Build(), cts.Token);
             await client.DisconnectAsync();
 
             if (result.ResultCode == MqttClientConnectResultCode.Success)
