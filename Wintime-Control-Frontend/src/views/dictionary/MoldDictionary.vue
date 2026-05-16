@@ -56,10 +56,12 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="Действия" width="200" fixed="right">
+      <el-table-column label="Действия" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" style="width: 120px" @click="editMold(row)">Редактировать</el-button>
-          <el-button size="small" style="width: 120px" type="danger" @click="deleteMold(row)">Удалить</el-button>
+          <div class="flex flex-col items-start gap-1">
+            <el-button size="small" style="width: 120px" @click="editMold(row)">Редактировать</el-button>
+            <el-button size="small" style="width: 120px" type="danger" @click="deleteMold(row)">Удалить</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>

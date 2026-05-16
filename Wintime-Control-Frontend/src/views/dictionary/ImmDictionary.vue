@@ -46,8 +46,10 @@
       </el-table-column>
       <el-table-column label="Действия" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="editImm(row)">Редактировать</el-button>
-          <el-button size="small" type="danger" @click="deleteImm(row)">Удалить</el-button>
+          <div class="flex flex-col items-start gap-1">
+            <el-button size="small" style="width: 130px; margin: 0" @click="editImm(row)">Редактировать</el-button>
+            <el-button size="small" style="width: 130px; margin: 0" type="danger" @click="deleteImm(row)">Удалить</el-button>          
+          </div>
         </template>
       </el-table-column>
     </el-table>

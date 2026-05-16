@@ -62,10 +62,12 @@
           {{ formatDate(row.createdAt) }}
         </template>
       </el-table-column>
-      <el-table-column label="Действия" width="200" fixed="right">
+      <el-table-column label="Действия" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="editPersonnel(row)">Редактировать</el-button>
-          <el-button size="small" type="danger" @click="deletePersonnel(row)">Деактивировать</el-button>
+          <div class="flex flex-col items-start gap-1">
+            <el-button size="small" style="width: 130px; margin: 0" @click="editPersonnel(row)">Редактировать</el-button>
+            <el-button size="small" type="danger" style="width: 130px; margin: 0" @click="deletePersonnel(row)">Деактивировать</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>

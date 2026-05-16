@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MQTTnet;
 using Wintime.Control.Core.DTOs.Admin;
 using Wintime.Control.Shared.Constants;
 
@@ -49,7 +50,28 @@ public class AdminController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin}")]
     public async Task<IActionResult> TestMqttConnection([FromBody] MqttTestRequestDto request)
     {
-        // TODO: Реализовать тест подключения через MQTTnet
-        return Ok(new { message = "Подключение успешно" });
+        using var client = new MqttClientFactory().CreateMqttClient();
+
+        var optionsBuilder = new MqttClientOptionsBuilder()
+            .WithTcpServer(request.BrokerUrl, request.Port)
+            .WithTimeout(TimeSpan.FromSeconds(5));
+
+        if (!string.IsNullOrEmpty(request.Username))
+            optionsBuilder.WithCredentials(request.Username, request.Password);
+
+        try
+        {
+            var result = await client.ConnectAsync(optionsBuilder.Build());
+            await client.DisconnectAsync();
+
+            if (result.ResultCode == MqttClientConnectResultCode.Success)
+                return Ok(new { message = "Подключение успешно" });
+
+            return BadRequest(new { message = $"Брокер отклонил подключение: {result.ResultCode}" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }
