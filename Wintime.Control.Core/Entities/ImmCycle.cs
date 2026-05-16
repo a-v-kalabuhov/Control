@@ -12,6 +12,6 @@ public class ImmCycle : BaseEntity
 
     // Navigation
     public Imm Imm { get; set; } = null!;
-    public Task? Task { get; set; }
+    public ShiftTask? Task { get; set; }
     public Mold? Mold { get; set; }
 }

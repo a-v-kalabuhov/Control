@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Wintime.Control.Infrastructure.Data;
@@ -11,9 +12,11 @@ using Wintime.Control.Infrastructure.Data;
 namespace Wintime.Control.Infrastructure.Migrations
 {
     [DbContext(typeof(ControlDbContext))]
-    partial class ControlDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260516053802_AddTaskMaterialWeight")]
+    partial class AddTaskMaterialWeight
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -463,7 +466,7 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.ToTable("Shifts");
                 });
 
-            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
+            modelBuilder.Entity("Wintime.Control.Core.Entities.Task", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -786,7 +789,7 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .HasForeignKey("MoldId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("Wintime.Control.Core.Entities.ShiftTask", "Task")
+                    b.HasOne("Wintime.Control.Core.Entities.Task", "Task")
                         .WithMany()
                         .HasForeignKey("TaskId")
                         .OnDelete(DeleteBehavior.SetNull);
@@ -823,7 +826,7 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Wintime.Control.Core.Entities.ShiftTask", "Task")
+                    b.HasOne("Wintime.Control.Core.Entities.Task", "Task")
                         .WithMany()
                         .HasForeignKey("TaskId");
 
@@ -834,7 +837,7 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Task");
                 });
 
-            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
+            modelBuilder.Entity("Wintime.Control.Core.Entities.Task", b =>
                 {
                     b.HasOne("Wintime.Control.Core.Entities.Imm", "Imm")
                         .WithMany("Tasks")

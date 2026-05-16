@@ -95,12 +95,12 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             if (isSuccessful && activeTask is not null)
             {
                 activeTask.ActualQuantity += activeTask.Mold.Cavities;
-                // TODO : здесь добавить вычисление расхода материала
-
+                activeTask.ActualMaterialWeightGrams +=
+                    activeTask.Mold.Cavities * activeTask.Mold.PartWeightGrams
+                    + activeTask.Mold.RunnerWeightGrams;
                 if (activeTask.ActualQuantity >= activeTask.PlanQuantity)
                     await _emulator.SetModeAsync(immId.ToString(), "idle", ct);
             }
-
 
             // Обновить счётчик ресурса пресс-формы только при фактическом смыкании (изменении счётчика)
             if (counterChanged)

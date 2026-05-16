@@ -11,7 +11,7 @@ public class Imm : BaseEntity
     public bool IsActive { get; set; } = true;
     // Navigation
     public Template Template { get; set; } = null!;
-    public ICollection<Task> Tasks { get; set; } = new List<Task>();
+    public ICollection<ShiftTask> Tasks { get; set; } = new List<ShiftTask>();
     public ICollection<MoldUsage> MoldUsages { get; set; } = new List<MoldUsage>();
     public ICollection<Event> Events { get; set; } = new List<Event>();
     public ICollection<Telemetry> Telemetry { get; set; } = new List<Telemetry>();

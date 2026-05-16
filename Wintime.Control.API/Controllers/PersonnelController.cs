@@ -114,6 +114,17 @@ public class PersonnelController : ControllerBase
         if (request.IsActive.HasValue)
             user.IsActive = request.IsActive.Value;
 
+        if (request.Role != null)
+        {
+            if (!Enum.TryParse<Core.Enums.UserRole>(request.Role, out var newRole))
+                return BadRequest("Неверная роль");
+
+            var currentRoles = await _userManager.GetRolesAsync(user);
+            await _userManager.RemoveFromRolesAsync(user, currentRoles);
+            await _userManager.AddToRoleAsync(user, request.Role);
+            user.Role = newRole;
+        }
+
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded)
             return BadRequest(result.Errors);

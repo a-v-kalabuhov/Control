@@ -13,6 +13,6 @@ public class User : IdentityUser
     public bool IsActive { get; set; } = true;
 
     // Navigation
-    public ICollection<Task> AssignedTasks { get; set; } = new List<Task>();
+    public ICollection<ShiftTask> AssignedTasks { get; set; } = new List<ShiftTask>();
     public ICollection<Event> Events { get; set; } = new List<Event>();
 }

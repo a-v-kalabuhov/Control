@@ -66,6 +66,7 @@ public class TasksController : ControllerBase
             PersonnelName = t.Personnel?.FullName,
             PlanQuantity = t.PlanQuantity,
             ActualQuantity = t.ActualQuantity,
+            ActualMaterialWeightGrams = t.ActualMaterialWeightGrams,
             ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
             Status = t.Status,
             PlannedDate = t.PlannedDate,
@@ -118,6 +119,7 @@ public class TasksController : ControllerBase
             PersonnelName = t.Personnel?.FullName,
             PlanQuantity = t.PlanQuantity,
             ActualQuantity = t.ActualQuantity,
+            ActualMaterialWeightGrams = t.ActualMaterialWeightGrams,
             ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
             Status = t.Status,
             PlannedDate = t.PlannedDate,
@@ -161,6 +163,7 @@ public class TasksController : ControllerBase
             PersonnelName = task.Personnel?.FullName,
             PlanQuantity = task.PlanQuantity,
             ActualQuantity = task.ActualQuantity,
+            ActualMaterialWeightGrams = task.ActualMaterialWeightGrams,
             ProgressPercent = task.PlanQuantity > 0 ? (decimal)task.ActualQuantity / task.PlanQuantity * 100 : 0,
             Status = task.Status,
             PlannedDate = task.PlannedDate,
@@ -184,7 +187,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<TaskDto>> CreateTask([FromBody] CreateTaskRequestDto request)
     {
-        var task = new Core.Entities.Task
+        var task = new Core.Entities.ShiftTask
         {
             ImmId = request.ImmId,
             MoldId = request.MoldId,

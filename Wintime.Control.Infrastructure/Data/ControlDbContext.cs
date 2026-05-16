@@ -14,7 +14,7 @@ public class ControlDbContext : IdentityDbContext<User>
     // DbSets (Таблицы)
     public DbSet<Imm> Imms { get; set; }
     public DbSet<Mold> Molds { get; set; }
-    public DbSet<Core.Entities.Task> Tasks { get; set; }
+    public DbSet<Core.Entities.ShiftTask> Tasks { get; set; }
     public DbSet<Template> Templates { get; set; }
     public DbSet<MoldUsage> MoldUsages { get; set; }
     public DbSet<Event> Events { get; set; }
@@ -54,7 +54,7 @@ public class ControlDbContext : IdentityDbContext<User>
         });
 
         // Конфигурация Task
-        builder.Entity<Wintime.Control.Core.Entities.Task>(entity =>
+        builder.Entity<Wintime.Control.Core.Entities.ShiftTask>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Imm).WithMany(i => i.Tasks).HasForeignKey(e => e.ImmId);
@@ -81,7 +81,7 @@ public class ControlDbContext : IdentityDbContext<User>
         // Настройка имен таблиц (опционально, чтобы были во множественном числе)
         builder.Entity<Imm>().ToTable("Imms");
         builder.Entity<Mold>().ToTable("Molds");
-        builder.Entity<Wintime.Control.Core.Entities.Task>().ToTable("Tasks");
+        builder.Entity<Wintime.Control.Core.Entities.ShiftTask>().ToTable("Tasks");
         builder.Entity<User>().ToTable("Users");
 
         // Конфигурация ImmCycle

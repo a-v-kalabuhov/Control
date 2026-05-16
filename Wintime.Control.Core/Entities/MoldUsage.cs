@@ -15,5 +15,5 @@ public class MoldUsage : BaseEntity
     // Navigation
     public Mold Mold { get; set; } = null!;
     public Imm Imm { get; set; } = null!;
-    public Task? Task { get; set; }
+    public ShiftTask? Task { get; set; }
 }
