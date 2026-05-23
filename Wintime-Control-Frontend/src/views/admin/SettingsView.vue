@@ -44,24 +44,7 @@
       </el-form>
     </el-card>
 
-    <el-card class="mb-6">
-      <template #header>
-        <span class="font-semibold">База данных</span>
-      </template>
-
-      <el-form :model="settings" label-width="200px" label-position="left">
-        <el-form-item label="Connection String">
-          <el-input 
-            v-model="settings.databaseConnectionString" 
-            type="textarea" 
-            :rows="3"
-            placeholder="Host=localhost;Port=5432;Database=control_db;Username=postgres;Password=***"
-          />
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <el-card class="mb-6">
+<el-card class="mb-6" visible="false">
       <template #header>
         <span class="font-semibold">Общие настройки</span>
       </template>
@@ -100,7 +83,6 @@ const settings = reactive({
   mqttPort: 1883,
   mqttUsername: '',
   mqttPassword: '',
-  databaseConnectionString: '',
   sessionTimeoutMinutes: 60,
   telemetryIntervalSeconds: 5
 })

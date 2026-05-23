@@ -52,8 +52,12 @@ public class AdminController : ControllerBase
     {
         using var client = new MqttClientFactory().CreateMqttClient();
 
+        var host = Uri.TryCreate(request.BrokerUrl, UriKind.Absolute, out var uri)
+            ? uri.Host
+            : request.BrokerUrl;
+
         var optionsBuilder = new MqttClientOptionsBuilder()
-            .WithTcpServer(request.BrokerUrl, request.Port)
+            .WithTcpServer(host, request.Port)
             .WithCleanSession();
 
         if (!string.IsNullOrEmpty(request.Username))
