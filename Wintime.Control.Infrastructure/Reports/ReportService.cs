@@ -31,6 +31,9 @@ public class ReportService : IReportService
         var periodEnd = periodStart.AddDays(1);
 
         // Если указана смена — сужаем диапазон по её расписанию
+        int? shiftNumber = null;
+        string? shiftStartTime = null;
+        string? shiftEndTime = null;
         if (shiftId.HasValue)
         {
             var shift = await _context.Shifts.FirstOrDefaultAsync(s => s.Id == shiftId.Value, ct);
@@ -38,12 +41,21 @@ public class ReportService : IReportService
             {
                 periodStart = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc).AddMinutes(shift.StartMinutes);
                 periodEnd = periodStart.AddMinutes(shift.DurationMinutes);
+
+                var allShiftIds = await _context.Shifts.OrderBy(s => s.StartMinutes).Select(s => s.Id).ToListAsync(ct);
+                shiftNumber = allShiftIds.IndexOf(shift.Id) + 1;
+                shiftStartTime = $"{shift.StartMinutes / 60 % 24:D2}:{shift.StartMinutes % 60:D2}";
+                var endMinutes = shift.StartMinutes + shift.DurationMinutes;
+                shiftEndTime = $"{endMinutes / 60 % 24:D2}:{endMinutes % 60:D2}";
             }
         }
 
         var report = new DailyReportDto
         {
             Date = date.Date,
+            ShiftNumber = shiftNumber,
+            ShiftStartTime = shiftStartTime,
+            ShiftEndTime = shiftEndTime,
             ImmData = new List<DailyReportImmItemDto>()
         };
 
@@ -380,6 +392,25 @@ public class ReportService : IReportService
         // Динамическое заполнение в зависимости от типа отчёта
         if (data is DailyReportDto dailyReport)
         {
+            // Мета-информация: дата, смена, время формирования
+            worksheet.Cell(row, 1).Value = "Дата:";
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 2).Value = dailyReport.Date.ToString("dd.MM.yyyy");
+            row++;
+
+            if (dailyReport.ShiftNumber.HasValue)
+            {
+                worksheet.Cell(row, 1).Value = "Смена:";
+                worksheet.Cell(row, 1).Style.Font.Bold = true;
+                worksheet.Cell(row, 2).Value = $"Смена {dailyReport.ShiftNumber} ({dailyReport.ShiftStartTime}–{dailyReport.ShiftEndTime})";
+                row++;
+            }
+
+            worksheet.Cell(row, 1).Value = "Сформирован:";
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 2).Value = DateTime.UtcNow.ToString("dd.MM.yyyy HH:mm") + " UTC";
+            row += 2;
+
             // Заголовки таблицы
             var headers = new[] { "ТПА", "Пресс-форма", "План", "Факт", "Циклы", "Работа (ч)", "Наладка (ч)", "Простой (ч)", "Эффективность %", "Сырьё (кг)" };
             for (int i = 0; i < headers.Length; i++)
