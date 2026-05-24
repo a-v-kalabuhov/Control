@@ -187,7 +187,8 @@ const exportExcel = async () => {
     await reportsStore.exportToExcel('daily', {
       dateFrom: filters.date,
       dateTo: filters.date,
-      immIds: filters.immId ? [filters.immId] : null
+      immIds: filters.immId ? [filters.immId] : null,
+      shiftId: filters.shiftId || undefined
     })
   } catch (error) {
     ElMessage.error('Ошибка экспорта')
