@@ -27,6 +27,16 @@
             class="w-48"
           />
         </el-form-item>
+        <el-form-item label="Смена">
+          <el-select v-model="filters.shiftId" placeholder="Вся смена" clearable class="w-44">
+            <el-option
+              v-for="shift in shifts"
+              :key="shift.id"
+              :label="`Смена ${shift.number} (${shift.startTime}–${shift.endTime})`"
+              :value="shift.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="ТПА">
           <el-select v-model="filters.immId" placeholder="Все" clearable class="w-48">
             <el-option
@@ -65,12 +75,17 @@
         <el-table-column prop="planQuantity" label="План" width="80" align="center" />
         <el-table-column prop="actualQuantity" label="Факт" width="80" align="center" />
         <el-table-column prop="cycleCount" label="Смыкания" width="90" align="center" />
-        <el-table-column label="Время работы (ч)" width="120">
+        <el-table-column label="Работа (ч)" width="100">
           <template #default="{ row }">
             {{ (row.workTimeSeconds / 3600).toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column label="Время простоя (ч)" width="120">
+        <el-table-column label="Наладка (ч)" width="100">
+          <template #default="{ row }">
+            {{ (row.setupSeconds / 3600).toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="Простой (ч)" width="100">
           <template #default="{ row }">
             {{ (row.downtimeSeconds / 3600).toFixed(2) }}
           </template>
@@ -109,6 +124,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useReportsStore } from '@/stores/reports'
 import { immApi } from '@/api/imm'
+import { shiftsApi } from '@/api/shifts'
 import GanttChart from '@/components/reports/GanttChart.vue'
 import dayjs from 'dayjs'
 
@@ -118,24 +134,34 @@ const reportsStore = useReportsStore()
 const loading = ref(false)
 const exporting = ref(false)
 const imms = ref([])
+const shifts = ref([])
 const reportData = ref(null)
 
 const filters = reactive({
   date: dayjs().format('YYYY-MM-DD'),
+  shiftId: null,
   immId: null
 })
 
 onMounted(async () => {
-  await loadImms()
-  await loadReport()
+  await Promise.all([loadImms(), loadShifts()])
 })
 
 const loadImms = async () => {
   try {
     const response = await immApi.getList({ isActive: true })
     imms.value = response.data
-  } catch (error) {
+  } catch {
     ElMessage.error('Ошибка загрузки ТПА')
+  }
+}
+
+const loadShifts = async () => {
+  try {
+    const response = await shiftsApi.getShifts()
+    shifts.value = response.data ?? []
+  } catch {
+    shifts.value = []
   }
 }
 
@@ -144,10 +170,11 @@ const loadReport = async () => {
   try {
     await reportsStore.loadDailyReport({
       date: filters.date,
-      immId: filters.immId
+      shiftId: filters.shiftId || undefined,
+      immId: filters.immId || undefined
     })
     reportData.value = reportsStore.dailyReport
-  } catch (error) {
+  } catch {
     ElMessage.error('Ошибка формирования отчёта')
   } finally {
     loading.value = false

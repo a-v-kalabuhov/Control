@@ -11,7 +11,7 @@ public interface IReportService
     /// <param name="immId"></param>
     /// <param name="ct"></param>
     /// <returns></returns>
-    Task<DailyReportDto> GetDailyReportAsync(DateTime date, Guid? immId = null, CancellationToken ct = default);
+    Task<DailyReportDto> GetDailyReportAsync(DateTime date, Guid? immId = null, Guid? shiftId = null, CancellationToken ct = default);
     
     /// <summary>
     /// Отчёт "Производительность оборудования"
