@@ -35,28 +35,26 @@ const routes = [
         path: 'reports',
         name: 'Reports',
         component: () => import('@/views/reports/ReportsView.vue'),
-        meta: { roles: ['Admin', 'Manager'], title: 'Отчёты' },
-        children: [
-          {
-            path: 'daily',
-            name: 'DailyReport',
-            component: () => import('@/views/reports/DailyReportView.vue'),
-            meta: { roles: ['Admin', 'Manager'] }
-          },
-          {
-            path: 'equipment',
-            name: 'EquipmentReport',
-            component: () => import('@/views/reports/EquipmentReportView.vue'),
-            meta: { roles: ['Admin', 'Manager'] }
-          },
-          {
-            path: 'assets',
-            name: 'AssetsReport',
-            component: () => import('@/views/reports/AssetsReportView.vue'),
-            meta: { roles: ['Admin', 'Manager'] }
-          }
-        ]
-      },      
+        meta: { roles: ['Admin', 'Manager'], title: 'Отчёты' }
+      },
+      {
+        path: 'reports/daily',
+        name: 'DailyReport',
+        component: () => import('@/views/reports/DailyReportView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'Картина рабочего дня' }
+      },
+      {
+        path: 'reports/equipment',
+        name: 'EquipmentReport',
+        component: () => import('@/views/reports/EquipmentReportView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'Производительность оборудования' }
+      },
+      {
+        path: 'reports/assets',
+        name: 'AssetsReport',
+        component: () => import('@/views/reports/AssetsReportView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'Активы цеха' }
+      },
       {
         path: 'dictionary',
         name: 'Dictionary',

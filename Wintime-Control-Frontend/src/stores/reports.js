@@ -50,6 +50,7 @@ export const useReportsStore = defineStore('reports', {
         return { success: true }
       } catch (error) {
         ElMessage.error('Ошибка загрузки отчёта')
+        console.log('ошибка: ', error)
         return { success: false, message: error.message }
       } finally {
         this.loading = false

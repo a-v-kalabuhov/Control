@@ -159,6 +159,7 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IPdfReportService, PdfReportService>();
 // MQTT Service
 builder.Services.AddSingleton<IWintimeMqttClientFactory, WintimeMqttClientFactory>();
 builder.Services.AddSingleton(sp =>

@@ -28,11 +28,12 @@ public class ReportsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<DailyReportDto>> GetDailyReport(
         [FromQuery] DateTime date,
-        [FromQuery] Guid? immId = null)
+        [FromQuery] Guid? immId = null,
+        [FromQuery] Guid? shiftId = null)
     {
         try
         {
-            var report = await _reportService.GetDailyReportAsync(date, immId);
+            var report = await _reportService.GetDailyReportAsync(date, immId, shiftId);
             return Ok(report);
         }
         catch (Exception ex)
@@ -94,7 +95,7 @@ public class ReportsController : ControllerBase
         {
             object reportData = request.ReportType.ToLower() switch
             {
-                "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault()),
+                "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault(), request.ShiftId),
                 "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds),
                 "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.ReportType),
                 _ => throw new ArgumentException("Неизвестный тип отчёта")
@@ -122,7 +123,7 @@ public class ReportsController : ControllerBase
         {
             object report = request.ReportType.ToLower() switch
             {
-                "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault()),
+                "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault(), request.ShiftId),
                 "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds),
                 "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.ReportType),
                 _ => throw new ArgumentException("Неизвестный тип отчёта")

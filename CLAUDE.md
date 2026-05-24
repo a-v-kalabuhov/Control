@@ -110,3 +110,26 @@ Tables: `Users` (Identity), `Imms`, `Molds`, `Tasks`, `Templates`, `MoldUsages`,
 ## No Tests Yet
 
 There are no test projects. When adding tests, use xUnit for .NET and Vitest for the frontend.
+
+## Coding Rules
+
+### DateTime и PostgreSQL (Npgsql)
+
+**Правило:** все `DateTime`-значения, передаваемые в EF Core запросы к PostgreSQL, обязаны иметь `Kind=Utc`. Npgsql отклоняет `DateTimeKind.Unspecified` с исключением `Cannot write DateTime with Kind=Unspecified to PostgreSQL type 'timestamp with time zone'`.
+
+Причина: колонки, объявленные как `timestamp with time zone` (`timestamptz`), требуют явного UTC.
+
+**Как это возникает:** ASP.NET Core биндит `DateTime` из query string (например, `?date=2026-05-23`) с `Kind=Unspecified`. Далее `.Date`, `.AddDays()`, `.AddMinutes()` сохраняют тот же `Kind`.
+
+**Обязательный паттерн** — конвертировать в UTC сразу после получения параметра:
+
+```csharp
+// В начале метода сервиса, до любых запросов к БД:
+var dateUtc      = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
+var dateFromUtc  = DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc);
+var dateToUtc    = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc);
+// AddDays/AddMinutes от Utc-значения сохраняют Kind=Utc — безопасно
+var periodEnd    = dateUtc.AddDays(1);
+```
+
+Никогда не передавать `date.Date` напрямую в `.Where()`-условие — только через `SpecifyKind`-переменную.
