@@ -93,13 +93,25 @@ const routes = [
             path: 'settings',
             name: 'AdminSettings',
             component: () => import('@/views/admin/SettingsView.vue'),
-            meta: { roles: ['Admin'] }
+            meta: { roles: ['Admin'], title: 'Настройки' }
           },
           {
             path: 'templates',
             name: 'AdminTemplates',
             component: () => import('@/views/admin/TemplatesView.vue'),
-            meta: { roles: ['Admin'] }
+            meta: { roles: ['Admin'], title: 'Шаблоны MQTT' }
+          },
+          {
+            path: 'modules',
+            name: 'AdminModules',
+            component: () => import('@/views/admin/ModulesView.vue'),
+            meta: { roles: ['Admin'], title: 'Управление модулями' }
+          },
+          {
+            path: 'maintenance',
+            name: 'AdminMaintenance',
+            component: () => import('@/views/admin/MaintenanceView.vue'),
+            meta: { roles: ['Admin'], title: 'Обслуживание' }
           }
         ]
       }

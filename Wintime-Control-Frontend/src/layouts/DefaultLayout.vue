@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <!-- Боковое меню -->
-    <aside 
+    <aside
       class="fixed left-0 top-0 h-full w-64 bg-white shadow-lg z-50 transition-transform duration-300"
       :class="sidebarCollapsed ? '-translate-x-full' : 'translate-x-0'"
     >
@@ -20,60 +20,44 @@
           active-text-color="#2563eb"
           router
         >
-          <!-- Дашборд -->
-          <el-menu-item index="/">
-            <el-icon><Monitor /></el-icon>
-            <span>Дашборд</span>
-          </el-menu-item>
+          <!-- Динамические пункты из реестра -->
+          <template v-for="item in visibleMenuItems" :key="item.path || item.index">
+            <!-- Простой пункт -->
+            <el-menu-item v-if="item.type === 'item'" :index="item.path">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span>{{ item.label }}</span>
+            </el-menu-item>
 
-          <!-- Задания (для Manager, Admin) -->
-          <el-menu-item 
-            v-if="canAccess(['Admin', 'Manager'])" 
-            index="/tasks"
-          >
-            <el-icon><Document /></el-icon>
-            <span>Задания</span>
-          </el-menu-item>
+            <!-- Подменю -->
+            <el-sub-menu v-else-if="item.type === 'submenu'" :index="item.index">
+              <template #title>
+                <el-icon><component :is="item.icon" /></el-icon>
+                <span>{{ item.label }}</span>
+              </template>
+              <el-menu-item
+                v-for="child in visibleChildren(item)"
+                :key="child.path"
+                :index="child.path"
+              >
+                {{ child.label }}
+              </el-menu-item>
+            </el-sub-menu>
+          </template>
 
-          <!-- Отчёты (для Manager, Admin) -->
-          <el-menu-item 
-            v-if="canAccess(['Admin', 'Manager'])" 
-            index="/reports"
-          >
-            <el-icon><DataLine /></el-icon>
-            <span>Отчёты</span>
-          </el-menu-item>
-          <!-- Справочники (для Admin, Manager) -->
-          <el-sub-menu 
-            v-if="canAccess(['Admin', 'Manager'])" 
-            index="dictionary"
-          >
-            <template #title>
-              <el-icon><Setting /></el-icon>
-              <span>Справочники</span>
-            </template>
-            <el-menu-item index="/dictionary/imm">ТПА</el-menu-item>
-            <el-menu-item index="/dictionary/molds">Пресс-формы</el-menu-item>
-            <el-menu-item index="/dictionary/personnel">Персонал</el-menu-item>
-            <el-menu-item index="/dictionary/shifts">Смены</el-menu-item>
-          </el-sub-menu>
-          <!-- Смены отдельно для Observer (для Admin/Manager — внутри Справочников) -->
-          <el-menu-item
-            v-if="canAccess(['Observer'])"
-            index="/dictionary/shifts"
-          >
-            <el-icon><Clock /></el-icon>
-            <span>Смены</span>
-          </el-menu-item>
-
+          <!-- Администрирование (платформенный, всегда для Admin) -->
           <el-sub-menu v-if="canAccess(['Admin'])" index="admin">
             <template #title>
               <el-icon><Setting /></el-icon>
               <span>Администрирование</span>
             </template>
-            <el-menu-item index="/admin/settings">Настройки</el-menu-item>
-            <el-menu-item index="/admin/templates">Шаблоны</el-menu-item>
-          </el-sub-menu>      
+            <el-menu-item
+              v-for="child in menuRegistry.adminChildren"
+              :key="child.path"
+              :index="child.path"
+            >
+              {{ child.label }}
+            </el-menu-item>
+          </el-sub-menu>
         </el-menu>
       </nav>
 
@@ -100,7 +84,7 @@
     </aside>
 
     <!-- Основной контент -->
-    <div 
+    <div
       class="transition-all duration-300"
       :class="sidebarCollapsed ? 'ml-0' : 'ml-64'"
     >
@@ -116,12 +100,7 @@
         </div>
 
         <div class="flex items-center gap-4">
-          <!-- Время -->
-          <div class="text-sm text-gray-600">
-            {{ currentTime }}
-          </div>
-
-          <!-- Уведомления (заглушка) -->
+          <div class="text-sm text-gray-600">{{ currentTime }}</div>
           <el-badge :value="3" class="item">
             <el-button :icon="Bell" circle />
           </el-badge>
@@ -139,8 +118,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { Bell } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
+import { menuRegistry } from '@/modules/menuRegistry'
 import dayjs from 'dayjs'
 
 const route = useRoute()
@@ -150,31 +131,40 @@ const { canAccess } = usePermissions()
 const sidebarCollapsed = ref(false)
 const currentTime = ref(dayjs().format('DD.MM.YYYY HH:mm'))
 
-// Обновление времени
 let timer = null
 onMounted(() => {
   timer = setInterval(() => {
     currentTime.value = dayjs().format('DD.MM.YYYY HH:mm')
   }, 1000)
 })
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
-})
+onUnmounted(() => { if (timer) clearInterval(timer) })
 
 const activeMenu = computed(() => route.path)
 
+// Пункты, доступные текущему пользователю
+const visibleMenuItems = computed(() =>
+  menuRegistry.items.filter(item => canAccess(item.roles))
+)
+
+function visibleChildren(item) {
+  return (item.children || []).filter(c => canAccess(c.roles))
+}
+
+// Заголовок страницы — сначала из meta маршрута, потом из реестра, потом дефолт
 const pageTitle = computed(() => {
-  const titles = {
-    '/': 'Дашборд',
-    '/tasks': 'Задания',
-    '/reports': 'Отчёты',
-    '/dictionary/imm': 'Справочник ТПА',
-    '/dictionary/molds': 'Справочник пресс-форм',
-    '/dictionary/personnel': 'Справочник персонала',
-    '/dictionary/shifts': 'Расписание смен'
+  if (route.meta?.title) return route.meta.title
+
+  for (const item of menuRegistry.items) {
+    if (item.path === route.path) return item.label
+    if (item.children) {
+      const child = item.children.find(c => c.path === route.path)
+      if (child) return child.label
+    }
   }
-  return titles[route.path] || 'CONTROL'
+  for (const child of menuRegistry.adminChildren) {
+    if (child.path === route.path) return child.label
+  }
+  return 'CONTROL'
 })
 
 const userInitials = computed(() => {
@@ -184,32 +174,27 @@ const userInitials = computed(() => {
 
 const roleLabel = computed(() => {
   const labels = {
-    'Admin': 'Администратор',
-    'Manager': 'Руководитель',
-    'Adjuster': 'Наладчик',
-    'Observer': 'Наблюдатель'
+    Admin: 'Администратор',
+    Manager: 'Руководитель',
+    Adjuster: 'Наладчик',
+    Observer: 'Наблюдатель'
   }
   return labels[authStore.user?.role] || authStore.user?.role
 })
 
-const handleLogout = async () => {
-  await authStore.logout()
-}
+const handleLogout = async () => { await authStore.logout() }
 </script>
 
 <style scoped>
 :deep(.el-menu) {
   border-right: none !important;
 }
-
 :deep(.el-menu-item) {
   @apply rounded-lg mb-1;
 }
-
 :deep(.el-menu-item:hover) {
   @apply bg-primary-50;
 }
-
 :deep(.el-menu-item.is-active) {
   @apply bg-primary-100 text-primary-700;
 }

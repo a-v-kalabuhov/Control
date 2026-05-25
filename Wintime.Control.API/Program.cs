@@ -275,6 +275,23 @@ using (var scope = app.Services.CreateScope())
         await db.SaveChangesAsync();
         Log.Information("Создана дефолтная смена: 08:00–17:00, перерыв 12:00–13:00");
     }
+
+    // Синхронизируем реестр модулей: каждый загруженный модуль должен иметь запись в AppModules
+    foreach (var module in modules)
+    {
+        if (!await db.AppModules.AnyAsync(m => m.Key == module.Key))
+        {
+            db.AppModules.Add(new AppModuleRecord
+            {
+                Key = module.Key,
+                IsEnabled = true,
+                InstalledVersion = module.ModuleVersion.ToString(),
+                EnabledAt = DateTime.UtcNow
+            });
+            Log.Information("Registered module in AppModules: {Key} v{Version}", module.Key, module.ModuleVersion);
+        }
+    }
+    await db.SaveChangesAsync();
 }
 
 Log.Information("CONTROL API starting on {Urls}", string.Join(", ", app.Urls));

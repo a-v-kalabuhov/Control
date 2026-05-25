@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { authApi } from '@/api/auth'
 import router from '@/router'
+import { useModulesStore } from '@/stores/modules'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -34,6 +35,9 @@ export const useAuthStore = defineStore('auth', {
         localStorage.setItem('access_token', accessToken)
         localStorage.setItem('refresh_token', refreshToken)
         localStorage.setItem('user_role', user.role)
+
+        // Загружаем список модулей и обновляем реестр меню
+        await useModulesStore().loadModules()
 
         return { success: true }
       } catch (error) {
