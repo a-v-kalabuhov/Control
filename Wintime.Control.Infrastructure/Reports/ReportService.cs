@@ -493,7 +493,7 @@ public class ReportService : IReportService
 
             worksheet.Cell(row, 1).Value = "Сформирован:";
             worksheet.Cell(row, 1).Style.Font.Bold = true;
-            worksheet.Cell(row, 2).Value = DateTime.UtcNow.ToString("dd.MM.yyyy HH:mm") + " UTC";
+            worksheet.Cell(row, 2).Value = DateTime.Now.ToString("dd.MM.yyyy HH:mm");
             row += 2;
 
             // Заголовки таблицы
@@ -522,6 +522,16 @@ public class ReportService : IReportService
         }
         else if (data is EquipmentReportDto equipmentReport)
         {
+            worksheet.Cell(row, 1).Value = "Период:";
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 2).Value = $"{equipmentReport.DateFrom:dd.MM.yyyy} – {equipmentReport.DateTo:dd.MM.yyyy}";
+            row++;
+
+            worksheet.Cell(row, 1).Value = "Сформирован:";
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 2).Value = DateTime.Now.ToString("dd.MM.yyyy HH:mm");
+            row += 2;
+
             var headers = new[] { "ТПА", "Работа (ч)", "Наладка (ч)", "Простой (ч)", "Офлайн (ч)", "Циклы", "Ср. цикл (с)", "Эффективность %" };
             for (int i = 0; i < headers.Length; i++)
             {
@@ -575,7 +585,7 @@ public class ReportService : IReportService
 
             worksheet.Cell(row, 1).Value = "Сформирован:";
             worksheet.Cell(row, 1).Style.Font.Bold = true;
-            worksheet.Cell(row, 2).Value = DateTime.UtcNow.ToString("dd.MM.yyyy HH:mm") + " UTC";
+            worksheet.Cell(row, 2).Value = DateTime.Now.ToString("dd.MM.yyyy HH:mm");
             row += 2;
 
             if (assetsReport.MoldData is { Count: > 0 })
