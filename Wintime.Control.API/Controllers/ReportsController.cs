@@ -97,7 +97,7 @@ public class ReportsController : ControllerBase
             {
                 "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault(), request.ShiftId),
                 "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds),
-                "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.ReportType),
+                "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.AssetSubType ?? "Molds"),
                 _ => throw new ArgumentException("Неизвестный тип отчёта")
             };
 
@@ -125,7 +125,7 @@ public class ReportsController : ControllerBase
             {
                 "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault(), request.ShiftId),
                 "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds),
-                "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.ReportType),
+                "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.AssetSubType ?? "Molds"),
                 _ => throw new ArgumentException("Неизвестный тип отчёта")
             };
 

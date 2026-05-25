@@ -17,10 +17,6 @@ export const moldsApi = {
     return apiClient.put(`/molds/${id}`, data)
   },
   
-  getUsage(id, params) {
-    return apiClient.get(`/molds/${id}/usage`, { params })
-  },
-  
   getQr(id) {
     return apiClient.get(`/molds/${id}/qr`)
   }

@@ -187,7 +187,6 @@ DELETE FROM "ImmStatusHistory" WHERE "ChangedAt" >= '2026-04-01' AND "ChangedAt"
 DELETE FROM "ImmCycles"        WHERE "StartTime"  >= '2026-04-01' AND "StartTime"  < '2026-05-01';
 DELETE FROM "Telemetry"        WHERE "Timestamp"  >= '2026-04-01' AND "Timestamp"  < '2026-05-01';
 DELETE FROM "Events"           WHERE "StartTime"  >= '2026-04-01' AND "StartTime"  < '2026-05-01';
-DELETE FROM "MoldUsages"       WHERE "StartTime"  >= '2026-04-01' AND "StartTime"  < '2026-05-01';
 DELETE FROM "Tasks"            WHERE "PlannedDate" >= '2026-04-01' AND "PlannedDate" < '2026-05-01';
 
 -- ============================================================
@@ -565,13 +564,6 @@ BEGIN
         sb := shift_end;
         INSERT INTO "ImmStatusHistory" ("ImmId","Status","ChangedAt","EndedAt") VALUES (v_imm_id,'idle',  sa, sb);
         INSERT INTO "Telemetry"        ("ImmId","Timestamp","ParameterName","ValueText") VALUES (v_imm_id, sa,'status','idle');
-
-        -- ── MoldUsage ───────────────────────────────────────────────────
-        INSERT INTO "MoldUsages" ("Id","MoldId","ImmId","TaskId","StartTime","EndTime","CyclesStart","CyclesEnd","CreatedAt")
-        VALUES (gen_random_uuid(), v_mold_id, v_imm_id, v_task_id,
-                shift_start, shift_end,
-                cyc_base, cyc_base + cyc1 + cyc2,
-                NOW());
 
         -- Advance cycle base
         UPDATE _seed_cycles SET cnt = cyc_base + cyc1 + cyc2 WHERE imm_id = v_imm_id;

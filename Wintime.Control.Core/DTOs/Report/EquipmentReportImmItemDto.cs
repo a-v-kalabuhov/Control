@@ -5,7 +5,10 @@ public class EquipmentReportImmItemDto
     public Guid ImmId { get; set; }
     public string? ImmName { get; set; }
     public int TotalWorkSeconds { get; set; }
+    public int TotalSetupSeconds { get; set; }
     public int TotalDowntimeSeconds { get; set; }
+    public int TotalOfflineSeconds { get; set; }
     public int TotalCycles { get; set; }
+    public decimal AvgCycleSeconds { get; set; }
     public decimal AvgEfficiency { get; set; }
 }

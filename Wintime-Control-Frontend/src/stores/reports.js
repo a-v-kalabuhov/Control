@@ -76,14 +76,16 @@ export const useReportsStore = defineStore('reports', {
     // Загрузка отчёта активов
     async loadAssetsReport(params) {
       this.loading = true
+      this.assetsReport = null
       try {
         const response = await reportsApi.getAssets(params)
         this.assetsReport = response.data
         this.currentReportType = 'assets'
         return { success: true }
       } catch (error) {
-        ElMessage.error('Ошибка загрузки отчёта')
-        return { success: false, message: error.message }
+        console.error('loadAssetsReport failed:', error.response?.data ?? error.message)
+        ElMessage.error(error.response?.data?.message ?? 'Ошибка загрузки данных')
+        throw error
       } finally {
         this.loading = false
       }
@@ -92,10 +94,11 @@ export const useReportsStore = defineStore('reports', {
     // Экспорт в Excel
     async exportToExcel(reportType, params) {
       try {
-        const response = await reportsApi.exportExcel({
-          reportType,
-          ...params
-        })
+        const { reportType: assetSubType, ...rest } = params
+        const body = reportType === 'assets'
+          ? { reportType, assetSubType, ...rest }
+          : { reportType, ...params }
+        const response = await reportsApi.exportExcel(body)
 
         // Создание и скачивание файла
         const blob = new Blob([response.data], {

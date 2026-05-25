@@ -82,7 +82,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useReportsStore } from '@/stores/reports'
@@ -95,7 +95,8 @@ const loading = ref(false)
 const exporting = ref(false)
 const dateRange = ref([dayjs().subtract(7, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')])
 const reportType = ref('Molds')
-const reportData = ref(null)
+
+const reportData = computed(() => reportsStore.assetsReport)
 
 onMounted(async () => {
   await loadReport()
@@ -109,7 +110,6 @@ const loadReport = async () => {
       dateTo: dateRange.value[1],
       reportType: reportType.value
     })
-    reportData.value = reportsStore.assetsReport
   } catch (error) {
     ElMessage.error('Ошибка формирования отчёта')
   } finally {

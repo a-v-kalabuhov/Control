@@ -314,7 +314,6 @@ Main tables / Основные таблицы:
 | `Molds` | Press forms with resource tracking |
 | `Tasks` | Production tasks with full lifecycle |
 | `Templates` | Machine configuration templates |
-| `MoldUsages` | Mold usage log per machine |
 | `Events` | Equipment event log |
 | `DowntimeReasons` | Categorized downtime catalog |
 | `Telemetry` | Time-series sensor data (indexed on ImmId + Timestamp) |

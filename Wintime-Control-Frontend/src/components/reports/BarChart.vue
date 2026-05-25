@@ -10,6 +10,10 @@ const props = defineProps({
   data: {
     type: Array,
     default: () => []
+  },
+  labelField: {
+    type: String,
+    default: 'immName'
   }
 })
 
@@ -19,7 +23,7 @@ let chart = null
 const initChart = () => {
   if (!chartRef.value) return
 
-  chart = echarts.init(chartRef.value)
+  if (!chart) chart = echarts.init(chartRef.value)
 
   const option = {
     tooltip: {
@@ -27,7 +31,7 @@ const initChart = () => {
       axisPointer: { type: 'shadow' }
     },
     legend: {
-      data: ['Работа', 'Простой'],
+      data: ['Работа', 'Наладка', 'Простой'],
       top: '10%'
     },
     grid: {
@@ -39,7 +43,7 @@ const initChart = () => {
     },
     xAxis: {
       type: 'category',
-      data: props.data.map(d => d.immName)
+      data: props.data.map(d => d[props.labelField])
     },
     yAxis: {
       type: 'value',
@@ -54,6 +58,13 @@ const initChart = () => {
         itemStyle: { color: '#10b981' }
       },
       {
+        name: 'Наладка',
+        type: 'bar',
+        stack: 'total',
+        data: props.data.map(d => ((d.totalSetupSeconds ?? 0) / 3600).toFixed(2)),
+        itemStyle: { color: '#f59e0b' }
+      },
+      {
         name: 'Простой',
         type: 'bar',
         stack: 'total',
@@ -63,7 +74,7 @@ const initChart = () => {
     ]
   }
 
-  chart.setOption(option)
+  chart.setOption(option, true)
 }
 
 onMounted(() => {

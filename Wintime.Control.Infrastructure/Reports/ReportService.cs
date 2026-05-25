@@ -224,7 +224,8 @@ public class ReportService : IReportService
         {
             DateFrom = dateFromUtc,
             DateTo = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc),
-            ImmData = []
+            ImmData = [],
+            DailyBreakdown = []
         };
 
         var immQuery = _context.Imms
@@ -237,39 +238,79 @@ public class ReportService : IReportService
 
         var imms = await immQuery.ToListAsync(ct);
 
+        // Словарь для накопления поднёвных данных по всем ТПА: ключ — дата (UTC, начало дня)
+        var dailyAccum = new Dictionary<DateTime, (int Work, int Setup, int Downtime)>();
+        for (var d = dateFromUtc; d < periodEnd; d = d.AddDays(1))
+            dailyAccum[d] = (0, 0, 0);
+
         foreach (var imm in imms)
         {
-            var events = await _context.Events
-                .Where(e => e.ImmId == imm.Id && e.StartTime >= dateFrom && e.StartTime < periodEnd)
+            var statusHistory = await _context.ImmStatusHistory
+                .Where(h => h.ImmId == imm.Id
+                    && h.ChangedAt < periodEnd
+                    && (h.EndedAt == null || h.EndedAt > dateFromUtc))
+                .OrderBy(h => h.ChangedAt)
                 .ToListAsync(ct);
 
-            var statusTelemetry = await _context.Telemetry
-                .Where(t => t.ImmId == imm.Id && t.ParameterName == "status" && t.Timestamp >= dateFrom && t.Timestamp < periodEnd)
-                .OrderBy(t => t.Timestamp)
+            var cycles = await _context.ImmCycles
+                .Where(c => c.ImmId == imm.Id && c.IsSuccessful
+                    && c.StartTime >= dateFromUtc && c.StartTime < periodEnd)
                 .ToListAsync(ct);
 
-            var cycleTelemetry = await _context.Telemetry
-                .Where(t => t.ImmId == imm.Id && t.ParameterName == "cycles" && t.Timestamp >= dateFrom && t.Timestamp < periodEnd)
-                .ToListAsync(ct);
-
-            // Расчёт метрик (аналогично дневному отчёту)
             var workTimeSeconds = 0;
+            var setupSeconds = 0;
             var downtimeSeconds = 0;
-            var totalCycles = 0;
+            var offlineSeconds = 0;
 
-            if (cycleTelemetry.Any())
+            foreach (var entry in statusHistory)
             {
-                totalCycles = (int)((cycleTelemetry.Last().ValueNumeric ?? 0) - (cycleTelemetry.First().ValueNumeric ?? 0));
+                var segStart = entry.ChangedAt < dateFromUtc ? dateFromUtc : entry.ChangedAt;
+                var segEnd   = (entry.EndedAt == null || entry.EndedAt > periodEnd) ? periodEnd : entry.EndedAt.Value;
+                if (segEnd <= segStart) continue;
+
+                var statusType = MapStatusToType(entry.Status);
+
+                // Разбиваем сегмент по границам суток: каждый срез идёт и в итоги ТПА, и в дневной агрегат
+                var cursor = segStart;
+                while (cursor < segEnd)
+                {
+                    var dayStart = DateTime.SpecifyKind(cursor.Date, DateTimeKind.Utc);
+                    var dayEnd   = dayStart.AddDays(1);
+                    var sliceEnd = dayEnd < segEnd ? dayEnd : segEnd;
+                    var secs     = (int)(sliceEnd - cursor).TotalSeconds;
+
+                    switch (statusType)
+                    {
+                        case "work":    workTimeSeconds += secs; break;
+                        case "setup":   setupSeconds    += secs; break;
+                        case "alarm":
+                        case "idle":    downtimeSeconds += secs; break;
+                        case "offline": offlineSeconds  += secs; break;
+                    }
+
+                    if (dailyAccum.TryGetValue(dayStart, out var acc))
+                    {
+                        dailyAccum[dayStart] = statusType switch
+                        {
+                            "work"            => (acc.Work + secs, acc.Setup, acc.Downtime),
+                            "setup"           => (acc.Work, acc.Setup + secs, acc.Downtime),
+                            "alarm" or "idle" => (acc.Work, acc.Setup, acc.Downtime + secs),
+                            _                 => acc
+                        };
+                    }
+
+                    cursor = sliceEnd;
+                }
             }
 
-            // Упрощённый расчёт для периода
-            var totalSeconds = (int)(periodEnd - dateFrom).TotalSeconds;
-            var downtimeEvents = events.Where(e => e.EventType == EventType.Downtime || e.EventType == EventType.Alarm).ToList();
-            downtimeSeconds = downtimeEvents.Sum(e => e.DurationSeconds);
-            workTimeSeconds = Math.Max(0, totalSeconds - downtimeSeconds);
+            var totalCycles = cycles.Count;
+            var avgCycleSeconds = totalCycles > 0
+                ? (decimal)cycles.Average(c => c.DurationSeconds)
+                : 0m;
 
-            var efficiency = workTimeSeconds + downtimeSeconds > 0
-                ? (decimal)workTimeSeconds / (workTimeSeconds + downtimeSeconds) * 100
+            var productiveBase = workTimeSeconds + setupSeconds + downtimeSeconds;
+            var efficiency = productiveBase > 0
+                ? (decimal)workTimeSeconds / productiveBase * 100
                 : 0;
 
             report.ImmData.Add(new EquipmentReportImmItemDto
@@ -277,11 +318,25 @@ public class ReportService : IReportService
                 ImmId = imm.Id,
                 ImmName = imm.Name,
                 TotalWorkSeconds = workTimeSeconds,
+                TotalSetupSeconds = setupSeconds,
                 TotalDowntimeSeconds = downtimeSeconds,
+                TotalOfflineSeconds = offlineSeconds,
                 TotalCycles = totalCycles,
+                AvgCycleSeconds = avgCycleSeconds,
                 AvgEfficiency = efficiency
             });
         }
+
+        report.DailyBreakdown = dailyAccum
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new EquipmentReportDailyItemDto
+            {
+                Date = kv.Key,
+                TotalWorkSeconds = kv.Value.Work,
+                TotalSetupSeconds = kv.Value.Setup,
+                TotalDowntimeSeconds = kv.Value.Downtime
+            })
+            .ToList();
 
         return report;
     }
@@ -309,27 +364,47 @@ public class ReportService : IReportService
                 .Where(m => m.IsActive)
                 .ToListAsync(ct);
 
-            report.MoldData = [];
+            var moldIds = molds.Select(m => m.Id).ToList();
 
-            foreach (var mold in molds)
+            // Смыкания и наработка за выбранный период
+            var periodCycleStats = await _context.ImmCycles
+                .Where(c => c.MoldId != null
+                         && moldIds.Contains(c.MoldId.Value)
+                         && c.IsSuccessful
+                         && c.StartTime >= dateFromUtc
+                         && c.StartTime < periodEnd)
+                .GroupBy(c => c.MoldId!.Value)
+                .Select(g => new
+                {
+                    MoldId = g.Key,
+                    TotalCycles = g.Count(),
+                    TotalDurationSeconds = g.Sum(c => c.DurationSeconds)
+                })
+                .ToListAsync(ct);
+
+            // Суммарные смыкания за всё время — для расчёта остатка ресурса
+            var allTimeCycleStats = await _context.ImmCycles
+                .Where(c => c.MoldId != null && moldIds.Contains(c.MoldId.Value) && c.IsSuccessful)
+                .GroupBy(c => c.MoldId!.Value)
+                .Select(g => new { MoldId = g.Key, TotalCycles = g.Count() })
+                .ToListAsync(ct);
+
+            var periodLookup = periodCycleStats.ToDictionary(x => x.MoldId);
+            var allTimeLookup = allTimeCycleStats.ToDictionary(x => x.MoldId);
+
+            report.MoldData = [.. molds.Select(mold =>
             {
-                var usages = await _context.MoldUsages
-                    .Where(mu => mu.MoldId == mold.Id && mu.StartTime >= dateFromUtc && mu.StartTime < periodEnd)
-                    .ToListAsync(ct);
-
-                var totalCycles = usages.Sum(mu => mu.CyclesCount);
-                var totalSeconds = usages.Sum(mu => ((mu.EndTime ?? DateTime.UtcNow) - mu.StartTime).TotalSeconds);
-                var workHours = (decimal)totalSeconds / 3600;
-
-                report.MoldData.Add(new AssetsMoldItemDto
+                periodLookup.TryGetValue(mold.Id, out var period);
+                allTimeLookup.TryGetValue(mold.Id, out var allTime);
+                return new AssetsMoldItemDto
                 {
                     MoldId = mold.Id,
                     MoldName = mold.Name,
-                    TotalCycles = totalCycles,
-                    WorkHours = workHours,
-                    RemainingResource = mold.MaxResourceCycles - totalCycles
-                });
-            }
+                    TotalCycles = period?.TotalCycles ?? 0,
+                    WorkHours = (decimal)(period?.TotalDurationSeconds ?? 0) / 3600,
+                    RemainingResource = mold.MaxResourceCycles - (allTime?.TotalCycles ?? 0)
+                };
+            })];
         }
         else if (reportType.Equals("Personnel", StringComparison.OrdinalIgnoreCase))
         {
@@ -351,7 +426,7 @@ public class ReportService : IReportService
                     .Sum(t => (int)(t.CompletedAt!.Value - t.StartedAt!.Value).TotalSeconds);
 
                 var setupEvents = await _context.Events
-                    .Where(e => e.PersonnelId == person.Id && e.EventType == EventType.Setup && e.StartTime >= dateFrom && e.StartTime < periodEnd)
+                    .Where(e => e.PersonnelId == person.Id && e.EventType == EventType.Setup && e.StartTime >= dateFromUtc && e.StartTime < periodEnd)
                     .ToListAsync(ct);
 
                 var avgSetupTime = setupEvents.Count > 0
@@ -437,7 +512,7 @@ public class ReportService : IReportService
         }
         else if (data is EquipmentReportDto equipmentReport)
         {
-            var headers = new[] { "ТПА", "Время работы (ч)", "Простой (ч)", "Циклы", "Эффективность %" };
+            var headers = new[] { "ТПА", "Работа (ч)", "Наладка (ч)", "Простой (ч)", "Офлайн (ч)", "Циклы", "Ср. цикл (с)", "Эффективность %" };
             for (int i = 0; i < headers.Length; i++)
             {
                 worksheet.Cell(row, i + 1).Value = headers[i];
@@ -449,10 +524,36 @@ public class ReportService : IReportService
             {
                 worksheet.Cell(row, 1).Value = item.ImmName;
                 worksheet.Cell(row, 2).Value = Math.Round(item.TotalWorkSeconds / 3600m, 2);
-                worksheet.Cell(row, 3).Value = Math.Round(item.TotalDowntimeSeconds / 3600m, 2);
-                worksheet.Cell(row, 4).Value = item.TotalCycles;
-                worksheet.Cell(row, 5).Value = Math.Round(item.AvgEfficiency, 2);
+                worksheet.Cell(row, 3).Value = Math.Round(item.TotalSetupSeconds / 3600m, 2);
+                worksheet.Cell(row, 4).Value = Math.Round(item.TotalDowntimeSeconds / 3600m, 2);
+                worksheet.Cell(row, 5).Value = Math.Round(item.TotalOfflineSeconds / 3600m, 2);
+                worksheet.Cell(row, 6).Value = item.TotalCycles;
+                worksheet.Cell(row, 7).Value = Math.Round(item.AvgCycleSeconds, 1);
+                worksheet.Cell(row, 8).Value = Math.Round(item.AvgEfficiency, 2);
                 row++;
+            }
+
+            // Строка "Итого"
+            var dataRows = equipmentReport.ImmData;
+            if (dataRows.Count > 0)
+            {
+                worksheet.Cell(row, 1).Value = "Итого:";
+                worksheet.Cell(row, 1).Style.Font.Bold = true;
+                worksheet.Cell(row, 2).Value = Math.Round(dataRows.Sum(i => i.TotalWorkSeconds) / 3600m, 2);
+                worksheet.Cell(row, 3).Value = Math.Round(dataRows.Sum(i => i.TotalSetupSeconds) / 3600m, 2);
+                worksheet.Cell(row, 4).Value = Math.Round(dataRows.Sum(i => i.TotalDowntimeSeconds) / 3600m, 2);
+                worksheet.Cell(row, 5).Value = Math.Round(dataRows.Sum(i => i.TotalOfflineSeconds) / 3600m, 2);
+                worksheet.Cell(row, 6).Value = "—";
+                var activeItems = dataRows.Where(i => i.AvgCycleSeconds > 0).ToList();
+                worksheet.Cell(row, 7).Value = activeItems.Count > 0
+                    ? Math.Round(activeItems.Average(i => i.AvgCycleSeconds), 1).ToString()
+                    : "—";
+                var effItems = dataRows.Where(i => i.AvgEfficiency > 0).ToList();
+                worksheet.Cell(row, 8).Value = effItems.Count > 0
+                    ? Math.Round(effItems.Average(i => i.AvgEfficiency), 2)
+                    : 0;
+                for (var c = 1; c <= 8; c++)
+                    worksheet.Cell(row, c).Style.Font.Bold = true;
             }
         }
 

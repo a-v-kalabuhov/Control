@@ -20,5 +20,4 @@ public class Mold : BaseEntity
 
     // Navigation
     public ICollection<ShiftTask> Tasks { get; set; } = new List<ShiftTask>();
-    public ICollection<MoldUsage> Usages { get; set; } = new List<MoldUsage>();
 }
