@@ -459,9 +459,19 @@ public class ReportService : IReportService
         var col = 1;
 
         // Заголовок
-        worksheet.Cell(row, col).Value = $"Отчёт: {reportType}";
+        var reportTitle = reportType.ToLowerInvariant() switch
+        {
+            "daily" => "Картина рабочего дня",
+            "equipment" => "Производительность оборудования",
+            "assets" => "Активы цеха",
+            _ => reportType
+        };
+        worksheet.Cell(row, col).Value = "Отчёт:";
         worksheet.Cell(row, col).Style.Font.Bold = true;
         worksheet.Cell(row, col).Style.Font.FontSize = 14;
+        worksheet.Cell(row, col + 1).Value = reportTitle;
+        worksheet.Cell(row, col + 1).Style.Font.Bold = true;
+        worksheet.Cell(row, col + 1).Style.Font.FontSize = 14;
         row += 2;
 
         // Динамическое заполнение в зависимости от типа отчёта
@@ -554,6 +564,69 @@ public class ReportService : IReportService
                     : 0;
                 for (var c = 1; c <= 8; c++)
                     worksheet.Cell(row, c).Style.Font.Bold = true;
+            }
+        }
+        else if (data is AssetsReportDto assetsReport)
+        {
+            worksheet.Cell(row, 1).Value = "Период:";
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 2).Value = $"{assetsReport.DateFrom:dd.MM.yyyy} – {assetsReport.DateTo:dd.MM.yyyy}";
+            row++;
+
+            worksheet.Cell(row, 1).Value = "Сформирован:";
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 2).Value = DateTime.UtcNow.ToString("dd.MM.yyyy HH:mm") + " UTC";
+            row += 2;
+
+            if (assetsReport.MoldData is { Count: > 0 })
+            {
+                worksheet.Cell(row, 1).Value = "Пресс-формы";
+                worksheet.Cell(row, 1).Style.Font.Bold = true;
+                worksheet.Cell(row, 1).Style.Font.FontSize = 12;
+                row++;
+
+                var moldHeaders = new[] { "Пресс-форма", "Циклы", "Работа (ч)", "Остаток ресурса" };
+                for (int i = 0; i < moldHeaders.Length; i++)
+                {
+                    worksheet.Cell(row, i + 1).Value = moldHeaders[i];
+                    worksheet.Cell(row, i + 1).Style.Font.Bold = true;
+                }
+                row++;
+
+                foreach (var item in assetsReport.MoldData)
+                {
+                    worksheet.Cell(row, 1).Value = item.MoldName;
+                    worksheet.Cell(row, 2).Value = item.TotalCycles;
+                    worksheet.Cell(row, 3).Value = Math.Round(item.WorkHours, 2);
+                    worksheet.Cell(row, 4).Value = item.RemainingResource;
+                    row++;
+                }
+                row++;
+            }
+
+            if (assetsReport.PersonnelData is { Count: > 0 })
+            {
+                worksheet.Cell(row, 1).Value = "Персонал";
+                worksheet.Cell(row, 1).Style.Font.Bold = true;
+                worksheet.Cell(row, 1).Style.Font.FontSize = 12;
+                row++;
+
+                var personnelHeaders = new[] { "Сотрудник", "Выполнено задач", "Время работы (ч)", "Ср. время наладки (мин)" };
+                for (int i = 0; i < personnelHeaders.Length; i++)
+                {
+                    worksheet.Cell(row, i + 1).Value = personnelHeaders[i];
+                    worksheet.Cell(row, i + 1).Style.Font.Bold = true;
+                }
+                row++;
+
+                foreach (var item in assetsReport.PersonnelData)
+                {
+                    worksheet.Cell(row, 1).Value = item.FullName;
+                    worksheet.Cell(row, 2).Value = item.CompletedTasks;
+                    worksheet.Cell(row, 3).Value = Math.Round(item.TotalWorkSeconds / 3600m, 2);
+                    worksheet.Cell(row, 4).Value = Math.Round(item.AvgSetupTime / 60m, 1);
+                    row++;
+                }
             }
         }
 
