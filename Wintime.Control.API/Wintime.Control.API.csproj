@@ -18,9 +18,11 @@
   </Target>
 
   <ItemGroup>
+    <ProjectReference Include="..\Wintime.Control.SDK\Wintime.Control.SDK.csproj" />
     <ProjectReference Include="..\Wintime.Control.Core\Wintime.Control.Core.csproj" />
     <ProjectReference Include="..\Wintime.Control.Infrastructure\Wintime.Control.Infrastructure.csproj" />
     <ProjectReference Include="..\Wintime.Control.Shared\Wintime.Control.Shared.csproj" />
+    <ProjectReference Include="..\Wintime.Module.Imm\Wintime.Module.Imm.csproj" />
   </ItemGroup>
 
   <ItemGroup>

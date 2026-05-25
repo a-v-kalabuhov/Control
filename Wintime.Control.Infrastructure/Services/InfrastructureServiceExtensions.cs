@@ -1,7 +1,9 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
-using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Infrastructure.Plugins;
+using Wintime.Control.SDK.Licensing;
+using Wintime.Control.SDK.Mqtt;
 using Wintime.Control.Infrastructure.Cache;
 using Wintime.Control.Infrastructure.Handlers;
 using Wintime.Control.Infrastructure.Services;
@@ -27,7 +29,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddMessageProcessing(this IServiceCollection services)
     {
         var capacity = 25000;
-        var channel = Channel.CreateBounded<MqttProcessingContext>(
+        var channel = Channel.CreateBounded<MqttMessage>(
             new BoundedChannelOptions(capacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
@@ -35,6 +37,7 @@ public static class ServiceCollectionExtensions
                 SingleWriter = false
             });
         services.AddSingleton(channel);
+        services.AddSingleton<IModuleLicenseCache, NoOpModuleLicenseCache>();
         var workerCount = Environment.ProcessorCount * 2;
         for (int i = 0; i < workerCount; i++)
             services.AddHostedService(sp => new MqttTelemetryWorker(channel.Reader, sp));

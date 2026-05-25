@@ -1,64 +1,43 @@
-
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Wintime.Control.Core.DTOs.Mqtt;
-using Wintime.Control.Infrastructure.Handlers;
+using Wintime.Control.SDK.Licensing;
+using Wintime.Control.SDK.Mqtt;
 
 namespace Wintime.Control.Infrastructure.Behaviors;
 
 /// <summary>
-/// Pipeline обработки полученного сообщений MQTT.
+/// Диспетчер MQTT-сообщений. Находит подходящий модульный пайплайн по топику,
+/// проверяет состояние лицензии и делегирует обработку.
 /// </summary>
-/// <param name="sp"></param>
-public class MessageProcessingPipeline(IServiceProvider sp)
+public class MessageProcessingPipeline(
+    IEnumerable<IModuleMessagePipeline> modulePipelines,
+    IModuleLicenseCache licenseCache,
+    ILogger<MessageProcessingPipeline> logger)
 {
-    private readonly IServiceProvider _sp = sp;
-    public async Task ProcessAsync(MqttProcessingContext context, CancellationToken ct)
+    public async Task ProcessAsync(MqttMessage message, CancellationToken ct)
     {
-        /// Сначала необходимо преобразовать данные из json в объект - декодировать
-        /// На момент начала обработки context не заполнен полностью, заполнены только поля Topic и Payload и присвоен уникальный id в поле MessageId.
-        /// В поле Payload лежит именно сырые данные из сообщений MQTT, преобразованные в текст.
-        /// Мы ожидаем, что это будет текст в формате json.
-        /// Подходящий нам json имеет формат такого вида:
-        /// {"timestamp":"2026-05-04T00:22:25.3000648Z","mode":"auto","sensors":{"counter":0,"mode":"manual","sensor 1":25.0737, "sensor 2": 0.01, ... "sensor X-1":"false", "sensor X":"string"}}
-        /// Т.е. json всегда содержит обязательное поле timestamp, mode и массив sensors из пар "имя датчика": значение
-        /// Значение может быть разных типов. Тип значения задаётся в шаблоне IMM.
-        /// Поле Topic содержит название топика. Формат имени топика такой: /control/imm/{deviceId}/telemetry/, где {deviceId} - это GUID назначенный устройству в нашей БД.
-        /// Устройство сначала регистрируется в БД и только после этго мы можем обрабатывать его сообщения.
-        /// Необходимо в начале обработки проверить эти условия:
-        /// 0. Формат имени топика соотвествут шаблону. Иначе пишем ошибку в лог и прекращаем обработку. 
-        /// 0а. Значение deviceId из топика не пустое. Иначе пишем ошибку в лог и прекращаем обработку.
-        /// 1. payload содержит текст в формате json, если формат не json - пишем ошибку в лог и прекращаем обработку.
-        /// 2. json содержит поля timestamp, mode и массив sensors, если таких полей нет - пишем ошибку в лог и прекращаем обработку.
-        /// 3. массив sensors не пуст, если пуст - пишем ошибку в лог и прекращаем обработку.
-        /// 4. массив sensors содержит две обязательные пары - "counter" и "mode", если их нет - пишем ошибку в лог и прекращаем обработку.
-        /// 5. надо определить deviceId, проверить, существует ли такой в БД и записать его в поле context.Data.DeviceId
-        /// 6. надо найти экземпляр ImmDto и записать его в поле context.Data.Imm, если экземпляра нет, то пишем ошибку в лог и прекращаем обработку.
-        /// 7. Для найденного ImmDto надо найти шаблон (экземлпяр TemplateDto) и записать его в context.Data.Template. Если шаблона нет, то пишем ошибку в лог и прекращаем обработку.
-        /// После этого можно продолжать обработку.        
-        var decoder = _sp.GetRequiredService<IDecodeTelemetryDataHandler>();
-        var (success, updatedContext) = await decoder.DecodeAsync(context);
-        if (!success)
+        var handler = modulePipelines.FirstOrDefault(p => p.CanHandle(message.Topic));
+        if (handler is null)
+        {
+            logger.LogDebug("No module handles topic {Topic}", message.Topic);
             return;
-        context = updatedContext;
+        }
 
-        // Validation - проверяем, что нам есть вообще что сохранять и что данные корректные (например, что привязан экземпляр оборудования)
-        // Если получится, то исправим данные - привяжем экземпляр IMM.
-        // Также здесь заполняется список показаний датчиков - в него включаются только те, которые указаны в шаблоне оборудования.
-        // Здесь же применяется и Cov-фильтрация.
-        var validator = _sp.GetRequiredService<IValidateTelemetryDataHandler>();
-        var (validationSuccess, validatedContext) = await validator.ValidateAsync(context);
-        if (!validationSuccess)
+        var licenseStatus = licenseCache.GetStatus(handler.ModuleKey);
+        if (!licenseStatus.LicenseValid)
+        {
+            logger.LogWarning(
+                "Module {Key}: license invalid ({Reason}), message {MessageId} skipped",
+                handler.ModuleKey, licenseStatus.InvalidReason, message.MessageId);
             return;
-        context = validatedContext;
-        // Сохраняем полученное и обработанное сообщение в БД
-        await _sp.GetRequiredService<IStoreTelemetryDataHandler>().SaveAsync(context);
+        }
+        if (licenseStatus.EquipmentCountExceeded)
+        {
+            logger.LogWarning(
+                "Module {Key}: equipment limit exceeded, message {MessageId} skipped",
+                handler.ModuleKey, message.MessageId);
+            return;
+        }
 
-        // Обновляем статус IMM на основе поля mode из сообщения
-        await _sp.GetRequiredService<IUpdateImmStatusHandler>().UpdateStatusAsync(context);
-
-        // Обрабатываем циклы: детектируем смыкания по cycleCounter, сохраняем цикл в БД,
-        // обновляем выработку задания и ресурс пресс-формы
-        await _sp.GetRequiredService<ICycleProcessingHandler>().ProcessAsync(context, ct);
+        await handler.ProcessAsync(message, ct);
     }
 }

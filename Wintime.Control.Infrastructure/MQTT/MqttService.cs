@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Packets;
 using Wintime.Control.Core.DTOs.Mqtt;
+using Wintime.Control.SDK.Mqtt;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Data;
@@ -235,10 +236,10 @@ public class MqttService : IMqttService, IDisposable
     /// <returns>Задача, представляющая асинхронную обработку.</returns>
     private async System.Threading.Tasks.Task ProcessTelemetry(string topic, string payload)
     {
-        var context = new MqttProcessingContext(Guid.NewGuid(), topic, payload, null, null, null);
-        if (!_messageProcessor.Enqueue(context))
+        var message = new MqttMessage(Guid.NewGuid(), topic, payload);
+        if (!_messageProcessor.Enqueue(message))
         {
-            _logger.LogWarning("Dropped message {MessageId} - queue full", context.MessageId);
+            _logger.LogWarning("Dropped message {MessageId} - queue full", message.MessageId);
         }
     }
 

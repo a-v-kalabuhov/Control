@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Wintime.Control.Infrastructure.Data;
@@ -11,9 +12,11 @@ using Wintime.Control.Infrastructure.Data;
 namespace Wintime.Control.Infrastructure.Migrations
 {
     [DbContext(typeof(ControlDbContext))]
-    partial class ControlDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260525161142_AddModuleRegistry")]
+    partial class AddModuleRegistry
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -154,49 +157,6 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("Wintime.Control.Core.Entities.AppModuleRecord", b =>
-                {
-                    b.Property<string>("Key")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("DisabledAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("EnabledAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("InstalledVersion")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("RetainDataOnDisable")
-                        .HasDefaultValue(true)
-                        .HasColumnType("boolean");
-
-                    b.HasKey("Key");
-
-                    b.ToTable("AppModules", (string)null);
-                });
-
-            modelBuilder.Entity("Wintime.Control.Core.Entities.SystemConfigEntry", b =>
-                {
-                    b.Property<string>("Key")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Value")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Key");
-
-                    b.ToTable("SystemConfig", (string)null);
-                });
-
             modelBuilder.Entity("Wintime.Control.Core.Entities.AppHeartbeat", b =>
                 {
                     b.Property<int>("Id")
@@ -232,7 +192,7 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DowntimeReasons", (string)null);
+                    b.ToTable("DowntimeReasons");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Event", b =>
@@ -279,7 +239,7 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasIndex("ReasonId");
 
-                    b.ToTable("Events", (string)null);
+                    b.ToTable("Events");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Imm", b =>
@@ -439,47 +399,6 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.ToTable("Molds", (string)null);
                 });
 
-            modelBuilder.Entity("Wintime.Control.Core.Entities.MoldUsage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("CyclesEnd")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("CyclesStart")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("EndTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ImmId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("MoldId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("StartTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("TaskId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ImmId");
-
-                    b.HasIndex("MoldId");
-
-                    b.HasIndex("TaskId");
-
-                    b.ToTable("MoldUsages", (string)null);
-                });
-
             modelBuilder.Entity("Wintime.Control.Core.Entities.Shift", b =>
                 {
                     b.Property<Guid>("Id")
@@ -503,7 +422,7 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Shifts", (string)null);
+                    b.ToTable("Shifts");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
@@ -604,7 +523,7 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasIndex("ImmId", "Timestamp");
 
-                    b.ToTable("Telemetry", (string)null);
+                    b.ToTable("Telemetry");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Template", b =>
@@ -648,7 +567,7 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Templates", (string)null);
+                    b.ToTable("Templates");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.User", b =>
@@ -852,31 +771,6 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Imm");
                 });
 
-            modelBuilder.Entity("Wintime.Control.Core.Entities.MoldUsage", b =>
-                {
-                    b.HasOne("Wintime.Control.Core.Entities.Imm", "Imm")
-                        .WithMany("MoldUsages")
-                        .HasForeignKey("ImmId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Wintime.Control.Core.Entities.Mold", "Mold")
-                        .WithMany("Usages")
-                        .HasForeignKey("MoldId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Wintime.Control.Core.Entities.ShiftTask", "Task")
-                        .WithMany()
-                        .HasForeignKey("TaskId");
-
-                    b.Navigation("Imm");
-
-                    b.Navigation("Mold");
-
-                    b.Navigation("Task");
-                });
-
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
                 {
                     b.HasOne("Wintime.Control.Core.Entities.Imm", "Imm")
@@ -923,8 +817,6 @@ namespace Wintime.Control.Infrastructure.Migrations
                 {
                     b.Navigation("Events");
 
-                    b.Navigation("MoldUsages");
-
                     b.Navigation("Tasks");
 
                     b.Navigation("Telemetry");
@@ -933,8 +825,6 @@ namespace Wintime.Control.Infrastructure.Migrations
             modelBuilder.Entity("Wintime.Control.Core.Entities.Mold", b =>
                 {
                     b.Navigation("Tasks");
-
-                    b.Navigation("Usages");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Template", b =>

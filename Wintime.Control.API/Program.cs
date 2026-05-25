@@ -17,6 +17,8 @@ using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Cache;
 using Wintime.Control.Infrastructure.Services;
+using Wintime.Control.SDK;
+using Wintime.Module.Imm;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +40,10 @@ builder.Services.Configure<CorsSettings>(builder.Configuration.GetSection(CorsSe
 
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()!;
 var corsSettings = builder.Configuration.GetSection(CorsSettings.SectionName).Get<CorsSettings>()!;
+
+// Модули (временно хардкодим; после физического выделения — PluginLoader из plugins/)
+IReadOnlyList<IAppModule> modules = [new ImmModule()];
+builder.Services.AddSingleton(modules);
 
 // База данных
 builder.Services.AddDbContext<ControlDbContext>(options =>
@@ -167,16 +173,17 @@ builder.Services.AddSingleton(sp =>
     var factory = sp.GetRequiredService<IWintimeMqttClientFactory>();
     return factory.CreateClient();
 });
-// Message processing
+// Message processing (платформенный пайплайн)
 builder.Services.AddMessageProcessing();
-builder.Services.AddMessageHandlers();
-builder.Services.AddImmStatusTracking();
+
+// Регистрация сервисов каждого модуля
+foreach (var module in modules)
+    module.RegisterServices(builder.Services, builder.Configuration);
 
 // In-memory caches — must be registered before MqttBackgroundService starts
 builder.Services.AddSingleton<ITemplateCache, TemplateCache>();
 builder.Services.AddSingleton<IImmCache, MemoryImmCache>();
 builder.Services.AddHostedService<TemplateCacheStartupService>();
-builder.Services.AddImmStatusWorkers();
 builder.Services.AddSingleton<IMessageProcessor, MessageProcessor>();
 builder.Services.AddSingleton<IMqttService, MqttService>();
 builder.Services.AddHostedService<MqttBackgroundService>();

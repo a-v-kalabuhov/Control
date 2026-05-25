@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Wintime.Control.Shared\Wintime.Control.Shared.csproj" />
     <ProjectReference Include="..\Wintime.Control.Core\Wintime.Control.Core.csproj" />
+    <ProjectReference Include="..\Wintime.Control.SDK\Wintime.Control.SDK.csproj" />
   </ItemGroup>
 
   <ItemGroup>

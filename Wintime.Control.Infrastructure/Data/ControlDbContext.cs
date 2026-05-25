@@ -1,14 +1,20 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.SDK;
 
 namespace Wintime.Control.Infrastructure.Data;
 
 public class ControlDbContext : IdentityDbContext<User>
 {
-    public ControlDbContext(DbContextOptions<ControlDbContext> options)
+    private readonly IReadOnlyList<IAppModule> _modules;
+
+    public ControlDbContext(
+        DbContextOptions<ControlDbContext> options,
+        IReadOnlyList<IAppModule>? modules = null)
         : base(options)
     {
+        _modules = modules ?? [];
     }
 
     // DbSets (Таблицы)
@@ -23,6 +29,10 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<AppHeartbeat> AppHeartbeat { get; set; }
     public DbSet<Shift> Shifts { get; set; }
     public DbSet<ImmCycle> ImmCycles { get; set; }
+
+    // Платформенные таблицы
+    public DbSet<AppModuleRecord> AppModules { get; set; }
+    public DbSet<SystemConfigEntry> SystemConfig { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -120,5 +130,23 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.Property(e => e.LastHeartbeatAt).HasColumnType("timestamp with time zone");
             entity.ToTable("AppHeartbeat");
         });
+
+        // Платформенные сущности
+        builder.Entity<AppModuleRecord>(entity =>
+        {
+            entity.HasKey(e => e.Key);
+            entity.ToTable("AppModules");
+        });
+
+        builder.Entity<SystemConfigEntry>(entity =>
+        {
+            entity.HasKey(e => e.Key);
+            entity.Property(e => e.UpdatedAt).HasColumnType("timestamp with time zone");
+            entity.ToTable("SystemConfig");
+        });
+
+        // Модульные конфигурации сущностей
+        foreach (var module in _modules)
+            module.ConfigureModel(builder);
     }
 }

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wintime.Control.SDK\Wintime.Control.SDK.csproj" />
+    <ProjectReference Include="..\Wintime.Control.Core\Wintime.Control.Core.csproj" />
+    <ProjectReference Include="..\Wintime.Control.Infrastructure\Wintime.Control.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ASP.NET Core нужен для контроллеров модуля -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

@@ -1,8 +1,8 @@
-using Wintime.Control.Core.DTOs.Mqtt;
+using Wintime.Control.SDK.Mqtt;
 
 namespace Wintime.Control.Infrastructure.Mqtt;
 
 public interface IMessageProcessor
 {
-    bool Enqueue(MqttProcessingContext context);
+    bool Enqueue(MqttMessage message);
 }
