@@ -60,12 +60,20 @@
       <template #header>
         <span class="font-semibold">Загрузка ТПА по дням</span>
       </template>
-      <BarChart :data="chartData" />
+      <BarChart :data="chartData" label-field="immName" />
     </el-card>
 
     <!-- Таблица -->
     <el-card v-loading="loading">
-      <el-table 
+      <template #header>
+        <span class="font-semibold">
+          Производительность оборудования
+          <span v-if="reportData" class="text-gray-500 font-normal ml-2">
+            {{ dayjs(reportData.dateFrom).format('DD.MM.YYYY') }} — {{ dayjs(reportData.dateTo).format('DD.MM.YYYY') }}
+          </span>
+        </span>
+      </template>
+      <el-table
         :data="reportData?.immData || []" 
         stripe 
         style="width: 100%"
@@ -73,21 +81,36 @@
         show-summary
       >
         <el-table-column prop="immName" label="ТПА" width="150" fixed />
-        <el-table-column label="Время работы (ч)" width="130">
+        <el-table-column label="Работа (ч)" width="110">
           <template #default="{ row }">
             {{ (row.totalWorkSeconds / 3600).toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column label="Время простоя (ч)" width="130">
+        <el-table-column label="Наладка (ч)" width="110">
+          <template #default="{ row }">
+            {{ (row.totalSetupSeconds / 3600).toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="Простой (ч)" width="110">
           <template #default="{ row }">
             {{ (row.totalDowntimeSeconds / 3600).toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="totalCycles" label="Всего циклов" width="120" align="center" />
-        <el-table-column label="Эффективность" width="150">
+        <el-table-column label="Офлайн (ч)" width="110">
           <template #default="{ row }">
-            <el-progress 
-              :percentage="row.avgEfficiency" 
+            {{ (row.totalOfflineSeconds / 3600).toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="totalCycles" label="Циклы" width="90" align="center" />
+        <el-table-column label="Ср. цикл (с)" width="110" align="center">
+          <template #default="{ row }">
+            {{ row.avgCycleSeconds.toFixed(1) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="Эффективность" width="160">
+          <template #default="{ row }">
+            <el-progress
+              :percentage="Math.round(row.avgEfficiency)"
               :status="row.avgEfficiency >= 85 ? 'success' : row.avgEfficiency >= 70 ? 'warning' : 'exception'"
             />
           </template>
@@ -126,8 +149,13 @@ const efficiencyColor = computed(() => {
 })
 
 const chartData = computed(() => {
-  // TODO: Преобразовать данные для диаграммы
-  return []
+  if (!reportData.value?.dailyBreakdown) return []
+  return reportData.value.dailyBreakdown.map(d => ({
+    immName: dayjs(d.date).format('DD.MM'),
+    totalWorkSeconds: d.totalWorkSeconds,
+    totalSetupSeconds: d.totalSetupSeconds,
+    totalDowntimeSeconds: d.totalDowntimeSeconds
+  }))
 })
 
 onMounted(async () => {
@@ -144,6 +172,7 @@ const loadReport = async () => {
     reportData.value = reportsStore.equipmentReport
   } catch (error) {
     ElMessage.error('Ошибка формирования отчёта')
+    console.log('Ошибка')
   } finally {
     loading.value = false
   }
@@ -170,19 +199,41 @@ const goBack = () => {
 const getSummaries = (param) => {
   const { columns, data } = param
   const sums = []
-  
+
   columns.forEach((column, index) => {
     if (index === 0) {
       sums[index] = 'Итого:'
       return
     }
-    
-    if (['totalCycles'].includes(column.property)) {
-      const values = data.map(item => Number(item[column.property]))
-      sums[index] = values.reduce((prev, curr) => prev + curr, 0)
+
+    const label = column.label
+    if (['Работа (ч)', 'Наладка (ч)', 'Простой (ч)', 'Офлайн (ч)'].includes(label)) {
+      const fieldMap = {
+        'Работа (ч)': 'totalWorkSeconds',
+        'Наладка (ч)': 'totalSetupSeconds',
+        'Простой (ч)': 'totalDowntimeSeconds',
+        'Офлайн (ч)': 'totalOfflineSeconds'
+      }
+      const field = fieldMap[label]
+      const total = data.reduce((sum, row) => sum + (row[field] || 0), 0)
+      sums[index] = (total / 3600).toFixed(2)
+    } else if (label === 'Циклы') {
+      sums[index] = '—'
+    } else if (label === 'Ср. цикл (с)') {
+      const nonZero = data.filter(row => row.avgCycleSeconds > 0)
+      if (nonZero.length === 0) { sums[index] = '—'; return }
+      const avg = nonZero.reduce((sum, row) => sum + row.avgCycleSeconds, 0) / nonZero.length
+      sums[index] = avg.toFixed(1)
+    } else if (label === 'Эффективность') {
+      const nonZero = data.filter(row => row.avgEfficiency > 0)
+      if (nonZero.length === 0) { sums[index] = '—'; return }
+      const avg = nonZero.reduce((sum, row) => sum + row.avgEfficiency, 0) / nonZero.length
+      sums[index] = Math.round(avg) + '%'
+    } else {
+      sums[index] = ''
     }
   })
-  
+
   return sums
 }
 </script>

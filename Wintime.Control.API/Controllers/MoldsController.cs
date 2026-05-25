@@ -41,13 +41,19 @@ public class MoldsController : ControllerBase
             query = query.Where(m => m.Name.Contains(search) || m.FormId.Contains(search));
         }
 
-        var molds = await query
-            .Include(m => m.Usages)
+        var molds = await query.ToListAsync();
+
+        var moldIds = molds.Select(m => m.Id).ToList();
+        var cycleCounts = await _context.ImmCycles
+            .Where(c => c.MoldId != null && moldIds.Contains(c.MoldId.Value) && c.IsSuccessful)
+            .GroupBy(c => c.MoldId!.Value)
+            .Select(g => new { MoldId = g.Key, Total = g.Count() })
             .ToListAsync();
+        var cycleMap = cycleCounts.ToDictionary(x => x.MoldId, x => x.Total);
 
         var dtos = molds.Select(m =>
         {
-            var totalCycles = m.Usages.Sum(u => u.CyclesEnd - u.CyclesStart);
+            var totalCycles = cycleMap.GetValueOrDefault(m.Id);
             return new MoldDto
             {
                 Id = m.Id,
@@ -78,13 +84,12 @@ public class MoldsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
     public async Task<ActionResult<MoldDto>> GetMoldById(Guid id)
     {
-        var mold = await _context.Molds
-            .Include(m => m.Usages)
-            .FirstOrDefaultAsync(m => m.Id == id);
+        var mold = await _context.Molds.FirstOrDefaultAsync(m => m.Id == id);
         if (mold == null)
             return NotFound();
 
-        var totalCycles = mold.Usages.Sum(u => u.CyclesEnd - u.CyclesStart);
+        var totalCycles = await _context.ImmCycles
+            .CountAsync(c => c.MoldId == id && c.IsSuccessful);
         var dto = new MoldDto
         {
             Id = mold.Id,
@@ -186,44 +191,6 @@ public class MoldsController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
-    }
-
-    /// <summary>
-    /// История использования пресс-формы
-    /// </summary>
-    [HttpGet("{id:guid}/usage")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
-    public async Task<ActionResult<IEnumerable<MoldUsageDto>>> GetMoldUsage(
-        Guid id,
-        [FromQuery] DateTime? from = null,
-        [FromQuery] DateTime? to = null)
-    {
-        var query = _context.MoldUsages
-            .Include(mu => mu.Imm)
-            .Include(mu => mu.Task)
-            .Where(mu => mu.MoldId == id)
-            .AsQueryable();
-
-        if (from.HasValue)
-            query = query.Where(mu => mu.StartTime >= from.Value);
-        if (to.HasValue)
-            query = query.Where(mu => mu.StartTime <= to.Value);
-
-        var usages = await query.ToListAsync();
-
-        var dtos = usages.Select(mu => new MoldUsageDto
-        {
-            MoldId = mu.MoldId,
-            ImmId = mu.ImmId,
-            ImmName = mu.Imm.Name,
-            TaskId = mu.TaskId,
-            StartTime = mu.StartTime,
-            EndTime = mu.EndTime,
-            CyclesStart = mu.CyclesStart,
-            CyclesEnd = mu.CyclesEnd
-        }).ToList();
-
-        return Ok(dtos);
     }
 
     /// <summary>

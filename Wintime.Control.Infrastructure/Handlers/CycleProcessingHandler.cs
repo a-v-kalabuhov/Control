@@ -102,16 +102,6 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                     await _emulator.SetModeAsync(immId.ToString(), "idle", ct);
             }
 
-            // Обновить счётчик ресурса пресс-формы только при фактическом смыкании (изменении счётчика)
-            if (counterChanged)
-            {
-                var moldUsage = await _db.MoldUsages
-                    .FirstOrDefaultAsync(m => m.ImmId == immId && m.EndTime == null, ct);
-
-                if (moldUsage is not null)
-                    moldUsage.CyclesEnd += 1;
-            }
-
             await _db.SaveChangesAsync(ct);
 
             _logger.LogDebug(

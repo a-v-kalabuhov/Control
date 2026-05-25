@@ -16,7 +16,6 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<Mold> Molds { get; set; }
     public DbSet<Core.Entities.ShiftTask> Tasks { get; set; }
     public DbSet<Template> Templates { get; set; }
-    public DbSet<MoldUsage> MoldUsages { get; set; }
     public DbSet<Event> Events { get; set; }
     public DbSet<DowntimeReason> DowntimeReasons { get; set; }
     public DbSet<Telemetry> Telemetry { get; set; }
