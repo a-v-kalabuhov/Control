@@ -1,4 +1,4 @@
-# Stage 1: Build .NET app (без фронтенда)
+# Stage 1: Build .NET app (времнно без фронтенда) 
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
