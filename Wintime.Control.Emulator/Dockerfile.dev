@@ -23,7 +23,8 @@ RUN dotnet publish "Wintime.Control.Emulator.csproj" -c Release -o /app/publish 
 # Stage 3: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
-COPY --from=build /app/publish .
+COPY --from=build --chown=app:app /app/publish .
+RUN mkdir -p presets && chown app:app presets
 USER app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
