@@ -1,0 +1,13 @@
+Wintime-Control-Frontend/node_modules/
+Wintime-Control-Frontend/.vite/
+Wintime.Control.Emulator/Web/node_modules/
+Wintime.Control.Emulator/Web/.vite/
+*/bin/
+*/obj/
+Wintime.Control.Tests.Unit/
+Wintime.Control.Tests.Integration/
+.git/
+.github/
+.vs/
+.vscode/
+.idea/

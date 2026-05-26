@@ -4,11 +4,10 @@ WORKDIR /web
 COPY Wintime-Control-Frontend/package*.json ./
 RUN npm ci
 COPY Wintime-Control-Frontend/ ./
-# vite.config.js: outDir = '../Wintime.Control.API/wwwroot' → /wwwroot
 RUN npm run build
 
 # Stage 2: Build .NET app
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 COPY ["Wintime.Control.API/Wintime.Control.API.csproj", "Wintime.Control.API/"]
@@ -22,21 +21,14 @@ COPY . .
 COPY --from=frontend-build /Wintime.Control.API/wwwroot Wintime.Control.API/wwwroot/
 
 WORKDIR "/src/Wintime.Control.API"
-RUN dotnet build "Wintime.Control.API.csproj" -c Release -o /app/build /p:SkipFrontendBuild=true
 RUN dotnet publish "Wintime.Control.API.csproj" -c Release -o /app/publish /p:UseAppHost=false /p:SkipFrontendBuild=true
 
 # Stage 3: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
-
 USER app
-
 COPY --from=build --chown=app:app /app/publish .
-
-EXPOSE 80
-EXPOSE 443
-
-ENV ASPNETCORE_URLS=http://+:80
+EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
-
 ENTRYPOINT ["dotnet", "Wintime.Control.API.dll"]

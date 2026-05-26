@@ -1,0 +1,8 @@
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+WORKDIR /app
+COPY publish/api .
+USER app
+EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENTRYPOINT ["dotnet", "Wintime.Control.API.dll"]
