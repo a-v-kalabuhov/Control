@@ -60,3 +60,9 @@ pnpm-debug.log*
 *.swp
 *~
 *.lscache
+
+# Docker build artifacts
+publish/
+
+# Secrets
+.env
