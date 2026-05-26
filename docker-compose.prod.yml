@@ -34,6 +34,7 @@ services:
       - "5000:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=WintimeControlDb;Username=postgres;Password=${DB_PASSWORD:-changeme};
       - MqttSettings__BrokerUrl=mosquitto
     depends_on:
@@ -50,6 +51,7 @@ services:
       - "5002:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
       - Mqtt__BrokerUrl=mqtt://mosquitto:1883
       - MainApi__BaseUrl=http://api:8080
     depends_on:
