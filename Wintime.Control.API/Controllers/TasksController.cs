@@ -187,6 +187,10 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<TaskDto>> CreateTask([FromBody] CreateTaskRequestDto request)
     {
+        var mold = await _context.Molds.FindAsync(request.MoldId);
+        if (mold == null || !mold.IsActive)
+            return BadRequest("Указана неактивная или несуществующая пресс-форма.");
+
         var task = new Core.Entities.ShiftTask
         {
             ImmId = request.ImmId,
