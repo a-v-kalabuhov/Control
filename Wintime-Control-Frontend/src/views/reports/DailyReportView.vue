@@ -58,7 +58,7 @@
       <template #header>
         <span class="font-semibold">График работы ТПА (Гант)</span>
       </template>
-      <GanttChart :data="reportData.immData" />
+      <GanttChart :data="reportData.immData" :shifts="shifts" :date="filters.date" />
     </el-card>
 
     <!-- Таблица -->

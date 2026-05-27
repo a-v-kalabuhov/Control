@@ -19,6 +19,14 @@ const props = defineProps({
   data: {
     type: Array,
     default: () => []
+  },
+  shifts: {
+    type: Array,
+    default: () => []
+  },
+  date: {
+    type: String,
+    default: ''
   }
 })
 
@@ -66,6 +74,13 @@ const initChart = () => {
       ])
     })
   })
+
+  const shiftMarkLines = props.shifts
+    .filter(s => s.startTime)
+    .map(s => ({
+      name: `Смена ${s.number ?? ''} ${s.startTime}`.trim(),
+      xAxis: dayjs(`${props.date || dayjs().format('YYYY-MM-DD')} ${s.startTime}`).valueOf()
+    }))
 
   const option = {
     tooltip: {
@@ -120,7 +135,19 @@ const initChart = () => {
           }
         },
         encode: { x: [1, 2], y: 0 },
-        data: seriesData
+        data: seriesData,
+        markLine: shiftMarkLines.length ? {
+          silent: true,
+          symbol: ['none', 'none'],
+          lineStyle: { color: '#374151', type: 'dashed', width: 1.5 },
+          label: {
+            position: 'insideStartTop',
+            formatter: (p) => p.name,
+            color: '#374151',
+            fontSize: 11
+          },
+          data: shiftMarkLines
+        } : undefined
       }
     ]
   }
