@@ -72,83 +72,19 @@
         </el-button>
       </div>
     </el-card>
-
-    <!-- Последние отчёты (быстрый доступ) -->
-    <el-card>
-      <template #header>
-        <span class="font-semibold">Последние отчёты</span>
-      </template>
-
-      <el-table :data="recentReports" stripe style="width: 100%">
-        <el-table-column prop="type" label="Тип" width="200">
-          <template #default="{ row }">
-            <el-tag :type="getReportTypeTag(row.type)">
-              {{ getReportTypeLabel(row.type) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="dateFrom" label="Период" width="200">
-          <template #default="{ row }">
-            {{ row.dateFrom }} — {{ row.dateTo }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="createdAt" label="Создан" width="180" />
-        <el-table-column label="Действия" width="150">
-          <template #default="{ row }">
-            <el-button size="small" @click="reopenReport(row)">Открыть</el-button>
-            <el-button size="small" type="success" @click="downloadReport(row)">
-              <el-icon><Download /></el-icon>
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const selectedType = ref(null)
 
-const recentReports = ref([
-  { type: 'daily', dateFrom: '2026-02-26', dateTo: '2026-02-26', createdAt: '26.02.2026 18:30' },
-  { type: 'equipment', dateFrom: '2026-02-01', dateTo: '2026-02-28', createdAt: '28.02.2026 17:00' },
-  { type: 'assets', dateFrom: '2026-02-01', dateTo: '2026-02-28', createdAt: '28.02.2026 16:45' }
-])
-
 const openReport = () => {
   if (!selectedType.value) return
   router.push(`/reports/${selectedType.value}`)
-}
-
-const reopenReport = (report) => {
-  router.push(`/reports/${report.type}?from=${report.dateFrom}&to=${report.dateTo}`)
-}
-
-const downloadReport = (report) => {
-  // TODO: Реализовать скачивание из истории
-  console.log('Download:', report)
-}
-
-const getReportTypeLabel = (type) => {
-  const labels = {
-    daily: 'Картина дня',
-    equipment: 'Производительность',
-    assets: 'Активы'
-  }
-  return labels[type] || type
-}
-
-const getReportTypeTag = (type) => {
-  const tags = {
-    daily: 'primary',
-    equipment: 'success',
-    assets: 'warning'
-  }
-  return tags[type] || 'info'
 }
 </script>
 
