@@ -19,4 +19,5 @@ public class ImmDto
     public int? ActualQuantity { get; set; }
     public int CycleCount { get; set; }
     public decimal AvgCycleTime { get; set; }
+    public DateTime? TaskStartedAt { get; set; }
 }

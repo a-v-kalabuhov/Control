@@ -59,13 +59,20 @@
         <div class="font-semibold text-gray-800">{{ cycleTime }} сек</div>
       </div>
       <div>
-        <div class="text-gray-500 text-xs">Эффективность</div>
-        <div class="font-semibold" :class="efficiencyColor">{{ efficiency }}%</div>
+        <div class="text-gray-500 text-xs">Темп</div>
+        <div class="font-semibold text-gray-800">{{ rateLabel }}</div>
       </div>
       <div>
         <div class="text-gray-500 text-xs">Обновлено</div>
         <div class="font-semibold text-gray-800">{{ lastUpdate }}</div>
       </div>
+    </div>
+
+    <!-- Прогноз окончания -->
+    <div v-if="etaLabel" class="mt-2 pt-2 border-t flex items-center gap-2 text-sm">
+      <el-icon class="text-gray-400"><Clock /></el-icon>
+      <span class="text-gray-500">Прогноз окончания:</span>
+      <span class="font-medium text-gray-800">{{ etaLabel }}</span>
     </div>
 
     <!-- Индикатор аварии -->
@@ -84,6 +91,7 @@
 <script setup>
 import { computed } from 'vue'
 import ImmStatusBadge from './ImmStatusBadge.vue'
+import { Clock } from '@element-plus/icons-vue'
 
 const props = defineProps({
   imm: {
@@ -111,13 +119,32 @@ const planQuantity = computed(() => props.imm.planQuantity || 0)
 const actualQuantity = computed(() => props.imm.actualQuantity || 0)
 const cycleCount = computed(() => props.imm.cycleCount || 0)
 const cycleTime = computed(() => props.imm.currentCycleTime?.toFixed(1) || '0.0')
-const efficiency = computed(() => props.imm.efficiency?.toFixed(1) || '0.0')
 
-const efficiencyColor = computed(() => {
-  const eff = parseFloat(efficiency.value)
-  if (eff >= 85) return 'text-green-600'
-  if (eff >= 70) return 'text-yellow-600'
-  return 'text-red-600'
+// Темп производства: шт/ч на основе фактических штук и времени с начала задания
+const ratePerHour = computed(() => {
+  const actual = props.imm.actualQuantity
+  const startedAt = props.imm.taskStartedAt
+  if (!props.imm.currentTaskId || !actual || !startedAt) return null
+  const elapsedHours = (Date.now() - new Date(startedAt).getTime()) / 3_600_000
+  if (elapsedHours < 0.01) return null
+  return actual / elapsedHours
+})
+
+const rateLabel = computed(() => {
+  if (!ratePerHour.value) return '—'
+  return `${Math.round(ratePerHour.value)} шт/ч`
+})
+
+// Прогноз окончания задания
+const etaLabel = computed(() => {
+  const rate = ratePerHour.value
+  const plan = props.imm.planQuantity
+  const actual = props.imm.actualQuantity
+  if (!rate || !plan || actual == null || actual >= plan) return null
+
+  const remainingHours = (plan - actual) / rate
+  const eta = new Date(Date.now() + remainingHours * 3_600_000)
+  return eta.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 })
 
 const borderColor = computed(() => {
