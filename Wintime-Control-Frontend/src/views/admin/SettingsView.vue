@@ -44,25 +44,6 @@
       </el-form>
     </el-card>
 
-<el-card class="mb-6" visible="false">
-      <template #header>
-        <span class="font-semibold">Общие настройки</span>
-      </template>
-
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="Таймаут сессии (мин)">
-            <el-input-number v-model="settings.sessionTimeoutMinutes" :min="5" :max="1440" class="w-full" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="Интервал телеметрии (сек)">
-            <el-input-number v-model="settings.telemetryIntervalSeconds" :min="1" :max="60" class="w-full" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-    </el-card>
-
     <div class="flex justify-end gap-4">
       <el-button @click="loadSettings">Отмена</el-button>
       <el-button type="primary" @click="saveSettings" :loading="saving">Сохранить</el-button>
