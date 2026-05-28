@@ -18,16 +18,17 @@
       <el-table-column prop="model" label="Модель" width="150" />
       <el-table-column prop="version" label="Версия" width="100" />
       <el-table-column prop="author" label="Автор" width="150" />
-      <el-table-column prop="sensorCount" label="Датчиков" width="100" align="center" />
       <el-table-column prop="createdAt" label="Создан" width="180">
         <template #default="{ row }">
           {{ formatDate(row.createdAt) }}
         </template>
       </el-table-column>
-      <el-table-column label="Действия" width="200" fixed="right">
+      <el-table-column label="Действия" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="editTemplate(row)">Редактировать</el-button>
-          <el-button size="small" type="danger" @click="deleteTemplate(row)">Удалить</el-button>
+          <div class="flex flex-col gap-1">
+            <el-button size="small" style="width: 130px; margin: 0" @click="editTemplate(row)">Редактировать</el-button>
+            <el-button size="small" type="danger" style="width: 130px; margin: 0" @click="deleteTemplate(row)">Удалить</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
