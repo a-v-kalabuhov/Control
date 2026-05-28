@@ -128,7 +128,7 @@
     <template #footer>
       <el-button @click="visible = false">Отмена</el-button>
       <el-button type="primary" @click="handleSubmit" :loading="loading">
-        {{ editingTask ? 'Сохранить' : 'Выдать задание' }}
+        Сохранить
       </el-button>
     </template>
   </el-dialog>

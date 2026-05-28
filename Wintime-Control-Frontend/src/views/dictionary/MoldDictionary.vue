@@ -58,9 +58,9 @@
       </el-table-column>
       <el-table-column label="Действия" width="220" fixed="right">
         <template #default="{ row }">
-          <div class="flex flex-col items-start gap-1">
-            <el-button size="small" style="width: 120px" @click="editMold(row)">Редактировать</el-button>
-            <el-button size="small" style="width: 120px" type="danger" @click="deleteMold(row)">Удалить</el-button>
+          <div class="flex gap-2 justify-start">
+            <el-button size="small" style="width: 105px" @click="editMold(row)">Редактировать</el-button>
+            <el-button size="small" style="width: 105px" type="danger" @click="deleteMold(row)">Удалить</el-button>
           </div>
         </template>
       </el-table-column>
@@ -108,6 +108,19 @@
           <el-col :span="12">
             <el-form-item label="Место хранения">
               <el-input v-model="form.storageLocationIndex" placeholder="А-12" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row v-if="editingMold" :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="Выполнено смыканий">
+              <span class="text-gray-800 font-medium">
+                {{ (editingMold.maxResourceCycles - editingMold.remainingResource).toLocaleString('ru-RU') }}
+              </span>
+              <span class="text-gray-400 ml-2">
+                из {{ editingMold.maxResourceCycles.toLocaleString('ru-RU') }}
+              </span>
             </el-form-item>
           </el-col>
         </el-row>

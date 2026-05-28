@@ -77,7 +77,9 @@ public class TasksController : ControllerBase
             CompletedAt = t.CompletedAt,
             ClosedAt = t.ClosedAt,
             CloseReason = t.CloseReason,
-            Note = t.Note
+            Note = t.Note,
+            CreatedAt = t.CreatedAt,
+            UpdatedAt = t.UpdatedAt
         }).ToList();
 
         return Ok(dtos);
@@ -130,7 +132,9 @@ public class TasksController : ControllerBase
             CompletedAt = t.CompletedAt,
             ClosedAt = t.ClosedAt,
             CloseReason = t.CloseReason,
-            Note = t.Note
+            Note = t.Note,
+            CreatedAt = t.CreatedAt,
+            UpdatedAt = t.UpdatedAt
         }).ToList();
 
         return Ok(dtos);
@@ -174,7 +178,9 @@ public class TasksController : ControllerBase
             CompletedAt = task.CompletedAt,
             ClosedAt = task.ClosedAt,
             CloseReason = task.CloseReason,
-            Note = task.Note
+            Note = task.Note,
+            CreatedAt = task.CreatedAt,
+            UpdatedAt = task.UpdatedAt
         };
 
         return Ok(dto);
@@ -187,6 +193,10 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<TaskDto>> CreateTask([FromBody] CreateTaskRequestDto request)
     {
+        var mold = await _context.Molds.FindAsync(request.MoldId);
+        if (mold == null || !mold.IsActive)
+            return BadRequest("Указана неактивная или несуществующая пресс-форма.");
+
         var task = new Core.Entities.ShiftTask
         {
             ImmId = request.ImmId,

@@ -71,6 +71,10 @@ public class ImmController : ControllerBase
                 ActualQuantity = i.Tasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => (int?)t.ActualQuantity)
+                    .FirstOrDefault(),
+                TaskStartedAt = i.Tasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
+                    .Select(t => t.StartedAt)
                     .FirstOrDefault()
             })
             .ToListAsync();

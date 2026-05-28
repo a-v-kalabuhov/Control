@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { dashboardApi } from '@/api/dashboard'
 import { immApi } from '@/api/imm'
+import { shiftsApi } from '@/api/shifts'
 
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
@@ -13,7 +14,10 @@ export const useDashboardStore = defineStore('dashboard', {
     filters: {
       status: null,
       search: ''
-    }
+    },
+    shifts: [],
+    shiftUtilization: null,    // { utilization, machineCount, from, to }
+    shiftUtilizationLoading: false
   }),
 
   getters: {
@@ -35,12 +39,48 @@ export const useDashboardStore = defineStore('dashboard', {
     // ТПА оффлайн (Offline)
     offlineImms: (state) => state.imms.filter(i => i.status === 'Offline'),
 
-    // Общая эффективность цеха
+    // Мгновенная загрузка цеха: (Auto + Manual) / все активные
     overallEfficiency: (state) => {
-      const working = state.imms.filter(i => i.status === 'Auto')
-      if (working.length === 0) return 0
-      const avg = working.reduce((sum, i) => sum + (i.efficiency || 0), 0) / working.length
-      return Math.round(avg)
+      if (state.imms.length === 0) return 0
+      const active = state.imms.filter(i => i.status === 'Auto' || i.status === 'Manual')
+      return Math.round(active.length / state.imms.length * 100)
+    },
+
+    // Текущая смена или null
+    currentShift: (state) => {
+      if (state.shifts.length === 0) return null
+      const now = new Date()
+      const minutesNow = now.getHours() * 60 + now.getMinutes()
+      return state.shifts.find(s => {
+        const end = s.startMinutes + s.durationMinutes
+        if (end <= 1440) {
+          return minutesNow >= s.startMinutes && minutesNow < end
+        }
+        // смена переходит через полночь
+        return minutesNow >= s.startMinutes || minutesNow < (end % 1440)
+      }) ?? null
+    },
+
+    // Последняя завершённая смена (ближайшая к текущему моменту)
+    lastCompletedShift: (state) => {
+      if (state.shifts.length === 0) return null
+      const now = new Date()
+      const minutesNow = now.getHours() * 60 + now.getMinutes()
+      // Ищем смену, которая закончилась позже всего, но раньше текущего момента
+      let best = null
+      let bestEnd = -1
+      for (const s of state.shifts) {
+        const end = (s.startMinutes + s.durationMinutes) % 1440
+        // Сколько минут назад закончилась смена
+        const minutesAgo = (minutesNow - end + 1440) % 1440
+        if (minutesAgo > 0 && minutesAgo < 1440) {
+          if (best === null || minutesAgo < (minutesNow - bestEnd + 1440) % 1440) {
+            best = s
+            bestEnd = end
+          }
+        }
+      }
+      return best
     },
 
     // Фильтрованный список ТПА
@@ -68,6 +108,30 @@ export const useDashboardStore = defineStore('dashboard', {
   },
 
   actions: {
+    // Загрузка расписания смен
+    async loadShifts() {
+      try {
+        const response = await shiftsApi.getShifts()
+        this.shifts = response.data
+      } catch (error) {
+        console.error('Ошибка загрузки смен:', error)
+      }
+    },
+
+    // Загрузка средней загрузки за смену
+    async loadShiftUtilization(from, to) {
+      this.shiftUtilizationLoading = true
+      try {
+        const response = await dashboardApi.getShiftUtilization(from, to)
+        this.shiftUtilization = response.data
+      } catch (error) {
+        console.error('Ошибка загрузки загрузки смены:', error)
+        this.shiftUtilization = null
+      } finally {
+        this.shiftUtilizationLoading = false
+      }
+    },
+
     // Загрузка списка ТПА
     async loadImms() {
       this.loading = true

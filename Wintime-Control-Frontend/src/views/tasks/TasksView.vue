@@ -68,8 +68,16 @@
             <el-icon class="text-green-600 text-xl"><TrendCharts /></el-icon>
           </div>
           <div>
-            <p class="text-sm text-gray-500">Эффективность</p>
-            <p class="text-2xl font-bold text-green-600">{{ tasksStore.overallProgress }}%</p>
+            <p class="text-sm text-gray-500">Выполнение</p>
+            <template v-if="shiftProgress.current !== null">
+              <p class="text-2xl font-bold text-green-600">{{ shiftProgress.current }}%</p>
+            </template>
+            <template v-else>
+              <p class="text-2xl font-bold text-gray-400">нет заданий</p>
+              <p v-if="shiftProgress.prev !== null" class="text-xs text-gray-400 mt-0.5">
+                Пред. смена: {{ shiftProgress.prev }}%
+              </p>
+            </template>
           </div>
         </div>
       </div>
@@ -150,6 +158,17 @@
           </template>
         </el-table-column>
 
+        <el-table-column width="160">
+          <template #header>
+            <span class="col-header" @click="handleSort('updatedAt')">
+              Создано/изменено <span class="sort-icon">{{ sortIcon('updatedAt') }}</span>
+            </span>
+          </template>
+          <template #default="{ row }">
+            {{ formatDate(row.updatedAt ?? row.createdAt) }}
+          </template>
+        </el-table-column>
+
         <el-table-column prop="issuedAt" width="160">
           <template #header>
             <span class="col-header" @click="handleSort('issuedAt')">
@@ -157,7 +176,7 @@
             </span>
           </template>
           <template #default="{ row }">
-            {{ formatDate(row.issuedAt) }}
+            {{ row.status === 'Draft' ? '—' : formatDate(row.issuedAt) }}
           </template>
         </el-table-column>
 
@@ -224,6 +243,10 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useTasksStore } from '@/stores/tasks'
 import { useAuthStore } from '@/stores/auth'
+import { useDashboardStore } from '@/stores/dashboard'
+import { immApi } from '@/api/imm'
+import { moldsApi } from '@/api/molds'
+import { personnelApi } from '@/api/personnel'
 import TaskFilters from '@/components/tasks/TaskFilters.vue'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskProgress from '@/components/tasks/TaskProgress.vue'
@@ -233,6 +256,7 @@ import dayjs from 'dayjs'
 
 const tasksStore = useTasksStore()
 const authStore = useAuthStore()
+const dashboardStore = useDashboardStore()
 
 const formModalVisible = ref(false)
 const detailModalVisible = ref(false)
@@ -240,6 +264,81 @@ const editingTask = ref(null)
 const selectedTask = ref(null)
 
 const canCreate = computed(() => authStore.isManager || authStore.isAdmin)
+
+// ── Выполнение по смене ────────────────────────────────────────────────────────
+
+const SHIFT_STATUSES = new Set(['Issued', 'InProgress', 'Completed', 'Closed'])
+
+function shiftBounds(shift, now) {
+  const midnight = new Date(now)
+  midnight.setHours(0, 0, 0, 0)
+  const minutesNow = now.getHours() * 60 + now.getMinutes()
+  const totalEnd = shift.startMinutes + shift.durationMinutes
+  if (totalEnd <= 1440) {
+    return {
+      from: new Date(midnight.getTime() + shift.startMinutes * 60000),
+      to:   new Date(midnight.getTime() + totalEnd * 60000)
+    }
+  }
+  // смена переходит через полночь
+  if (minutesNow >= shift.startMinutes) {
+    return {
+      from: new Date(midnight.getTime() + shift.startMinutes * 60000),
+      to:   new Date(midnight.getTime() + totalEnd * 60000)
+    }
+  }
+  const prevMidnight = new Date(midnight.getTime() - 86400000)
+  return {
+    from: new Date(prevMidnight.getTime() + shift.startMinutes * 60000),
+    to:   new Date(midnight.getTime() + (totalEnd % 1440) * 60000)
+  }
+}
+
+function prevShiftBounds(shift, now) {
+  const midnight = new Date(now)
+  midnight.setHours(0, 0, 0, 0)
+  const endMinutes = (shift.startMinutes + shift.durationMinutes) % 1440
+  const minutesNow = now.getHours() * 60 + now.getMinutes()
+  const endMs = endMinutes <= minutesNow
+    ? midnight.getTime() + endMinutes * 60000
+    : midnight.getTime() - 86400000 + endMinutes * 60000
+  return {
+    from: new Date(endMs - shift.durationMinutes * 60000),
+    to:   new Date(endMs)
+  }
+}
+
+function avgProgress(tasks) {
+  if (tasks.length === 0) return null
+  const total = tasks.reduce((sum, t) => sum + (t.progressPercent || 0), 0)
+  return Math.round(total / tasks.length)
+}
+
+function tasksInWindow(tasks, from, to) {
+  return tasks.filter(t => {
+    if (!SHIFT_STATUSES.has(t.status) || !t.issuedAt) return false
+    const ts = new Date(t.issuedAt).getTime()
+    return ts >= from.getTime() && ts < to.getTime()
+  })
+}
+
+const shiftProgress = computed(() => {
+  const now = new Date()
+  const curr = dashboardStore.currentShift
+  const prev = dashboardStore.lastCompletedShift
+
+  if (!curr && !prev) return { current: null, prev: null }
+
+  const currentPct = curr
+    ? avgProgress(tasksInWindow(tasksStore.tasks, ...Object.values(shiftBounds(curr, now))))
+    : null
+
+  const prevPct = prev
+    ? avgProgress(tasksInWindow(tasksStore.tasks, ...Object.values(prevShiftBounds(prev, now))))
+    : null
+
+  return { current: currentPct, prev: prevPct }
+})
 
 // ── Сортировка ────────────────────────────────────────────────────────────────
 
@@ -255,7 +354,7 @@ const writeCookie = (name, value) => {
   document.cookie = `${name}=${encodeURIComponent(value)};expires=${exp};path=/`
 }
 
-const sort = ref({ field: 'issuedAt', dir: 'desc' })
+const sort = ref({ field: 'updatedAt', dir: 'desc' })
 
 const handleSort = (field) => {
   if (sort.value.field !== field) {
@@ -303,6 +402,7 @@ onMounted(() => {
     try { sort.value = JSON.parse(saved) } catch {}
   }
   loadTasks()
+  if (dashboardStore.shifts.length === 0) dashboardStore.loadShifts()
 })
 
 const loadTasks = async () => {
@@ -369,6 +469,34 @@ const canIssueTask = (task) => {
 }
 
 const issueTask = async (task) => {
+  // Параллельно проверяем актуальность ТПА, пресс-формы и наладчика
+  const checks = [
+    immApi.getById(task.immId),
+    moldsApi.getById(task.moldId),
+    task.personnelId ? personnelApi.getById(task.personnelId) : Promise.resolve(null),
+  ]
+
+  let results
+  try {
+    results = await Promise.all(checks)
+  } catch {
+    ElMessage.error('Не удалось проверить актуальность данных задания')
+    return
+  }
+
+  const [immRes, moldRes, personnelRes] = results
+  const inactive = []
+  if (!immRes.data.isActive)        inactive.push(`ТПА «${task.immName}»`)
+  if (!moldRes.data.isActive)       inactive.push(`пресс-форма «${task.moldName}»`)
+  if (personnelRes && !personnelRes.data.isActive) inactive.push(`наладчик «${task.personnelName}»`)
+
+  if (inactive.length > 0) {
+    ElMessage.warning(`Переведено в архив: ${inactive.join(', ')}. Отредактируйте задание перед выдачей.`)
+    detailModalVisible.value = false
+    editTask(task)
+    return
+  }
+
   await tasksStore.issueTask(task.id)
   detailModalVisible.value = false
 }

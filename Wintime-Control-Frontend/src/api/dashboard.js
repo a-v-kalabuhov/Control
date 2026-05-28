@@ -28,8 +28,15 @@ export const dashboardApi = {
 
   // Получить активные задания
   getActiveTasks() {
-    return apiClient.get('/tasks', { 
-      params: { status: 'InProgress' } 
+    return apiClient.get('/tasks', {
+      params: { status: 'InProgress' }
+    })
+  },
+
+  // Средняя загрузка цеха за период (взвешенная по времени)
+  getShiftUtilization(from, to) {
+    return apiClient.get('/dashboard/shift-utilization', {
+      params: { from: from.toISOString(), to: to.toISOString() }
     })
   }
 }

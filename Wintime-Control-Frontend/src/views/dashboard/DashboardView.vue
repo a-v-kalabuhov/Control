@@ -82,9 +82,18 @@
           <div class="p-3 bg-purple-100 rounded-lg">
             <el-icon class="text-purple-600 text-xl"><TrendCharts /></el-icon>
           </div>
-          <div>
-            <p class="text-sm text-gray-500">Эффективность</p>
-            <p class="text-2xl font-bold" :class="efficiencyColor">{{ dashboardStore.overallEfficiency }}%</p>
+          <div class="min-w-0">
+            <p class="text-sm text-gray-500">Текущая загрузка</p>
+            <div class="flex items-baseline gap-2 flex-wrap">
+              <p class="text-2xl font-bold" :class="efficiencyColor">
+                {{ instantUtilizationLabel }}
+              </p>
+              <span v-if="shiftEndedLabel" class="text-xs text-gray-400">{{ shiftEndedLabel }}</span>
+            </div>
+            <p v-if="shiftAvgLabel" class="text-xs text-gray-500 mt-0.5">
+              {{ shiftAvgLabel }}
+            </p>
+            <p v-if="shiftLabel" class="text-xs text-gray-400 mt-0.5">{{ shiftLabel }}</p>
           </div>
         </div>
       </div>
@@ -178,8 +187,68 @@ const efficiencyColor = computed(() => {
   return 'text-red-600'
 })
 
+// Возвращает { from, to } для смены относительно переданной даты
+function shiftBounds(shift, date) {
+  const base = new Date(date)
+  base.setHours(0, 0, 0, 0)
+  const from = new Date(base.getTime() + shift.startMinutes * 60000)
+  const to   = new Date(from.getTime() + shift.durationMinutes * 60000)
+  return { from, to }
+}
+
+// Метка мгновенной загрузки с учётом контекста смены
+const instantUtilizationLabel = computed(() => {
+  const eff = dashboardStore.overallEfficiency
+  const hasActive = dashboardStore.imms.some(i => i.status === 'Auto' || i.status === 'Manual')
+  if (!dashboardStore.currentShift && !hasActive) return '—'
+  return `${eff}%`
+})
+
+// "(смена закончилась)" — показываем когда нет текущей смены, но есть активные станки
+const shiftEndedLabel = computed(() => {
+  if (dashboardStore.currentShift) return null
+  const hasActive = dashboardStore.imms.some(i => i.status === 'Auto' || i.status === 'Manual')
+  return hasActive ? '(смена закончилась)' : null
+})
+
+// Метка средней загрузки за смену
+const shiftAvgLabel = computed(() => {
+  const u = dashboardStore.shiftUtilization
+  if (!u) return null
+  return `Ср. за смену: ${u.utilization}%`
+})
+
+// Название текущей/последней смены
+const shiftLabel = computed(() => {
+  const shift = dashboardStore.currentShift ?? dashboardStore.lastCompletedShift
+  if (!shift) return null
+  const bounds = shiftBounds(shift, new Date())
+  const fmt = (d) => dayjs(d).format('HH:mm')
+  const prefix = dashboardStore.currentShift ? 'Смена' : 'Последняя смена'
+  return `${prefix}: ${fmt(bounds.from)}–${fmt(bounds.to)}`
+})
+
+async function loadShiftUtilization() {
+  const shift = dashboardStore.currentShift ?? dashboardStore.lastCompletedShift
+  if (!shift) return
+
+  const referenceDate = new Date()
+  if (!dashboardStore.currentShift) {
+    // Для последней завершённой смены: если она ещё не начиналась сегодня — берём вчера
+    const bounds = shiftBounds(shift, referenceDate)
+    if (bounds.from > referenceDate) {
+      referenceDate.setDate(referenceDate.getDate() - 1)
+    }
+  }
+
+  const { from, to } = shiftBounds(shift, referenceDate)
+  const effectiveTo = dashboardStore.currentShift ? new Date() : to
+  await dashboardStore.loadShiftUtilization(from, effectiveTo)
+}
+
 onMounted(async () => {
-  await dashboardStore.loadImms()
+  await Promise.all([dashboardStore.loadImms(), dashboardStore.loadShifts()])
+  await loadShiftUtilization()
   dashboardStore.startAutoRefresh()
 })
 
@@ -199,7 +268,8 @@ const toggleAutoRefresh = () => {
 
 const refreshData = async () => {
   const result = await dashboardStore.refreshAll()
-  
+  await loadShiftUtilization()
+
   if (result.success) {
     ElMessage.success('Данные обновлены')
   } else if (result.isAuthError) {

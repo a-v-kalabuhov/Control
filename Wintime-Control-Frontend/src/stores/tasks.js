@@ -34,22 +34,14 @@ export const useTasksStore = defineStore('tasks', {
       const now = new Date()
       return state.tasks.filter(t => {
         if (t.status === 'Completed' || t.status === 'Closed') return false
+        if (t.plannedDate) {
+          const endOfDay = new Date(t.plannedDate)
+          endOfDay.setHours(23, 59, 59, 999)
+          return now > endOfDay
+        }
         if (!t.issuedAt) return false
-        const issuedDate = new Date(t.issuedAt)
-        const hoursDiff = (now - issuedDate) / (1000 * 60 * 60)
-        return hoursDiff > 12 // Более 12 часов в работе
+        return (now - new Date(t.issuedAt)) / (1000 * 60 * 60) > 12
       })
-    },
-
-    // Общая эффективность выполнения
-    overallProgress: (state) => {
-      const activeTasks = state.tasks.filter(t => 
-        t.status === 'InProgress' || t.status === 'Issued'
-      )
-      if (activeTasks.length === 0) return 0
-      
-      const totalProgress = activeTasks.reduce((sum, t) => sum + (t.progressPercent || 0), 0)
-      return Math.round(totalProgress / activeTasks.length)
     },
 
     // Фильтрованный список

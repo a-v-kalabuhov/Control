@@ -56,6 +56,7 @@
             <el-menu-item index="/dictionary/molds">Пресс-формы</el-menu-item>
             <el-menu-item index="/dictionary/personnel">Персонал</el-menu-item>
             <el-menu-item index="/dictionary/shifts">Смены</el-menu-item>
+            <el-menu-item index="/dictionary/downtime-reasons">Причины простоев</el-menu-item>
           </el-sub-menu>
           <!-- Смены отдельно для Observer (для Admin/Manager — внутри Справочников) -->
           <el-menu-item
@@ -172,7 +173,8 @@ const pageTitle = computed(() => {
     '/dictionary/imm': 'Справочник ТПА',
     '/dictionary/molds': 'Справочник пресс-форм',
     '/dictionary/personnel': 'Справочник персонала',
-    '/dictionary/shifts': 'Расписание смен'
+    '/dictionary/shifts': 'Расписание смен',
+    '/dictionary/downtime-reasons': 'Причины простоев'
   }
   return titles[route.path] || 'CONTROL'
 })

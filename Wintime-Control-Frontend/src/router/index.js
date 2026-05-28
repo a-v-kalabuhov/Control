@@ -82,6 +82,12 @@ const routes = [
             name: 'DictionaryShifts',
             component: () => import('@/views/dictionary/ShiftsDictionary.vue'),
             meta: { roles: ['Admin', 'Manager', 'Observer'] }
+          },
+          {
+            path: 'downtime-reasons',
+            name: 'DictionaryDowntimeReasons',
+            component: () => import('@/views/dictionary/DowntimeDictionary.vue'),
+            meta: { roles: ['Admin', 'Manager'] }
           }
         ]
       },

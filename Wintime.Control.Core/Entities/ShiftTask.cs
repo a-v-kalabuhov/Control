@@ -14,6 +14,8 @@ public class ShiftTask : BaseEntity
     public string? Note { get; set; }
     public string? CloseReason { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public DateTime? PlannedDate { get; set; }
     public DateTime? IssuedAt { get; set; }
     public DateTime? SetupStartedAt { get; set; }
