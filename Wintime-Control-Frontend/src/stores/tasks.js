@@ -34,10 +34,13 @@ export const useTasksStore = defineStore('tasks', {
       const now = new Date()
       return state.tasks.filter(t => {
         if (t.status === 'Completed' || t.status === 'Closed') return false
+        if (t.plannedDate) {
+          const endOfDay = new Date(t.plannedDate)
+          endOfDay.setHours(23, 59, 59, 999)
+          return now > endOfDay
+        }
         if (!t.issuedAt) return false
-        const issuedDate = new Date(t.issuedAt)
-        const hoursDiff = (now - issuedDate) / (1000 * 60 * 60)
-        return hoursDiff > 12 // Более 12 часов в работе
+        return (now - new Date(t.issuedAt)) / (1000 * 60 * 60) > 12
       })
     },
 
