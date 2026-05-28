@@ -26,6 +26,19 @@
         <el-descriptions-item label="Начато">
           {{ formatDate(task?.startedAt) }}
         </el-descriptions-item>
+        <el-descriptions-item v-if="task?.completedAt" label="Завершено">
+          {{ formatDate(task?.completedAt) }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="task?.closedAt" label="Закрыто">
+          {{ formatDate(task?.closedAt) }}
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="task?.closeReason"
+          :label="task?.status === 'Closed' ? 'Причина закрытия' : 'Причина недовыполнения'"
+          :span="2"
+        >
+          {{ task.closeReason }}
+        </el-descriptions-item>
       </el-descriptions>
 
       <!-- Прогресс -->
@@ -40,20 +53,11 @@
       </el-card>
 
       <!-- Примечания -->
-      <el-card v-if="task?.note || task?.closeReason">
+      <el-card v-if="task?.note">
         <template #header>
           <span class="font-semibold">Примечания</span>
         </template>
-        <div class="space-y-2">
-          <div v-if="task?.note">
-            <span class="text-gray-500">Примечание:</span>
-            <p class="text-gray-800">{{ task.note }}</p>
-          </div>
-          <div v-if="task?.closeReason">
-            <span class="text-gray-500">Причина закрытия:</span>
-            <p class="text-gray-800">{{ task.closeReason }}</p>
-          </div>
-        </div>
+        <p class="text-gray-800">{{ task.note }}</p>
       </el-card>
 
       <!-- Действия -->

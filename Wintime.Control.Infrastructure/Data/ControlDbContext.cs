@@ -30,6 +30,10 @@ public class ControlDbContext : IdentityDbContext<User>
             .Where(e => e.State == EntityState.Modified))
             entry.Entity.UpdatedAt = DateTime.UtcNow;
 
+        foreach (var entry in ChangeTracker.Entries<ShiftTask>()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified))
+            entry.Entity.UpdatedAt = DateTime.UtcNow;
+
         return await base.SaveChangesAsync(cancellationToken);
     }
 

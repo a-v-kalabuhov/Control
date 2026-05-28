@@ -77,7 +77,9 @@ public class TasksController : ControllerBase
             CompletedAt = t.CompletedAt,
             ClosedAt = t.ClosedAt,
             CloseReason = t.CloseReason,
-            Note = t.Note
+            Note = t.Note,
+            CreatedAt = t.CreatedAt,
+            UpdatedAt = t.UpdatedAt
         }).ToList();
 
         return Ok(dtos);
@@ -130,7 +132,9 @@ public class TasksController : ControllerBase
             CompletedAt = t.CompletedAt,
             ClosedAt = t.ClosedAt,
             CloseReason = t.CloseReason,
-            Note = t.Note
+            Note = t.Note,
+            CreatedAt = t.CreatedAt,
+            UpdatedAt = t.UpdatedAt
         }).ToList();
 
         return Ok(dtos);
@@ -174,7 +178,9 @@ public class TasksController : ControllerBase
             CompletedAt = task.CompletedAt,
             ClosedAt = task.ClosedAt,
             CloseReason = task.CloseReason,
-            Note = task.Note
+            Note = task.Note,
+            CreatedAt = task.CreatedAt,
+            UpdatedAt = task.UpdatedAt
         };
 
         return Ok(dto);

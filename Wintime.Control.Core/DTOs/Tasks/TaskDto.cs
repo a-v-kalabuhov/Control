@@ -23,4 +23,6 @@ public class TaskDto
     public DateTime? ClosedAt { get; set; }
     public string? CloseReason { get; set; }
     public string? Note { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }

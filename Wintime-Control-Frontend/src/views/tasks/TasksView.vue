@@ -158,6 +158,17 @@
           </template>
         </el-table-column>
 
+        <el-table-column width="160">
+          <template #header>
+            <span class="col-header" @click="handleSort('updatedAt')">
+              Создано/изменено <span class="sort-icon">{{ sortIcon('updatedAt') }}</span>
+            </span>
+          </template>
+          <template #default="{ row }">
+            {{ formatDate(row.updatedAt ?? row.createdAt) }}
+          </template>
+        </el-table-column>
+
         <el-table-column prop="issuedAt" width="160">
           <template #header>
             <span class="col-header" @click="handleSort('issuedAt')">
@@ -165,7 +176,7 @@
             </span>
           </template>
           <template #default="{ row }">
-            {{ formatDate(row.issuedAt) }}
+            {{ row.status === 'Draft' ? '—' : formatDate(row.issuedAt) }}
           </template>
         </el-table-column>
 
@@ -343,7 +354,7 @@ const writeCookie = (name, value) => {
   document.cookie = `${name}=${encodeURIComponent(value)};expires=${exp};path=/`
 }
 
-const sort = ref({ field: 'issuedAt', dir: 'desc' })
+const sort = ref({ field: 'updatedAt', dir: 'desc' })
 
 const handleSort = (field) => {
   if (sort.value.field !== field) {
