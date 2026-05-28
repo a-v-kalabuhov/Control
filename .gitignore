@@ -66,3 +66,5 @@ publish/
 
 # Secrets
 .env
+docs/Rosoms_requirements.md
+docs/Modules_architecture_plan.md
