@@ -41,17 +41,6 @@ export const useTasksStore = defineStore('tasks', {
       })
     },
 
-    // Общая эффективность выполнения
-    overallProgress: (state) => {
-      const activeTasks = state.tasks.filter(t => 
-        t.status === 'InProgress' || t.status === 'Issued'
-      )
-      if (activeTasks.length === 0) return 0
-      
-      const totalProgress = activeTasks.reduce((sum, t) => sum + (t.progressPercent || 0), 0)
-      return Math.round(totalProgress / activeTasks.length)
-    },
-
     // Фильтрованный список
     filteredTasks: (state) => {
       let result = state.tasks
