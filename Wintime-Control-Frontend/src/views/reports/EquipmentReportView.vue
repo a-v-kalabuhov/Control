@@ -107,12 +107,22 @@
             {{ row.avgCycleSeconds.toFixed(1) }}
           </template>
         </el-table-column>
-        <el-table-column label="Эффективность" width="160">
+        <el-table-column label="Эффективность" width="180">
           <template #default="{ row }">
-            <el-progress
-              :percentage="Math.round(row.avgEfficiency)"
-              :status="row.avgEfficiency >= 85 ? 'success' : row.avgEfficiency >= 70 ? 'warning' : 'exception'"
-            />
+            <div class="flex items-center gap-2">
+              <el-progress
+                class="flex-1"
+                :percentage="Math.round(row.avgEfficiency)"
+                :color="[
+                  { color: '#f56c6c', percentage: 50 },
+                  { color: '#e6a23c', percentage: 70 },
+                  { color: '#409eff', percentage: 85 },
+                  { color: '#67c23a', percentage: 100 },
+                ]"
+                :show-text="false"
+              />
+              <span class="text-sm w-10 text-right">{{ Math.round(row.avgEfficiency) }}%</span>
+            </div>
           </template>
         </el-table-column>
       </el-table>
