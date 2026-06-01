@@ -449,18 +449,12 @@ const completeTask = async (task) => {
   }
 }
 
-const closeTask = async (task) => {
+const closeTask = async (task, closeReason) => {
   try {
-    await ElMessageBox.confirm('Закрыть задание?', 'Подтверждение', {
-      type: 'warning'
-    })
-
-    await tasksStore.closeTask(task.id, {})
+    await tasksStore.closeTask(task.id, { closeReason })
     detailModalVisible.value = false
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('Ошибка закрытия задания')
-    }
+  } catch {
+    ElMessage.error('Ошибка закрытия задания')
   }
 }
 

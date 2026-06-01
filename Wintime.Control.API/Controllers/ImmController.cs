@@ -307,7 +307,7 @@ public class ImmController : ControllerBase
     /// </summary>
     [HttpGet("{id:guid}/statistics")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
-    public async Task<ActionResult<ImmStatisticsDto>> GetImmStatistics(
+    public Task<ActionResult<ImmStatisticsDto>> GetImmStatistics(
         Guid id,
         [FromQuery] DateTime from,
         [FromQuery] DateTime to,
@@ -326,7 +326,7 @@ public class ImmController : ControllerBase
             AvgCycleTime = 0
         };
 
-        return Ok(statistics);
+        return Task.FromResult<ActionResult<ImmStatisticsDto>>(Ok(statistics));
     }
 
     private static DateTime? MaxDateTime(DateTime? a, DateTime? b)

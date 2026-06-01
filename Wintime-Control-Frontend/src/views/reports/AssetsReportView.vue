@@ -46,15 +46,66 @@
       <el-table :data="reportData?.moldData || []" stripe style="width: 100%">
         <el-table-column prop="moldName" label="Пресс-форма" min-width="200" />
         <el-table-column prop="totalCycles" label="Смыкания" width="120" align="center" />
-        <el-table-column prop="workHours" label="Наработка (часы)" width="130">
+        <el-table-column prop="workHours" label="Наработка (часы)" width="130" align="center">
           <template #default="{ row }">
             {{ row.workHours?.toFixed(2) || '0.00' }}
           </template>
         </el-table-column>
-        <el-table-column prop="remainingResource" label="Остаток ресурса" width="140">
+        <el-table-column prop="to1Cycles" label="ТО-1" width="120" align="center">
+          <template #default="{ row }">
+            <span v-if="row.to1Cycles">
+              <el-tag :type="row.allTimeTotalCycles >= row.to1Cycles ? 'danger' : 'info'" size="small">
+                {{ row.to1Cycles.toLocaleString() }}
+              </el-tag>
+            </span>
+            <span v-else class="text-gray-400">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="to2Cycles" label="ТО-2" width="120" align="center">
+          <template #default="{ row }">
+            <span v-if="row.to2Cycles">
+              <el-tag :type="row.allTimeTotalCycles >= row.to2Cycles ? 'danger' : 'info'" size="small">
+                {{ row.to2Cycles.toLocaleString() }}
+              </el-tag>
+            </span>
+            <span v-else class="text-gray-400">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="Ресурс" width="210" align="left">
+          <template #default="{ row }">
+            <div class="flex items-center gap-2">
+              <div class="flex-shrink-0 w-4 flex justify-center">
+                <el-icon v-if="row.remainingResource < 10000" color="#F56C6C" :size="15"><CircleCloseFilled /></el-icon>
+                <el-icon v-else-if="row.remainingResource < 50000" color="#E6A23C" :size="15"><WarningFilled /></el-icon>
+                <el-icon v-else color="#909399" :size="15"><CircleCheckFilled /></el-icon>
+              </div>
+              <div class="flex-1 text-xs leading-tight min-w-0">
+                <div>{{ row.allTimeTotalCycles.toLocaleString() }} / {{ row.maxResourceCycles.toLocaleString() }}</div>
+                <el-progress
+                  :percentage="Math.min(100, Math.round(row.allTimeTotalCycles / row.maxResourceCycles * 100))"
+                  :show-text="false"
+                  :color="row.remainingResource < 10000 ? '#F56C6C' : row.remainingResource < 50000 ? '#E6A23C' : '#409EFF'"
+                  :stroke-width="6"
+                  class="mt-1"
+                />
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="Износ" width="70" align="center">
+          <template #default="{ row }">
+            <span
+              class="text-xs font-medium tabular-nums"
+              :class="row.remainingResource < 10000 ? 'text-red-500' : row.remainingResource < 50000 ? 'text-yellow-500' : 'text-gray-400'"
+            >
+              {{ Math.min(100, Math.round(row.allTimeTotalCycles / row.maxResourceCycles * 100)) }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remainingResource" label="Остаток" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="row.remainingResource < 10000 ? 'danger' : row.remainingResource < 50000 ? 'warning' : 'success'">
-              {{ row.remainingResource }}
+              {{ row.remainingResource.toLocaleString() }}
             </el-tag>
           </template>
         </el-table-column>

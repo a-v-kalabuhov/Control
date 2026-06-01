@@ -56,9 +56,9 @@
     <!-- График Ганта -->
     <el-card class="mb-4" v-if="reportData?.immData?.length">
       <template #header>
-        <span class="font-semibold">График работы ТПА (Гант)</span>
+        <span class="font-semibold">{{ ganttTitle }}</span>
       </template>
-      <GanttChart :data="reportData.immData" :shifts="shifts" :date="filters.date" />
+      <GanttChart :data="reportData.immData" :shifts="shifts" :date="filters.date" :shiftId="filters.shiftId" />
     </el-card>
 
     <!-- Таблица -->
@@ -119,7 +119,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useReportsStore } from '@/stores/reports'
@@ -136,6 +136,7 @@ const exporting = ref(false)
 const imms = ref([])
 const shifts = ref([])
 const reportData = ref(null)
+const loadedFilters = ref({ date: null, shiftId: null })
 
 const filters = reactive({
   date: dayjs().format('YYYY-MM-DD'),
@@ -174,6 +175,7 @@ const loadReport = async () => {
       immId: filters.immId || undefined
     })
     reportData.value = reportsStore.dailyReport
+    loadedFilters.value = { date: filters.date, shiftId: filters.shiftId }
   } catch {
     ElMessage.error('Ошибка формирования отчёта')
   } finally {
@@ -196,6 +198,18 @@ const exportExcel = async () => {
     exporting.value = false
   }
 }
+
+const ganttTitle = computed(() => {
+  const { date, shiftId } = loadedFilters.value
+  if (!date) return 'График работы ТПА'
+  const dateStr = dayjs(date).format('DD.MM.YYYY')
+  if (shiftId) {
+    const shift = shifts.value.find(s => s.id === shiftId)
+    const shiftStr = shift ? `, Смена ${shift.number} (${shift.startTime}–${shift.endTime})` : ''
+    return `График работы ТПА — ${dateStr}${shiftStr}`
+  }
+  return `График работы ТПА — ${dateStr}`
+})
 
 const goBack = () => {
   router.push('/reports')

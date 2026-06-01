@@ -33,11 +33,18 @@
           {{ formatDate(task?.closedAt) }}
         </el-descriptions-item>
         <el-descriptions-item
-          v-if="task?.closeReason"
-          :label="task?.status === 'Closed' ? 'Причина закрытия' : 'Причина недовыполнения'"
+          v-if="canClose || task?.closeReason"
+          :label="task?.status === 'Closed' ? 'Причина закрытия' : 'Причина закрытия досрочно'"
           :span="2"
         >
-          {{ task.closeReason }}
+          <el-input
+            v-if="canClose"
+            v-model="closeReasonInput"
+            type="textarea"
+            :rows="2"
+            placeholder="Укажите причину закрытия задания"
+          />
+          <span v-else>{{ task.closeReason }}</span>
         </el-descriptions-item>
       </el-descriptions>
 
@@ -46,9 +53,9 @@
         <template #header>
           <span class="font-semibold">Выполнение</span>
         </template>
-        <TaskProgress 
-          :plan-quantity="task?.planQuantity" 
-          :actual-quantity="task?.actualQuantity" 
+        <TaskProgress
+          :plan-quantity="task?.planQuantity"
+          :actual-quantity="task?.actualQuantity"
         />
       </el-card>
 
@@ -61,40 +68,44 @@
       </el-card>
 
       <!-- Действия -->
-      <div class="flex justify-end gap-4 mt-6" v-if="canEdit || canIssue || canComplete || canClose">
-        <el-button
-          v-if="canEdit"
-          @click="$emit('edit', task)"
-        >
-          Редактировать
-        </el-button>
-        <el-popconfirm
-          v-if="canIssue"
-          title="Выдать задание в работу?"
-          confirm-button-text="Выдать"
-          cancel-button-text="Отмена"
-          confirm-button-type="warning"
-          width="240"
-          @confirm="$emit('issue', task)"
-        >
-          <template #reference>
-            <el-button type="warning">Выдать</el-button>
-          </template>
-        </el-popconfirm>
-        <el-button
-          v-if="canComplete"
-          type="success"
-          @click="$emit('complete', task)"
-        >
-          Завершить
-        </el-button>
-        <el-button
-          v-if="canClose"
-          type="info"
-          @click="$emit('close', task)"
-        >
-          Закрыть
-        </el-button>
+      <div class="flex justify-between mt-6">
+        <el-button @click="visible = false">Назад</el-button>
+        <div class="flex gap-4">
+          <el-button
+            v-if="canEdit"
+            @click="$emit('edit', task)"
+          >
+            Редактировать
+          </el-button>
+          <el-popconfirm
+            v-if="canIssue"
+            title="Выдать задание в работу?"
+            confirm-button-text="Выдать"
+            cancel-button-text="Отмена"
+            confirm-button-type="warning"
+            width="240"
+            @confirm="$emit('issue', task)"
+          >
+            <template #reference>
+              <el-button type="warning">Выдать</el-button>
+            </template>
+          </el-popconfirm>
+          <el-button
+            v-if="canComplete"
+            type="success"
+            @click="$emit('complete', task)"
+          >
+            Завершить
+          </el-button>
+          <el-button
+            v-if="canClose"
+            type="danger"
+            :disabled="!closeReasonInput.trim()"
+            @click="$emit('close', task, closeReasonInput.trim())"
+          >
+            Закрыть задание
+          </el-button>
+        </div>
       </div>
     </div>
   </el-dialog>
@@ -122,10 +133,14 @@ const emit = defineEmits(['update:modelValue', 'edit', 'issue', 'complete', 'clo
 
 const authStore = useAuthStore()
 const loading = ref(false)
+const closeReasonInput = ref('')
 
 const visible = computed({
   get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value)
+  set: (value) => {
+    if (!value) closeReasonInput.value = ''
+    emit('update:modelValue', value)
+  }
 })
 
 const canEdit = computed(() => {

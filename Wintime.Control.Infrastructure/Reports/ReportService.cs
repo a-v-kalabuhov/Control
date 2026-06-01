@@ -396,13 +396,18 @@ public class ReportService : IReportService
             {
                 periodLookup.TryGetValue(mold.Id, out var period);
                 allTimeLookup.TryGetValue(mold.Id, out var allTime);
+                var allTimeCycles = allTime?.TotalCycles ?? 0;
                 return new AssetsMoldItemDto
                 {
                     MoldId = mold.Id,
                     MoldName = mold.Name,
                     TotalCycles = period?.TotalCycles ?? 0,
                     WorkHours = (decimal)(period?.TotalDurationSeconds ?? 0) / 3600,
-                    RemainingResource = mold.MaxResourceCycles - (allTime?.TotalCycles ?? 0)
+                    MaxResourceCycles = mold.MaxResourceCycles,
+                    To1Cycles = mold.To1Cycles,
+                    To2Cycles = mold.To2Cycles,
+                    AllTimeTotalCycles = allTimeCycles,
+                    RemainingResource = mold.MaxResourceCycles - allTimeCycles
                 };
             })];
         }

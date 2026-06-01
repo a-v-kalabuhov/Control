@@ -27,6 +27,10 @@ const props = defineProps({
   date: {
     type: String,
     default: ''
+  },
+  shiftId: {
+    type: [Number, String],
+    default: null
   }
 })
 
@@ -55,6 +59,91 @@ const legend = Object.entries(colorMap).map(([type, color]) => ({
   label: typeLabels[type]
 }))
 
+// Разбираем время смены (HH:mm) в timestamp для заданной даты.
+// Если endTime <= startTime — смена переходит через полночь, сдвигаем на +1 день.
+const parseShiftBounds = (shift, dateStr) => {
+  const start = dayjs(`${dateStr} ${shift.startTime}`)
+  let end = dayjs(`${dateStr} ${shift.endTime}`)
+  if (end.valueOf() <= start.valueOf()) {
+    end = end.add(1, 'day')
+  }
+  return { start, end }
+}
+
+const computeAxisBounds = () => {
+  const dateStr = props.date || dayjs().format('YYYY-MM-DD')
+
+  if (!props.shifts.length) return { min: null, max: null }
+
+  let targetShifts = props.shifts
+
+  if (props.shiftId) {
+    const found = props.shifts.find(s => s.id === props.shiftId)
+    if (found) targetShifts = [found]
+  }
+
+  const parsed = targetShifts.map(s => parseShiftBounds(s, dateStr))
+  const minStart = parsed.reduce((a, b) => (a.start.valueOf() < b.start.valueOf() ? a : b)).start
+  const maxEnd   = parsed.reduce((a, b) => (a.end.valueOf() > b.end.valueOf() ? a : b)).end
+
+  return {
+    min: minStart.subtract(30, 'minute').valueOf(),
+    max: maxEnd.add(30, 'minute').valueOf()
+  }
+}
+
+// Строим список markLine: для каждой целой часовой отметки между min и max —
+// либо тонкая серая линия сетки, либо чёткая линия границы смены.
+const buildMarkLines = (axisMin, axisMax) => {
+  const dateStr = props.date || dayjs().format('YYYY-MM-DD')
+
+  // Собираем timestamp'ы всех границ смен (start + end)
+  const shiftBoundaryMap = new Map() // ts -> label
+  props.shifts.forEach(s => {
+    const { start, end } = parseShiftBounds(s, dateStr)
+    const startTs = start.valueOf()
+    const endTs   = end.valueOf()
+    // Метку ставим только для начала смены
+    shiftBoundaryMap.set(startTs, `Смена ${s.number ?? ''} ${s.startTime}`.trim())
+    if (!shiftBoundaryMap.has(endTs)) {
+      shiftBoundaryMap.set(endTs, '')
+    }
+  })
+
+  const markLines = []
+
+  // Первая целая часовая отметка >= axisMin
+  let t = dayjs(axisMin).startOf('hour')
+  if (t.valueOf() < axisMin) t = t.add(1, 'hour')
+
+  while (t.valueOf() <= axisMax) {
+    const ts = t.valueOf()
+
+    if (shiftBoundaryMap.has(ts)) {
+      const label = shiftBoundaryMap.get(ts)
+      markLines.push({
+        name: label,
+        xAxis: ts,
+        lineStyle: { color: '#374151', type: 'dashed', width: 1.5 },
+        label: label
+          ? { show: true, position: 'insideStartTop', formatter: label, color: '#374151', fontSize: 11 }
+          : { show: false }
+      })
+    } else {
+      markLines.push({
+        name: '',
+        xAxis: ts,
+        lineStyle: { color: '#d1d5db', type: 'solid', width: 0.8 },
+        label: { show: false }
+      })
+    }
+
+    t = t.add(1, 'hour')
+  }
+
+  return markLines
+}
+
 const initChart = () => {
   if (!chartRef.value || !props.data.length) return
 
@@ -75,12 +164,8 @@ const initChart = () => {
     })
   })
 
-  const shiftMarkLines = props.shifts
-    .filter(s => s.startTime)
-    .map(s => ({
-      name: `Смена ${s.number ?? ''} ${s.startTime}`.trim(),
-      xAxis: dayjs(`${props.date || dayjs().format('YYYY-MM-DD')} ${s.startTime}`).valueOf()
-    }))
+  const { min: axisMin, max: axisMax } = computeAxisBounds()
+  const markLines = (axisMin !== null) ? buildMarkLines(axisMin, axisMax) : []
 
   const option = {
     tooltip: {
@@ -103,9 +188,13 @@ const initChart = () => {
     },
     xAxis: {
       type: 'time',
+      min: axisMin ?? undefined,
+      max: axisMax ?? undefined,
+      minInterval: 3600 * 1000,
       axisLabel: {
         formatter: (value) => dayjs(value).format('HH:mm')
-      }
+      },
+      splitLine: { show: false }
     },
     yAxis: {
       type: 'category',
@@ -136,17 +225,10 @@ const initChart = () => {
         },
         encode: { x: [1, 2], y: 0 },
         data: seriesData,
-        markLine: shiftMarkLines.length ? {
+        markLine: markLines.length ? {
           silent: true,
           symbol: ['none', 'none'],
-          lineStyle: { color: '#374151', type: 'dashed', width: 1.5 },
-          label: {
-            position: 'insideStartTop',
-            formatter: (p) => p.name,
-            color: '#374151',
-            fontSize: 11
-          },
-          data: shiftMarkLines
+          data: markLines
         } : undefined
       }
     ]
