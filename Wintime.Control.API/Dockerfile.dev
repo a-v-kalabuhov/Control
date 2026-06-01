@@ -26,8 +26,10 @@ RUN dotnet publish "Wintime.Control.API.csproj" -c Release -o /app/publish /p:Us
 # Stage 3: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/*
 USER app
 COPY --from=build --chown=app:app /app/publish .
+COPY --from=frontend-build --chown=app:app /Wintime.Control.API/wwwroot ./wwwroot/
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production

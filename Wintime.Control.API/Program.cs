@@ -99,6 +99,8 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddHealthChecks();
+
 // Controllers
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -208,6 +210,7 @@ if (!app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapHealthChecks("/health");
 app.MapControllers();
 app.MapFallbackToFile("index.html");
 

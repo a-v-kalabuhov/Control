@@ -22,16 +22,9 @@ public class MqttBackgroundService : BackgroundService
 
         await _mqttService.ConnectAsync(stoppingToken);
 
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-
-            if (!_mqttService.IsConnected)
-            {
-                _logger.LogWarning("MQTT is not connected. Attempting to reconnect...");
-                await _mqttService.ConnectAsync(stoppingToken);
-            }
-        }
+        // Reconnection is handled by MqttService via DisconnectedAsync → TryReconnect.
+        // This task just keeps the service alive until the host shuts down.
+        await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
 
         _logger.LogInformation("MQTT Background Service stopping...");
         await _mqttService.DisconnectAsync();

@@ -36,15 +36,21 @@ services:
     container_name: wtctrl-dev-api
     ports:
       - "5000:8080"
-      - "5001:8081"
     environment:
       - ASPNETCORE_ENVIRONMENT=Docker
+      - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=WintimeControlDb;Username=postgres;Password=password;
       - MqttSettings__BrokerUrl=mosquitto
     depends_on:
       - postgres
       - mosquitto
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/localhost/8080' 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     networks:
       - wintime-control-network
 
@@ -60,8 +66,10 @@ services:
       - Mqtt__BrokerUrl=mqtt://mosquitto:1883
       - MainApi__BaseUrl=http://api:8080
     depends_on:
-      - api
-      - mosquitto
+      api:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
     restart: unless-stopped
     networks:
       - wintime-control-network

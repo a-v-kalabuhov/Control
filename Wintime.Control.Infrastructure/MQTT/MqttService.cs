@@ -33,6 +33,7 @@ public class MqttService : IMqttService, IDisposable
     private readonly IMessageProcessor _messageProcessor;
     private readonly ILogger<MqttService> _logger;
     private bool _isConnected;
+    private int _isReconnecting; // 0 = idle, 1 = reconnecting (Interlocked)
     private CancellationTokenSource? _reconnectCts;
     private MqttClientOptions? _mqttOptions;
 
@@ -102,6 +103,9 @@ public class MqttService : IMqttService, IDisposable
     /// <returns>Задача, представляющая асинхронную операцию подключения.</returns>
     public async System.Threading.Tasks.Task ConnectAsync(CancellationToken cancellationToken = default)
     {
+        if (_mqttClient.IsConnected)
+            return;
+
         try
         {
             await _mqttClient.ConnectAsync(_mqttOptions, cancellationToken);
@@ -169,27 +173,34 @@ public class MqttService : IMqttService, IDisposable
     /// <returns>Задача, представляющая асинхронную попытку переподключения.</returns>
     private async System.Threading.Tasks.Task TryReconnect()
     {
-        if (_reconnectCts != null)
-            return; // Уже идёт попытка переподключения
+        // Ensure only one reconnect loop runs at a time (thread-safe via Interlocked).
+        if (Interlocked.CompareExchange(ref _isReconnecting, 1, 0) != 0)
+            return;
 
         _reconnectCts = new CancellationTokenSource();
 
-        while (!_isConnected && !_reconnectCts.Token.IsCancellationRequested)
+        try
         {
-            _logger.LogInformation("🔄 Trying to reconnect in {Seconds} seconds...", _settings.ReconnectDelaySeconds);
-            await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(_settings.ReconnectDelaySeconds), _reconnectCts.Token);
+            while (!_isConnected && !_reconnectCts.Token.IsCancellationRequested)
+            {
+                _logger.LogInformation("🔄 Trying to reconnect in {Seconds} seconds...", _settings.ReconnectDelaySeconds);
+                await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(_settings.ReconnectDelaySeconds), _reconnectCts.Token);
 
-            try
-            {
-                await ConnectAsync(_reconnectCts.Token);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Reconnection failed");
+                try
+                {
+                    await ConnectAsync(_reconnectCts.Token);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Reconnection failed");
+                }
             }
         }
-
-        _reconnectCts = null;
+        finally
+        {
+            _reconnectCts = null;
+            Interlocked.Exchange(ref _isReconnecting, 0);
+        }
     }
 
     /// <summary>
