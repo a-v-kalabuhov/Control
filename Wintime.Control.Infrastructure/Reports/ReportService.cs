@@ -1,4 +1,5 @@
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Infrastructure.Reports;
 using Wintime.Control.Core.DTOs.Report;
 using Wintime.Control.Core.Enums;
 using Microsoft.Extensions.Logging;
@@ -417,6 +418,8 @@ public class ReportService : IReportService
                 .Where(u => u.IsActive && u.Role == UserRole.Adjuster)
                 .ToListAsync(ct);
 
+            var shifts = await _context.Shifts.ToListAsync(ct);
+
             report.PersonnelData = [];
 
             foreach (var person in personnel)
@@ -426,9 +429,7 @@ public class ReportService : IReportService
                     .ToListAsync(ct);
 
                 var completedTasks = tasks.Count;
-                var totalWorkSeconds = tasks
-                    .Where(t => t.StartedAt.HasValue && t.CompletedAt.HasValue)
-                    .Sum(t => (int)(t.CompletedAt!.Value - t.StartedAt!.Value).TotalSeconds);
+                var totalWorkSeconds = ShiftWorkCalculator.CalculateWorkSeconds(tasks.Select(t => t.StartedAt), shifts);
 
                 var setupEvents = await _context.Events
                     .Where(e => e.PersonnelId == person.Id && e.EventType == EventType.Setup && e.StartTime >= dateFromUtc && e.StartTime < periodEnd)
@@ -438,15 +439,206 @@ public class ReportService : IReportService
                     ? (decimal)setupEvents.Average(e => e.DurationSeconds)
                     : 0;
 
+                var totalSetupSeconds = setupEvents.Sum(e => e.DurationSeconds);
+                var workedShifts = ShiftWorkCalculator.CountWorkedShifts(tasks.Select(t => t.StartedAt), shifts);
+
                 report.PersonnelData.Add(new AssetsPersonnelItemDto
                 {
                     PersonnelId = person.Id,
                     FullName = person.FullName,
                     CompletedTasks = completedTasks,
                     TotalWorkSeconds = totalWorkSeconds,
-                    AvgSetupTime = avgSetupTime
+                    AvgSetupTime = avgSetupTime,
+                    TotalSetupSeconds = totalSetupSeconds,
+                    WorkedShifts = workedShifts
                 });
             }
+        }
+
+        else if (reportType.Equals("MoldsByImm", StringComparison.OrdinalIgnoreCase))
+        {
+            var molds = await _context.Molds
+                .Where(m => m.IsActive)
+                .ToListAsync(ct);
+
+            var imms = await _context.Imms
+                .Where(i => i.IsActive)
+                .ToListAsync(ct);
+
+            var immNameLookup = imms.ToDictionary(i => i.Id, i => i.Name);
+
+            var moldIds = molds.Select(m => m.Id).ToList();
+
+            // Смыкания за период, сгруппированные по (MoldId, ImmId)
+            var periodCycleStats = await _context.ImmCycles
+                .Where(c => c.MoldId != null
+                         && moldIds.Contains(c.MoldId.Value)
+                         && c.IsSuccessful
+                         && c.StartTime >= dateFromUtc
+                         && c.StartTime < periodEnd)
+                .GroupBy(c => new { c.MoldId, c.ImmId })
+                .Select(g => new
+                {
+                    MoldId = g.Key.MoldId!.Value,
+                    ImmId = g.Key.ImmId,
+                    TotalCycles = g.Count(),
+                    TotalDurationSeconds = g.Sum(c => c.DurationSeconds)
+                })
+                .ToListAsync(ct);
+
+            // Суммарные смыкания за всё время — для расчёта остатка ресурса
+            var allTimeCycleStats = await _context.ImmCycles
+                .Where(c => c.MoldId != null && moldIds.Contains(c.MoldId.Value) && c.IsSuccessful)
+                .GroupBy(c => c.MoldId!.Value)
+                .Select(g => new { MoldId = g.Key, TotalCycles = g.Count() })
+                .ToListAsync(ct);
+
+            var allTimeLookup = allTimeCycleStats.ToDictionary(x => x.MoldId);
+
+            // Группируем periodCycleStats по MoldId для построения иерархии
+            var periodByMold = periodCycleStats
+                .GroupBy(x => x.MoldId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            report.MoldsByImmData = [.. molds.Select(mold =>
+            {
+                allTimeLookup.TryGetValue(mold.Id, out var allTime);
+                var allTimeCycles = allTime?.TotalCycles ?? 0;
+
+                periodByMold.TryGetValue(mold.Id, out var periodRows);
+                periodRows ??= [];
+
+                var totalCycles = periodRows.Sum(r => r.TotalCycles);
+                var totalDurationSeconds = periodRows.Sum(r => r.TotalDurationSeconds);
+
+                var breakdown = periodRows
+                    .Select(r => new AssetsMoldImmBreakdownDto
+                    {
+                        ImmId = r.ImmId,
+                        ImmName = immNameLookup.GetValueOrDefault(r.ImmId, r.ImmId.ToString()),
+                        TotalCycles = r.TotalCycles,
+                        WorkHours = (decimal)r.TotalDurationSeconds / 3600
+                    })
+                    .OrderBy(r => r.ImmName)
+                    .ToList();
+
+                return new AssetsMoldByImmItemDto
+                {
+                    MoldId = mold.Id,
+                    MoldName = mold.Name,
+                    TotalCycles = totalCycles,
+                    WorkHours = (decimal)totalDurationSeconds / 3600,
+                    MaxResourceCycles = mold.MaxResourceCycles,
+                    To1Cycles = mold.To1Cycles,
+                    To2Cycles = mold.To2Cycles,
+                    AllTimeTotalCycles = allTimeCycles,
+                    RemainingResource = mold.MaxResourceCycles - allTimeCycles,
+                    ImmBreakdown = breakdown
+                };
+            })];
+        }
+
+        else if (reportType.Equals("PersonnelByImm", StringComparison.OrdinalIgnoreCase))
+        {
+            var personnel = await _context.Users
+                .Where(u => u.IsActive && u.Role == UserRole.Adjuster)
+                .ToListAsync(ct);
+
+            var imms = await _context.Imms
+                .Where(i => i.IsActive)
+                .ToListAsync(ct);
+
+            var immNameLookup = imms.ToDictionary(i => i.Id, i => i.Name);
+
+            var personnelIds = personnel.Select(p => p.Id).ToList();
+
+            // Задания за период, сгруппированные по (PersonnelId, ImmId)
+            var taskStats = await _context.Tasks
+                .Where(t => personnelIds.Contains(t.PersonnelId!)
+                         && t.StartedAt >= dateFromUtc
+                         && t.StartedAt < periodEnd
+                         && t.Status >= Enums.TaskStatus.Completed)
+                .Select(t => new
+                {
+                    t.PersonnelId,
+                    t.ImmId,
+                    t.StartedAt,
+                    t.CompletedAt
+                })
+                .ToListAsync(ct);
+
+            var setupEvents = await _context.Events
+                .Where(e => personnelIds.Contains(e.PersonnelId!)
+                         && e.EventType == EventType.Setup
+                         && e.StartTime >= dateFromUtc
+                         && e.StartTime < periodEnd)
+                .Select(e => new { e.PersonnelId, e.ImmId, e.DurationSeconds })
+                .ToListAsync(ct);
+
+            var setupByPerson = setupEvents
+                .GroupBy(e => e.PersonnelId!)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Average(e => (double)e.DurationSeconds));
+
+            var totalSetupByPerson = setupEvents
+                .GroupBy(e => e.PersonnelId!)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Sum(e => e.DurationSeconds));
+
+            var setupByPersonAndImm = setupEvents
+                .GroupBy(e => (e.PersonnelId!, e.ImmId))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Average(e => (double)e.DurationSeconds));
+
+            var totalSetupByPersonAndImm = setupEvents
+                .GroupBy(e => (e.PersonnelId!, e.ImmId))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Sum(e => e.DurationSeconds));
+
+            var shifts = await _context.Shifts.ToListAsync(ct);
+
+            report.PersonnelByImmData = [.. personnel.Select(person =>
+            {
+                var personTasks = taskStats.Where(t => t.PersonnelId == person.Id).ToList();
+
+                var breakdown = personTasks
+                    .GroupBy(t => t.ImmId)
+                    .Select(g =>
+                    {
+                        setupByPersonAndImm.TryGetValue((person.Id, g.Key), out var avgSetupImm);
+                        totalSetupByPersonAndImm.TryGetValue((person.Id, g.Key), out var totalSetupImm);
+                        return new AssetsPersonnelImmBreakdownDto
+                        {
+                            ImmId = g.Key,
+                            ImmName = immNameLookup.GetValueOrDefault(g.Key, g.Key.ToString()),
+                            CompletedTasks = g.Count(),
+                            TotalWorkSeconds = ShiftWorkCalculator.CalculateWorkSeconds(g.Select(t => t.StartedAt), shifts),
+                            AvgSetupTime = (decimal)avgSetupImm,
+                            TotalSetupSeconds = totalSetupImm
+                        };
+                    })
+                    .OrderBy(r => r.ImmName)
+                    .ToList();
+
+                setupByPerson.TryGetValue(person.Id, out var avgSetup);
+                totalSetupByPerson.TryGetValue(person.Id, out var totalSetup);
+
+                return new AssetsPersonnelByImmItemDto
+                {
+                    PersonnelId = person.Id,
+                    FullName = person.FullName,
+                    CompletedTasks = personTasks.Count,
+                    TotalWorkSeconds = ShiftWorkCalculator.CalculateWorkSeconds(personTasks.Select(t => t.StartedAt), shifts),
+                    WorkedShifts = ShiftWorkCalculator.CountWorkedShifts(personTasks.Select(t => t.StartedAt), shifts),
+                    AvgSetupTime = (decimal)avgSetup,
+                    TotalSetupSeconds = totalSetup,
+                    ImmBreakdown = breakdown
+                };
+            })];
         }
 
         return report;
@@ -641,6 +833,75 @@ public class ReportService : IReportService
                     worksheet.Cell(row, 3).Value = Math.Round(item.TotalWorkSeconds / 3600m, 2);
                     worksheet.Cell(row, 4).Value = Math.Round(item.AvgSetupTime / 60m, 1);
                     row++;
+                }
+            }
+
+            if (assetsReport.PersonnelByImmData is { Count: > 0 })
+            {
+                worksheet.Cell(row, 1).Value = "Наладчики по ТПА";
+                worksheet.Cell(row, 1).Style.Font.Bold = true;
+                worksheet.Cell(row, 1).Style.Font.FontSize = 12;
+                row++;
+
+                var personnelByImmHeaders = new[] { "Наладчик / ТПА", "Выполнено задач", "Время работы (ч)", "Ср. время наладки (мин)" };
+                for (int i = 0; i < personnelByImmHeaders.Length; i++)
+                {
+                    worksheet.Cell(row, i + 1).Value = personnelByImmHeaders[i];
+                    worksheet.Cell(row, i + 1).Style.Font.Bold = true;
+                }
+                row++;
+
+                foreach (var person in assetsReport.PersonnelByImmData)
+                {
+                    worksheet.Cell(row, 1).Value = person.FullName;
+                    worksheet.Cell(row, 1).Style.Font.Bold = true;
+                    worksheet.Cell(row, 2).Value = person.CompletedTasks;
+                    worksheet.Cell(row, 3).Value = Math.Round(person.TotalWorkSeconds / 3600m, 2);
+                    worksheet.Cell(row, 4).Value = Math.Round(person.AvgSetupTime / 60m, 1);
+                    row++;
+
+                    foreach (var imm in person.ImmBreakdown)
+                    {
+                        worksheet.Cell(row, 1).Value = $"  {imm.ImmName}";
+                        worksheet.Cell(row, 2).Value = imm.CompletedTasks;
+                        worksheet.Cell(row, 3).Value = Math.Round(imm.TotalWorkSeconds / 3600m, 2);
+                        row++;
+                    }
+                }
+                row++;
+            }
+
+            if (assetsReport.MoldsByImmData is { Count: > 0 })
+            {
+                worksheet.Cell(row, 1).Value = "Пресс-формы по ТПА";
+                worksheet.Cell(row, 1).Style.Font.Bold = true;
+                worksheet.Cell(row, 1).Style.Font.FontSize = 12;
+                row++;
+
+                var moldsByImmHeaders = new[] { "Пресс-форма / ТПА", "Смыканий", "Наработка (ч)", "Остаток ресурса" };
+                for (int i = 0; i < moldsByImmHeaders.Length; i++)
+                {
+                    worksheet.Cell(row, i + 1).Value = moldsByImmHeaders[i];
+                    worksheet.Cell(row, i + 1).Style.Font.Bold = true;
+                }
+                row++;
+
+                foreach (var mold in assetsReport.MoldsByImmData)
+                {
+                    worksheet.Cell(row, 1).Value = mold.MoldName;
+                    worksheet.Cell(row, 1).Style.Font.Bold = true;
+                    worksheet.Cell(row, 2).Value = mold.TotalCycles;
+                    worksheet.Cell(row, 3).Value = Math.Round(mold.WorkHours, 2);
+                    worksheet.Cell(row, 4).Value = mold.RemainingResource;
+                    row++;
+
+                    foreach (var imm in mold.ImmBreakdown)
+                    {
+                        worksheet.Cell(row, 1).Value = $"  {imm.ImmName}";
+                        worksheet.Cell(row, 2).Value = imm.TotalCycles;
+                        worksheet.Cell(row, 3).Value = Math.Round(imm.WorkHours, 2);
+                        row++;
+                    }
                 }
             }
         }

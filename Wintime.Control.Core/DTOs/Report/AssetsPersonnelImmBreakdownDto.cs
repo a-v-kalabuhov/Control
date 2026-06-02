@@ -1,12 +1,11 @@
 namespace Wintime.Control.Core.DTOs.Report;
 
-public class AssetsPersonnelItemDto
+public class AssetsPersonnelImmBreakdownDto
 {
-    public string PersonnelId { get; set; } = string.Empty;
-    public string? FullName { get; set; }
+    public Guid ImmId { get; set; }
+    public string? ImmName { get; set; }
     public int CompletedTasks { get; set; }
     public int TotalWorkSeconds { get; set; }
     public decimal AvgSetupTime { get; set; }
     public int TotalSetupSeconds { get; set; }
-    public int WorkedShifts { get; set; }
 }

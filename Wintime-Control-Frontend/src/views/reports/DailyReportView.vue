@@ -32,7 +32,7 @@
             <el-option
               v-for="shift in shifts"
               :key="shift.id"
-              :label="`Смена ${shift.number} (${shift.startTime}–${shift.endTime})`"
+              :label="`Смена ${shift.number}: (${shift.startTime}–${shift.endTime})`"
               :value="shift.id"
             />
           </el-select>
