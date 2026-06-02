@@ -135,7 +135,7 @@ Write-Ok "API готов → http://localhost:5007"
 
 Write-Step "Запуск Emulator..."
 $emulatorProc = Start-Process -FilePath "dotnet" `
-    -ArgumentList "run --project `"$root\Wintime.Control.Emulator`" --no-build" `
+    -ArgumentList "run --project `"$root\Wintime.Control.Emulator`" --no-build --urls http://localhost:5002" `
     -PassThru
 Write-Host "  PID: $($emulatorProc.Id)"
 

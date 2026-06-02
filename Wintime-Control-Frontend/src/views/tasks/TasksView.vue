@@ -86,7 +86,7 @@
     <!-- Фильтры -->
     <TaskFilters 
       :filters="tasksStore.filters"
-      @update:filters="(filters) => tasksStore.setFilter(Object.keys(filters)[0], filters[Object.keys(filters)[0]])"
+      @update:filters="(filters) => Object.keys(filters).forEach(k => tasksStore.setFilter(k, filters[k]))"
       @apply="loadTasks"
     />
 

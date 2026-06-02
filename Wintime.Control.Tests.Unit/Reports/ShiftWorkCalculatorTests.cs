@@ -12,7 +12,8 @@ public class ShiftWorkCalculatorTests
         StartMinutes = 480,
         DurationMinutes = 480,
         BreakStartMinutes = 720,
-        BreakDurationMinutes = 30
+        BreakDurationMinutes = 30,
+        TimeZoneId = "UTC"
     };
 
     // Ночная смена: 22:00–06:00 (+8 ч = 480 мин), обед 30 мин
@@ -22,7 +23,8 @@ public class ShiftWorkCalculatorTests
         StartMinutes = 1320,
         DurationMinutes = 480,
         BreakStartMinutes = 120,
-        BreakDurationMinutes = 30
+        BreakDurationMinutes = 30,
+        TimeZoneId = "UTC"
     };
 
     private static DateTime Utc(int year, int month, int day, int hour, int minute) =>

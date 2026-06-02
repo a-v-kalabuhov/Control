@@ -93,7 +93,11 @@ public class ImmEmulationInstance : IAsyncDisposable
     {
         await _cts.CancelAsync();
         if (_runTask != null)
-            await _runTask.WaitAsync(TimeSpan.FromSeconds(5));
+        {
+            try { await _runTask.WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch (OperationCanceledException) { }
+            catch (TimeoutException) { }
+        }
         Status = "Stopped";
     }
 
@@ -119,7 +123,8 @@ public class ImmEmulationInstance : IAsyncDisposable
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Publish error for {ImmId}, retrying in 5s", _immId);
-                await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+                try { await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
             }
         }
     }

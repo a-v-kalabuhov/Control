@@ -22,11 +22,13 @@ internal static class ShiftWorkCalculator
 
         foreach (var startedAt in taskStartTimes.Where(t => t.HasValue))
         {
-            var dt = startedAt!.Value;
-            var minutes = dt.Hour * 60 + dt.Minute;
+            var utc = startedAt!.Value.ToUniversalTime();
 
             foreach (var shift in shifts)
             {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(shift.TimeZoneId);
+                var dt = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
+                var minutes = dt.Hour * 60 + dt.Minute;
                 var shiftEnd = shift.StartMinutes + shift.DurationMinutes;
 
                 if (shiftEnd <= 1440)

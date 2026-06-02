@@ -81,7 +81,7 @@ export const useTasksStore = defineStore('tasks', {
         const params = {
           ...this.filters,
           dateFrom: this.filters.dateFrom ? new Date(this.filters.dateFrom).toISOString() : null,
-          dateTo: this.filters.dateTo ? new Date(this.filters.dateTo).toISOString() : null
+          dateTo: this.filters.dateTo ? (() => { const d = new Date(this.filters.dateTo); d.setUTCHours(23, 59, 59, 999); return d.toISOString() })() : null
         }
 
         // Очистка пустых параметров
