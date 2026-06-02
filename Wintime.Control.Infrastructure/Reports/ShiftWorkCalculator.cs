@@ -22,7 +22,7 @@ internal static class ShiftWorkCalculator
 
         foreach (var startedAt in taskStartTimes.Where(t => t.HasValue))
         {
-            var dt = startedAt!.Value;
+            var dt = startedAt!.Value.ToLocalTime();
             var minutes = dt.Hour * 60 + dt.Minute;
 
             foreach (var shift in shifts)
