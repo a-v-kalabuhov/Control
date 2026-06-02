@@ -62,7 +62,7 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item label="Период">
+      <el-form-item label="Выдано">
         <el-date-picker
           v-model="dateRange"
           type="daterange"
