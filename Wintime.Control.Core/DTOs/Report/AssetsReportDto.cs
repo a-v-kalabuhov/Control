@@ -7,4 +7,6 @@ public class AssetsReportDto
     public string ReportType { get; set; } = string.Empty;
     public List<AssetsMoldItemDto>? MoldData { get; set; }
     public List<AssetsPersonnelItemDto>? PersonnelData { get; set; }
+    public List<AssetsMoldByImmItemDto>? MoldsByImmData { get; set; }
+    public List<AssetsPersonnelByImmItemDto>? PersonnelByImmData { get; set; }
 }
