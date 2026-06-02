@@ -8,6 +8,7 @@ public class ShiftDto
     public int DurationMinutes { get; set; }
     public int BreakStartMinutes { get; set; }
     public int BreakDurationMinutes { get; set; }
+    public string TimeZoneId { get; set; } = "Europe/Moscow";
     public string StartTime { get; set; } = string.Empty;
     public string EndTime { get; set; } = string.Empty;
     public string? BreakStartTime { get; set; }

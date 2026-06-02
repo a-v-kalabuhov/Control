@@ -44,6 +44,9 @@ public class TasksController : ControllerBase
 
         if (status.HasValue)
             query = query.Where(t => t.Status == status.Value);
+        else
+            query = query.Where(t => t.Status != Core.Enums.TaskStatus.Completed
+                                  && t.Status != Core.Enums.TaskStatus.Closed);
         if (immId.HasValue)
             query = query.Where(t => t.ImmId == immId.Value);
         if (!string.IsNullOrEmpty(personnelId))

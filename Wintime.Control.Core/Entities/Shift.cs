@@ -15,4 +15,6 @@ public class Shift : BaseEntity
     public int DurationMinutes { get; set; }
     public int BreakStartMinutes { get; set; }
     public int BreakDurationMinutes { get; set; }
+    /// <summary>IANA timezone ID (e.g. "Europe/Moscow"). Shift minutes are in this timezone.</summary>
+    public string TimeZoneId { get; set; } = "Europe/Moscow";
 }

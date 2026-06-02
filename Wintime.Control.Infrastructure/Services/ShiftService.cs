@@ -103,7 +103,8 @@ public class ShiftService : IShiftService
                 StartMinutes = s.StartMinutes,
                 DurationMinutes = s.DurationMinutes,
                 BreakStartMinutes = s.BreakStartMinutes,
-                BreakDurationMinutes = s.BreakDurationMinutes
+                BreakDurationMinutes = s.BreakDurationMinutes,
+                TimeZoneId = s.TimeZoneId
             })
             .ToList();
 
@@ -121,6 +122,7 @@ public class ShiftService : IShiftService
         DurationMinutes = s.DurationMinutes,
         BreakStartMinutes = s.BreakStartMinutes,
         BreakDurationMinutes = s.BreakDurationMinutes,
+        TimeZoneId = s.TimeZoneId,
         StartTime = FormatTime(s.StartMinutes),
         EndTime = FormatTime(s.StartMinutes + s.DurationMinutes),
         BreakStartTime = s.BreakDurationMinutes > 0 ? FormatTime(s.BreakStartMinutes) : null,

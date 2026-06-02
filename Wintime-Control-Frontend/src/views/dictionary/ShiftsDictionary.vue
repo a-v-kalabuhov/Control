@@ -12,6 +12,11 @@
       </el-button>
     </div>
 
+    <!-- Часовой пояс (режим просмотра) -->
+    <div v-if="shifts.length" class="mb-3 text-sm text-gray-500">
+      Часовой пояс: <span class="font-medium text-gray-700">{{ timeZoneLabel(shifts[0].timeZoneId) }}</span>
+    </div>
+
     <!-- Таблица смен (режим просмотра) -->
     <el-table :data="shifts" stripe v-loading="loading" style="width: 100%">
       <el-table-column prop="number" label="№" width="60" align="center" />
@@ -49,6 +54,19 @@
       width="680px"
       :close-on-click-modal="false"
     >
+      <!-- Часовой пояс -->
+      <div class="mb-5 p-4 border border-gray-200 rounded-lg bg-gray-50">
+        <div class="text-sm text-gray-500 mb-1">Часовой пояс цеха</div>
+        <el-select v-model="editTimeZoneId" filterable style="width: 100%">
+          <el-option
+            v-for="tz in TIMEZONES"
+            :key="tz.value"
+            :label="tz.label"
+            :value="tz.value"
+          />
+        </el-select>
+      </div>
+
       <div
         v-for="(shift, index) in editShifts"
         :key="shift._key"
@@ -146,11 +164,31 @@ import { usePermissions } from '@/composables/usePermissions'
 const { canAccess } = usePermissions()
 const isAdmin = computed(() => canAccess(['Admin']))
 
+const TIMEZONES = [
+  { value: 'Europe/Kaliningrad', label: 'Калининград (UTC+2)' },
+  { value: 'Europe/Moscow',      label: 'Москва, Санкт-Петербург (UTC+3)' },
+  { value: 'Europe/Samara',      label: 'Самара, Ижевск (UTC+4)' },
+  { value: 'Asia/Yekaterinburg', label: 'Екатеринбург (UTC+5)' },
+  { value: 'Asia/Omsk',          label: 'Омск (UTC+6)' },
+  { value: 'Asia/Krasnoyarsk',   label: 'Красноярск, Новосибирск (UTC+7)' },
+  { value: 'Asia/Irkutsk',       label: 'Иркутск (UTC+8)' },
+  { value: 'Asia/Yakutsk',       label: 'Якутск (UTC+9)' },
+  { value: 'Asia/Vladivostok',   label: 'Владивосток (UTC+10)' },
+  { value: 'Asia/Magadan',       label: 'Магадан (UTC+11)' },
+  { value: 'Asia/Kamchatka',     label: 'Камчатка (UTC+12)' },
+  { value: 'UTC',                label: 'UTC (UTC+0)' },
+]
+
+function timeZoneLabel(tzId) {
+  return TIMEZONES.find(t => t.value === tzId)?.label ?? tzId
+}
+
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
 const shifts = ref([])
 const editShifts = ref([])
+const editTimeZoneId = ref('Europe/Moscow')
 let keyCounter = 0
 
 onMounted(loadShifts)
@@ -206,6 +244,7 @@ function isNightShiftEdit(shift) {
 }
 
 function openEditDialog() {
+  editTimeZoneId.value = shifts.value[0]?.timeZoneId ?? 'Europe/Moscow'
   editShifts.value = shifts.value.map(s => ({
     _key: ++keyCounter,
     startTime: s.startTime,
@@ -257,7 +296,8 @@ async function saveShifts() {
       startMinutes: timeToMinutes(s.startTime),
       durationMinutes: Math.round(s.durationHours * 60),
       breakStartMinutes: timeToMinutes(s.breakStartTime),
-      breakDurationMinutes: s.breakDurationMinutes
+      breakDurationMinutes: s.breakDurationMinutes,
+      timeZoneId: editTimeZoneId.value
     }))
 
     const response = await shiftsApi.saveShifts(payload)

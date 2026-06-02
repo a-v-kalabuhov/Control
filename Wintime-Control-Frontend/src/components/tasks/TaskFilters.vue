@@ -13,18 +13,22 @@
       </el-form-item>
 
       <el-form-item label="Статус">
-        <el-select 
-          v-model="localFilters.status" 
-          placeholder="Все" 
+        <el-select
+          v-model="localFilters.status"
+          placeholder="Активные"
           clearable
           class="w-52"
         >
-          <el-option label="Черновик" value="Draft" />
-          <el-option label="Выдано" value="Issued" />
-          <el-option label="Наладка" value="Setup" />
-          <el-option label="В работе" value="InProgress" />
-          <el-option label="Выполнено" value="Completed" />
-          <el-option label="Закрыто" value="Closed" />
+          <el-option-group label="Активные">
+            <el-option label="Черновик" value="Draft" />
+            <el-option label="Выдано" value="Issued" />
+            <el-option label="Наладка" value="Setup" />
+            <el-option label="В работе" value="InProgress" />
+          </el-option-group>
+          <el-option-group label="Архив">
+            <el-option label="Выполнено" value="Completed" />
+            <el-option label="Закрыто" value="Closed" />
+          </el-option-group>
         </el-select>
       </el-form-item>
 

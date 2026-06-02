@@ -11,4 +11,5 @@ public class ShiftScheduleItemDto
     public int DurationMinutes { get; set; }
     public int BreakStartMinutes { get; set; }
     public int BreakDurationMinutes { get; set; }
+    public string TimeZoneId { get; set; } = "Europe/Moscow";
 }
