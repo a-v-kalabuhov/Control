@@ -119,9 +119,16 @@ public class MoldsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<MoldDto>> CreateMold([FromBody] CreateMoldRequestDto request)
     {
+        var formId = string.IsNullOrWhiteSpace(request.FormId)
+            ? $"PF-{Guid.NewGuid()}"
+            : request.FormId.Trim();
+
+        if (await _context.Molds.AnyAsync(m => m.FormId == formId))
+            return Conflict($"Артикул '{formId}' уже используется.");
+
         var mold = new Mold
         {
-            FormId = $"PF-{Guid.NewGuid()}", // Генерируем уникальный FormID
+            FormId = formId,
             Name = request.Name,
             Cavities = request.Cavities,
             PartWeightGrams = request.PartWeightGrams,
@@ -168,6 +175,14 @@ public class MoldsController : ControllerBase
         var mold = await _context.Molds.FindAsync(id);
         if (mold == null)
             return NotFound();
+
+        if (request.FormId != null)
+        {
+            var trimmed = request.FormId.Trim();
+            if (await _context.Molds.AnyAsync(m => m.FormId == trimmed && m.Id != id))
+                return Conflict($"Артикул '{trimmed}' уже используется.");
+            mold.FormId = trimmed;
+        }
 
         if (request.Name != null)
             mold.Name = request.Name;

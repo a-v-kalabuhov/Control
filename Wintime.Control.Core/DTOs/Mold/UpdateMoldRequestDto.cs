@@ -2,6 +2,7 @@ namespace Wintime.Control.Core.DTOs.Mold;
 
 public class UpdateMoldRequestDto
 {
+    public string? FormId { get; set; }
     public string? Name { get; set; }
     public int? Cavities { get; set; }
     public decimal? PartWeightGrams { get; set; }

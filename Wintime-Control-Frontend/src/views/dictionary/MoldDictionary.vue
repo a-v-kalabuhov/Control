@@ -40,11 +40,12 @@
         </template>
       </el-table-column>
       <el-table-column prop="storageLocationIndex" label="Место хранения" width="120" />
-      <el-table-column label="Ресурс" width="150">
+      <el-table-column label="Остаток ресурса" width="150">
         <template #default="{ row }">
-          <el-progress 
-            :percentage="Math.round((row.remainingResource / row.maxResourceCycles) * 100)" 
-            :status="row.remainingResource < row.to2Cycles ? 'exception' : row.remainingResource < row.to1Cycles ? 'warning' : ''"
+          <el-progress
+            :percentage="Math.round((row.remainingResource / row.maxResourceCycles) * 100)"
+            :status="(row.maxResourceCycles - row.remainingResource) > row.to2Cycles ? 'exception' : (row.maxResourceCycles - row.remainingResource) > row.to1Cycles ? 'warning' : ''"
+            :format="p => p + '%'"
           />
           <div class="text-xs text-gray-500">{{ row.remainingResource }} / {{ row.maxResourceCycles }}</div>
         </template>
@@ -56,11 +57,11 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="Действия" width="220" fixed="right">
+      <el-table-column label="Действия" width="130" fixed="right">
         <template #default="{ row }">
-          <div class="flex gap-2 justify-start">
-            <el-button size="small" style="width: 105px" @click="editMold(row)">Редактировать</el-button>
-            <el-button size="small" style="width: 105px" type="danger" @click="deleteMold(row)">Удалить</el-button>
+          <div class="flex flex-col gap-1 items-start">
+            <el-button size="small" style="width: 110px" @click="editMold(row)">Редактировать</el-button>
+            <el-button size="small" style="width: 110px; margin-left: 0" type="danger" @click="deleteMold(row)">Удалить</el-button>
           </div>
         </template>
       </el-table-column>
@@ -75,10 +76,17 @@
       <el-form :model="form" label-width="180px" :rules="rules" ref="formRef">
         <el-row :gutter="20">
           <el-col :span="12">
+            <el-form-item label="Артикул" prop="formId" required>
+              <el-input v-model="form.formId" placeholder="PF-001" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
             <el-form-item label="Наименование" prop="name" required>
               <el-input v-model="form.name" placeholder="КлипДак (48)" />
             </el-form-item>
           </el-col>
+        </el-row>
+        <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="Количество гнёзд" prop="cavities" required>
               <el-input-number v-model="form.cavities" :min="1" class="w-full" />
@@ -171,6 +179,7 @@ const filters = reactive({
 })
 
 const form = reactive({
+  formId: '',
   name: '',
   cavities: 1,
   partWeightGrams: 0,
@@ -182,7 +191,23 @@ const form = reactive({
   isActive: true
 })
 
+const validateFormId = async (rule, value, callback) => {
+  if (!value?.trim()) {
+    callback(new Error('Введите артикул'))
+    return
+  }
+  const response = await moldsApi.getList({ search: value.trim() })
+  const duplicate = response.data.find(
+    m => m.formId === value.trim() && m.id !== editingMold.value?.id
+  )
+  duplicate ? callback(new Error('Артикул уже занят')) : callback()
+}
+
 const rules = {
+  formId: [
+    { required: true, message: 'Введите артикул', trigger: 'blur' },
+    { validator: validateFormId, trigger: 'blur' }
+  ],
   name: [{ required: true, message: 'Введите наименование', trigger: 'blur' }],
   cavities: [{ required: true, message: 'Укажите гнёздность', trigger: 'blur' }],
   maxResourceCycles: [{ required: true, message: 'Укажите ресурс', trigger: 'blur' }]
@@ -210,6 +235,7 @@ const loadMolds = async () => {
 const showCreateModal = () => {
   editingMold.value = null
   Object.assign(form, {
+    formId: '',
     name: '',
     cavities: 1,
     partWeightGrams: 0,
@@ -226,6 +252,7 @@ const showCreateModal = () => {
 const editMold = (mold) => {
   editingMold.value = mold
   Object.assign(form, {
+    formId: mold.formId,
     name: mold.name,
     cavities: mold.cavities,
     partWeightGrams: mold.partWeightGrams,
