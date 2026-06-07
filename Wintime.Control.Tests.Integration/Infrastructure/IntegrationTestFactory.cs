@@ -8,6 +8,7 @@ using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Infrastructure.Services;
 using Xunit;
 using Task = System.Threading.Tasks.Task;
 
@@ -46,6 +47,13 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
             // Отключаем MQTT — он не нужен в интеграционных тестах
             // и без брокера упадёт при попытке подключения
             RemoveHostedServicesByName(services, "MqttBackgroundService");
+
+            // Заменяем HTTP-клиент эмулятора на no-op: эмулятор не запущен в тестах
+            var emulatorDescriptor = services.SingleOrDefault(d =>
+                d.ServiceType == typeof(IEmulatorControlService));
+            if (emulatorDescriptor != null)
+                services.Remove(emulatorDescriptor);
+            services.AddSingleton<IEmulatorControlService, NoOpEmulatorControlService>();
         });
     }
 
