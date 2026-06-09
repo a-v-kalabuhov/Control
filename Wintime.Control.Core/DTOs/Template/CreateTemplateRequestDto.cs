@@ -8,4 +8,5 @@ public class CreateTemplateRequestDto
     public string? Version { get; set; }
     public string? Author { get; set; }
     public object JsonConfig { get; set; } = new();
+    public string? ConnectorType { get; set; }
 }

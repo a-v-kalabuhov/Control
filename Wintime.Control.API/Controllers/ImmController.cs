@@ -47,11 +47,13 @@ public class ImmController : ControllerBase
                 Id = i.Id,
                 Name = i.Name,
                 InventoryNumber = i.InventoryNumber,
+                ConnectorAlias = i.ConnectorAlias,
                 TemplateId = i.TemplateId,
                 Manufacturer = i.Template.Manufacturer,
                 Model = i.Template.Model,
                 IsActive = i.IsActive,
                 CreatedAt = i.CreatedAt,
+                CommissioningDate = i.CommissioningDate,
                 CurrentTaskId = i.Tasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => (Guid?)t.Id)
@@ -138,11 +140,13 @@ public class ImmController : ControllerBase
             Id = imm.Id,
             Name = imm.Name,
             InventoryNumber = imm.InventoryNumber,
+            ConnectorAlias = imm.ConnectorAlias,
             TemplateId = imm.TemplateId,
             Manufacturer = imm.Template.Manufacturer,
             Model = imm.Template.Model,
             IsActive = imm.IsActive,
             CreatedAt = imm.CreatedAt,
+            CommissioningDate = imm.CommissioningDate,
             Status = _statusCache.GetStatus(imm.Id)
         };
 
@@ -164,6 +168,10 @@ public class ImmController : ControllerBase
         {
             Name = request.Name,
             InventoryNumber = request.InventoryNumber,
+            ConnectorAlias = request.ConnectorAlias,
+            CommissioningDate = request.CommissioningDate.HasValue
+                ? DateTime.SpecifyKind(request.CommissioningDate.Value.Date, DateTimeKind.Utc)
+                : null,
             TemplateId = request.TemplateId,
             IsActive = true
         };
@@ -176,11 +184,13 @@ public class ImmController : ControllerBase
             Id = imm.Id,
             Name = imm.Name,
             InventoryNumber = imm.InventoryNumber,
+            ConnectorAlias = imm.ConnectorAlias,
             TemplateId = imm.TemplateId,
             Manufacturer = template.Manufacturer,
             Model = template.Model,
             IsActive = imm.IsActive,
             CreatedAt = imm.CreatedAt,
+            CommissioningDate = imm.CommissioningDate,
             Status = _statusCache.GetStatus(imm.Id)
         };
 
@@ -202,6 +212,10 @@ public class ImmController : ControllerBase
             imm.Name = request.Name;
         if (request.InventoryNumber != null)
             imm.InventoryNumber = request.InventoryNumber;
+        if (request.ConnectorAlias != null)
+            imm.ConnectorAlias = request.ConnectorAlias;
+        if (request.CommissioningDate.HasValue)
+            imm.CommissioningDate = DateTime.SpecifyKind(request.CommissioningDate.Value.Date, DateTimeKind.Utc);
         if (request.IsActive.HasValue)
             imm.IsActive = request.IsActive.Value;
 

@@ -103,6 +103,45 @@ Tables: `Users` (Identity), `Imms`, `Molds`, `Tasks`, `Templates`, `Events`, `Do
 
 `Telemetry` table has indexes on `ImmId + Timestamp` for time-range queries.
 
+## Коннекторы (платные модули)
+
+Коннекторы — отдельные приватные репозитории (Worker Service, .NET 9), которые читают данные с оборудования и публикуют телеметрию в MQTT в формат Wintime Control. Основной API предоставляет коннекторам endpoint для получения списка ТПА.
+
+### Поля для интеграции с коннекторами
+
+**`Template.ConnectorType`** (string?, nullable) — дискриминатор типа коннектора:
+
+- `null` / `"emulator"` — эмулятор, универсальные шаблоны
+- `"kemro-opc"` — KEBA Kemro через OPC DA
+- (будущие) `"modbus"`, `"fanuc-focas"` и др.
+
+**`Imm.ConnectorAlias`** (string?, nullable) — псевдоним машины в дереве OPC-сервера (например `"TPA-06"`). Используется коннектором для построения OPC-путей к переменным.
+
+### API для коннекторов
+
+```http
+GET /api/connectors/{connectorType}/machines
+X-Api-Key: {ConnectorApiKey}
+```
+
+Возвращает список активных ТПА (`IsActive = true`) с шаблоном `ConnectorType == connectorType`. Ответ включает `ImmId`, `ImmName`, `ConnectorAlias` и `TemplateConfig` (разобранный `Template.JsonConfig`).
+
+Авторизация — статичный API-ключ из `appsettings.json` → `ConnectorApiKey`. Не использует JWT.
+
+### Формат JsonConfig шаблона коннектора
+
+Поля `mode_opc_path` и `sensors[].opc_path` — специфичны для OPC-коннекторов, основным сервером игнорируются:
+
+```json
+{
+  "mode_opc_path": "SVs.OperationMode",
+  "sensors": [
+    { "field": "iCycleCounter", "opc_path": "SVs.ShotCounter.sv_iShotCounter", "type": "cycleCounter" },
+    { "field": "temp_zone_1",   "opc_path": "SVs.Heating.sv_Zone[1].rActualTemp", "type": "float" }
+  ]
+}
+```
+
 ## Frontend Dev Proxy
 
 `vite.config.js` proxies `/api` → `https://localhost:5001`. The production SPA is embedded in the API's `wwwroot` and served via `UseSpaStaticFiles` / SPA fallback middleware.

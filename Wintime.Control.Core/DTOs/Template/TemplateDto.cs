@@ -9,6 +9,7 @@ public class TemplateDto
     public string Version { get; set; } = "1.0";
     public string? Author { get; set; }
     public string JsonConfig { get; set; } = string.Empty;
+    public string? ConnectorType { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

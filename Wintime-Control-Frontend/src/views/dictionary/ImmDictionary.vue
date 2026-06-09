@@ -39,6 +39,11 @@
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="Введён в эксплуатацию" width="180">
+        <template #default="{ row }">
+          {{ row.commissioningDate ? formatDate(row.commissioningDate, false) : '—' }}
+        </template>
+      </el-table-column>
       <el-table-column prop="createdAt" label="Создан" width="180">
         <template #default="{ row }">
           {{ formatDate(row.createdAt) }}
@@ -69,6 +74,11 @@
           <el-input v-model="form.inventoryNumber" placeholder="INV-2026-005" />
         </el-form-item>
 
+        <el-form-item label="Псевдоним коннектора">
+          <el-input v-model="form.connectorAlias" placeholder="TPA-06" clearable />
+          <div class="text-sm text-gray-500 mt-1">Имя машины в OPC-браузере (только для коннекторов)</div>
+        </el-form-item>
+
         <el-form-item label="Шаблон оборудования" prop="templateId" required>
           <el-select v-model="form.templateId" placeholder="Выберите шаблон" class="w-full">
             <el-option
@@ -78,6 +88,17 @@
               :value="template.id"
             />
           </el-select>
+        </el-form-item>
+
+        <el-form-item label="Дата ввода в эксплуатацию">
+          <el-date-picker
+            v-model="form.commissioningDate"
+            type="date"
+            placeholder="Выберите дату"
+            format="DD.MM.YYYY"
+            value-format="YYYY-MM-DD"
+            clearable
+          />
         </el-form-item>
 
         <el-form-item label="Статус">
@@ -116,6 +137,8 @@ const filters = reactive({
 const form = reactive({
   name: '',
   inventoryNumber: '',
+  connectorAlias: '',
+  commissioningDate: null,
   templateId: '',
   isActive: true
 })
@@ -155,6 +178,8 @@ const showCreateModal = () => {
   Object.assign(form, {
     name: '',
     inventoryNumber: '',
+    connectorAlias: '',
+    commissioningDate: null,
     templateId: '',
     isActive: true
   })
@@ -166,6 +191,8 @@ const editImm = (imm) => {
   Object.assign(form, {
     name: imm.name,
     inventoryNumber: imm.inventoryNumber,
+    connectorAlias: imm.connectorAlias ?? '',
+    commissioningDate: imm.commissioningDate ? dayjs(imm.commissioningDate).format('YYYY-MM-DD') : null,
     templateId: imm.templateId,
     isActive: imm.isActive
   })
@@ -215,7 +242,7 @@ const deleteImm = async (imm) => {
   }
 }
 
-const formatDate = (date) => {
-  return dayjs(date).format('DD.MM.YYYY HH:mm')
+const formatDate = (date, withTime = true) => {
+  return dayjs(date).format(withTime ? 'DD.MM.YYYY HH:mm' : 'DD.MM.YYYY')
 }
 </script>
