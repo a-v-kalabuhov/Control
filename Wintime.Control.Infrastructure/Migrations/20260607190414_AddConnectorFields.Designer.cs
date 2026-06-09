@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Wintime.Control.Infrastructure.Data;
@@ -11,9 +12,11 @@ using Wintime.Control.Infrastructure.Data;
 namespace Wintime.Control.Infrastructure.Migrations
 {
     [DbContext(typeof(ControlDbContext))]
-    partial class ControlDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260607190414_AddConnectorFields")]
+    partial class AddConnectorFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -244,9 +247,6 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CommissioningDate")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ConnectorAlias")
                         .HasColumnType("text");

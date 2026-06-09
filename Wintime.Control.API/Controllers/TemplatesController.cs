@@ -43,6 +43,7 @@ public class TemplatesController : ControllerBase
             CreatedAt = t.CreatedAt,
             UpdatedAt = t.UpdatedAt,
             JsonConfig = t.JsonConfig,
+            ConnectorType = t.ConnectorType,
         }).ToList();
 
         return Ok(dtos);
@@ -70,6 +71,7 @@ public class TemplatesController : ControllerBase
             CreatedAt = template.CreatedAt,
             UpdatedAt = template.UpdatedAt,
             JsonConfig = template.JsonConfig,
+            ConnectorType = template.ConnectorType,
         };
 
         return Ok(dto);
@@ -92,6 +94,7 @@ public class TemplatesController : ControllerBase
         template.Model = request.Model ?? string.Empty;
         template.Version = request.Version ?? string.Empty;
         template.Author = request.Author ?? string.Empty;
+        template.ConnectorType = request.ConnectorType;
 
         try
         {
@@ -122,6 +125,7 @@ public class TemplatesController : ControllerBase
             Version = request.Version ?? "1.0",
             Author = request.Author ?? string.Empty,
             JsonConfig = System.Text.Json.JsonSerializer.Serialize(request.JsonConfig),
+            ConnectorType = request.ConnectorType,
             IsActive = true
         };
 
@@ -141,6 +145,7 @@ public class TemplatesController : ControllerBase
             CreatedAt = template.CreatedAt,
             UpdatedAt = template.UpdatedAt,
             JsonConfig = template.JsonConfig,
+            ConnectorType = template.ConnectorType,
         };
 
         return CreatedAtAction(nameof(GetTemplateById), new { id = template.Id }, dto);

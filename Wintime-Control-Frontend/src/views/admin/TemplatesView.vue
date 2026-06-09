@@ -70,6 +70,11 @@
           <el-input v-model="form.author" placeholder="Wintime" />
         </el-form-item>
 
+        <el-form-item label="Тип коннектора">
+          <el-input v-model="form.connectorType" placeholder="kemro-opc, modbus, fanuc-focas" clearable />
+          <div class="text-sm text-gray-500 mt-1">Оставьте пустым для эмулятора и универсальных шаблонов</div>
+        </el-form-item>
+
         <el-form-item label="JSON-конфигурация" required>
           <el-input
             v-model="form.jsonConfigString"
@@ -109,6 +114,7 @@ const form = reactive({
   model: '',
   version: '1.0',
   author: '',
+  connectorType: '',
   jsonConfigString: ''
 })
 
@@ -136,6 +142,7 @@ const showCreateModal = () => {
     model: '',
     version: '1.0',
     author: '',
+    connectorType: '',
     jsonConfigString: ''
   })
   dialogVisible.value = true
@@ -158,6 +165,7 @@ const editTemplate = (template) => {
     model: template.model,
     version: template.version,
     author: template.author,
+    connectorType: template.connectorType ?? '',
     jsonConfigString: beautifyJson(template.jsonConfig)
   })
   dialogVisible.value = true
@@ -185,6 +193,7 @@ const saveTemplate = async () => {
       model: form.model,
       version: form.version,
       author: form.author,
+      connectorType: form.connectorType || null,
       jsonConfig
     }
 
