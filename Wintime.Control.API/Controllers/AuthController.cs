@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Wintime.Control.Core.DTOs.Auth;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Auth;
 using Wintime.Control.Shared.Settings;
 using System.Security.Claims;
@@ -15,19 +16,19 @@ namespace Wintime.Control.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly UserManager<User> _userManager;
-    private readonly SignInManager<User> _signInManager;
     private readonly IJwtTokenService _tokenService;
+    private readonly IRefreshTokenStore _refreshTokenStore;
     private readonly JwtSettings _jwtSettings;
 
     public AuthController(
         UserManager<User> userManager,
-        SignInManager<User> signInManager,
         IJwtTokenService tokenService,
+        IRefreshTokenStore refreshTokenStore,
         IOptions<JwtSettings> jwtSettings)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
         _tokenService = tokenService;
+        _refreshTokenStore = refreshTokenStore;
         _jwtSettings = jwtSettings.Value;
     }
 
@@ -39,7 +40,7 @@ public class AuthController : ControllerBase
     public async Task<ActionResult<LoginResponseDto>> Login([FromBody] LoginRequestDto request)
     {
         var user = await _userManager.FindByNameAsync(request.Login);
-        
+
         if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
         {
             return Unauthorized(new { message = "Неверный логин или пароль" });
@@ -51,23 +52,9 @@ public class AuthController : ControllerBase
         }
 
         var accessToken = _tokenService.GenerateAccessToken(user);
-        var refreshToken = _tokenService.GenerateRefreshToken();
+        var refreshToken = await IssueRefreshTokenAsync(user.Id);
 
-        // TODO: Сохранить refreshToken в БД для возможности отзыва
-
-        return Ok(new LoginResponseDto
-        {
-            AccessToken = accessToken,
-            RefreshToken = refreshToken,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes),
-            User = new UserProfileDto
-            {
-                Id = user.Id,
-                Login = user.UserName ?? string.Empty,
-                FullName = user.FullName,
-                Role = user.Role.ToString()
-            }
-        });
+        return Ok(BuildLoginResponse(user, accessToken, refreshToken));
     }
 
     /// <summary>
@@ -75,10 +62,15 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("logout")]
     [Authorize]
-    public async Task<IActionResult> Logout()
+    public IActionResult Logout([FromBody] LogoutRequestDto? request = null)
     {
-        await _signInManager.SignOutAsync();
-        // TODO: Добавить refreshToken в blacklist
+        // Отзываем refresh-токен, если клиент его передал. Сам access-токен
+        // остаётся действующим до истечения срока (stateless JWT) — это
+        // известное ограничение JWT, отзыв access-токена требует blacklist,
+        // который здесь не реализован.
+        if (!string.IsNullOrEmpty(request?.RefreshToken))
+            _refreshTokenStore.Revoke(request.RefreshToken);
+
         return Ok(new { message = "Успешный выход" });
     }
 
@@ -89,54 +81,47 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<LoginResponseDto>> Refresh([FromBody] RefreshTokenRequestDto request)
     {
-        // Проверяем, что оба токена предоставлены
         if (string.IsNullOrEmpty(request.AccessToken) || string.IsNullOrEmpty(request.RefreshToken))
         {
             return BadRequest(new { message = "Access token и refresh token обязательны" });
         }
 
-        // Получаем пользователя из истёкшего токена
+        // Шаг 1: access-токен должен быть подписан нами (проверка подписи без
+        // проверки срока — он к этому моменту мог истечь, это нормально).
         var principal = _tokenService.GetPrincipalFromExpiredToken(request.AccessToken);
-        
         if (principal == null)
         {
             return Unauthorized(new { message = "Недействительный access token" });
         }
 
-        var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId))
+        // Шаг 2: refresh-токен должен быть активным в нашем хранилище.
+        var refreshInfo = _refreshTokenStore.GetActive(request.RefreshToken);
+        if (refreshInfo == null)
         {
-            return Unauthorized(new { message = "Не удалось получить идентификатор пользователя из токена" });
+            // Токен неизвестен, отозван или истёк. Возможная причина атаки —
+            // попытка повторного использования уже отозванного токена.
+            return Unauthorized(new { message = "Недействительный или истёкший refresh token" });
+        }
+
+        // Шаг 3: access-токен и refresh-токен должны принадлежать одному пользователю.
+        var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId) || userId != refreshInfo.UserId)
+        {
+            return Unauthorized(new { message = "Токены принадлежат разным пользователям" });
         }
 
         var user = await _userManager.FindByIdAsync(userId);
-        if (user == null)
+        if (user == null || !user.IsActive)
         {
-            return Unauthorized(new { message = "Пользователь не найден" });
+            return Unauthorized(new { message = "Пользователь не найден или деактивирован" });
         }
-        
-        // TODO: В реальной реализации нужно проверить, что refreshToken действителен и принадлежит пользователю
-        // Для этого потребуется хранение refresh токенов в БД с возможностью их отзыва
-        // Пока пропускаем эту проверку до реализации механизма хранения refresh токенов
 
+        // Ротация: старый refresh-токен отзывается, выдаётся новая пара.
+        _refreshTokenStore.Revoke(request.RefreshToken);
         var newAccessToken = _tokenService.GenerateAccessToken(user);
-        var newRefreshToken = _tokenService.GenerateRefreshToken();
+        var newRefreshToken = await IssueRefreshTokenAsync(user.Id);
 
-        // TODO: Обновить refreshToken в БД (и возможно удалить старый)
-
-        return Ok(new LoginResponseDto
-        {
-            AccessToken = newAccessToken,
-            RefreshToken = newRefreshToken,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes),
-            User = new UserProfileDto
-            {
-                Id = user.Id,
-                Login = user.UserName ?? string.Empty,
-                FullName = user.FullName,
-                Role = user.Role.ToString()
-            }
-        });
+        return Ok(BuildLoginResponse(user, newAccessToken, newRefreshToken));
     }
 
     /// <summary>
@@ -154,12 +139,36 @@ public class AuthController : ControllerBase
         if (user == null)
             return NotFound();
 
-        return Ok(new UserProfileDto
+        return Ok(BuildUserProfile(user));
+    }
+
+    private Task<string> IssueRefreshTokenAsync(string userId)
+    {
+        var refreshToken = _tokenService.GenerateRefreshToken();
+        var expiresAtUtc = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays);
+        _refreshTokenStore.Store(refreshToken, userId, expiresAtUtc);
+        return Task.FromResult(refreshToken);
+    }
+
+    private LoginResponseDto BuildLoginResponse(User user, string accessToken, string refreshToken)
+    {
+        return new LoginResponseDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes),
+            User = BuildUserProfile(user)
+        };
+    }
+
+    private static UserProfileDto BuildUserProfile(User user)
+    {
+        return new UserProfileDto
         {
             Id = user.Id,
             Login = user.UserName ?? string.Empty,
             FullName = user.FullName,
             Role = user.Role.ToString()
-        });
+        };
     }
 }

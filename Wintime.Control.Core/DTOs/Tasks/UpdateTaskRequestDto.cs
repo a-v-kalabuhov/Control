@@ -1,6 +1,6 @@
 using Wintime.Control.Core.Enums;
 
-namespace Wintime.Control.Core.DTOs.Task;
+namespace Wintime.Control.Core.DTOs.Tasks;
 
 public class UpdateTaskRequestDto
 {

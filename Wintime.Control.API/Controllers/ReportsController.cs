@@ -2,7 +2,7 @@ using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Wintime.Control.Core.DTOs.Report;
-using Wintime.Control.Core.Services.Reports;
+using Wintime.Control.Infrastructure.Reports;
 using Wintime.Control.Shared.Constants;
 
 namespace Wintime.Control.API.Controllers;

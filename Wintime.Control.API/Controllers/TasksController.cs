@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Wintime.Control.Core.DTOs.Task;
+using Wintime.Control.Core.DTOs.Tasks;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Interfaces;
@@ -58,32 +58,7 @@ public class TasksController : ControllerBase
 
         var tasks = await query.ToListAsync();
 
-        var dtos = tasks.Select(t => new TaskDto
-        {
-            Id = t.Id,
-            ImmId = t.ImmId,
-            ImmName = t.Imm.Name,
-            MoldId = t.MoldId,
-            MoldName = t.Mold.Name,
-            PersonnelId = t.PersonnelId,
-            PersonnelName = t.Personnel?.FullName,
-            PlanQuantity = t.PlanQuantity,
-            ActualQuantity = t.ActualQuantity,
-            ActualMaterialWeightGrams = t.ActualMaterialWeightGrams,
-            ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
-            Status = t.Status,
-            PlannedDate = t.PlannedDate,
-            IssuedAt = t.IssuedAt,
-            SetupStartedAt = t.SetupStartedAt,
-            MoldVerifiedAt = t.MoldVerifiedAt,
-            StartedAt = t.StartedAt,
-            CompletedAt = t.CompletedAt,
-            ClosedAt = t.ClosedAt,
-            CloseReason = t.CloseReason,
-            Note = t.Note,
-            CreatedAt = t.CreatedAt,
-            UpdatedAt = t.UpdatedAt
-        }).ToList();
+        var dtos = tasks.Select(t => t.ToDto()).ToList();
 
         return Ok(dtos);
     }
@@ -113,32 +88,7 @@ public class TasksController : ControllerBase
 
         var tasks = await query.ToListAsync();
 
-        var dtos = tasks.Select(t => new TaskDto
-        {
-            Id = t.Id,
-            ImmId = t.ImmId,
-            ImmName = t.Imm.Name,
-            MoldId = t.MoldId,
-            MoldName = t.Mold.Name,
-            PersonnelId = t.PersonnelId,
-            PersonnelName = t.Personnel?.FullName,
-            PlanQuantity = t.PlanQuantity,
-            ActualQuantity = t.ActualQuantity,
-            ActualMaterialWeightGrams = t.ActualMaterialWeightGrams,
-            ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
-            Status = t.Status,
-            PlannedDate = t.PlannedDate,
-            IssuedAt = t.IssuedAt,
-            SetupStartedAt = t.SetupStartedAt,
-            MoldVerifiedAt = t.MoldVerifiedAt,
-            StartedAt = t.StartedAt,
-            CompletedAt = t.CompletedAt,
-            ClosedAt = t.ClosedAt,
-            CloseReason = t.CloseReason,
-            Note = t.Note,
-            CreatedAt = t.CreatedAt,
-            UpdatedAt = t.UpdatedAt
-        }).ToList();
+        var dtos = tasks.Select(t => t.ToDto()).ToList();
 
         return Ok(dtos);
     }
@@ -159,34 +109,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        var dto = new TaskDto
-        {
-            Id = task.Id,
-            ImmId = task.ImmId,
-            ImmName = task.Imm.Name,
-            MoldId = task.MoldId,
-            MoldName = task.Mold.Name,
-            PersonnelId = task.PersonnelId,
-            PersonnelName = task.Personnel?.FullName,
-            PlanQuantity = task.PlanQuantity,
-            ActualQuantity = task.ActualQuantity,
-            ActualMaterialWeightGrams = task.ActualMaterialWeightGrams,
-            ProgressPercent = task.PlanQuantity > 0 ? (decimal)task.ActualQuantity / task.PlanQuantity * 100 : 0,
-            Status = task.Status,
-            PlannedDate = task.PlannedDate,
-            IssuedAt = task.IssuedAt,
-            SetupStartedAt = task.SetupStartedAt,
-            MoldVerifiedAt = task.MoldVerifiedAt,
-            StartedAt = task.StartedAt,
-            CompletedAt = task.CompletedAt,
-            ClosedAt = task.ClosedAt,
-            CloseReason = task.CloseReason,
-            Note = task.Note,
-            CreatedAt = task.CreatedAt,
-            UpdatedAt = task.UpdatedAt
-        };
-
-        return Ok(dto);
+        return Ok(task.ToDto());
     }
 
     /// <summary>
@@ -217,22 +140,7 @@ public class TasksController : ControllerBase
         _context.Tasks.Add(task);
         await _context.SaveChangesAsync();
 
-        var dto = new TaskDto
-        {
-            Id = task.Id,
-            ImmId = task.ImmId,
-            MoldId = task.MoldId,
-            PersonnelId = task.PersonnelId,
-            PlanQuantity = task.PlanQuantity,
-            ActualQuantity = task.ActualQuantity,
-            ProgressPercent = 0,
-            Status = task.Status,
-            PlannedDate = task.PlannedDate,
-            IssuedAt = task.IssuedAt,
-            Note = task.Note
-        };
-
-        return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, dto);
+        return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task.ToDto());
     }
 
     /// <summary>
@@ -278,11 +186,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Draft)
-            return BadRequest("Задание не является черновиком");
-
-        task.Status = Core.Enums.TaskStatus.Issued;
-        task.IssuedAt = DateTime.UtcNow;
+        task.Issue();
 
         await _context.SaveChangesAsync();
 
@@ -300,11 +204,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Issued)
-            return BadRequest("Задание не в статусе «Выдано»");
-
-        task.Status = Core.Enums.TaskStatus.Setup;
-        task.SetupStartedAt = DateTime.UtcNow;
+        task.StartSetup();
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "manual");
@@ -323,11 +223,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Setup)
-            return BadRequest("Задание не в статусе «Наладка»");
-
-        task.Status = Core.Enums.TaskStatus.InProgress;
-        task.StartedAt = DateTime.UtcNow;
+        task.CompleteSetup();
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "auto");
@@ -346,12 +242,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Setup)
-            return BadRequest("Задание не в статусе «Наладка»");
-
-        task.Status = Core.Enums.TaskStatus.Issued;
-        task.SetupStartedAt = null;
-        task.MoldVerifiedAt = null;
+        task.CancelSetup();
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "idle");
@@ -370,10 +261,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Setup)
-            return BadRequest("Задание не в статусе «Наладка»");
-
-        task.MoldVerifiedAt = DateTime.UtcNow;
+        task.VerifyMold();
 
         await _context.SaveChangesAsync();
 
@@ -391,17 +279,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.InProgress)
-            return BadRequest("Задание не в работе");
-
-        if (request.ActualQuantity.HasValue)
-            task.ActualQuantity = request.ActualQuantity.Value;
-        
-        if (task.ActualQuantity != task.PlanQuantity && request.CompletionReason != null)
-            task.CloseReason = request.CompletionReason;
-
-        task.Status = Core.Enums.TaskStatus.Completed;
-        task.CompletedAt = DateTime.UtcNow;
+        task.Complete(request.ActualQuantity, request.CompletionReason);
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "idle");
@@ -420,11 +298,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (request?.CloseReason != null)
-            task.CloseReason = request.CloseReason;
-
-        task.Status = Core.Enums.TaskStatus.Closed;
-        task.ClosedAt = DateTime.UtcNow;
+        task.Close(request?.CloseReason);
 
         await _context.SaveChangesAsync();
 

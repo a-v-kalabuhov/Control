@@ -64,8 +64,8 @@ pnpm-debug.log*
 # Docker build artifacts
 publish/
 
-#internal docs
-docs/
+# internal docs остаются локальными, но ADR версионируются (видны команде)
+docs/inner/
 
 # Secrets
 .env

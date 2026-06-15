@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 
-namespace Wintime.Control.Infrastructure.Mqtt;
+namespace Wintime.Control.Infrastructure.MQTT;
 
 public static class IChannelUtilities
 {

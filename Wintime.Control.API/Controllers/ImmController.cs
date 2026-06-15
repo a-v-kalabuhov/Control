@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.Imm;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Interfaces;
@@ -114,7 +115,7 @@ public class ImmController : ControllerBase
         {
             var statusEntry = _statusCache.GetEntry(dto.Id);
             var cacheEntry = _immCache.GetEntry(dto.Id);
-            dto.Status = statusEntry?.Status ?? "Offline";
+            dto.Status = statusEntry?.Status ?? ImmStatus.Offline;
             dto.LastUpdate = MaxDateTime(statusEntry?.SinceUtc, cacheEntry?.LastMessageAt);
         }
 
@@ -246,7 +247,7 @@ public class ImmController : ControllerBase
         return Ok(new ImmStatusDto
         {
             ImmId = imm.Id,
-            Status = entry?.Status ?? "Offline",
+            Status = entry?.Status ?? ImmStatus.Offline,
             CurrentTaskId = currentTask?.Id,
             CurrentMoldId = currentTask?.MoldId,
             CurrentCycleTime = 0, // TODO: Вычислить из телеметрии

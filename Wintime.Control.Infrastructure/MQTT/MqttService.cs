@@ -1,17 +1,10 @@
 using System.Text;
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Packets;
 using Wintime.Control.Core.DTOs.Mqtt;
-using Wintime.Control.Core.Entities;
-using Wintime.Control.Core.Enums;
-using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Settings;
-using Wintime.Control.Infrastructure.Mqtt;
 
 namespace Wintime.Control.Infrastructure.MQTT;
 
@@ -21,15 +14,14 @@ namespace Wintime.Control.Infrastructure.MQTT;
 /// автоматическое восстановление соединения и логирование событий.
 /// </summary>
 /// <remarks>
-/// Поддерживает три топика: <c>/telemetry</c>, <c>/events</c>, <c>/status</c>.
-/// Сообщения из топика <c>/telemetry</c> и <c>/status</c> обрабатываются одинаково.
-/// Сообщения из топика <c>/events</c> обрабатываются отдельно и сохраняются в БД.
+/// Подписывается только на топик <c>/telemetry</c>. События (аварии, cycle_complete)
+/// и статусы ТПА определяются в хендлерах, обрабатывающих телеметрию, поэтому отдельные
+/// каналы <c>/events</c> и <c>/status</c> не используются.
 /// </remarks>
 public class MqttService : IMqttService, IDisposable
 {
     private readonly IMqttClient _mqttClient;
     private readonly MqttSettings _settings;
-    private readonly IServiceProvider _serviceProvider;
     private readonly IMessageProcessor _messageProcessor;
     private readonly ILogger<MqttService> _logger;
     private bool _isConnected;
@@ -42,19 +34,16 @@ public class MqttService : IMqttService, IDisposable
     /// </summary>
     /// <param name="mqttClient">Клиент MQTT, реализующий <see cref="IMqttClient"/>.</param>
     /// <param name="settings">Настройки MQTT, полученные через <see cref="IOptions{MqttSettings}"/>.</param>
-    /// <param name="serviceProvider">Провайдер зависимостей для создания локальных контекстов.</param>
     /// <param name="messageProcessor">Обработчик входящих сообщений через очередь.</param>
     /// <param name="logger">Логгер для записи событий.</param>
     public MqttService(
         IMqttClient mqttClient,
         IOptions<MqttSettings> settings,
-        IServiceProvider serviceProvider,
         IMessageProcessor messageProcessor,
         ILogger<MqttService> logger)
     {
         _mqttClient = mqttClient;
         _settings = settings.Value;
-        _serviceProvider = serviceProvider;
         _messageProcessor = messageProcessor;
         _logger = logger;
         _isConnected = false;
@@ -134,24 +123,15 @@ public class MqttService : IMqttService, IDisposable
     }
 
     /// <summary>
-    /// Подписывается на топики: /telemetry, /events, /status.
+    /// Подписывается на топик /telemetry.
     /// </summary>
     /// <param name="cancellationToken">Токен отмены операции.</param>
     /// <returns>Задача, представляющая асинхронную операцию подписки.</returns>
     private async System.Threading.Tasks.Task SubscribeToTopics(CancellationToken cancellationToken)
     {
-        var topics = new[]
-        {
-            _settings.Topics.Telemetry,
-            _settings.Topics.Events,
-            _settings.Topics.Status
-        };
-
         var topicFilters = new List<MqttTopicFilter>
         {
-            new MqttTopicFilterBuilder().WithTopic(_settings.Topics.Telemetry).WithAtMostOnceQoS().Build(),
-            new MqttTopicFilterBuilder().WithTopic(_settings.Topics.Events).WithAtMostOnceQoS().Build(),
-            new MqttTopicFilterBuilder().WithTopic(_settings.Topics.Status).WithAtMostOnceQoS().Build()
+            new MqttTopicFilterBuilder().WithTopic(_settings.Topics.Telemetry).WithAtMostOnceQoS().Build()
         };
 
         var options = new MqttClientSubscribeOptions
@@ -160,10 +140,7 @@ public class MqttService : IMqttService, IDisposable
         };
 
         await _mqttClient.SubscribeAsync(options, cancellationToken);
-        foreach (var topic in topics)
-        {
-            _logger.LogInformation("Subscribed to topic: {Topic}", topic);
-        }
+        _logger.LogInformation("Subscribed to topic: {Topic}", _settings.Topics.Telemetry);
     }
 
     /// <summary>
@@ -221,15 +198,6 @@ public class MqttService : IMqttService, IDisposable
             {
                 await ProcessTelemetry(topic, payload);
             }
-            else if (topic.Contains("/events"))
-            {
-                // TODO : Убрать, как и статус. Оставить только телеметрию.
-                await ProcessEvent(payload);
-            }
-            else if (topic.Contains("/status"))
-            {
-                await ProcessStatus(topic, payload);
-            }
         }
         catch (Exception ex)
         {
@@ -251,83 +219,6 @@ public class MqttService : IMqttService, IDisposable
         {
             _logger.LogWarning("Dropped message {MessageId} - queue full", context.MessageId);
         }
-    }
-
-    /// <summary>
-    /// Обрабатывает сообщение события: сохраняет его в базу данных.
-    /// </summary>
-    /// <param name="payload">Тело сообщения в виде строки UTF-8.</param>
-    /// <returns>Задача, представляющая асинхронную обработку.</returns>
-    private async System.Threading.Tasks.Task ProcessEvent(string payload)
-    {
-        var message = JsonSerializer.Deserialize<MqttEventMessage>(payload);
-        if (message == null || string.IsNullOrEmpty(message.DeviceId))
-            return;
-
-        using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-
-        var imm = await context.Imms
-            .FirstOrDefaultAsync(i => i.Name == message.DeviceId || i.InventoryNumber == message.DeviceId);
-
-        if (imm == null)
-        {
-            _logger.LogWarning("IMM not found for DeviceId: {DeviceId}", message.DeviceId);
-            return;
-        }
-
-        var timestamp = DateTimeOffset.FromUnixTimeSeconds(message.Ts).DateTime;
-        var eventType = MapEventType(message.EventType);
-
-        var evt = new Event
-        {
-            ImmId = imm.Id,
-            EventType = eventType,
-            ErrorCode = message.Payload.Code,
-            ErrorMessage = message.Payload.Message,
-            StartTime = timestamp,
-            EndTime = eventType == EventType.CycleComplete || eventType == EventType.CycleAborted 
-                ? timestamp 
-                : null
-        };
-
-        context.Events.Add(evt);
-        await context.SaveChangesAsync();
-
-        _logger.LogInformation("Event saved: {EventType} for IMM {ImmId}", eventType, imm.Id);
-    }
-
-    /// <summary>
-    /// Обрабатывает сообщение статуса как телеметрию (дублирует вызов <see cref="ProcessTelemetry"/>).
-    /// </summary>
-    /// <param name="topic">Топик сообщения.</param>
-    /// <param name="payload">Тело сообщения в виде строки UTF-8.</param>
-    /// <returns>Задача, представляющая асинхронную обработку.</returns>
-    private async System.Threading.Tasks.Task ProcessStatus(string topic, string payload)
-    {
-        // Статус обрабатывается как часть телеметрии
-        await ProcessTelemetry(topic, payload);
-    }
-
-    /// <summary>
-    /// Преобразует строковое представление типа события в перечисление <see cref="EventType"/>.
-    /// </summary>
-    /// <param name="eventType">Строковое значение типа события.</param>
-    /// <returns>Соответствующее значение <see cref="EventType"/>; по умолчанию — <see cref="EventType.Downtime"/>.</returns>
-    private static EventType MapEventType(string eventType)
-    {
-        return eventType switch
-        {
-            "alarm_start" => EventType.Alarm,
-            "alarm_end" => EventType.Alarm,
-            "cycle_complete" => EventType.CycleComplete,
-            "cycle_aborted" => EventType.CycleAborted,
-            "downtime_start" => EventType.Downtime,
-            "downtime_end" => EventType.Downtime,
-            "setup_start" => EventType.Setup,
-            "setup_end" => EventType.Setup,
-            _ => EventType.Downtime
-        };
     }
 
     public void Dispose()

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.Interfaces;
 
 namespace Wintime.Control.Infrastructure.Workers;
@@ -61,11 +62,11 @@ public class ImmOfflineWorker : BackgroundService
                     if (!isOnline)
                     {
                         var status = _statusCache.GetStatus(entry.ImmId);
-                        if (status != "Offline")
+                        if (status != ImmStatus.Offline)
                         {
                             using var scope = _scopeFactory.CreateScope();
                             var svc = scope.ServiceProvider.GetRequiredService<IImmStatusService>();
-                            await svc.UpdateStatusAsync(entry.ImmId, "Offline", DateTime.UtcNow);
+                            await svc.UpdateStatusAsync(entry.ImmId, ImmStatus.Offline, DateTime.UtcNow);
                         }
                     }
                 }

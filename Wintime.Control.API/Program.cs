@@ -7,12 +7,11 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Serilog;
 using Wintime.Control.Core.Entities;
-using Wintime.Control.Core.Services.Reports;
+using Wintime.Control.Infrastructure.Reports;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Infrastructure.Auth;
 using Wintime.Control.Infrastructure.MQTT;
 using Wintime.Control.Shared.Settings;
-using Wintime.Control.Infrastructure.Mqtt;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Cache;
@@ -46,11 +45,14 @@ builder.Services.AddDbContext<ControlDbContext>(options =>
 // Identity
 builder.Services.AddIdentity<User, IdentityRole>(options =>
 {
-    options.Password.RequireDigit = false;
-    options.Password.RequireLowercase = false;
-    options.Password.RequireUppercase = false;
-    options.Password.RequireNonAlphanumeric = false;
-    options.Password.RequiredLength = 6;
+    // Политика паролей для производственной MES-системы. Демо-аккаунты
+    // (Admin123! и т.п.) этим требованиям удовлетворяют.
+    options.Password.RequireDigit = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireNonAlphanumeric = true;
+    options.Password.RequiredLength = 8;
+    options.Password.RequiredUniqueChars = 1;
     options.User.RequireUniqueEmail = false; // Используем Login вместо Email
 })
 .AddEntityFrameworkStores<ControlDbContext>()
@@ -100,6 +102,10 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddHealthChecks();
+
+// Маппинг доменных исключений (DomainException) в HTTP 400
+builder.Services.AddExceptionHandler<Wintime.Control.API.ExceptionHandling.DomainExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 // Controllers
 builder.Services.AddControllers()
@@ -158,6 +164,7 @@ else
 
 // Сервисы
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddSingleton<IRefreshTokenStore, MemoryRefreshTokenStore>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
@@ -186,12 +193,17 @@ builder.Services.AddHostedService<MqttBackgroundService>();
 var app = builder.Build();
 
 // Pipeline
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+app.UseExceptionHandler();
+
+if (app.Environment.IsDevelopment())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "CONTROL API v1");
-    c.RoutePrefix = "swagger";
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CONTROL API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -220,42 +232,85 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
     db.Database.Migrate();
 
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+    var isDemoMode = builder.Configuration.GetValue<bool>("DemoMode");
 
-    // TODO: убрать в продакшне
-    string[] roleNames = { "Admin", "Manager", "Adjuster", "Observer", "Emulator" };
-    foreach (var roleName in roleNames)
+    // Единственный источник правды по роли — поле User.Role (enum). Identity-роли
+    // (AspNetRoles/AspNetUserRoles) больше не используются: авторизация строится из
+    // JWT-клейма "role", который берётся из User.Role. См. ADR-0004.
+
+    // Демо-аккаунты создаются ТОЛЬКО при DemoMode=true.
+    // Их пароли публичны (отображаются на экране входа демо-версии) и имеют полные
+    // права — поэтому они никогда не должны существовать в production-инсталляции,
+    // где DemoMode=false. Ответственность за корректное значение флага лежит на
+    // конфигурации окружения (appsettings / env-переменные).
+    if (isDemoMode)
     {
-        if (!await roleManager.RoleExistsAsync(roleName))
-            await roleManager.CreateAsync(new IdentityRole(roleName));
-    }
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
 
-    var seedUsers = new[]
-    {
-        new { UserName = "admin",    Email = "admin@control.local",    FullName = "Администратор Системы", Role = UserRole.Admin,    RoleName = "Admin",    Password = "Admin123!"    },
-        new { UserName = "manager",  Email = "manager@control.local",  FullName = "Начальник цеха",        Role = UserRole.Manager,  RoleName = "Manager",  Password = "Manager123!"  },
-        new { UserName = "adjuster", Email = "adjuster@control.local", FullName = "Наладчик Тестовый",    Role = UserRole.Adjuster, RoleName = "Adjuster", Password = "Adjuster123!" },
-        new { UserName = "emulator", Email = "emulator@control.local", FullName = "Эмулятор ТПА",         Role = UserRole.Emulator, RoleName = "Emulator", Password = "Emulator123!" },
-    };
-
-    foreach (var seed in seedUsers)
-    {
-        if (await userManager.FindByNameAsync(seed.UserName) != null)
-            continue;
-
-        var user = new User
+        var seedUsers = new[]
         {
-            UserName = seed.UserName,
-            Email = seed.Email,
-            FullName = seed.FullName,
-            Role = seed.Role,
-            IsActive = true
+            new { UserName = "admin",    Email = "admin@control.local",    FullName = "Администратор Системы", Role = UserRole.Admin,    Password = "Admin123!"    },
+            new { UserName = "manager",  Email = "manager@control.local",  FullName = "Начальник цеха",        Role = UserRole.Manager,  Password = "Manager123!"  },
+            new { UserName = "adjuster", Email = "adjuster@control.local", FullName = "Наладчик Тестовый",    Role = UserRole.Adjuster, Password = "Adjuster123!" },
+            new { UserName = "emulator", Email = "emulator@control.local", FullName = "Эмулятор ТПА",         Role = UserRole.Emulator, Password = "Emulator123!" },
         };
 
-        await userManager.CreateAsync(user, seed.Password);
-        await userManager.AddToRoleAsync(user, seed.RoleName);
-        Log.Information("Seed user created: {UserName} / {Password}", seed.UserName, seed.Password);
+        foreach (var seed in seedUsers)
+        {
+            if (await userManager.FindByNameAsync(seed.UserName) != null)
+                continue;
+
+            var user = new User
+            {
+                UserName = seed.UserName,
+                Email = seed.Email,
+                FullName = seed.FullName,
+                Role = seed.Role,
+                IsActive = true
+            };
+
+            await userManager.CreateAsync(user, seed.Password);
+            Log.Information("Demo user created: {UserName} ({Role})", seed.UserName, seed.Role);
+        }
+
+        Log.Warning("DemoMode is ON: public demo accounts with full privileges are active. " +
+                    "Do NOT use this configuration in production.");
+    }
+    else
+    {
+        // Production: гарантируем наличие хотя бы одного администратора. Пароль —
+        // только из конфигурации/секрета (Bootstrap:AdminPassword), никогда из
+        // исходников. Создаём идемпотентно: лишь если ни одного админа ещё нет.
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        if (!await userManager.Users.AnyAsync(u => u.Role == UserRole.Admin))
+        {
+            var adminLogin = builder.Configuration["Bootstrap:AdminLogin"] ?? "admin";
+            var adminPassword = builder.Configuration["Bootstrap:AdminPassword"];
+
+            if (string.IsNullOrWhiteSpace(adminPassword))
+            {
+                Log.Warning("No administrator exists and Bootstrap:AdminPassword is not configured. " +
+                            "Set Bootstrap__AdminPassword (env/secret) to create the initial administrator.");
+            }
+            else
+            {
+                var admin = new User
+                {
+                    UserName = adminLogin,
+                    Email = $"{adminLogin}@control.local",
+                    FullName = "Администратор",
+                    Role = UserRole.Admin,
+                    IsActive = true
+                };
+
+                var result = await userManager.CreateAsync(admin, adminPassword);
+                if (result.Succeeded)
+                    Log.Information("Bootstrap administrator '{Login}' created.", adminLogin);
+                else
+                    Log.Error("Failed to create bootstrap administrator: {Errors}",
+                        string.Join("; ", result.Errors.Select(e => e.Description)));
+            }
+        }
     }
 
     // Дефолтная смена 08:00–17:00, перерыв 12:00–13:00
@@ -270,6 +325,21 @@ using (var scope = app.Services.CreateScope())
         });
         await db.SaveChangesAsync();
         Log.Information("Создана дефолтная смена: 08:00–17:00, перерыв 12:00–13:00");
+    }
+}
+
+// Защита от случайной публикации со статическим demo-ключом коннектора.
+// Дефолтный "change-me-before-deployment" не должен попадать в production —
+// иначе любой, кто прочитает appsettings.json в репозитории, получит доступ
+// к машинным данным через /api/connectors/...
+if (!app.Environment.IsDevelopment())
+{
+    var connectorKey = builder.Configuration["ConnectorApiKey"];
+    if (string.IsNullOrEmpty(connectorKey) || connectorKey == "change-me-before-deployment")
+    {
+        Log.Warning("ConnectorApiKey is empty or has the default placeholder value in a non-Development " +
+                    "environment. /api/connectors endpoints are effectively unauthenticated. " +
+                    "Set a strong unique ConnectorApiKey before deployment.");
     }
 }
 

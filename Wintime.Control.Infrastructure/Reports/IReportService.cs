@@ -1,6 +1,6 @@
 using Wintime.Control.Core.DTOs.Report;
 
-namespace Wintime.Control.Core.Services.Reports;
+namespace Wintime.Control.Infrastructure.Reports;
 
 public interface IReportService
 {
