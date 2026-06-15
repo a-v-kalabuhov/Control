@@ -146,6 +146,12 @@ public class ReportService : IReportService
             ? (decimal)cycles.Average(c => c.DurationSeconds)
             : 0m;
 
+        // Выработка считается по снапшоту гнёздности каждого цикла (ImmCycle.Cavities),
+        // а не по текущему Mold.Cavities — гнёзда могли заглушаться при ремонте.
+        // Fallback для старых записей (= 0) — текущее значение Mold.Cavities.
+        var moldCavitiesFallback = task?.Mold?.Cavities ?? 0;
+        var actualQuantity = cycles.Sum(c => c.Cavities > 0 ? c.Cavities : moldCavitiesFallback);
+
         // Детализация простоев по причинам
         var downtimeDetails = new List<DowntimeDetailDto>();
         foreach (var evt in events.Where(e => e.EventType == EventType.Downtime))
@@ -171,8 +177,11 @@ public class ReportService : IReportService
         if (task?.Mold != null)
         {
             moldName = task.Mold.Name;
-            var totalWeightGramsPerCycle = task.Mold.PartWeightGrams * task.Mold.Cavities + task.Mold.RunnerWeightGrams;
-            rawMaterialKg = totalWeightGramsPerCycle * totalCycles / 1000m;
+            // Вес деталей — по фактической выработке (снапшот гнёздности),
+            // вес литников — по одному на каждый цикл.
+            var partsGrams  = task.Mold.PartWeightGrams * actualQuantity;
+            var runnerGrams = task.Mold.RunnerWeightGrams * totalCycles;
+            rawMaterialKg = (partsGrams + runnerGrams) / 1000m;
         }
 
         // Эффективность: полезная работа / (работа + наладка + простои)
@@ -187,7 +196,7 @@ public class ReportService : IReportService
             ImmName = imm.Name,
             MoldName = moldName,
             PlanQuantity = task?.PlanQuantity ?? 0,
-            ActualQuantity = totalCycles * (task?.Mold?.Cavities ?? 0),
+            ActualQuantity = actualQuantity,
             CycleCount = totalCycles,
             WorkTimeSeconds = workTimeSeconds,
             SetupSeconds = setupSeconds,

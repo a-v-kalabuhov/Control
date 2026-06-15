@@ -81,6 +81,11 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                 .Include(t => t.Mold)
                 .FirstOrDefaultAsync(t => t.ImmId == immId && t.Status == EntityTaskStatus.InProgress, ct);
 
+            // Снапшот гнёздности на момент цикла: Mold.Cavities изменяемо (гнёзда
+            // могут заглушаться при ремонте), поэтому фиксируем значение здесь, а не
+            // пересчитываем выработку по текущему Mold.Cavities задним числом.
+            var cavities = activeTask?.Mold.Cavities ?? 0;
+
             var cycle = new ImmCycle
             {
                 ImmId = immId,
@@ -89,23 +94,24 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                 StartTime = cycleStart,
                 EndTime = currentTime,
                 DurationSeconds = duration,
-                IsSuccessful = isSuccessful
+                IsSuccessful = isSuccessful,
+                Cavities = cavities
             };
             _db.ImmCycles.Add(cycle);
 
             if (isSuccessful && activeTask is not null)
             {
-                activeTask.ActualQuantity += activeTask.Mold.Cavities;
+                activeTask.ActualQuantity += cavities;
                 // Расход материала считается по количеству гнёзд.
                 // Вес детали умножаем на колиество гнёзд.
                 // Кроме того на каждый цикл добавляем массу литника.
                 // В пресс-форме один литник,
-                // поэтому он заполняется при каждом цикле, 
+                // поэтому он заполняется при каждом цикле,
                 // и пластик из него удаляется при извлечении готовой продукции при завершении цикла.
-                // Если пластик не извлекается из литника, 
+                // Если пластик не извлекается из литника,
                 // то в параметрах пресс-формы вес литника указывается как 0.
                 activeTask.ActualMaterialWeightGrams +=
-                    activeTask.Mold.Cavities * activeTask.Mold.PartWeightGrams
+                    cavities * activeTask.Mold.PartWeightGrams
                     + activeTask.Mold.RunnerWeightGrams;
                 if (activeTask.ActualQuantity >= activeTask.PlanQuantity)
                     await _emulator.SetModeAsync(immId.ToString(), "idle", ct);

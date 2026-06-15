@@ -123,6 +123,24 @@ public class CycleProcessingHandlerTests
     }
 
     [Fact]
+    public async Task SuccessfulCycle_WritesCavitiesSnapshot()
+    {
+        // Гнёздность фиксируется снапшотом в ImmCycle и используется для выработки,
+        // а не пересчитывается по текущему Mold.Cavities задним числом.
+        var immId = Guid.NewGuid();
+        var db = CreateDb();
+        var (_, task) = SeedTask(db, immId, cavities: 4);
+        _tracker.Get(immId).Returns(ActiveCycleState(lastCounter: 4));
+        var sut = new CycleProcessingHandler(db, _tracker, _emulator, NullLogger<CycleProcessingHandler>.Instance);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, counter: 5, mode: "auto"));
+
+        var cycle = db.ImmCycles.Single();
+        cycle.Cavities.Should().Be(4);
+        db.Tasks.Find(task.Id)!.ActualQuantity.Should().Be(4);
+    }
+
+    [Fact]
     public async Task FirstMessage_AutoMode_IsCaseInsensitive_StartsCycle()
     {
         // Коннектор может прислать "AUTO" вместо "auto" — цикл всё равно должен стартовать.
