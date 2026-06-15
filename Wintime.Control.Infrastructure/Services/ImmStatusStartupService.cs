@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
@@ -72,7 +73,7 @@ public class ImmStatusStartupService : IHostedService
 
         // 2. Reconcile open non-Offline status records
         var openRecords = await db.ImmStatusHistory
-            .Where(h => h.EndedAt == null && h.Status != "Offline")
+            .Where(h => h.EndedAt == null && h.Status != ImmStatus.Offline)
             .ToListAsync(cancellationToken);
 
         if (openRecords.Count > 0)
@@ -101,7 +102,7 @@ public class ImmStatusStartupService : IHostedService
                     db.ImmStatusHistory.Add(new ImmStatusHistory
                     {
                         ImmId = record.ImmId,
-                        Status = "Offline",
+                        Status = ImmStatus.Offline,
                         ChangedAt = closeTime,
                         EndedAt = null
                     });

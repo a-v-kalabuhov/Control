@@ -3,7 +3,7 @@ using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using Wintime.Control.Core.DTOs.Report;
 
-namespace Wintime.Control.Core.Services.Reports;
+namespace Wintime.Control.Infrastructure.Reports;
 
 public interface IPdfReportService
 {

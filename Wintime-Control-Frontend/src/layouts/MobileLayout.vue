@@ -43,12 +43,22 @@
         <router-link
           to="/mobile/scanner"
           class="flex-1 py-4 text-center text-base font-medium transition-colors"
-          :class="route.path === '/mobile/scanner' 
-            ? 'text-primary-600 border-b-3 border-primary-600 bg-primary-50' 
+          :class="route.path === '/mobile/scanner'
+            ? 'text-primary-600 border-b-3 border-primary-600 bg-primary-50'
             : 'text-gray-500 hover:text-gray-700'"
         >
           <el-icon class="inline-block mr-1 text-lg"><Scan /></el-icon>
           Сканер
+        </router-link>
+        <router-link
+          to="/mobile/downtimes"
+          class="flex-1 py-4 text-center text-base font-medium transition-colors"
+          :class="route.path === '/mobile/downtimes'
+            ? 'text-primary-600 border-b-3 border-primary-600 bg-primary-50'
+            : 'text-gray-500 hover:text-gray-700'"
+        >
+          <el-icon class="inline-block mr-1 text-lg"><Timer /></el-icon>
+          Простои
         </router-link>
       </div>
     </nav>

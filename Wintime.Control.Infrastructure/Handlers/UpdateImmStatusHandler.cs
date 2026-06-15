@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Interfaces;
 
@@ -46,13 +47,12 @@ public class UpdateImmStatusHandler : IUpdateImmStatusHandler
     /// Один из статусов: <c>Auto</c>, <c>Manual</c>, <c>Alarm</c>, <c>Idle</c>;
     /// при неизвестном или отсутствующем значении — <c>Offline</c>.
     /// </returns>
-    private static string MapModeToStatus(string? mode) => mode?.ToLowerInvariant() switch
+    private static string MapModeToStatus(string? mode) => ImmMode.Normalize(mode) switch
     {
-        // TODO : убрать hardcode, использовать схему со справочником
-        "auto"   => "Auto",
-        "manual" => "Manual",
-        "alarm"  => "Alarm",
-        "idle"   => "Idle",
-        _        => "Offline"
+        ImmMode.Auto   => ImmStatus.Auto,
+        ImmMode.Manual => ImmStatus.Manual,
+        ImmMode.Alarm  => ImmStatus.Alarm,
+        ImmMode.Idle   => ImmStatus.Idle,
+        _              => ImmStatus.Offline
     };
 }

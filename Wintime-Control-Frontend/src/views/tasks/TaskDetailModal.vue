@@ -33,8 +33,8 @@
           {{ formatDate(task?.closedAt) }}
         </el-descriptions-item>
         <el-descriptions-item
-          v-if="canClose || task?.closeReason"
-          :label="task?.status === 'Closed' ? 'Причина закрытия' : 'Причина закрытия досрочно'"
+          v-if="canClose || (task?.closeReason && task?.status === 'Closed')"
+          :label="canClose ? 'Причина закрытия досрочно' : 'Причина закрытия'"
           :span="2"
         >
           <el-input
@@ -45,6 +45,13 @@
             placeholder="Укажите причину закрытия задания"
           />
           <span v-else>{{ task.closeReason }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="task?.closeReason && task?.status === 'Completed'"
+          label="Причина отклонения от плана"
+          :span="2"
+        >
+          <span>{{ task.closeReason }}</span>
         </el-descriptions-item>
       </el-descriptions>
 

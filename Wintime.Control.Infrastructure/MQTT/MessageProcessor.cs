@@ -2,7 +2,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Wintime.Control.Core.DTOs.Mqtt;
 
-namespace Wintime.Control.Infrastructure.Mqtt;
+namespace Wintime.Control.Infrastructure.MQTT;
 
 public class MessageProcessor : IMessageProcessor
 {

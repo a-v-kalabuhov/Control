@@ -89,8 +89,34 @@
       title="Сканирование QR-кода"
       width="90%"
       :close-on-click-modal="false"
+      @closed="scanResult = null"
     >
+      <!-- Результат сканирования -->
+      <div v-if="scanResult" class="py-4 text-center space-y-4">
+        <el-icon
+          :size="56"
+          :color="scanResult.matched === true ? '#67c23a' : scanResult.matched === false ? '#f56c6c' : '#409eff'"
+        >
+          <CircleCheck v-if="scanResult.matched === true" />
+          <CircleClose v-else-if="scanResult.matched === false" />
+          <InfoFilled v-else />
+        </el-icon>
+        <div class="space-y-1">
+          <p
+            v-for="(line, i) in scanResult.lines"
+            :key="i"
+            :class="i === 0 ? 'text-base font-semibold text-gray-800' : 'text-sm text-gray-500'"
+          >{{ line }}</p>
+        </div>
+        <div class="flex gap-2 pt-2">
+          <el-button class="flex-1" @click="scanResult = null">Сканировать ещё</el-button>
+          <el-button class="flex-1" type="primary" @click="scannerVisible = false">Закрыть</el-button>
+        </div>
+      </div>
+
+      <!-- Сам сканер -->
       <QrScanner
+        v-else
         @confirm="handleScanConfirm"
         @cancel="scannerVisible = false"
         @error="handleScanError"
@@ -113,6 +139,7 @@ const mobileStore = useMobileStore()
 const detailVisible = ref(false)
 const scannerVisible = ref(false)
 const selectedTask = ref(null)
+const scanResult = ref(null)
 
 onMounted(async () => {
   await loadTasks()
@@ -239,42 +266,42 @@ const closeTask = async (task) => {
 }
 
 const openScanner = () => {
+  scanResult.value = null
   scannerVisible.value = true
 }
 
 const handleScanConfirm = async (qrData) => {
-  scannerVisible.value = false
-
   try {
     const parsed = JSON.parse(qrData)
-
-    if (parsed.entity !== 'mold') {
-      ElMessage.warning('QR-код имеет неверный формат')
-      return
-    }
-
     const setupTask = mobileStore.setupTask
 
-    if (!setupTask) {
-      ElMessage.info(`Пресс-форма: ${parsed.name || parsed.id}`)
-      return
-    }
-
-    if (parsed.id === setupTask.moldId) {
-      await mobileApi.verifyMold(setupTask.id)
-      await loadTasks()
-      // Обновить selectedTask если открыт
-      if (selectedTask.value?.id === setupTask.id) {
-        selectedTask.value = mobileStore.tasks.find(t => t.id === setupTask.id) ?? selectedTask.value
+    if (parsed.entity === 'mold') {
+      if (setupTask && parsed.id === setupTask.moldId) {
+        await mobileApi.verifyMold(setupTask.id)
+        await loadTasks()
+        if (selectedTask.value?.id === setupTask.id) {
+          selectedTask.value = mobileStore.tasks.find(t => t.id === setupTask.id) ?? selectedTask.value
+        }
+        scanResult.value = { matched: true, lines: ['Пресс-форма из задания обнаружена', setupTask.moldName] }
+      } else if (setupTask) {
+        scanResult.value = {
+          matched: false,
+          lines: [
+            'Пресс-форма не совпадает с заданием',
+            `Отсканировано: ${parsed.name || parsed.id}`,
+            `Ожидалась: ${setupTask.moldName}`
+          ]
+        }
+      } else {
+        scanResult.value = { matched: null, lines: [`Пресс-форма: ${parsed.name || parsed.id}`] }
       }
-      ElMessage.success(`Пресс-форма верифицирована: ${setupTask.moldName}`)
+    } else if (parsed.entity === 'machine') {
+      scanResult.value = { matched: null, lines: [`ТПА: ${parsed.name || parsed.id}`] }
     } else {
-      ElMessage.error(
-        `Неверная пресс-форма.\nОтсканирована: ${parsed.name || parsed.id}\nЗадание ожидает: ${setupTask.moldName}`
-      )
+      scanResult.value = { matched: null, lines: [`Объект: ${parsed.name || parsed.id || qrData}`] }
     }
   } catch {
-    ElMessage.error('Ошибка обработки QR-кода')
+    scanResult.value = { matched: false, lines: ['Ошибка обработки QR-кода'] }
   }
 }
 

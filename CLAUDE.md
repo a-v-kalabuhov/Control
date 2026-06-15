@@ -150,7 +150,27 @@ X-Api-Key: {ConnectorApiKey}
 
 There are no test projects. When adding tests, use xUnit for .NET and Vitest for the frontend.
 
+## Architecture Decision Records (ADR)
+
+Архитектурные решения фиксируются в [`docs/adr/`](docs/adr/) в формате MADR (см.
+[`docs/adr/README.md`](docs/adr/README.md)). ADR хранят *почему* решили так и какие
+альтернативы отвергли; `CLAUDE.md` хранит правило-итог (*как писать*), git — *что* изменилось.
+
+**Заводи новый ADR**, когда решение трудно откатить (схема БД, контракт API, выбор слоя),
+затрагивает несколько модулей/задаёт паттерн, либо имеет реальные отвергнутые альтернативы.
+Баг-фиксы и косметика — без ADR. Принятые ADR не редактируют по существу — пишут новый,
+заменяющий (`Superseded by`).
+
 ## Domain Rules
+
+### Роль пользователя — только User.Role
+
+Единственный источник правды по роли — поле `User.Role` (enum `UserRole`). Одна роль на
+пользователя. JWT-клейм `"role"` строится из `User.Role`, авторизация (`[Authorize(Roles=…)]`,
+политики) опирается на него. Identity-роли (`AspNetRoles`/`AspNetUserRoles`) **не используются** —
+никогда не вызывай `AddToRoleAsync`/`RemoveFromRolesAsync`/`GetRolesAsync` для прав доступа.
+Первый админ в production создаётся при старте из секрета `Bootstrap:AdminPassword`
+(env `Bootstrap__AdminPassword`), не из исходников. См. [ADR-0004](docs/adr/0004-single-role-source-user-role.md).
 
 ### IsActive — архивный флаг (мягкое удаление)
 

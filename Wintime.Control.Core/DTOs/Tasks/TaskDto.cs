@@ -1,4 +1,4 @@
-namespace Wintime.Control.Core.DTOs.Task;
+namespace Wintime.Control.Core.DTOs.Tasks;
 
 public class TaskDto
 {

@@ -4,6 +4,7 @@ public class EventDto
 {
     public Guid Id { get; set; }
     public Guid ImmId { get; set; }
+    public string ImmName { get; set; } = string.Empty;
     public string EventType { get; set; } = string.Empty;
     public Guid? ReasonId { get; set; }
     public string? ReasonName { get; set; }

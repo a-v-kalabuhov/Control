@@ -77,16 +77,11 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
     private async Task SeedTestUsersAsync(IServiceProvider sp)
     {
         var userManager = sp.GetRequiredService<UserManager<User>>();
-        var roleManager = sp.GetRequiredService<RoleManager<IdentityRole>>();
 
-        await EnsureRoleAsync(roleManager, "Manager");
-        await EnsureRoleAsync(roleManager, "Adjuster");
-        await EnsureRoleAsync(roleManager, "Observer");
-
-        await EnsureUserAsync(userManager, "test_manager",  "Test Manager",  "Manager123!", UserRole.Manager,  "Manager");
-        await EnsureUserAsync(userManager, "test_adjuster", "Test Adjuster", "Adjuster123!", UserRole.Adjuster, "Adjuster");
-        await EnsureUserAsync(userManager, "test_observer", "Test Observer", "Observer123!", UserRole.Observer,  "Observer");
-        await EnsureUserAsync(userManager, "test_inactive", "Inactive User", "Inactive123!", UserRole.Admin,    "Admin",
+        await EnsureUserAsync(userManager, "test_manager",  "Test Manager",  "Manager123!", UserRole.Manager);
+        await EnsureUserAsync(userManager, "test_adjuster", "Test Adjuster", "Adjuster123!", UserRole.Adjuster);
+        await EnsureUserAsync(userManager, "test_observer", "Test Observer", "Observer123!", UserRole.Observer);
+        await EnsureUserAsync(userManager, "test_inactive", "Inactive User", "Inactive123!", UserRole.Admin,
             isActive: false);
     }
 
@@ -170,19 +165,12 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
         return immId;
     }
 
-    private static async Task EnsureRoleAsync(RoleManager<IdentityRole> roleManager, string roleName)
-    {
-        if (!await roleManager.RoleExistsAsync(roleName))
-            await roleManager.CreateAsync(new IdentityRole(roleName));
-    }
-
     private static async Task EnsureUserAsync(
         UserManager<User> userManager,
         string userName,
         string fullName,
         string password,
         UserRole role,
-        string roleName,
         bool isActive = true)
     {
         if (await userManager.FindByNameAsync(userName) != null)
@@ -198,8 +186,6 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
         };
 
         await userManager.CreateAsync(user, password);
-        if (isActive)
-            await userManager.AddToRoleAsync(user, roleName);
     }
 
     private static void RemoveHostedServicesByName(IServiceCollection services, params string[] typeNames)

@@ -80,8 +80,6 @@ public class PersonnelController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(result.Errors);
 
-        await _userManager.AddToRoleAsync(user, request.Role);
-
         var dto = new PersonnelDto
         {
             Id = user.Id,
@@ -119,9 +117,6 @@ public class PersonnelController : ControllerBase
             if (!Enum.TryParse<Core.Enums.UserRole>(request.Role, out var newRole))
                 return BadRequest("Неверная роль");
 
-            var currentRoles = await _userManager.GetRolesAsync(user);
-            await _userManager.RemoveFromRolesAsync(user, currentRoles);
-            await _userManager.AddToRoleAsync(user, request.Role);
             user.Role = newRole;
         }
 
