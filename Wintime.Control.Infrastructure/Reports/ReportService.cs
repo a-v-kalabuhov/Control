@@ -1,4 +1,5 @@
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.Report;
 using Wintime.Control.Core.Enums;
 using Microsoft.Extensions.Logging;
@@ -200,14 +201,13 @@ public class ReportService : IReportService
         };
     }
 
-    private static string MapStatusToType(string status) => status.ToLower() switch
+    private static string MapStatusToType(string status) => ImmMode.Normalize(status) switch
     {
-        "auto"    => "work",
-        "manual"  => "setup",
-        "alarm"   => "alarm",
-        "idle"    => "idle",
-        "offline" => "offline",
-        _         => "offline"
+        ImmMode.Auto   => "work",
+        ImmMode.Manual => "setup",
+        ImmMode.Alarm  => "alarm",
+        ImmMode.Idle   => "idle",
+        _              => "offline"
     };
 
     /// <summary>

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.Entities;
 using EntityTaskStatus = Wintime.Control.Core.Enums.TaskStatus;
 using Wintime.Control.Core.Interfaces;
@@ -49,7 +50,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         if (!int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var currentCounter))
             return;
 
-        var currentMode = data.Mode ?? string.Empty;
+        var currentMode = ImmMode.Normalize(data.Mode);
         var immId = device.Id;
         var currentTime = DateTimeOffset.FromUnixTimeSeconds(data.Timestamp).UtcDateTime;
 
@@ -58,20 +59,20 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         if (state is null)
         {
             // Первое сообщение — инициализируем состояние
-            var startTime = currentMode == "auto" ? currentTime : (DateTime?)null;
+            var startTime = currentMode == ImmMode.Auto ? currentTime : (DateTime?)null;
             _tracker.Set(immId, new CycleState(startTime, currentCounter, currentMode));
             return;
         }
 
         bool cycleWasActive = state.CycleStartTime.HasValue;
         bool counterChanged = state.LastCounterValue.HasValue && state.LastCounterValue.Value != currentCounter;
-        bool modeChangedFromAuto = state.LastMode == "auto" && currentMode != "auto";
+        bool modeChangedFromAuto = state.LastMode == ImmMode.Auto && currentMode != ImmMode.Auto;
 
         bool cycleEnded = cycleWasActive && (counterChanged || modeChangedFromAuto);
 
         if (cycleEnded)
         {
-            bool isSuccessful = currentMode != "alarm";
+            bool isSuccessful = currentMode != ImmMode.Alarm;
             var cycleStart = state.CycleStartTime!.Value;
             var duration = (int)(currentTime - cycleStart).TotalSeconds;
 
@@ -119,9 +120,9 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
         // Обновить состояние трекера
         DateTime? newCycleStart = null;
-        if (counterChanged && currentMode == "auto")
+        if (counterChanged && currentMode == ImmMode.Auto)
             newCycleStart = currentTime; // новый цикл начинается сразу после завершённого
-        else if (!cycleWasActive && currentMode == "auto")
+        else if (!cycleWasActive && currentMode == ImmMode.Auto)
             newCycleStart = currentTime; // переход из не-auto в auto
         else if (cycleWasActive && !cycleEnded)
             newCycleStart = state.CycleStartTime; // цикл продолжается

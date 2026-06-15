@@ -123,6 +123,35 @@ public class CycleProcessingHandlerTests
     }
 
     [Fact]
+    public async Task FirstMessage_AutoMode_IsCaseInsensitive_StartsCycle()
+    {
+        // Коннектор может прислать "AUTO" вместо "auto" — цикл всё равно должен стартовать.
+        var immId = Guid.NewGuid();
+        var db = CreateDb();
+        _tracker.Get(immId).Returns((CycleState?)null);
+        var sut = new CycleProcessingHandler(db, _tracker, _emulator, NullLogger<CycleProcessingHandler>.Instance);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, counter: 1, mode: "AUTO"));
+
+        _tracker.Received().Set(immId, Arg.Is<CycleState>(s => s.CycleStartTime != null));
+    }
+
+    [Fact]
+    public async Task AlarmCycle_IsCaseInsensitive_DoesNotAccumulateMaterial()
+    {
+        // "ALARM" в верхнем регистре должен трактоваться как авария — цикл не успешен.
+        var immId = Guid.NewGuid();
+        var db = CreateDb();
+        var (_, task) = SeedTask(db, immId);
+        _tracker.Get(immId).Returns(ActiveCycleState(lastCounter: 4));
+        var sut = new CycleProcessingHandler(db, _tracker, _emulator, NullLogger<CycleProcessingHandler>.Instance);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, counter: 5, mode: "ALARM"));
+
+        db.Tasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(0m);
+    }
+
+    [Fact]
     public async Task SuccessfulCycle_NoActiveTask_DoesNotThrow()
     {
         var immId = Guid.NewGuid();
