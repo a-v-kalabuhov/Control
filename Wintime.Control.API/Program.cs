@@ -158,6 +158,7 @@ else
 
 // Сервисы
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddSingleton<IRefreshTokenStore, MemoryRefreshTokenStore>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
