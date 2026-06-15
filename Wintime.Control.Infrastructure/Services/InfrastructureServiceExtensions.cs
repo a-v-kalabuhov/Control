@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Infrastructure.Behaviors;
 using Wintime.Control.Infrastructure.Cache;
 using Wintime.Control.Infrastructure.Handlers;
 using Wintime.Control.Infrastructure.Services;
@@ -46,8 +47,10 @@ public static class ServiceCollectionExtensions
     /// Регистрирует обработчики шагов конвейера телеметрии как scoped-сервисы.
     /// </summary>
     /// <remarks>
-    /// Регистрируются четыре обработчика в порядке их вызова в pipeline:
-    /// декодирование → валидация → сохранение → обновление статуса ТПА.
+    /// Регистрируются обработчики в порядке их вызова в pipeline:
+    /// декодирование → валидация → сохранение → обновление статуса ТПА → обработка циклов.
+    /// Сам <see cref="MessageProcessingPipeline"/> регистрируется как scoped и получает
+    /// обработчики через конструктор.
     /// </remarks>
     /// <param name="services">Коллекция сервисов приложения.</param>
     /// <returns>Та же коллекция сервисов для цепочки вызовов.</returns>
@@ -59,6 +62,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUpdateImmStatusHandler, UpdateImmStatusHandler>();
         services.AddScoped<ICycleProcessingHandler, CycleProcessingHandler>();
         services.AddSingleton<ICycleTracker, CycleTracker>();
+        services.AddScoped<MessageProcessingPipeline>();
         return services;
     }
 

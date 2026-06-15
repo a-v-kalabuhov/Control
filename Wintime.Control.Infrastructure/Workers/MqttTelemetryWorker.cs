@@ -32,7 +32,8 @@ public class MqttTelemetryWorker : BackgroundService
         {
             using var scope = _sp.CreateScope();
             try
-            {   var pipeline = new MessageProcessingPipeline(scope.ServiceProvider);
+            {
+                var pipeline = scope.ServiceProvider.GetRequiredService<MessageProcessingPipeline>();
                 await pipeline.ProcessAsync(context, ct);
             }
             catch (Exception ex)

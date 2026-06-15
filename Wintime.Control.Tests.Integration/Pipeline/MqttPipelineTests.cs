@@ -189,7 +189,7 @@ public class MqttPipelineTests : IClassFixture<IntegrationTestFactory>
     private async Task RunPipelineAsync(MqttProcessingContext context)
     {
         using var scope = _factory.Services.CreateScope();
-        var pipeline = new MessageProcessingPipeline(scope.ServiceProvider);
+        var pipeline = scope.ServiceProvider.GetRequiredService<MessageProcessingPipeline>();
         await pipeline.ProcessAsync(context, CancellationToken.None);
     }
 
