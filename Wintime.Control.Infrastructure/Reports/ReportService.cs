@@ -100,7 +100,7 @@ public class ReportService : IReportService
             .ToListAsync(ct);
 
         // Активное задание за период
-        var task = await _context.Tasks
+        var task = await _context.ShiftTasks
             .Include(t => t.Mold)
             .FirstOrDefaultAsync(t => t.ImmId == imm.Id
                 && t.StartedAt >= periodStart && t.StartedAt < periodEnd, ct);
@@ -432,7 +432,7 @@ public class ReportService : IReportService
 
             foreach (var person in personnel)
             {
-                var tasks = await _context.Tasks
+                var tasks = await _context.ShiftTasks
                     .Where(t => t.PersonnelId == person.Id && t.StartedAt >= dateFromUtc && t.StartedAt < periodEnd && t.Status >= Wintime.Control.Core.Enums.TaskStatus.Completed)
                     .ToListAsync(ct);
 
@@ -561,7 +561,7 @@ public class ReportService : IReportService
             var personnelIds = personnel.Select(p => p.Id).ToList();
 
             // Задания за период, сгруппированные по (PersonnelId, ImmId)
-            var taskStats = await _context.Tasks
+            var taskStats = await _context.ShiftTasks
                 .Where(t => personnelIds.Contains(t.PersonnelId!)
                          && t.StartedAt >= dateFromUtc
                          && t.StartedAt < periodEnd

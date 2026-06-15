@@ -99,7 +99,7 @@ Bound from `appsettings.json` / `appsettings.Development.json`. Development over
 
 ## Database
 
-Tables: `Users` (Identity), `Imms`, `Molds`, `Tasks`, `Templates`, `Events`, `DowntimeReasons`, `Telemetry`.
+Tables: `Users` (Identity), `Imms`, `Molds`, `ShiftTasks`, `Templates`, `Events`, `DowntimeReasons`, `Telemetry`.
 
 `Telemetry` table has indexes on `ImmId + Timestamp` for time-range queries.
 

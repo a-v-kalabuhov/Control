@@ -36,7 +36,7 @@ public class TasksController : ControllerBase
         [FromQuery] DateTime? dateFrom = null,
         [FromQuery] DateTime? dateTo = null)
     {
-        var query = _context.Tasks
+        var query = _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
             .Include(t => t.Personnel)
@@ -75,7 +75,7 @@ public class TasksController : ControllerBase
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var query = _context.Tasks
+        var query = _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
             .Include(t => t.Personnel)
@@ -100,7 +100,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
     public async Task<ActionResult<TaskDto>> GetTaskById(Guid id)
     {
-        var task = await _context.Tasks
+        var task = await _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
             .Include(t => t.Personnel)
@@ -137,7 +137,7 @@ public class TasksController : ControllerBase
             IssuedAt = DateTime.UtcNow
         };
 
-        _context.Tasks.Add(task);
+        _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task.ToDto());
@@ -150,7 +150,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> UpdateTask(Guid id, [FromBody] UpdateTaskRequestDto request)
     {
-        var task = await _context.Tasks.FindAsync(id);
+        var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
@@ -182,7 +182,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> IssueTask(Guid id)
     {
-        var task = await _context.Tasks.FindAsync(id);
+        var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
@@ -200,7 +200,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Adjuster}")]
     public async Task<IActionResult> StartTask(Guid id)
     {
-        var task = await _context.Tasks.FindAsync(id);
+        var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
@@ -219,7 +219,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Adjuster}")]
     public async Task<IActionResult> CompleteSetup(Guid id)
     {
-        var task = await _context.Tasks.FindAsync(id);
+        var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
@@ -238,7 +238,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Adjuster}")]
     public async Task<IActionResult> CancelSetup(Guid id)
     {
-        var task = await _context.Tasks.FindAsync(id);
+        var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
@@ -257,7 +257,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Adjuster}")]
     public async Task<IActionResult> VerifyMold(Guid id)
     {
-        var task = await _context.Tasks.FindAsync(id);
+        var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
@@ -275,7 +275,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Adjuster},{Roles.Manager}")]
     public async Task<IActionResult> CompleteTask(Guid id, [FromBody] CompleteTaskRequestDto request)
     {
-        var task = await _context.Tasks.FindAsync(id);
+        var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
@@ -294,7 +294,7 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Manager},{Roles.Admin}")]
     public async Task<IActionResult> CloseTask(Guid id, [FromBody] CloseTaskRequestDto? request = null)
     {
-        var task = await _context.Tasks.FindAsync(id);
+        var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 

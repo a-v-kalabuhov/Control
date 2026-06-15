@@ -19,5 +19,5 @@ public class Mold : BaseEntity
     // public int TotalCycles { get; set; } 
 
     // Navigation
-    public ICollection<ShiftTask> Tasks { get; set; } = new List<ShiftTask>();
+    public ICollection<ShiftTask> ShiftTasks { get; set; } = new List<ShiftTask>();
 }
