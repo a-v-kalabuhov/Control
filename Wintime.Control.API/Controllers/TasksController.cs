@@ -186,11 +186,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Draft)
-            return BadRequest("Задание не является черновиком");
-
-        task.Status = Core.Enums.TaskStatus.Issued;
-        task.IssuedAt = DateTime.UtcNow;
+        task.Issue();
 
         await _context.SaveChangesAsync();
 
@@ -208,11 +204,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Issued)
-            return BadRequest("Задание не в статусе «Выдано»");
-
-        task.Status = Core.Enums.TaskStatus.Setup;
-        task.SetupStartedAt = DateTime.UtcNow;
+        task.StartSetup();
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "manual");
@@ -231,11 +223,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Setup)
-            return BadRequest("Задание не в статусе «Наладка»");
-
-        task.Status = Core.Enums.TaskStatus.InProgress;
-        task.StartedAt = DateTime.UtcNow;
+        task.CompleteSetup();
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "auto");
@@ -254,12 +242,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Setup)
-            return BadRequest("Задание не в статусе «Наладка»");
-
-        task.Status = Core.Enums.TaskStatus.Issued;
-        task.SetupStartedAt = null;
-        task.MoldVerifiedAt = null;
+        task.CancelSetup();
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "idle");
@@ -278,10 +261,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.Setup)
-            return BadRequest("Задание не в статусе «Наладка»");
-
-        task.MoldVerifiedAt = DateTime.UtcNow;
+        task.VerifyMold();
 
         await _context.SaveChangesAsync();
 
@@ -299,17 +279,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (task.Status != Core.Enums.TaskStatus.InProgress)
-            return BadRequest("Задание не в работе");
-
-        if (request.ActualQuantity.HasValue)
-            task.ActualQuantity = request.ActualQuantity.Value;
-        
-        if (task.ActualQuantity != task.PlanQuantity && request.CompletionReason != null)
-            task.CloseReason = request.CompletionReason;
-
-        task.Status = Core.Enums.TaskStatus.Completed;
-        task.CompletedAt = DateTime.UtcNow;
+        task.Complete(request.ActualQuantity, request.CompletionReason);
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "idle");
@@ -328,11 +298,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (request?.CloseReason != null)
-            task.CloseReason = request.CloseReason;
-
-        task.Status = Core.Enums.TaskStatus.Closed;
-        task.ClosedAt = DateTime.UtcNow;
+        task.Close(request?.CloseReason);
 
         await _context.SaveChangesAsync();
 

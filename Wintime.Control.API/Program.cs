@@ -100,6 +100,10 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddHealthChecks();
 
+// Маппинг доменных исключений (DomainException) в HTTP 400
+builder.Services.AddExceptionHandler<Wintime.Control.API.ExceptionHandling.DomainExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 // Controllers
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -186,6 +190,8 @@ builder.Services.AddHostedService<MqttBackgroundService>();
 var app = builder.Build();
 
 // Pipeline
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
