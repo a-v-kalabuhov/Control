@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Wintime.Control.Core.DTOs.Task;
+using Wintime.Control.Core.DTOs.Tasks;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Interfaces;

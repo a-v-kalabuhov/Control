@@ -11,7 +11,6 @@ using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Settings;
-using Wintime.Control.Infrastructure.Mqtt;
 
 namespace Wintime.Control.Infrastructure.MQTT;
 

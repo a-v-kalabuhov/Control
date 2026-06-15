@@ -1,5 +1,4 @@
 using Wintime.Control.Infrastructure.Data;
-using Wintime.Control.Infrastructure.Reports;
 using Wintime.Control.Core.DTOs.Report;
 using Wintime.Control.Core.Enums;
 using Microsoft.Extensions.Logging;
@@ -7,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.Entities;
 using ClosedXML.Excel;
 
-namespace Wintime.Control.Core.Services.Reports;
+namespace Wintime.Control.Infrastructure.Reports;
 
 public class ReportService : IReportService
 {
@@ -425,7 +424,7 @@ public class ReportService : IReportService
             foreach (var person in personnel)
             {
                 var tasks = await _context.Tasks
-                    .Where(t => t.PersonnelId == person.Id && t.StartedAt >= dateFromUtc && t.StartedAt < periodEnd && t.Status >= Enums.TaskStatus.Completed)
+                    .Where(t => t.PersonnelId == person.Id && t.StartedAt >= dateFromUtc && t.StartedAt < periodEnd && t.Status >= Wintime.Control.Core.Enums.TaskStatus.Completed)
                     .ToListAsync(ct);
 
                 var completedTasks = tasks.Count;
@@ -557,7 +556,7 @@ public class ReportService : IReportService
                 .Where(t => personnelIds.Contains(t.PersonnelId!)
                          && t.StartedAt >= dateFromUtc
                          && t.StartedAt < periodEnd
-                         && t.Status >= Enums.TaskStatus.Completed)
+                         && t.Status >= Wintime.Control.Core.Enums.TaskStatus.Completed)
                 .Select(t => new
                 {
                     t.PersonnelId,
