@@ -58,7 +58,7 @@ public sealed class MemoryRefreshTokenStore : IRefreshTokenStore
         foreach (var kv in _tokensByHash)
         {
             if (kv.Value.UserId == userId && kv.Value.RevokedAtUtc is null)
-                _tokensByHash.TryUpdate(kv.Key, kv.Value with { RevokedAtUtc: nowUtc }, kv.Value);
+                _tokensByHash.TryUpdate(kv.Key, kv.Value with { RevokedAtUtc = nowUtc }, kv.Value);
         }
     }
 
