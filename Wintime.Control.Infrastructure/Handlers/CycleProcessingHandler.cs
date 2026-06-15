@@ -95,6 +95,14 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             if (isSuccessful && activeTask is not null)
             {
                 activeTask.ActualQuantity += activeTask.Mold.Cavities;
+                // Расход материала считается по количеству гнёзд.
+                // Вес детали умножаем на колиество гнёзд.
+                // Кроме того на каждый цикл добавляем массу литника.
+                // В пресс-форме один литник,
+                // поэтому он заполняется при каждом цикле, 
+                // и пластик из него удаляется при извлечении готовой продукции при завершении цикла.
+                // Если пластик не извлекается из литника, 
+                // то в параметрах пресс-формы вес литника указывается как 0.
                 activeTask.ActualMaterialWeightGrams +=
                     activeTask.Mold.Cavities * activeTask.Mold.PartWeightGrams
                     + activeTask.Mold.RunnerWeightGrams;

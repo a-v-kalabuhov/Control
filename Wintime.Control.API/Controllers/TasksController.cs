@@ -58,32 +58,7 @@ public class TasksController : ControllerBase
 
         var tasks = await query.ToListAsync();
 
-        var dtos = tasks.Select(t => new TaskDto
-        {
-            Id = t.Id,
-            ImmId = t.ImmId,
-            ImmName = t.Imm.Name,
-            MoldId = t.MoldId,
-            MoldName = t.Mold.Name,
-            PersonnelId = t.PersonnelId,
-            PersonnelName = t.Personnel?.FullName,
-            PlanQuantity = t.PlanQuantity,
-            ActualQuantity = t.ActualQuantity,
-            ActualMaterialWeightGrams = t.ActualMaterialWeightGrams,
-            ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
-            Status = t.Status,
-            PlannedDate = t.PlannedDate,
-            IssuedAt = t.IssuedAt,
-            SetupStartedAt = t.SetupStartedAt,
-            MoldVerifiedAt = t.MoldVerifiedAt,
-            StartedAt = t.StartedAt,
-            CompletedAt = t.CompletedAt,
-            ClosedAt = t.ClosedAt,
-            CloseReason = t.CloseReason,
-            Note = t.Note,
-            CreatedAt = t.CreatedAt,
-            UpdatedAt = t.UpdatedAt
-        }).ToList();
+        var dtos = tasks.Select(t => t.ToDto()).ToList();
 
         return Ok(dtos);
     }
@@ -113,32 +88,7 @@ public class TasksController : ControllerBase
 
         var tasks = await query.ToListAsync();
 
-        var dtos = tasks.Select(t => new TaskDto
-        {
-            Id = t.Id,
-            ImmId = t.ImmId,
-            ImmName = t.Imm.Name,
-            MoldId = t.MoldId,
-            MoldName = t.Mold.Name,
-            PersonnelId = t.PersonnelId,
-            PersonnelName = t.Personnel?.FullName,
-            PlanQuantity = t.PlanQuantity,
-            ActualQuantity = t.ActualQuantity,
-            ActualMaterialWeightGrams = t.ActualMaterialWeightGrams,
-            ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
-            Status = t.Status,
-            PlannedDate = t.PlannedDate,
-            IssuedAt = t.IssuedAt,
-            SetupStartedAt = t.SetupStartedAt,
-            MoldVerifiedAt = t.MoldVerifiedAt,
-            StartedAt = t.StartedAt,
-            CompletedAt = t.CompletedAt,
-            ClosedAt = t.ClosedAt,
-            CloseReason = t.CloseReason,
-            Note = t.Note,
-            CreatedAt = t.CreatedAt,
-            UpdatedAt = t.UpdatedAt
-        }).ToList();
+        var dtos = tasks.Select(t => t.ToDto()).ToList();
 
         return Ok(dtos);
     }
@@ -159,34 +109,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        var dto = new TaskDto
-        {
-            Id = task.Id,
-            ImmId = task.ImmId,
-            ImmName = task.Imm.Name,
-            MoldId = task.MoldId,
-            MoldName = task.Mold.Name,
-            PersonnelId = task.PersonnelId,
-            PersonnelName = task.Personnel?.FullName,
-            PlanQuantity = task.PlanQuantity,
-            ActualQuantity = task.ActualQuantity,
-            ActualMaterialWeightGrams = task.ActualMaterialWeightGrams,
-            ProgressPercent = task.PlanQuantity > 0 ? (decimal)task.ActualQuantity / task.PlanQuantity * 100 : 0,
-            Status = task.Status,
-            PlannedDate = task.PlannedDate,
-            IssuedAt = task.IssuedAt,
-            SetupStartedAt = task.SetupStartedAt,
-            MoldVerifiedAt = task.MoldVerifiedAt,
-            StartedAt = task.StartedAt,
-            CompletedAt = task.CompletedAt,
-            ClosedAt = task.ClosedAt,
-            CloseReason = task.CloseReason,
-            Note = task.Note,
-            CreatedAt = task.CreatedAt,
-            UpdatedAt = task.UpdatedAt
-        };
-
-        return Ok(dto);
+        return Ok(task.ToDto());
     }
 
     /// <summary>
@@ -217,22 +140,7 @@ public class TasksController : ControllerBase
         _context.Tasks.Add(task);
         await _context.SaveChangesAsync();
 
-        var dto = new TaskDto
-        {
-            Id = task.Id,
-            ImmId = task.ImmId,
-            MoldId = task.MoldId,
-            PersonnelId = task.PersonnelId,
-            PlanQuantity = task.PlanQuantity,
-            ActualQuantity = task.ActualQuantity,
-            ProgressPercent = 0,
-            Status = task.Status,
-            PlannedDate = task.PlannedDate,
-            IssuedAt = task.IssuedAt,
-            Note = task.Note
-        };
-
-        return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, dto);
+        return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task.ToDto());
     }
 
     /// <summary>
