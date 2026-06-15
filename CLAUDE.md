@@ -150,6 +150,17 @@ X-Api-Key: {ConnectorApiKey}
 
 There are no test projects. When adding tests, use xUnit for .NET and Vitest for the frontend.
 
+## Architecture Decision Records (ADR)
+
+Архитектурные решения фиксируются в [`docs/adr/`](docs/adr/) в формате MADR (см.
+[`docs/adr/README.md`](docs/adr/README.md)). ADR хранят *почему* решили так и какие
+альтернативы отвергли; `CLAUDE.md` хранит правило-итог (*как писать*), git — *что* изменилось.
+
+**Заводи новый ADR**, когда решение трудно откатить (схема БД, контракт API, выбор слоя),
+затрагивает несколько модулей/задаёт паттерн, либо имеет реальные отвергнутые альтернативы.
+Баг-фиксы и косметика — без ADR. Принятые ADR не редактируют по существу — пишут новый,
+заменяющий (`Superseded by`).
+
 ## Domain Rules
 
 ### IsActive — архивный флаг (мягкое удаление)
