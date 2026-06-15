@@ -96,14 +96,7 @@ public class TemplatesController : ControllerBase
         template.Author = request.Author ?? string.Empty;
         template.ConnectorType = request.ConnectorType;
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw;
-        }
+        await _context.SaveChangesAsync();
 
         _templateCache.Upsert(template);
 
