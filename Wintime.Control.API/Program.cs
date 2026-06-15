@@ -234,15 +234,9 @@ using (var scope = app.Services.CreateScope())
 
     var isDemoMode = builder.Configuration.GetValue<bool>("DemoMode");
 
-    // Роли создаются в любом режиме — они нужны как для демо-аккаунтов, так и для
-    // административной настройки пользователей в production.
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    string[] roleNames = { "Admin", "Manager", "Adjuster", "Observer", "Emulator" };
-    foreach (var roleName in roleNames)
-    {
-        if (!await roleManager.RoleExistsAsync(roleName))
-            await roleManager.CreateAsync(new IdentityRole(roleName));
-    }
+    // Единственный источник правды по роли — поле User.Role (enum). Identity-роли
+    // (AspNetRoles/AspNetUserRoles) больше не используются: авторизация строится из
+    // JWT-клейма "role", который берётся из User.Role. См. ADR-0004.
 
     // Демо-аккаунты создаются ТОЛЬКО при DemoMode=true.
     // Их пароли публичны (отображаются на экране входа демо-версии) и имеют полные
@@ -255,10 +249,10 @@ using (var scope = app.Services.CreateScope())
 
         var seedUsers = new[]
         {
-            new { UserName = "admin",    Email = "admin@control.local",    FullName = "Администратор Системы", Role = UserRole.Admin,    RoleName = "Admin",    Password = "Admin123!"    },
-            new { UserName = "manager",  Email = "manager@control.local",  FullName = "Начальник цеха",        Role = UserRole.Manager,  RoleName = "Manager",  Password = "Manager123!"  },
-            new { UserName = "adjuster", Email = "adjuster@control.local", FullName = "Наладчик Тестовый",    Role = UserRole.Adjuster, RoleName = "Adjuster", Password = "Adjuster123!" },
-            new { UserName = "emulator", Email = "emulator@control.local", FullName = "Эмулятор ТПА",         Role = UserRole.Emulator, RoleName = "Emulator", Password = "Emulator123!" },
+            new { UserName = "admin",    Email = "admin@control.local",    FullName = "Администратор Системы", Role = UserRole.Admin,    Password = "Admin123!"    },
+            new { UserName = "manager",  Email = "manager@control.local",  FullName = "Начальник цеха",        Role = UserRole.Manager,  Password = "Manager123!"  },
+            new { UserName = "adjuster", Email = "adjuster@control.local", FullName = "Наладчик Тестовый",    Role = UserRole.Adjuster, Password = "Adjuster123!" },
+            new { UserName = "emulator", Email = "emulator@control.local", FullName = "Эмулятор ТПА",         Role = UserRole.Emulator, Password = "Emulator123!" },
         };
 
         foreach (var seed in seedUsers)
@@ -276,12 +270,47 @@ using (var scope = app.Services.CreateScope())
             };
 
             await userManager.CreateAsync(user, seed.Password);
-            await userManager.AddToRoleAsync(user, seed.RoleName);
-            Log.Information("Demo user created: {UserName} ({Role})", seed.UserName, seed.RoleName);
+            Log.Information("Demo user created: {UserName} ({Role})", seed.UserName, seed.Role);
         }
 
         Log.Warning("DemoMode is ON: public demo accounts with full privileges are active. " +
                     "Do NOT use this configuration in production.");
+    }
+    else
+    {
+        // Production: гарантируем наличие хотя бы одного администратора. Пароль —
+        // только из конфигурации/секрета (Bootstrap:AdminPassword), никогда из
+        // исходников. Создаём идемпотентно: лишь если ни одного админа ещё нет.
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        if (!await userManager.Users.AnyAsync(u => u.Role == UserRole.Admin))
+        {
+            var adminLogin = builder.Configuration["Bootstrap:AdminLogin"] ?? "admin";
+            var adminPassword = builder.Configuration["Bootstrap:AdminPassword"];
+
+            if (string.IsNullOrWhiteSpace(adminPassword))
+            {
+                Log.Warning("No administrator exists and Bootstrap:AdminPassword is not configured. " +
+                            "Set Bootstrap__AdminPassword (env/secret) to create the initial administrator.");
+            }
+            else
+            {
+                var admin = new User
+                {
+                    UserName = adminLogin,
+                    Email = $"{adminLogin}@control.local",
+                    FullName = "Администратор",
+                    Role = UserRole.Admin,
+                    IsActive = true
+                };
+
+                var result = await userManager.CreateAsync(admin, adminPassword);
+                if (result.Succeeded)
+                    Log.Information("Bootstrap administrator '{Login}' created.", adminLogin);
+                else
+                    Log.Error("Failed to create bootstrap administrator: {Errors}",
+                        string.Join("; ", result.Errors.Select(e => e.Description)));
+            }
+        }
     }
 
     // Дефолтная смена 08:00–17:00, перерыв 12:00–13:00

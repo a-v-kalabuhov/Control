@@ -163,6 +163,15 @@ There are no test projects. When adding tests, use xUnit for .NET and Vitest for
 
 ## Domain Rules
 
+### Роль пользователя — только User.Role
+
+Единственный источник правды по роли — поле `User.Role` (enum `UserRole`). Одна роль на
+пользователя. JWT-клейм `"role"` строится из `User.Role`, авторизация (`[Authorize(Roles=…)]`,
+политики) опирается на него. Identity-роли (`AspNetRoles`/`AspNetUserRoles`) **не используются** —
+никогда не вызывай `AddToRoleAsync`/`RemoveFromRolesAsync`/`GetRolesAsync` для прав доступа.
+Первый админ в production создаётся при старте из секрета `Bootstrap:AdminPassword`
+(env `Bootstrap__AdminPassword`), не из исходников. См. [ADR-0004](docs/adr/0004-single-role-source-user-role.md).
+
 ### IsActive — архивный флаг (мягкое удаление)
 
 `IsActive` на сущностях `Imm`, `Mold`, `User` — это флаг вывода из оборота, **не** признак текущей активности.
