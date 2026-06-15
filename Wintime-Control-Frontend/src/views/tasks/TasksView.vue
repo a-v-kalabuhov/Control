@@ -426,21 +426,24 @@ const openDetail = (task) => {
 
 const completeTask = async (task) => {
   try {
-    await ElMessageBox.prompt('Укажите фактическое количество (если отличается от плана)', 'Завершение задания', {
-      inputPattern: /^\d+$/,
-      inputErrorMessage: 'Введите число'
-    })
+    const { value: qtyValue } = await ElMessageBox.prompt(
+      'Укажите фактическое количество (если отличается от плана)',
+      'Завершение задания',
+      { inputPattern: /^\d+$/, inputErrorMessage: 'Введите число' }
+    )
+    const actualQuantity = parseInt(qtyValue)
 
-    const { value } = await ElMessageBox.prompt('Причина (если план не выполнен)', 'Причина', {
-      inputPattern: /.+/,
-      inputErrorMessage: 'Введите причину'
-    })
+    let completionReason = undefined
+    if (actualQuantity !== task.planQuantity) {
+      const { value: reason } = await ElMessageBox.prompt(
+        'Укажите причину отклонения от плана',
+        'Причина отклонения',
+        { inputPattern: /.+/, inputErrorMessage: 'Введите причину' }
+      )
+      completionReason = reason
+    }
 
-    await tasksStore.completeTask(task.id, {
-      actualQuantity: parseInt(value),
-      completionReason: value
-    })
-    
+    await tasksStore.completeTask(task.id, { actualQuantity, completionReason })
     detailModalVisible.value = false
   } catch (error) {
     if (error !== 'cancel') {

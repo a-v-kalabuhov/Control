@@ -35,9 +35,18 @@
             <span>Задания</span>
           </el-menu-item>
 
+          <!-- Журнал простоев (для Manager, Admin) -->
+          <el-menu-item
+            v-if="canAccess(['Admin', 'Manager'])"
+            index="/downtimes"
+          >
+            <el-icon><Timer /></el-icon>
+            <span>Журнал простоев</span>
+          </el-menu-item>
+
           <!-- Отчёты (для Manager, Admin) -->
-          <el-menu-item 
-            v-if="canAccess(['Admin', 'Manager'])" 
+          <el-menu-item
+            v-if="canAccess(['Admin', 'Manager'])"
             index="/reports"
           >
             <el-icon><DataLine /></el-icon>
@@ -174,7 +183,8 @@ const pageTitle = computed(() => {
     '/dictionary/molds': 'Справочник пресс-форм',
     '/dictionary/personnel': 'Справочник персонала',
     '/dictionary/shifts': 'Расписание смен',
-    '/dictionary/downtime-reasons': 'Причины простоев'
+    '/dictionary/downtime-reasons': 'Причины простоев',
+    '/downtimes': 'Журнал простоев'
   }
   return titles[route.path] || 'CONTROL'
 })

@@ -140,6 +140,9 @@ public class DowntimeController : ControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null)
     {
+        if (from.HasValue) from = DateTime.SpecifyKind(from.Value, DateTimeKind.Utc);
+        if (to.HasValue)   to   = DateTime.SpecifyKind(to.Value,   DateTimeKind.Utc);
+
         var query = _context.Events
             .Include(e => e.Imm)
             .Include(e => e.Reason)
@@ -154,12 +157,13 @@ public class DowntimeController : ControllerBase
         if (to.HasValue)
             query = query.Where(e => e.StartTime <= to.Value);
 
-        var events = await query.ToListAsync();
+        var events = await query.OrderByDescending(e => e.StartTime).ToListAsync();
 
         var dtos = events.Select(e => new EventDto
         {
             Id = e.Id,
             ImmId = e.ImmId,
+            ImmName = e.Imm.Name,
             EventType = e.EventType.ToString(),
             ReasonId = e.ReasonId,
             ReasonName = e.ReasonName,
@@ -172,5 +176,44 @@ public class DowntimeController : ControllerBase
         }).ToList();
 
         return Ok(dtos);
+    }
+
+    /// <summary>
+    /// Изменить причину простоя
+    /// </summary>
+    [HttpPatch("events/{id}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<EventDto>> UpdateDowntimeEvent(Guid id, [FromBody] UpdateDowntimeEventRequestDto request)
+    {
+        var evt = await _context.Events
+            .Include(e => e.Imm)
+            .FirstOrDefaultAsync(e => e.Id == id);
+
+        if (evt == null)
+            return NotFound("Событие не найдено");
+
+        var reason = await _context.DowntimeReasons.FindAsync(request.ReasonId);
+        if (reason == null)
+            return NotFound("Причина простоя не найдена");
+
+        evt.ReasonId = reason.Id;
+        evt.ReasonName = reason.Name;
+        await _context.SaveChangesAsync();
+
+        return Ok(new EventDto
+        {
+            Id = evt.Id,
+            ImmId = evt.ImmId,
+            ImmName = evt.Imm.Name,
+            EventType = evt.EventType.ToString(),
+            ReasonId = evt.ReasonId,
+            ReasonName = evt.ReasonName,
+            ErrorCode = evt.ErrorCode,
+            ErrorMessage = evt.ErrorMessage,
+            StartTime = evt.StartTime,
+            EndTime = evt.EndTime,
+            DurationSeconds = evt.DurationSeconds,
+            PersonnelId = evt.PersonnelId
+        });
     }
 }

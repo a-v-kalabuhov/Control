@@ -26,9 +26,18 @@ const routes = [
         path: 'tasks',
         name: 'Tasks',
         component: () => import('@/views/tasks/TasksView.vue'),
-        meta: { 
+        meta: {
           roles: ['Admin', 'Manager'],
           title: 'Диспетчерская'
+        }
+      },
+      {
+        path: 'downtimes',
+        name: 'DowntimeLog',
+        component: () => import('@/views/downtimes/DowntimeLogView.vue'),
+        meta: {
+          roles: ['Admin', 'Manager'],
+          title: 'Журнал простоев'
         }
       },
       {
@@ -127,6 +136,12 @@ const routes = [
         name: 'MobileScanner',
         component: () => import('@/views/mobile/MobileScannerView.vue'),
         meta: { roles: ['Adjuster'], title: 'Сканер' }
+      },
+      {
+        path: 'downtimes',
+        name: 'MobileDowntimes',
+        component: () => import('@/views/mobile/MobileDowntimeView.vue'),
+        meta: { roles: ['Adjuster'], title: 'Простои' }
       }
     ]
 },  

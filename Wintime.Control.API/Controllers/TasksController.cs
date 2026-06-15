@@ -397,7 +397,7 @@ public class TasksController : ControllerBase
         if (request.ActualQuantity.HasValue)
             task.ActualQuantity = request.ActualQuantity.Value;
         
-        if (task.ActualQuantity < task.PlanQuantity && request.CompletionReason != null)
+        if (task.ActualQuantity != task.PlanQuantity && request.CompletionReason != null)
             task.CloseReason = request.CompletionReason;
 
         task.Status = Core.Enums.TaskStatus.Completed;

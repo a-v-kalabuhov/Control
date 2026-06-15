@@ -43,17 +43,17 @@ export const mobileApi = {
 
   // Начать простой
   startDowntime(data) {
-    return apiClient.post('/events/downtime/start', data)
+    return apiClient.post('/downtime/events/downtime/start', data)
   },
 
   // Завершить простой
   stopDowntime(data) {
-    return apiClient.post('/events/downtime/stop', data)
+    return apiClient.post('/downtime/events/downtime/stop', data)
   },
 
   // Получить причины простоев
   getDowntimeReasons(params) {
-    return apiClient.get('/downtime-reasons', { params })
+    return apiClient.get('/downtime/reasons', { params })
   },
 
   // Проверить QR-код (валидация)
