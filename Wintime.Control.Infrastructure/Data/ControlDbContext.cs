@@ -14,7 +14,7 @@ public class ControlDbContext : IdentityDbContext<User>
     // DbSets (Таблицы)
     public DbSet<Imm> Imms { get; set; }
     public DbSet<Mold> Molds { get; set; }
-    public DbSet<Core.Entities.ShiftTask> Tasks { get; set; }
+    public DbSet<Core.Entities.ShiftTask> ShiftTasks { get; set; }
     public DbSet<Template> Templates { get; set; }
     public DbSet<Event> Events { get; set; }
     public DbSet<DowntimeReason> DowntimeReasons { get; set; }
@@ -60,8 +60,8 @@ public class ControlDbContext : IdentityDbContext<User>
         builder.Entity<Wintime.Control.Core.Entities.ShiftTask>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasOne(e => e.Imm).WithMany(i => i.Tasks).HasForeignKey(e => e.ImmId);
-            entity.HasOne(e => e.Mold).WithMany(m => m.Tasks).HasForeignKey(e => e.MoldId);
+            entity.HasOne(e => e.Imm).WithMany(i => i.ShiftTasks).HasForeignKey(e => e.ImmId);
+            entity.HasOne(e => e.Mold).WithMany(m => m.ShiftTasks).HasForeignKey(e => e.MoldId);
             entity.HasOne(e => e.Personnel).WithMany(p => p.AssignedTasks).HasForeignKey(e => e.PersonnelId).OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -84,7 +84,7 @@ public class ControlDbContext : IdentityDbContext<User>
         // Настройка имен таблиц (опционально, чтобы были во множественном числе)
         builder.Entity<Imm>().ToTable("Imms");
         builder.Entity<Mold>().ToTable("Molds");
-        builder.Entity<Wintime.Control.Core.Entities.ShiftTask>().ToTable("Tasks");
+        builder.Entity<Wintime.Control.Core.Entities.ShiftTask>().ToTable("ShiftTasks");
         builder.Entity<User>().ToTable("Users");
 
         // Конфигурация ImmCycle

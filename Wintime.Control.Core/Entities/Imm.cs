@@ -17,7 +17,7 @@ public class Imm : BaseEntity
     public bool IsActive { get; set; } = true;
     // Navigation
     public Template Template { get; set; } = null!;
-    public ICollection<ShiftTask> Tasks { get; set; } = new List<ShiftTask>();
+    public ICollection<ShiftTask> ShiftTasks { get; set; } = new List<ShiftTask>();
     public ICollection<Event> Events { get; set; } = new List<Event>();
     public ICollection<Telemetry> Telemetry { get; set; } = new List<Telemetry>();
 }

@@ -58,7 +58,7 @@ public class CycleProcessingHandlerTests
             PlanQuantity = planQuantity,
             Status = EntityTaskStatus.InProgress
         };
-        db.Tasks.Add(task);
+        db.ShiftTasks.Add(task);
         db.SaveChanges();
         return (mold, task);
     }
@@ -88,7 +88,7 @@ public class CycleProcessingHandlerTests
 
         await sut.ProcessAsync(MakeCycleContext(immId, counter: 5, mode: "auto"));
 
-        db.Tasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(25m); // 2*10 + 5
+        db.ShiftTasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(25m); // 2*10 + 5
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class CycleProcessingHandlerTests
         _tracker.Get(immId).Returns(ActiveCycleState(lastCounter: 5));
         await sut.ProcessAsync(MakeCycleContext(immId, counter: 6, mode: "auto"));
 
-        db.Tasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(50m); // 2 cycles × 25
+        db.ShiftTasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(50m); // 2 cycles × 25
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class CycleProcessingHandlerTests
 
         await sut.ProcessAsync(MakeCycleContext(immId, counter: 5, mode: "alarm"));
 
-        db.Tasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(0m);
+        db.ShiftTasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(0m);
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class CycleProcessingHandlerTests
 
         var cycle = db.ImmCycles.Single();
         cycle.Cavities.Should().Be(4);
-        db.Tasks.Find(task.Id)!.ActualQuantity.Should().Be(4);
+        db.ShiftTasks.Find(task.Id)!.ActualQuantity.Should().Be(4);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class CycleProcessingHandlerTests
 
         await sut.ProcessAsync(MakeCycleContext(immId, counter: 5, mode: "ALARM"));
 
-        db.Tasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(0m);
+        db.ShiftTasks.Find(task.Id)!.ActualMaterialWeightGrams.Should().Be(0m);
     }
 
     [Fact]

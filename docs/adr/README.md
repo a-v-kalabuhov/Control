@@ -35,3 +35,5 @@
 - [ADR-0001](0001-imm-cycle-cavities-snapshot.md) — Снапшот гнёздности в `ImmCycle.Cavities`
 - [ADR-0002](0002-task-state-machine-in-entity.md) — Конечный автомат задания в сущности `ShiftTask`
 - [ADR-0003](0003-domain-exception-to-http-400.md) — `DomainException` → HTTP 400 через `IExceptionHandler`
+- [ADR-0004](0004-single-role-source-user-role.md) — Единственный источник роли — `User.Role`
+- [ADR-0005](0005-cov-filter-variant-b-hold-last-value.md) — COV-фильтрация телеметрии: Вариант B (удержание последнего значения)

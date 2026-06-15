@@ -55,27 +55,27 @@ public class ImmController : ControllerBase
                 IsActive = i.IsActive,
                 CreatedAt = i.CreatedAt,
                 CommissioningDate = i.CommissioningDate,
-                CurrentTaskId = i.Tasks
+                CurrentTaskId = i.ShiftTasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => (Guid?)t.Id)
                     .FirstOrDefault(),
-                CurrentMoldName = i.Tasks
+                CurrentMoldName = i.ShiftTasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => t.Mold.Name)
                     .FirstOrDefault(),
-                PersonnelName = i.Tasks
+                PersonnelName = i.ShiftTasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => t.Personnel != null ? t.Personnel.FullName : null)
                     .FirstOrDefault(),
-                PlanQuantity = i.Tasks
+                PlanQuantity = i.ShiftTasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => (int?)t.PlanQuantity)
                     .FirstOrDefault(),
-                ActualQuantity = i.Tasks
+                ActualQuantity = i.ShiftTasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => (int?)t.ActualQuantity)
                     .FirstOrDefault(),
-                TaskStartedAt = i.Tasks
+                TaskStartedAt = i.ShiftTasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => t.StartedAt)
                     .FirstOrDefault()
@@ -236,7 +236,7 @@ public class ImmController : ControllerBase
         if (imm == null)
             return NotFound();
 
-        var currentTask = await _context.Tasks
+        var currentTask = await _context.ShiftTasks
             .FirstOrDefaultAsync(t => t.ImmId == id &&
                 (t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup));
 

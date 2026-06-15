@@ -77,7 +77,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             var duration = (int)(currentTime - cycleStart).TotalSeconds;
 
             // Получить активное задание и пресс-форму
-            var activeTask = await _db.Tasks
+            var activeTask = await _db.ShiftTasks
                 .Include(t => t.Mold)
                 .FirstOrDefaultAsync(t => t.ImmId == immId && t.Status == EntityTaskStatus.InProgress, ct);
 
