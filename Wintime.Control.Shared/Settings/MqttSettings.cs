@@ -16,6 +16,4 @@ public class MqttSettings
 public class MqttTopics
 {
     public string Telemetry { get; set; } = "control/imm/+/telemetry";
-    public string Events { get; set; } = "control/imm/+/events";
-    public string Status { get; set; } = "control/imm/+/status";
 }
