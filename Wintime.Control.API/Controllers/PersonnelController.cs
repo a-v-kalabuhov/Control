@@ -54,6 +54,31 @@ public class PersonnelController : ControllerBase
     }
 
     /// <summary>
+    /// Детали сотрудника по ID
+    /// </summary>
+    [HttpGet("{id}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<PersonnelDto>> GetPersonnelById(string id)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null)
+            return NotFound();
+
+        var dto = new PersonnelDto
+        {
+            Id = user.Id,
+            EmployeeId = user.EmployeeId,
+            FullName = user.FullName,
+            Qualification = user.Qualification,
+            Login = user.UserName,
+            Role = user.Role.ToString(),
+            IsActive = user.IsActive
+        };
+
+        return Ok(dto);
+    }
+
+    /// <summary>
     /// Создать запись персонала
     /// </summary>
     [HttpPost]
