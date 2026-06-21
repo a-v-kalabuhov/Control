@@ -15,18 +15,15 @@ public class EmulationOrchestrator
     private readonly ConcurrentDictionary<string, ImmEmulationInstance> _instances = new();
     private readonly IEmulatorMqttService _mqtt;
     private readonly IPresetStorage _presetStorage;
-    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<EmulationOrchestrator> _logger;
 
     public EmulationOrchestrator(
             IEmulatorMqttService mqtt,
             IPresetStorage presetStorage,
-            ILoggerFactory loggerFactory,
             ILogger<EmulationOrchestrator> logger)
     {
         _mqtt = mqtt;
         _presetStorage = presetStorage;
-        _loggerFactory = loggerFactory;
         _logger = logger;
     }
 
@@ -35,8 +32,7 @@ public class EmulationOrchestrator
         if (_instances.ContainsKey(immId))
             await StopAsync(immId);
 
-        var instanceLogger = _loggerFactory.CreateLogger<ImmEmulationInstance>();
-        var instance = new ImmEmulationInstance(immId, request, _mqtt, instanceLogger, initialMode);
+        var instance = new ImmEmulationInstance(immId, request, _mqtt, initialMode);
         _instances[immId] = instance;
         instance.Start();
         _logger.LogInformation("Started emulation for {ImmId} in {Mode} mode", immId, initialMode);

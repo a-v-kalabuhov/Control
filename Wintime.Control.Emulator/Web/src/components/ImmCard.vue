@@ -14,6 +14,7 @@
 
     <div class="card-body">
       <div class="card-info">
+        <p><small>ID ТПА: {{ imm.id }}</small></p>
         <p><small>Инв. номер: {{ imm.inventoryNumber || '—' }}</small></p>
         <p><small>Модель: {{ imm.model || '—' }}</small></p>
         <div class="message-log">
