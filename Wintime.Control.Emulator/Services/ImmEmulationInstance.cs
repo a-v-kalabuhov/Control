@@ -13,7 +13,6 @@ public class ImmEmulationInstance : IAsyncDisposable
     private readonly string _immId;
     private readonly EmulationRequest _request;
     private readonly IEmulatorMqttService _mqtt;
-    private readonly ILogger<ImmEmulationInstance> _logger;
     private readonly CancellationTokenSource _cts = new();
     private readonly Dictionary<string, ISignalGenerator> _generators = [];
     private string? _cycleCounterSensorName;
@@ -40,13 +39,11 @@ public class ImmEmulationInstance : IAsyncDisposable
         string immId,
         EmulationRequest request,
         IEmulatorMqttService mqtt,
-        ILogger<ImmEmulationInstance> logger,
         InstanceMode initialMode = InstanceMode.Auto)
     {
         _immId = immId;
         _request = request;
         _mqtt = mqtt;
-        _logger = logger;
         _mode = initialMode;
 
         foreach (var cfg in request.SensorConfigs)
@@ -105,9 +102,12 @@ public class ImmEmulationInstance : IAsyncDisposable
     {
         var intervalMs = 60000 / Math.Max(_request.MessagesPerMinute, 1);
 
-        while (!ct.IsCancellationRequested)
+        // Отправка вынесена в очередь EmulatorMqttService и больше не бросает сетевых
+        // исключений — здесь остаётся только переключение между режимами и штатная
+        // остановка по CancellationToken.
+        try
         {
-            try
+            while (!ct.IsCancellationRequested)
             {
                 var currentMode = _mode;
 
@@ -116,16 +116,10 @@ public class ImmEmulationInstance : IAsyncDisposable
                 else
                     await RunFlatLoopAsync(currentMode, intervalMs, ct);
             }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Publish error for {ImmId}, retrying in 5s", _immId);
-                try { await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); }
-                catch (OperationCanceledException) { break; }
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            // штатная остановка
         }
     }
 

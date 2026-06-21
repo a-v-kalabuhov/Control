@@ -27,7 +27,9 @@ public class EmulatorController : ControllerBase
     [HttpPost("instances")]
     public async Task<IActionResult> Start([FromBody] EmulationRequest request)
     {
-        await _orchestrator.StartAsync(request.ImmId, request);
+        // Явный запуск из карточки проигрывает профайл — стартуем в Auto.
+        // (Массовый StartAllAsync поднимает инстансы в Idle намеренно.)
+        await _orchestrator.StartAsync(request.ImmId, request, InstanceMode.Auto);
         return Accepted(); // 202 - emulation request accepted and processing
     }
 
