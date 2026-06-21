@@ -22,14 +22,14 @@
             v-for="(seg, i) in statusSegments"
             :key="i"
             class="seg-block"
-            :style="{ width: segWidth(seg.changedAt, seg.endedAt), background: statusColor(seg.status) }"
+            :style="segStyle(seg)"
             :title="segTitle(seg)"
           ></div>
           <!-- Ещё не прошедшее время смены -->
           <div
-            v-if="futureWidth"
+            v-if="futureStyle"
             class="seg-future"
-            :style="{ width: futureWidth }"
+            :style="futureStyle"
             :title="`Ещё не наступило\n${formatTime(nowClamped)} — ${formatTime(shiftEnd)}`"
           ></div>
         </div>
@@ -93,14 +93,13 @@ const nowClamped = computed(() => {
 })
 const nowPct     = computed(() => toPct(nowClamped.value))
 const nowLabel   = computed(() => formatTime(nowClamped.value))
-const futureWidth = computed(() => {
-  const lastEnd = props.statusSegments.length
-    ? new Date(props.statusSegments[props.statusSegments.length - 1].endedAt ?? nowClamped.value)
-    : props.shiftStart
-  const effectiveLast = lastEnd > nowClamped.value ? nowClamped.value : lastEnd
-  if (effectiveLast >= props.shiftEnd) return null
-  const w = ((props.shiftEnd - effectiveLast) / shiftDur.value * 100).toFixed(3)
-  return w + '%'
+// Заштрихованный «хвост» смены, который ещё не наступил (от now до конца смены).
+// Позиционируется абсолютно, как и сегменты статусов.
+const futureStyle = computed(() => {
+  if (nowClamped.value >= props.shiftEnd) return null
+  const left  = ((nowClamped.value - props.shiftStart) / shiftDur.value * 100).toFixed(3)
+  const width = ((props.shiftEnd - nowClamped.value)   / shiftDur.value * 100).toFixed(3)
+  return { left: left + '%', width: width + '%' }
 })
 
 const timeTicks = computed(() => {
@@ -126,13 +125,21 @@ function toPct(date) {
   return (Math.max(0, Math.min(1, ms / shiftDur.value)) * 100).toFixed(3) + '%'
 }
 
-function segWidth(changedAt, endedAt) {
-  const start = new Date(changedAt)
-  const end   = endedAt ? new Date(endedAt) : nowClamped.value
+// Сегмент статуса позиционируется абсолютно по реальному времени (changedAt),
+// а не упаковкой flex'ом — иначе блоки «уезжают» к левому краю, если история
+// статусов начинается не с начала смены или в ней есть разрывы.
+function segStyle(seg) {
+  const start = new Date(seg.changedAt)
+  const end   = seg.endedAt ? new Date(seg.endedAt) : nowClamped.value
   const clampedStart = start < props.shiftStart ? props.shiftStart : start
   const clampedEnd   = end   > props.shiftEnd   ? props.shiftEnd   : end
-  const w = ((clampedEnd - clampedStart) / shiftDur.value * 100).toFixed(3)
-  return Math.max(0, w) + '%'
+  const left  = ((clampedStart - props.shiftStart) / shiftDur.value * 100).toFixed(3)
+  const width = ((clampedEnd   - clampedStart)     / shiftDur.value * 100).toFixed(3)
+  return {
+    left:       Math.max(0, left) + '%',
+    width:      Math.max(0, width) + '%',
+    background: statusColor(seg.status),
+  }
 }
 
 function taskStyle(task) {
@@ -234,14 +241,16 @@ function taskTitle(task) {
 
 /* Полоса статусов */
 .status-bar {
+  position: relative;
   height: 32px;
   background: #e5e7eb;
   border-radius: 6px;
-  display: flex;
   overflow: hidden;
 }
 
 .seg-block {
+  position: absolute;
+  top: 0;
   height: 100%;
   transition: filter 0.12s;
   cursor: default;
@@ -249,13 +258,14 @@ function taskTitle(task) {
 .seg-block:hover { filter: brightness(1.12); }
 
 .seg-future {
+  position: absolute;
+  top: 0;
   height: 100%;
   background: repeating-linear-gradient(
     45deg,
     #e5e7eb, #e5e7eb 4px,
     #f3f4f6 4px, #f3f4f6 8px
   );
-  flex: 1;
   cursor: default;
 }
 
