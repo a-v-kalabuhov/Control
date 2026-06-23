@@ -17,7 +17,7 @@ public class DowntimeDecisionTests
         var since = Now.AddSeconds(-200);
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Idle, since, Now, ActiveTaskStatus.InProgress, Started,
-            hasOpenAutoDowntime: false, thresholdSeconds: 120);
+            hasOpenAutoDowntime: false, hasOpenManualDowntime: false, thresholdSeconds: 120);
 
         r.Action.Should().Be(DowntimeAction.Open);
         r.At.Should().Be(since); // бэкдейт на начало не-Auto
@@ -29,7 +29,7 @@ public class DowntimeDecisionTests
         var since = Now.AddSeconds(-30);
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Idle, since, Now, ActiveTaskStatus.InProgress, Started,
-            false, 120);
+            false, false, 120);
 
         r.Action.Should().Be(DowntimeAction.None);
     }
@@ -42,7 +42,7 @@ public class DowntimeDecisionTests
         var since = Started.AddSeconds(-300);
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Idle, since, Now, ActiveTaskStatus.InProgress, Started,
-            false, 120);
+            false, false, 120);
 
         r.Action.Should().Be(DowntimeAction.Open);
         r.At.Should().Be(Started);
@@ -54,7 +54,7 @@ public class DowntimeDecisionTests
         var since = Now.AddSeconds(-200);
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Offline, since, Now, ActiveTaskStatus.InProgress, Started,
-            false, 120);
+            false, false, 120);
 
         r.Action.Should().Be(DowntimeAction.Open);
     }
@@ -65,7 +65,7 @@ public class DowntimeDecisionTests
         var since = Now.AddSeconds(-10);
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Auto, since, Now, ActiveTaskStatus.InProgress, Started,
-            hasOpenAutoDowntime: true, thresholdSeconds: 120);
+            hasOpenAutoDowntime: true, hasOpenManualDowntime: false, thresholdSeconds: 120);
 
         r.Action.Should().Be(DowntimeAction.Close);
         r.At.Should().Be(since);
@@ -77,7 +77,7 @@ public class DowntimeDecisionTests
         var since = Now.AddSeconds(-10);
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Idle, since, Now, ActiveTaskStatus.None, taskStartedAtUtc: null,
-            hasOpenAutoDowntime: true, thresholdSeconds: 120);
+            hasOpenAutoDowntime: true, hasOpenManualDowntime: false, thresholdSeconds: 120);
 
         r.Action.Should().Be(DowntimeAction.Close);
     }
@@ -88,7 +88,7 @@ public class DowntimeDecisionTests
         var since = Now.AddSeconds(-200);
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Idle, since, Now, ActiveTaskStatus.InProgress, Started,
-            hasOpenAutoDowntime: true, thresholdSeconds: 120);
+            hasOpenAutoDowntime: true, hasOpenManualDowntime: false, thresholdSeconds: 120);
 
         r.Action.Should().Be(DowntimeAction.None);
     }
@@ -98,8 +98,35 @@ public class DowntimeDecisionTests
     {
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Idle, Now.AddSeconds(-500), Now, ActiveTaskStatus.None, null,
-            false, 120);
+            false, false, 120);
 
         r.Action.Should().Be(DowntimeAction.None);
+    }
+
+    [Fact]
+    public void NonAuto_InProgress_PastThreshold_OpenManualExists_None()
+    {
+        // Открытый РУЧНОЙ простой уже есть — авто-простой не должен дублироваться.
+        var since = Now.AddSeconds(-200);
+        var r = DowntimeDecision.Evaluate(
+            ImmStatus.Idle, since, Now, ActiveTaskStatus.InProgress, Started,
+            hasOpenAutoDowntime: false, hasOpenManualDowntime: true, thresholdSeconds: 120);
+
+        r.Action.Should().Be(DowntimeAction.None);
+    }
+
+    [Fact]
+    public void TaskLeftInProgress_WhileStillDown_Closes_AtNow()
+    {
+        // Задание ушло из InProgress, пока ТПА всё ещё не в Auto — statusSinceUtc
+        // может быть РАНЬШЕ начала простоя (момент выхода из InProgress не в кеше статусов),
+        // поэтому закрывать нужно текущим моментом nowUtc, а не statusSinceUtc.
+        var since = Now.AddHours(-2);
+        var r = DowntimeDecision.Evaluate(
+            ImmStatus.Idle, since, Now, ActiveTaskStatus.None, taskStartedAtUtc: null,
+            hasOpenAutoDowntime: true, hasOpenManualDowntime: false, thresholdSeconds: 120);
+
+        r.Action.Should().Be(DowntimeAction.Close);
+        r.At.Should().Be(Now);
     }
 }

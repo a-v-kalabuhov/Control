@@ -21,17 +21,25 @@ public static class DowntimeDecision
         ActiveTaskStatus task,
         DateTime? taskStartedAtUtc,
         bool hasOpenAutoDowntime,
+        bool hasOpenManualDowntime,
         int thresholdSeconds)
     {
         bool isAuto = rawStatus == ImmStatus.Auto;
         bool productionActive = task == ActiveTaskStatus.InProgress;
 
-        // Закрытие: есть открытый авто-простой и производство возобновилось/прекратилось.
+        // Закрытие: только открытый АВТО-простой когда-либо закрывается воркером.
+        // Производство возобновилось (isAuto) -> закрываем в statusSinceUtc (момент возврата в Auto).
+        // Задание вышло из InProgress, пока всё ещё не в Auto (!productionActive) -> момент выхода
+        // не зафиксирован в кеше статусов, поэтому используем nowUtc (никогда не раньше начала простоя).
         if (hasOpenAutoDowntime && (isAuto || !productionActive))
-            return new DowntimeOutcome(DowntimeAction.Close, statusSinceUtc);
+        {
+            var endAt = isAuto ? statusSinceUtc : nowUtc;
+            return new DowntimeOutcome(DowntimeAction.Close, endAt);
+        }
 
-        // Открытие: производство идёт, статус не-Auto дольше порога, открытого простоя нет.
-        if (productionActive && !isAuto && !hasOpenAutoDowntime)
+        // Открытие: производство идёт, статус не-Auto дольше порога, и НЕТ открытого простоя
+        // ЛЮБОГО вида (ни авто, ни ручного).
+        if (productionActive && !isAuto && !hasOpenAutoDowntime && !hasOpenManualDowntime)
         {
             var start = taskStartedAtUtc.HasValue && taskStartedAtUtc.Value > statusSinceUtc
                 ? taskStartedAtUtc.Value

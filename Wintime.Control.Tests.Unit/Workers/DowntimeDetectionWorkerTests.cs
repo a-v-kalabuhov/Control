@@ -142,4 +142,37 @@ public class DowntimeDetectionWorkerTests
         db.ChangeTracker.Clear();
         db.Events.Single().EndTime.Should().BeNull(); // воркер не трогает ручной простой
     }
+
+    [Fact]
+    public async Task RunOnce_OpenManualDowntimeExists_DoesNotCreateDuplicateAutoDowntime()
+    {
+        var immId = Guid.NewGuid();
+        var (db, scopeFactory) = BuildDb();
+        db.Imms.Add(new Wintime.Control.Core.Entities.Imm { Id = immId, Name = "T", IsActive = true });
+        db.ShiftTasks.Add(new EntityTask
+        {
+            ImmId = immId, Status = EntityTaskStatus.InProgress,
+            StartedAt = DateTime.UtcNow.AddHours(-1), PlanQuantity = 100
+        });
+        db.Events.Add(new Wintime.Control.Core.Entities.Event
+        {
+            ImmId = immId, EventType = Wintime.Control.Core.Enums.EventType.Downtime,
+            StartTime = DateTime.UtcNow.AddMinutes(-5), EndTime = null, IsAuto = false // ручной, открыт
+        });
+        db.SaveChanges();
+
+        var statusCache = Substitute.For<IImmStatusCache>();
+        statusCache.GetAll().Returns(new List<ImmStatusEntry>
+        {
+            new(immId, ImmStatus.Idle, DateTime.UtcNow.AddSeconds(-200)) // не-Auto дольше порога
+        });
+
+        var worker = BuildWorker(scopeFactory, statusCache);
+        await worker.RunOnceAsync(CancellationToken.None);
+
+        db.ChangeTracker.Clear();
+        // Должен остаться только один (ручной) простой — никакого второго авто-простоя.
+        db.Events.Should().HaveCount(1);
+        db.Events.Single().IsAuto.Should().BeFalse();
+    }
 }

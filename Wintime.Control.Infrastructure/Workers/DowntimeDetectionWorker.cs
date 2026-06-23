@@ -81,10 +81,16 @@ public class DowntimeDetectionWorker : BackgroundService
                              && e.IsAuto)
                     .FirstOrDefaultAsync(ct);
 
+                var hasAnyOpenDowntime = await db.Events
+                    .AnyAsync(e => e.ImmId == entry.ImmId
+                                && e.EventType == EventType.Downtime
+                                && e.EndTime == null, ct);
+
                 var outcome = DowntimeDecision.Evaluate(
                     entry.Status, entry.SinceUtc, now,
                     taskStatus, task?.StartedAt,
                     hasOpenAutoDowntime: openAuto is not null,
+                    hasOpenManualDowntime: hasAnyOpenDowntime && openAuto is null,
                     thresholdSeconds: _settings.IdleThresholdSeconds);
 
                 if (outcome.Action == DowntimeAction.Open)
