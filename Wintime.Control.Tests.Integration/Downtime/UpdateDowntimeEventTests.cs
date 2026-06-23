@@ -86,4 +86,123 @@ public class UpdateDowntimeEventTests : IClassFixture<IntegrationTestFactory>
             evt.Comment.Should().Be("Ждали поставку сырья");
         }
     }
+
+    /// <summary>
+    /// Частичное обновление: если в запросе указан только Comment, ReasonId/ReasonName
+    /// и EndTime, заданные ранее, не должны затираться (PATCH — не PUT).
+    /// </summary>
+    [Fact]
+    public async Task Adjuster_PartialUpdate_LeavesOtherFieldsUntouched()
+    {
+        // Arrange: ТПА + причина + простой, у которого уже заданы ReasonId/ReasonName и EndTime.
+        Guid eventId;
+        Guid reasonId;
+        var seededEndTime = DateTime.UtcNow.AddMinutes(-5);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var imm = new Imm
+            {
+                Name = $"IMM-{Guid.NewGuid():N}",
+                TemplateId = _factory.TestTemplateId,
+                IsActive = true
+            };
+            db.Imms.Add(imm);
+
+            var reason = new DowntimeReason { Name = "Плановое ТО", Type = "downtime", IsActive = true };
+            db.DowntimeReasons.Add(reason);
+
+            var evt = new Event
+            {
+                ImmId = imm.Id,
+                EventType = EventType.Downtime,
+                StartTime = DateTime.UtcNow.AddMinutes(-15),
+                EndTime = seededEndTime,
+                ReasonId = reason.Id,
+                ReasonName = reason.Name,
+                IsAuto = true
+            };
+            db.Events.Add(evt);
+
+            await db.SaveChangesAsync();
+            eventId = evt.Id;
+            reasonId = reason.Id;
+        }
+
+        var client = _factory.CreateClient();
+        var token = await AuthHelper.GetTokenAsync(client, "test_adjuster", "Adjuster123!");
+        AuthHelper.SetBearerToken(client, token!);
+
+        var body = new UpdateDowntimeEventRequestDto
+        {
+            Comment = "Только комментарий"
+        };
+
+        // Act
+        var resp = await client.PatchAsJsonAsync($"/api/downtime/events/{eventId}", body);
+
+        // Assert
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var evt = await db.Events.FindAsync(eventId);
+            evt.Should().NotBeNull();
+            evt!.Comment.Should().Be("Только комментарий");
+            evt.ReasonId.Should().Be(reasonId);
+            evt.ReasonName.Should().Be("Плановое ТО");
+            evt.EndTime.Should().BeCloseTo(seededEndTime, TimeSpan.FromSeconds(1));
+        }
+    }
+
+    /// <summary>
+    /// Если в запросе указан ReasonId, которого нет в справочнике причин,
+    /// PATCH должен вернуть 404, не применяя остальные поля.
+    /// </summary>
+    [Fact]
+    public async Task Adjuster_UnknownReason_ReturnsNotFound()
+    {
+        // Arrange: ТПА + открытый простой без причины.
+        Guid eventId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var imm = new Imm
+            {
+                Name = $"IMM-{Guid.NewGuid():N}",
+                TemplateId = _factory.TestTemplateId,
+                IsActive = true
+            };
+            db.Imms.Add(imm);
+
+            var evt = new Event
+            {
+                ImmId = imm.Id,
+                EventType = EventType.Downtime,
+                StartTime = DateTime.UtcNow.AddMinutes(-10),
+                EndTime = null,
+                IsAuto = true
+            };
+            db.Events.Add(evt);
+
+            await db.SaveChangesAsync();
+            eventId = evt.Id;
+        }
+
+        var client = _factory.CreateClient();
+        var token = await AuthHelper.GetTokenAsync(client, "test_adjuster", "Adjuster123!");
+        AuthHelper.SetBearerToken(client, token!);
+
+        var body = new UpdateDowntimeEventRequestDto
+        {
+            ReasonId = Guid.NewGuid()
+        };
+
+        // Act
+        var resp = await client.PatchAsJsonAsync($"/api/downtime/events/{eventId}", body);
+
+        // Assert
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
 }
