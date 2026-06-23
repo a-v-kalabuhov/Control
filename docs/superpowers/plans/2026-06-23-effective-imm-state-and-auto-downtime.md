@@ -232,6 +232,10 @@ git commit -m "feat: CycleProcessingPolicy — матрица обработки
 
 ### Task 3: Эффективное состояние `ImmEffectiveStatus` (pure)
 
+> **ОТЛОЖЕНО (2026-06-23):** по решению владельца продукта эта задача исключена из исполнения —
+> у функции нет потребителя в рамках плана (подключение к дашборду — отдельная фронтенд-задача).
+> Будет реализована вместе с фронтендом. Ни одна другая задача от неё не зависит.
+
 **Files:**
 - Create: `Wintime.Control.Core/Policies/ImmEffectiveStatus.cs`
 - Test: `Wintime.Control.Tests.Unit/Policies/ImmEffectiveStatusTests.cs`
