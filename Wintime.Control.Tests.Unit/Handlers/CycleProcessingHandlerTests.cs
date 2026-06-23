@@ -77,6 +77,67 @@ public class CycleProcessingHandlerTests
     private static CycleState ActiveCycleState(int lastCounter, string lastMode = "auto")
         => new(DateTime.UtcNow.AddSeconds(-30), lastCounter, lastMode);
 
+    private static EntityTask SeedTaskWithStatus(
+        ControlDbContext db, Guid immId, EntityTaskStatus status, int cavities = 2)
+    {
+        var mold = new Mold
+        {
+            Name = "Test Mold", FormId = Guid.NewGuid().ToString(),
+            Cavities = cavities, PartWeightGrams = 10m, RunnerWeightGrams = 5m,
+            MaxResourceCycles = 100_000
+        };
+        db.Molds.Add(mold);
+        var imm = new Imm { Id = immId, Name = "Test IMM", IsActive = true };
+        db.Imms.Add(imm);
+        var task = new EntityTask
+        {
+            ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm,
+            PlanQuantity = 1000, Status = status
+        };
+        db.ShiftTasks.Add(task);
+        db.SaveChanges();
+        return task;
+    }
+
+    [Fact]
+    public async Task SetupTask_DoesNotWriteCycle()
+    {
+        var immId = Guid.NewGuid();
+        var db = CreateDb();
+        SeedTaskWithStatus(db, immId, EntityTaskStatus.Setup);
+        _tracker.Get(immId).Returns(ActiveCycleState(lastCounter: 4)); // был активный цикл
+        var sut = new CycleProcessingHandler(db, _tracker, _emulator, NullLogger<CycleProcessingHandler>.Instance);
+
+        // переход из auto в idle — при наладке цикл писаться не должен
+        await sut.ProcessAsync(MakeCycleContext(immId, counter: 5, mode: "idle"));
+
+        db.ImmCycles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task InProgress_WithOpenDowntime_WritesCycle_ButNoOutput()
+    {
+        var immId = Guid.NewGuid();
+        var db = CreateDb();
+        var task = SeedTaskWithStatus(db, immId, EntityTaskStatus.InProgress, cavities: 2);
+        db.Events.Add(new Wintime.Control.Core.Entities.Event
+        {
+            ImmId = immId,
+            EventType = Wintime.Control.Core.Enums.EventType.Downtime,
+            StartTime = DateTime.UtcNow.AddMinutes(-5),
+            EndTime = null,
+            IsAuto = false
+        });
+        db.SaveChanges();
+        _tracker.Get(immId).Returns(ActiveCycleState(lastCounter: 4));
+        var sut = new CycleProcessingHandler(db, _tracker, _emulator, NullLogger<CycleProcessingHandler>.Instance);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, counter: 5, mode: "auto"));
+
+        db.ImmCycles.Should().HaveCount(1);                       // цикл записан
+        db.ShiftTasks.Find(task.Id)!.ActualQuantity.Should().Be(0); // выпуск НЕ учтён
+    }
+
     [Fact]
     public async Task SuccessfulCycle_AccumulatesMaterial()
     {

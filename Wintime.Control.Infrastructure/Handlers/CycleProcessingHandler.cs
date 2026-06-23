@@ -4,8 +4,10 @@ using Microsoft.Extensions.Logging;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.Entities;
 using EntityTaskStatus = Wintime.Control.Core.Enums.TaskStatus;
+using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.DTOs.Mqtt;
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using SystemTask = System.Threading.Tasks.Task;
 
@@ -54,11 +56,29 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         var immId = device.Id;
         var currentTime = DateTimeOffset.FromUnixTimeSeconds(data.Timestamp).UtcDateTime;
 
+        // Активное задание: Setup (наладка) или InProgress (производство) — их не более одного.
+        var activeTask = await _db.ShiftTasks
+            .Include(t => t.Mold)
+            .FirstOrDefaultAsync(
+                t => t.ImmId == immId
+                  && (t.Status == EntityTaskStatus.Setup || t.Status == EntityTaskStatus.InProgress),
+                ct);
+
+        var taskStatus = ActiveTaskStatusMap.From(activeTask?.Status);
+
+        // Гейтинг по матрице Состояния_ТПА.xlsx: при Setup и при «нет задания + не-auto»
+        // циклы не обрабатываются. Сбрасываем активный цикл в трекере, чтобы он не
+        // «склеился» через границу наладки, и сохраняем счётчик/режим.
+        if (!CycleProcessingPolicy.ShouldProcessCycle(currentMode, taskStatus))
+        {
+            _tracker.Set(immId, new CycleState(null, currentCounter, currentMode));
+            return;
+        }
+
         var state = _tracker.Get(immId);
 
         if (state is null)
         {
-            // Первое сообщение — инициализируем состояние
             var startTime = currentMode == ImmMode.Auto ? currentTime : (DateTime?)null;
             _tracker.Set(immId, new CycleState(startTime, currentCounter, currentMode));
             return;
@@ -76,14 +96,6 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             var cycleStart = state.CycleStartTime!.Value;
             var duration = (int)(currentTime - cycleStart).TotalSeconds;
 
-            // Получить активное задание и пресс-форму
-            var activeTask = await _db.ShiftTasks
-                .Include(t => t.Mold)
-                .FirstOrDefaultAsync(t => t.ImmId == immId && t.Status == EntityTaskStatus.InProgress, ct);
-
-            // Снапшот гнёздности на момент цикла: Mold.Cavities изменяемо (гнёзда
-            // могут заглушаться при ремонте), поэтому фиксируем значение здесь, а не
-            // пересчитываем выработку по текущему Mold.Cavities задним числом.
             var cavities = activeTask?.Mold.Cavities ?? 0;
 
             var cycle = new ImmCycle
@@ -99,17 +111,17 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             };
             _db.ImmCycles.Add(cycle);
 
-            if (isSuccessful && activeTask is not null)
+            // Учёт выпуска — только если политика разрешает (InProgress + auto + нет открытого простоя).
+            bool hasOpenDowntime = await _db.Events.AnyAsync(
+                e => e.ImmId == immId
+                  && e.EventType == Core.Enums.EventType.Downtime
+                  && e.EndTime == null, ct);
+
+            if (isSuccessful
+                && activeTask is not null
+                && CycleProcessingPolicy.ShouldCountOutput(currentMode, taskStatus, hasOpenDowntime))
             {
                 activeTask.ActualQuantity += cavities;
-                // Расход материала считается по количеству гнёзд.
-                // Вес детали умножаем на колиество гнёзд.
-                // Кроме того на каждый цикл добавляем массу литника.
-                // В пресс-форме один литник,
-                // поэтому он заполняется при каждом цикле,
-                // и пластик из него удаляется при извлечении готовой продукции при завершении цикла.
-                // Если пластик не извлекается из литника,
-                // то в параметрах пресс-формы вес литника указывается как 0.
                 activeTask.ActualMaterialWeightGrams +=
                     cavities * activeTask.Mold.PartWeightGrams
                     + activeTask.Mold.RunnerWeightGrams;
@@ -124,14 +136,13 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                 immId, duration, isSuccessful);
         }
 
-        // Обновить состояние трекера
         DateTime? newCycleStart = null;
         if (counterChanged && currentMode == ImmMode.Auto)
-            newCycleStart = currentTime; // новый цикл начинается сразу после завершённого
+            newCycleStart = currentTime;
         else if (!cycleWasActive && currentMode == ImmMode.Auto)
-            newCycleStart = currentTime; // переход из не-auto в auto
+            newCycleStart = currentTime;
         else if (cycleWasActive && !cycleEnded)
-            newCycleStart = state.CycleStartTime; // цикл продолжается
+            newCycleStart = state.CycleStartTime;
 
         _tracker.Set(immId, new CycleState(newCycleStart, currentCounter, currentMode));
     }
