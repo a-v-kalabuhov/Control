@@ -14,4 +14,7 @@ public class EventDto
     public DateTime? EndTime { get; set; }
     public int DurationSeconds { get; set; }
     public string? PersonnelId { get; set; }
+    public Guid? TaskId { get; set; }
+    public string? Comment { get; set; }
+    public bool IsAuto { get; set; }
 }

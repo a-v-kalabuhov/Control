@@ -99,7 +99,8 @@ public class DowntimeController : ControllerBase
             ReasonId = request.ReasonId,
             ReasonName = reason.Name,
             StartTime = request.StartTime ?? DateTime.UtcNow,
-            PersonnelId = request.PersonnelId
+            PersonnelId = request.PersonnelId,
+            IsAuto = false
         };
 
         _context.Events.Add(evt);
@@ -172,17 +173,20 @@ public class DowntimeController : ControllerBase
             StartTime = e.StartTime,
             EndTime = e.EndTime,
             DurationSeconds = e.DurationSeconds,
-            PersonnelId = e.PersonnelId
+            PersonnelId = e.PersonnelId,
+            TaskId = e.TaskId,
+            Comment = e.Comment,
+            IsAuto = e.IsAuto
         }).ToList();
 
         return Ok(dtos);
     }
 
     /// <summary>
-    /// Изменить причину простоя
+    /// Редактировать простой: причина, время окончания, комментарий.
     /// </summary>
     [HttpPatch("events/{id}")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
     public async Task<ActionResult<EventDto>> UpdateDowntimeEvent(Guid id, [FromBody] UpdateDowntimeEventRequestDto request)
     {
         var evt = await _context.Events
@@ -192,12 +196,21 @@ public class DowntimeController : ControllerBase
         if (evt == null)
             return NotFound("Событие не найдено");
 
-        var reason = await _context.DowntimeReasons.FindAsync(request.ReasonId);
-        if (reason == null)
-            return NotFound("Причина простоя не найдена");
+        if (request.ReasonId.HasValue)
+        {
+            var reason = await _context.DowntimeReasons.FindAsync(request.ReasonId.Value);
+            if (reason == null)
+                return NotFound("Причина простоя не найдена");
+            evt.ReasonId = reason.Id;
+            evt.ReasonName = reason.Name;
+        }
 
-        evt.ReasonId = reason.Id;
-        evt.ReasonName = reason.Name;
+        if (request.EndTime.HasValue)
+            evt.EndTime = DateTime.SpecifyKind(request.EndTime.Value, DateTimeKind.Utc);
+
+        if (request.Comment != null)
+            evt.Comment = request.Comment;
+
         await _context.SaveChangesAsync();
 
         return Ok(new EventDto
@@ -213,7 +226,10 @@ public class DowntimeController : ControllerBase
             StartTime = evt.StartTime,
             EndTime = evt.EndTime,
             DurationSeconds = evt.DurationSeconds,
-            PersonnelId = evt.PersonnelId
+            PersonnelId = evt.PersonnelId,
+            TaskId = evt.TaskId,
+            Comment = evt.Comment,
+            IsAuto = evt.IsAuto
         });
     }
 }
