@@ -65,46 +65,53 @@ public class DowntimeDetectionWorker : BackgroundService
 
         foreach (var entry in entries)
         {
-            var task = await db.ShiftTasks
-                .Where(t => t.ImmId == entry.ImmId
-                         && (t.Status == EntityTaskStatus.Setup || t.Status == EntityTaskStatus.InProgress))
-                .FirstOrDefaultAsync(ct);
-
-            var taskStatus = ActiveTaskStatusMap.From(task?.Status);
-
-            var openAuto = await db.Events
-                .Where(e => e.ImmId == entry.ImmId
-                         && e.EventType == EventType.Downtime
-                         && e.EndTime == null
-                         && e.IsAuto)
-                .FirstOrDefaultAsync(ct);
-
-            var outcome = DowntimeDecision.Evaluate(
-                entry.Status, entry.SinceUtc, now,
-                taskStatus, task?.StartedAt,
-                hasOpenAutoDowntime: openAuto is not null,
-                thresholdSeconds: _settings.IdleThresholdSeconds);
-
-            if (outcome.Action == DowntimeAction.Open)
+            try
             {
-                db.Events.Add(new Event
+                var task = await db.ShiftTasks
+                    .Where(t => t.ImmId == entry.ImmId
+                             && (t.Status == EntityTaskStatus.Setup || t.Status == EntityTaskStatus.InProgress))
+                    .FirstOrDefaultAsync(ct);
+
+                var taskStatus = ActiveTaskStatusMap.From(task?.Status);
+
+                var openAuto = await db.Events
+                    .Where(e => e.ImmId == entry.ImmId
+                             && e.EventType == EventType.Downtime
+                             && e.EndTime == null
+                             && e.IsAuto)
+                    .FirstOrDefaultAsync(ct);
+
+                var outcome = DowntimeDecision.Evaluate(
+                    entry.Status, entry.SinceUtc, now,
+                    taskStatus, task?.StartedAt,
+                    hasOpenAutoDowntime: openAuto is not null,
+                    thresholdSeconds: _settings.IdleThresholdSeconds);
+
+                if (outcome.Action == DowntimeAction.Open)
                 {
-                    ImmId = entry.ImmId,
-                    EventType = EventType.Downtime,
-                    TaskId = task?.Id,
-                    StartTime = outcome.At,
-                    EndTime = null,
-                    ReasonId = null,
-                    IsAuto = true
-                });
-                await db.SaveChangesAsync(ct);
-                _logger.LogInformation("IMM {ImmId}: авто-простой открыт с {Start}", entry.ImmId, outcome.At);
+                    db.Events.Add(new Event
+                    {
+                        ImmId = entry.ImmId,
+                        EventType = EventType.Downtime,
+                        TaskId = task?.Id,
+                        StartTime = outcome.At,
+                        EndTime = null,
+                        ReasonId = null,
+                        IsAuto = true
+                    });
+                    await db.SaveChangesAsync(ct);
+                    _logger.LogInformation("IMM {ImmId}: авто-простой открыт с {Start}", entry.ImmId, outcome.At);
+                }
+                else if (outcome.Action == DowntimeAction.Close && openAuto is not null)
+                {
+                    openAuto.EndTime = outcome.At;
+                    await db.SaveChangesAsync(ct);
+                    _logger.LogInformation("IMM {ImmId}: авто-простой закрыт в {End}", entry.ImmId, outcome.At);
+                }
             }
-            else if (outcome.Action == DowntimeAction.Close && openAuto is not null)
+            catch (Exception ex)
             {
-                openAuto.EndTime = outcome.At;
-                await db.SaveChangesAsync(ct);
-                _logger.LogInformation("IMM {ImmId}: авто-простой закрыт в {End}", entry.ImmId, outcome.At);
+                _logger.LogError(ex, "DowntimeDetectionWorker: обработка ТПА {ImmId} не удалась", entry.ImmId);
             }
         }
     }
