@@ -79,6 +79,7 @@ public class ControlDbContext : IdentityDbContext<User>
         {
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Imm).WithMany(i => i.Events).HasForeignKey(e => e.ImmId);
+            entity.HasOne(e => e.Task).WithMany().HasForeignKey(e => e.TaskId).OnDelete(DeleteBehavior.SetNull);
         });
         
         // Настройка имен таблиц (опционально, чтобы были во множественном числе)
