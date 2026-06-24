@@ -98,6 +98,7 @@ public static class ServiceCollectionExtensions
         // Порядок регистрации важен: стартап-сервис должен запуститься раньше воркеров
         services.AddHostedService<ImmStatusStartupService>();
         services.AddHostedService<ImmOfflineWorker>();
+        services.AddHostedService<DowntimeDetectionWorker>();
         services.AddHostedService<AppHeartbeatWorker>();
         return services;
     }

@@ -37,26 +37,11 @@
             <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
               Итоги смены ({{ shiftLabel }})
             </div>
-            <div class="grid grid-cols-5 gap-3">
-              <div class="bg-green-50 border border-green-100 rounded-lg p-3 text-center">
-                <div class="text-xl font-bold text-green-600">{{ summary.auto }}</div>
-                <div class="text-xs text-gray-500 mt-0.5">Авто</div>
-              </div>
-              <div class="bg-yellow-50 border border-yellow-100 rounded-lg p-3 text-center">
-                <div class="text-xl font-bold text-yellow-600">{{ summary.manual }}</div>
-                <div class="text-xs text-gray-500 mt-0.5">Наладка</div>
-              </div>
-              <div class="bg-red-50 border border-red-100 rounded-lg p-3 text-center">
-                <div class="text-xl font-bold text-red-600">{{ summary.alarm }}</div>
-                <div class="text-xs text-gray-500 mt-0.5">Аварии</div>
-              </div>
-              <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 text-center">
-                <div class="text-xl font-bold text-blue-600">{{ summary.idle }}</div>
-                <div class="text-xs text-gray-500 mt-0.5">Простой</div>
-              </div>
-              <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-                <div class="text-xl font-bold text-gray-500">{{ summary.offline }}</div>
-                <div class="text-xs text-gray-500 mt-0.5">Оффлайн</div>
+            <div class="grid grid-cols-6 gap-3">
+              <div v-for="item in STATUS_LEGEND" :key="item.status"
+                   class="border rounded-lg p-3 text-center" :style="{ borderColor: item.color }">
+                <div class="text-xl font-bold" :style="{ color: item.color }">{{ summary[item.status] }}</div>
+                <div class="text-xs text-gray-500 mt-0.5">{{ item.label }}</div>
               </div>
             </div>
           </div>
@@ -99,6 +84,7 @@ import { shiftsApi } from '@/api/shifts'
 import { ElMessage } from 'element-plus'
 import { useDashboardStore } from '@/stores/dashboard'
 import { computeCurrentShift } from '@/constants/shift'
+import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveStatus'
 import ImmCard from '@/components/dashboard/ImmCard.vue'
 import ShiftTimeline from '@/components/dashboard/ShiftTimeline.vue'
 
@@ -134,13 +120,9 @@ const shiftLabel = computed(() => {
 })
 
 // --- Сводка по статусам, вычисленная из сегментов ---
-const STATUS_LEGEND = [
-  { status: 'Auto',    label: 'Авто',     color: '#22c55e' },
-  { status: 'Manual',  label: 'Наладка',  color: '#eab308' },
-  { status: 'Alarm',   label: 'Авария',   color: '#ef4444' },
-  { status: 'Idle',    label: 'Простой',  color: '#2563eb' },
-  { status: 'Offline', label: 'Оффлайн',  color: '#9ca3af' },
-]
+const STATUS_LEGEND = EFFECTIVE_STATUS_KEYS.map(k => ({
+  status: k, label: EFFECTIVE_STATUS[k].label, color: EFFECTIVE_STATUS[k].hex,
+}))
 
 function segDurationMs(seg) {
   const startMs      = new Date(seg.changedAt).getTime()
@@ -163,22 +145,15 @@ function msToHm(ms) {
 }
 
 const summary = computed(() => {
-  const totals = { auto: 0, manual: 0, alarm: 0, idle: 0, offline: 0 }
+  const totals = { Production: 0, Setup: 0, Downtime: 0, Unplanned: 0, NoTask: 0, Offline: 0 }
   for (const seg of statusSegments.value) {
     const ms = segDurationMs(seg)
-    if (seg.status === 'Auto')             totals.auto   += ms
-    else if (seg.status === 'Manual')      totals.manual += ms
-    else if (seg.status === 'Alarm')       totals.alarm  += ms
-    else if (seg.status === 'Idle')        totals.idle += ms
-    else /* Offline / Idle */              totals.offline += ms
+    const key = seg.effectiveStatus
+    if (key in totals) totals[key] += ms
   }
-  return {
-    auto:    msToHm(totals.auto),
-    manual:  msToHm(totals.manual),
-    alarm:   msToHm(totals.alarm),
-    idle:   msToHm(totals.idle),
-    offline: msToHm(totals.offline),
-  }
+  const out = {}
+  for (const k of Object.keys(totals)) out[k] = msToHm(totals[k])
+  return out
 })
 
 // --- Загрузка данных ---
@@ -192,7 +167,7 @@ const loadData = async () => {
 
   try {
     const [historyRes, tasksRes] = await Promise.all([
-      dashboardApi.getImmStatusHistory(props.immId, { from: fromIso, to: toIso }),
+      dashboardApi.getImmEffectiveStatusHistory(props.immId, { from: fromIso, to: toIso }),
       tasksApi.getList({ immId: props.immId, dateFrom: fromIso, dateTo: toIso }),
     ])
     statusSegments.value = historyRes.data

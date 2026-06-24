@@ -198,6 +198,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Comment")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -216,6 +219,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<Guid>("ImmId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsAuto")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("PersonnelId")
                         .HasColumnType("text");
 
@@ -228,6 +234,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<DateTime>("StartTime")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ImmId");
@@ -235,6 +244,8 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.HasIndex("PersonnelId");
 
                     b.HasIndex("ReasonId");
+
+                    b.HasIndex("TaskId");
 
                     b.ToTable("Events");
                 });
@@ -733,11 +744,18 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .WithMany("Events")
                         .HasForeignKey("ReasonId");
 
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Imm");
 
                     b.Navigation("Personnel");
 
                     b.Navigation("Reason");
+
+                    b.Navigation("Task");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Imm", b =>

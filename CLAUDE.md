@@ -200,6 +200,18 @@ There are no test projects. When adding tests, use xUnit for .NET and Vitest for
 - `ImmOfflineWorker` — фоновый сервис, каждые 5 сек переводит ТПА в `Offline` если от него нет сообщений
 - `IImmStatusService.UpdateStatusAsync` — единственная точка записи нового статуса (обновляет и БД, и кеш)
 
+#### Эффективное состояние (для дашборда)
+
+Дашборд показывает **эффективное состояние** = `ImmEffectiveStatus.Resolve(сырой режим,
+статус активного задания, открытый простой, порог пройден)` — чистая функция в
+`Wintime.Control.Core/Policies`. 6 значений: `Production` (Работа), `Setup` (Наладка),
+`Downtime` (Простой), `Unplanned` (Работа без задания), `NoTask` (Без задания),
+`Offline` (Нет связи). Сырой `mode` по-прежнему хранится в `ImmStatusHistory`;
+эффективное состояние **не хранится** — вычисляется на лету (для истории —
+`EffectiveStatusTimeline.Build` наложением рядов). Палитра/подписи на фронте —
+`src/constants/effectiveStatus.js`. См. дизайн
+`docs/superpowers/specs/2026-06-24-effective-status-dashboard-design.md`.
+
 ### Гнёздность (Cavities) и история версий пресс-формы
 
 `Mold.Cavities` — изменяемое поле (при ремонте гнёзда могут заглушаться). Нельзя использовать текущее значение для пересчёта исторических циклов.

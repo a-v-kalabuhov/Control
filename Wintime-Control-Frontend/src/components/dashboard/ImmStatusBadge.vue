@@ -13,50 +13,17 @@
 
 <script setup>
 import { computed } from 'vue'
+import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS, getEffectiveStatusMeta } from '@/constants/effectiveStatus'
 
 const props = defineProps({
   status: {
     type: String,
     required: true,
-    validator: (value) => ['Auto', 'Manual', 'Alarm', 'Idle', 'Offline'].includes(value)
-  }
+    validator: (v) => EFFECTIVE_STATUS_KEYS.includes(v),
+  },
 })
 
-const statusConfig = {
-  Auto: { 
-    label: 'Авто', 
-    bg: 'bg-green-100', 
-    text: 'text-green-800', 
-    dot: 'bg-green-500' 
-  },
-  Manual: { 
-    label: 'Наладка', 
-    bg: 'bg-yellow-100', 
-    text: 'text-yellow-800', 
-    dot: 'bg-yellow-500' 
-  },
-  Alarm: { 
-    label: 'Авария', 
-    bg: 'bg-red-100', 
-    text: 'text-red-800', 
-    dot: 'bg-red-500' 
-  },
-  Idle: { 
-    label: 'Простой', 
-    bg: 'bg-blue-100', 
-    text: 'text-blue-800', 
-    dot: 'bg-blue-500' 
-  },
-  Offline: { 
-    label: 'Оффлайн', 
-    bg: 'bg-gray-100', 
-    text: 'text-gray-800', 
-    dot: 'bg-gray-500' 
-  }
-}
-
-const config = computed(() => statusConfig[props.status] || statusConfig.Offline)
-
+const config = computed(() => getEffectiveStatusMeta(props.status))
 const statusClasses = computed(() => `${config.value.bg} ${config.value.text}`)
 const dotClasses = computed(() => config.value.dot)
 const label = computed(() => config.value.label)
