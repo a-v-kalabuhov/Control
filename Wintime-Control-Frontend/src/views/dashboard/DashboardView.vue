@@ -28,7 +28,7 @@
     </div>
 
     <!-- Статистика цеха -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4 mb-6">
       <div class="card">
         <div class="flex items-center gap-4">
           <div class="p-3 bg-blue-100 rounded-lg">
@@ -47,8 +47,11 @@
             <el-icon class="text-green-600 text-xl"><CircleCheck /></el-icon>
           </div>
           <div>
-            <p class="text-sm text-gray-500">В работе</p>
+            <p class="text-sm text-gray-500">Работа</p>
             <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.workingImms.length }}</p>
+            <p v-if="dashboardStore.unplannedImms.length" class="text-xs text-purple-600 mt-0.5">
+              + {{ dashboardStore.unplannedImms.length }} без задания
+            </p>
           </div>
         </div>
       </div>
@@ -71,8 +74,32 @@
             <el-icon class="text-red-600 text-xl"><Warning /></el-icon>
           </div>
           <div>
-            <p class="text-sm text-gray-500">Авария</p>
-            <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.alarmImms.length }}</p>
+            <p class="text-sm text-gray-500">Простой</p>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.downtimeImms.length }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-4">
+          <div class="p-3 bg-blue-100 rounded-lg">
+            <el-icon class="text-blue-600 text-xl"><Document /></el-icon>
+          </div>
+          <div>
+            <p class="text-sm text-gray-500">Без задания</p>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.noTaskImms.length }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-4">
+          <div class="p-3 bg-gray-100 rounded-lg">
+            <el-icon class="text-gray-600 text-xl"><Connection /></el-icon>
+          </div>
+          <div>
+            <p class="text-sm text-gray-500">Нет связи</p>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardStore.offlineImms.length }}</p>
           </div>
         </div>
       </div>
@@ -113,11 +140,12 @@
         </el-form-item>
         <el-form-item label="Статус">
           <el-select v-model="statusFilter" placeholder="Все" clearable class="w-52">
-            <el-option label="В работе" value="Auto" />
-            <el-option label="Наладка" value="Manual" />
-            <el-option label="Авария" value="Alarm" />
-            <el-option label="Простой" value="Idle" />
-            <el-option label="Оффлайн" value="Offline" />
+            <el-option label="Работа" value="Production" />
+            <el-option label="Наладка" value="Setup" />
+            <el-option label="Простой" value="Downtime" />
+            <el-option label="Работа без задания" value="Unplanned" />
+            <el-option label="Без задания" value="NoTask" />
+            <el-option label="Нет связи" value="Offline" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -199,7 +227,7 @@ function shiftBounds(shift, date) {
 // Метка мгновенной загрузки с учётом контекста смены
 const instantUtilizationLabel = computed(() => {
   const eff = dashboardStore.overallEfficiency
-  const hasActive = dashboardStore.imms.some(i => i.status === 'Auto' || i.status === 'Manual')
+  const hasActive = dashboardStore.imms.some(i => i.status === 'Production' || i.status === 'Setup')
   if (!dashboardStore.currentShift && !hasActive) return '—'
   return `${eff}%`
 })
@@ -207,7 +235,7 @@ const instantUtilizationLabel = computed(() => {
 // "(смена закончилась)" — показываем когда нет текущей смены, но есть активные станки
 const shiftEndedLabel = computed(() => {
   if (dashboardStore.currentShift) return null
-  const hasActive = dashboardStore.imms.some(i => i.status === 'Auto' || i.status === 'Manual')
+  const hasActive = dashboardStore.imms.some(i => i.status === 'Production' || i.status === 'Setup')
   return hasActive ? '(смена закончилась)' : null
 })
 

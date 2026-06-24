@@ -42,10 +42,6 @@ export const useDashboardStore = defineStore('dashboard', {
     // ТПА оффлайн (Offline)
     offlineImms: (state) => state.imms.filter(i => i.status === 'Offline'),
 
-    // TODO(Task 8): DashboardView ещё ссылается на alarmImms — удалить геттер,
-    // когда вьюха перейдёт на эффективные состояния (Alarm растворён в Downtime/Unplanned).
-    alarmImms: (state) => state.imms.filter(i => i.status === 'Alarm'),
-
     // Мгновенная загрузка цеха: (Production + Setup) / все
     overallEfficiency: (state) => {
       if (state.imms.length === 0) return 0

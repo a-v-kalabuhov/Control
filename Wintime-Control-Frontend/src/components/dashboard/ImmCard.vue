@@ -75,16 +75,6 @@
       <span class="font-medium text-gray-800">{{ etaLabel }}</span>
     </div>
 
-    <!-- Индикатор аварии -->
-    <el-alert
-      v-if="imm.status === 'Alarm'"
-      type="error"
-      title="Активная авария"
-      :description="imm.alarmMessage || 'Требуется внимание наладчика'"
-      show-icon
-      closable
-      class="mt-3"
-    />
   </div>
 </template>
 
@@ -92,6 +82,7 @@
 import { computed } from 'vue'
 import ImmStatusBadge from './ImmStatusBadge.vue'
 import { Clock } from '@element-plus/icons-vue'
+import { getEffectiveStatusMeta } from '@/constants/effectiveStatus'
 
 const props = defineProps({
   imm: {
@@ -147,16 +138,7 @@ const etaLabel = computed(() => {
   return eta.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 })
 
-const borderColor = computed(() => {
-  const colors = {
-    Auto: 'border-green-500',
-    Manual: 'border-yellow-500',
-    Alarm: 'border-red-500',
-    Idle: 'border-blue-400',
-    Offline: 'border-gray-400'
-  }
-  return colors[props.imm.status] || 'border-gray-400'
-})
+const borderColor = computed(() => getEffectiveStatusMeta(props.imm.status).border)
 
 const lastUpdate = computed(() => {
   if (!props.imm.lastUpdate) return '—'
