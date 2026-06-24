@@ -102,6 +102,20 @@ if (-not $SkipTests) {
         exit 1
     }
     Write-Ok "Все тесты прошли"
+
+    Write-Step "Запуск frontend-тестов (Vitest)..."
+    Push-Location "$root\Wintime-Control-Frontend"
+    try {
+        if (-not (Test-Path 'node_modules')) { npm install }
+        npm run test
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "Frontend-тесты упали"
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+    Write-Ok "Frontend-тесты прошли"
 }
 
 # ── 4. Применение миграций ────────────────────────────────────────────────────
