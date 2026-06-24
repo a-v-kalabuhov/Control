@@ -4,6 +4,7 @@ public class ImmStatusDto
 {
     public Guid ImmId { get; set; }
     public string Status { get; set; } = string.Empty; // Auto, Manual, Idle, Alarm, Offline
+    public string EffectiveStatus { get; set; } = string.Empty;
     public Guid? CurrentTaskId { get; set; }
     public Guid? CurrentMoldId { get; set; }
     public decimal CurrentCycleTime { get; set; }

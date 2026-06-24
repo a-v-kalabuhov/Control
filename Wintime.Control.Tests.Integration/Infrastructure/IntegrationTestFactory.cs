@@ -119,7 +119,7 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
 
         if (!db.Imms.Any(i => i.Id == TestImmId))
         {
-            db.Imms.Add(new Imm
+            db.Imms.Add(new Core.Entities.Imm
             {
                 Id         = TestImmId,
                 Name       = "ТПА-TEST",
@@ -154,7 +154,7 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
         var immId = Guid.NewGuid();
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        db.Imms.Add(new Imm
+        db.Imms.Add(new Core.Entities.Imm
         {
             Id         = immId,
             Name       = $"ТПА-{immId:N}",

@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.Imm;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
+using Wintime.Control.Shared.Settings;
 
 namespace Wintime.Control.API.Controllers;
 
@@ -18,13 +21,16 @@ public class ImmController : ControllerBase
     private readonly ControlDbContext _context;
     private readonly IImmStatusCache _statusCache;
     private readonly IImmCache _immCache;
+    private readonly DowntimeSettings _downtime;
     private readonly ILogger<ImmController> _logger;
 
-    public ImmController(ControlDbContext context, IImmStatusCache statusCache, IImmCache immCache, ILogger<ImmController> logger)
+    public ImmController(ControlDbContext context, IImmStatusCache statusCache, IImmCache immCache,
+        IOptions<DowntimeSettings> downtime, ILogger<ImmController> logger)
     {
         _context = context;
         _statusCache = statusCache;
         _immCache = immCache;
+        _downtime = downtime.Value;
         _logger = logger;
     }
 
@@ -111,12 +117,38 @@ public class ImmController : ControllerBase
             }
         }
 
+        var activeTaskStatuses = await query
+            .Select(i => new
+            {
+                ImmId = i.Id,
+                TaskStatus = (Core.Enums.TaskStatus?)i.ShiftTasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
+                    .Select(t => (Core.Enums.TaskStatus?)t.Status)
+                    .FirstOrDefault()
+            })
+            .ToDictionaryAsync(x => x.ImmId, x => x.TaskStatus);
+
+        var openDowntimeImmIds = (await _context.Events
+            .Where(e => e.EventType == Core.Enums.EventType.Downtime && e.EndTime == null)
+            .Select(e => e.ImmId)
+            .Distinct()
+            .ToListAsync())
+            .ToHashSet();
+
         foreach (var dto in imms)
         {
             var statusEntry = _statusCache.GetEntry(dto.Id);
             var cacheEntry = _immCache.GetEntry(dto.Id);
             dto.Status = statusEntry?.Status ?? ImmStatus.Offline;
             dto.LastUpdate = MaxDateTime(statusEntry?.SinceUtc, cacheEntry?.LastMessageAt);
+
+            var rawForEff = statusEntry?.Status ?? ImmStatus.Offline;
+            var taskForEff = Core.Enums.ActiveTaskStatusMap.From(
+                activeTaskStatuses.TryGetValue(dto.Id, out var ts) ? ts : null);
+            var hasOpenDt = openDowntimeImmIds.Contains(dto.Id);
+            var thresholdPassed = statusEntry != null &&
+                (DateTime.UtcNow - statusEntry.SinceUtc).TotalSeconds >= _downtime.IdleThresholdSeconds;
+            dto.EffectiveStatus = ImmEffectiveStatus.Resolve(rawForEff, taskForEff, hasOpenDt, thresholdPassed);
         }
 
         return Ok(imms);
@@ -244,10 +276,19 @@ public class ImmController : ControllerBase
 
         var cacheEntry = _immCache.GetEntry(id);
 
+        var hasOpenDt = await _context.Events.AnyAsync(e =>
+            e.ImmId == id && e.EventType == Core.Enums.EventType.Downtime && e.EndTime == null);
+        var taskForEff = Core.Enums.ActiveTaskStatusMap.From(currentTask?.Status);
+        var rawForEff = entry?.Status ?? ImmStatus.Offline;
+        var thresholdPassed = entry != null &&
+            (DateTime.UtcNow - entry.SinceUtc).TotalSeconds >= _downtime.IdleThresholdSeconds;
+        var effective = ImmEffectiveStatus.Resolve(rawForEff, taskForEff, hasOpenDt, thresholdPassed);
+
         return Ok(new ImmStatusDto
         {
             ImmId = imm.Id,
             Status = entry?.Status ?? ImmStatus.Offline,
+            EffectiveStatus = effective,
             CurrentTaskId = currentTask?.Id,
             CurrentMoldId = currentTask?.MoldId,
             CurrentCycleTime = 0, // TODO: Вычислить из телеметрии
