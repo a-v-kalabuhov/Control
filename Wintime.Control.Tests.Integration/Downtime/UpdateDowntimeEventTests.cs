@@ -32,7 +32,7 @@ public class UpdateDowntimeEventTests : IClassFixture<IntegrationTestFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var imm = new Imm
+            var imm = new Core.Entities.Imm
             {
                 Name = $"IMM-{Guid.NewGuid():N}",
                 TemplateId = _factory.TestTemplateId,
@@ -101,7 +101,7 @@ public class UpdateDowntimeEventTests : IClassFixture<IntegrationTestFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var imm = new Imm
+            var imm = new Core.Entities.Imm
             {
                 Name = $"IMM-{Guid.NewGuid():N}",
                 TemplateId = _factory.TestTemplateId,
@@ -168,7 +168,7 @@ public class UpdateDowntimeEventTests : IClassFixture<IntegrationTestFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var imm = new Imm
+            var imm = new Core.Entities.Imm
             {
                 Name = $"IMM-{Guid.NewGuid():N}",
                 TemplateId = _factory.TestTemplateId,

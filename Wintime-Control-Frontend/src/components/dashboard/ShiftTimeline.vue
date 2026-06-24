@@ -61,21 +61,14 @@
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { getEffectiveStatusMeta } from '@/constants/effectiveStatus'
 
 const props = defineProps({
-  statusSegments: { type: Array, default: () => [] }, // ImmStatusSegmentDto[]
+  statusSegments: { type: Array, default: () => [] }, // EffectiveStatusSegmentDto[]
   tasks:          { type: Array, default: () => [] }, // TaskDto[]
   shiftStart:     { type: Date, required: true },
   shiftEnd:       { type: Date, required: true },
 })
-
-const STATUS_COLORS = {
-  Auto:    '#22c55e',
-  Manual:  '#eab308',
-  Alarm:   '#ef4444',
-  Offline: '#9ca3af',
-  Idle:    '#2563eb',
-}
 
 const TASK_COLORS = ['#3b82f6', '#7c3aed', '#0891b2', '#059669', '#d97706']
 
@@ -138,7 +131,7 @@ function segStyle(seg) {
   return {
     left:       Math.max(0, left) + '%',
     width:      Math.max(0, width) + '%',
-    background: statusColor(seg.status),
+    background: statusColor(seg.effectiveStatus),
   }
 }
 
@@ -157,8 +150,8 @@ function taskStyle(task) {
   }
 }
 
-function statusColor(status) {
-  return STATUS_COLORS[status] ?? STATUS_COLORS.Offline
+function statusColor(seg) {
+  return getEffectiveStatusMeta(seg).hex
 }
 
 function formatTime(date) {
@@ -175,12 +168,10 @@ function durStr(ms) {
   return `${m}м`
 }
 
-const STATUS_LABELS = { Auto: 'Авто', Manual: 'Наладка', Alarm: 'Авария', Offline: 'Оффлайн', Idle: 'Простой' }
-
 function segTitle(seg) {
   const start = new Date(seg.changedAt)
   const end   = seg.endedAt ? new Date(seg.endedAt) : now.value
-  return `${STATUS_LABELS[seg.status] ?? seg.status}\n${formatTime(start)} — ${formatTime(end)}\n${durStr(end - start)}`
+  return `${getEffectiveStatusMeta(seg.effectiveStatus).label}\n${formatTime(start)} — ${formatTime(end)}\n${durStr(end - start)}`
 }
 
 function taskTitle(task) {

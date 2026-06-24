@@ -13,6 +13,7 @@ public class ImmDto
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? Status { get; set; }
+    public string? EffectiveStatus { get; set; } // Production/Setup/Downtime/Unplanned/NoTask/Offline
     public DateTime? LastUpdate { get; set; }
     public Guid? CurrentTaskId { get; set; }
     public string? CurrentMoldName { get; set; }

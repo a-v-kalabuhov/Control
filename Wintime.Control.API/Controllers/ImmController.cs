@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.Imm;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
+using Wintime.Control.Shared.Settings;
 
 namespace Wintime.Control.API.Controllers;
 
@@ -18,13 +21,16 @@ public class ImmController : ControllerBase
     private readonly ControlDbContext _context;
     private readonly IImmStatusCache _statusCache;
     private readonly IImmCache _immCache;
+    private readonly DowntimeSettings _downtime;
     private readonly ILogger<ImmController> _logger;
 
-    public ImmController(ControlDbContext context, IImmStatusCache statusCache, IImmCache immCache, ILogger<ImmController> logger)
+    public ImmController(ControlDbContext context, IImmStatusCache statusCache, IImmCache immCache,
+        IOptions<DowntimeSettings> downtime, ILogger<ImmController> logger)
     {
         _context = context;
         _statusCache = statusCache;
         _immCache = immCache;
+        _downtime = downtime.Value;
         _logger = logger;
     }
 
@@ -111,12 +117,38 @@ public class ImmController : ControllerBase
             }
         }
 
+        var activeTaskStatuses = await query
+            .Select(i => new
+            {
+                ImmId = i.Id,
+                TaskStatus = (Core.Enums.TaskStatus?)i.ShiftTasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
+                    .Select(t => (Core.Enums.TaskStatus?)t.Status)
+                    .FirstOrDefault()
+            })
+            .ToDictionaryAsync(x => x.ImmId, x => x.TaskStatus);
+
+        var openDowntimeImmIds = (await _context.Events
+            .Where(e => e.EventType == Core.Enums.EventType.Downtime && e.EndTime == null)
+            .Select(e => e.ImmId)
+            .Distinct()
+            .ToListAsync())
+            .ToHashSet();
+
         foreach (var dto in imms)
         {
             var statusEntry = _statusCache.GetEntry(dto.Id);
             var cacheEntry = _immCache.GetEntry(dto.Id);
             dto.Status = statusEntry?.Status ?? ImmStatus.Offline;
             dto.LastUpdate = MaxDateTime(statusEntry?.SinceUtc, cacheEntry?.LastMessageAt);
+
+            var rawForEff = statusEntry?.Status ?? ImmStatus.Offline;
+            var taskForEff = Core.Enums.ActiveTaskStatusMap.From(
+                activeTaskStatuses.TryGetValue(dto.Id, out var ts) ? ts : null);
+            var hasOpenDt = openDowntimeImmIds.Contains(dto.Id);
+            var thresholdPassed = statusEntry != null &&
+                (DateTime.UtcNow - statusEntry.SinceUtc).TotalSeconds >= _downtime.IdleThresholdSeconds;
+            dto.EffectiveStatus = ImmEffectiveStatus.Resolve(rawForEff, taskForEff, hasOpenDt, thresholdPassed);
         }
 
         return Ok(imms);
@@ -244,10 +276,19 @@ public class ImmController : ControllerBase
 
         var cacheEntry = _immCache.GetEntry(id);
 
+        var hasOpenDt = await _context.Events.AnyAsync(e =>
+            e.ImmId == id && e.EventType == Core.Enums.EventType.Downtime && e.EndTime == null);
+        var taskForEff = Core.Enums.ActiveTaskStatusMap.From(currentTask?.Status);
+        var rawForEff = entry?.Status ?? ImmStatus.Offline;
+        var thresholdPassed = entry != null &&
+            (DateTime.UtcNow - entry.SinceUtc).TotalSeconds >= _downtime.IdleThresholdSeconds;
+        var effective = ImmEffectiveStatus.Resolve(rawForEff, taskForEff, hasOpenDt, thresholdPassed);
+
         return Ok(new ImmStatusDto
         {
             ImmId = imm.Id,
             Status = entry?.Status ?? ImmStatus.Offline,
+            EffectiveStatus = effective,
             CurrentTaskId = currentTask?.Id,
             CurrentMoldId = currentTask?.MoldId,
             CurrentCycleTime = 0, // TODO: Вычислить из телеметрии
@@ -315,6 +356,76 @@ public class ImmController : ControllerBase
             .ToListAsync();
 
         return Ok(segments);
+    }
+
+    /// <summary>
+    /// История эффективного состояния ТПА за период (реконструкция наложением рядов).
+    /// </summary>
+    [HttpGet("{id:guid}/effective-status-history")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
+    public async Task<ActionResult<IEnumerable<EffectiveStatusSegmentDto>>> GetImmEffectiveStatusHistory(
+        Guid id,
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to)
+    {
+        var immExists = await _context.Imms.AnyAsync(i => i.Id == id);
+        if (!immExists)
+            return NotFound();
+
+        var fromUtc = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+        var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
+        var nowUtc = DateTime.UtcNow;
+        var effectiveTo = toUtc < nowUtc ? toUtc : nowUtc;
+        DateTime ClampEnd(DateTime? end) => (end ?? effectiveTo) > effectiveTo ? effectiveTo : (end ?? effectiveTo);
+
+        var rawRows = await _context.ImmStatusHistory
+            .Where(h => h.ImmId == id && h.ChangedAt < toUtc && (h.EndedAt == null || h.EndedAt > fromUtc))
+            .OrderBy(h => h.ChangedAt)
+            .Select(h => new { h.Status, h.ChangedAt, h.EndedAt })
+            .ToListAsync();
+
+        var taskRows = await _context.ShiftTasks
+            .Where(t => t.ImmId == id && t.SetupStartedAt != null && t.SetupStartedAt < toUtc)
+            .Select(t => new { t.SetupStartedAt, t.StartedAt, t.CompletedAt, t.ClosedAt })
+            .ToListAsync();
+
+        var downtimeRows = await _context.Events
+            .Where(e => e.ImmId == id && e.EventType == Core.Enums.EventType.Downtime
+                        && e.StartTime < toUtc && (e.EndTime == null || e.EndTime > fromUtc))
+            .Select(e => new { e.StartTime, e.EndTime })
+            .ToListAsync();
+
+        var raw = rawRows
+            .Select(r => new RawSegment(r.Status, r.ChangedAt, ClampEnd(r.EndedAt)))
+            .ToList();
+
+        var tasks = new List<TaskInterval>();
+        foreach (var t in taskRows)
+        {
+            var setupStart = t.SetupStartedAt!.Value;
+            var setupEnd   = t.StartedAt ?? t.CompletedAt ?? t.ClosedAt ?? toUtc;
+            tasks.Add(new TaskInterval(Core.Enums.ActiveTaskStatus.Setup, setupStart, ClampEnd(setupEnd)));
+            if (t.StartedAt != null)
+            {
+                var workEnd = t.CompletedAt ?? t.ClosedAt ?? toUtc;
+                tasks.Add(new TaskInterval(Core.Enums.ActiveTaskStatus.InProgress, t.StartedAt.Value, ClampEnd(workEnd)));
+            }
+        }
+
+        var downtimes = downtimeRows
+            .Select(d => new Interval(d.StartTime, ClampEnd(d.EndTime)))
+            .ToList();
+
+        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo);
+
+        var dto = segments.Select(s => new EffectiveStatusSegmentDto
+        {
+            EffectiveStatus = s.EffectiveStatus,
+            ChangedAt = s.Start,
+            EndedAt = s.End,
+        });
+
+        return Ok(dto);
     }
 
     /// <summary>
