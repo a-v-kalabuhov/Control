@@ -63,4 +63,60 @@ public class EffectiveStatusHistoryTests : IClassFixture<IntegrationTestFactory>
         segs!.Should().ContainSingle();
         segs[0].EffectiveStatus.Should().Be(EffectiveStatus.Production);
     }
+
+    [Fact]
+    public async Task Clamps_Open_Segment_To_Now_Not_FutureTo()
+    {
+        var now = DateTime.UtcNow;
+        var from = now.AddHours(-1);
+        var to   = now.AddHours(1); // future "to" — simulates current-shift end
+
+        var statusChangedAt = now.AddMinutes(-30);
+        var setupStartedAt  = now.AddMinutes(-35);
+        var startedAt       = now.AddMinutes(-30);
+
+        Guid immId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var imm = new Core.Entities.Imm
+            {
+                Name = $"IMM-{Guid.NewGuid():N}", TemplateId = _factory.TestTemplateId, IsActive = true
+            };
+            db.Imms.Add(imm);
+
+            var mold = new Mold { Name = "M1", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true };
+            db.Molds.Add(mold);
+            await db.SaveChangesAsync();
+
+            db.ImmStatusHistory.Add(new ImmStatusHistory
+            { ImmId = imm.Id, Status = ImmStatus.Auto, ChangedAt = statusChangedAt, EndedAt = null });
+
+            db.ShiftTasks.Add(new ShiftTask
+            {
+                ImmId = imm.Id, MoldId = mold.Id, PlanQuantity = 100,
+                Status = TaskStatus.InProgress, SetupStartedAt = setupStartedAt, StartedAt = startedAt, CompletedAt = null
+            });
+            await db.SaveChangesAsync();
+            immId = imm.Id;
+        }
+
+        var client = _factory.CreateClient();
+        var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
+        AuthHelper.SetBearerToken(client, token!);
+
+        var url = $"/api/imm/{immId}/effective-status-history?from={from:O}&to={to:O}";
+        var resp = await client.GetAsync(url);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var segs = await resp.Content.ReadFromJsonAsync<List<EffectiveStatusSegmentDto>>();
+        segs.Should().NotBeNull();
+        segs!.Should().NotBeEmpty();
+
+        var last = segs!.Last();
+        last.EffectiveStatus.Should().Be(EffectiveStatus.Production);
+        last.EndedAt.Should().NotBeNull();
+        last.EndedAt!.Value.Should().BeOnOrBefore(DateTime.UtcNow.AddSeconds(5));
+        last.EndedAt!.Value.Should().BeBefore(now.AddMinutes(30));
+    }
 }

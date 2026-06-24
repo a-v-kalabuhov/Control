@@ -374,7 +374,9 @@ public class ImmController : ControllerBase
 
         var fromUtc = DateTime.SpecifyKind(from, DateTimeKind.Utc);
         var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
-        DateTime ClampEnd(DateTime? end) => (end ?? toUtc) > toUtc ? toUtc : (end ?? toUtc);
+        var nowUtc = DateTime.UtcNow;
+        var effectiveTo = toUtc < nowUtc ? toUtc : nowUtc;
+        DateTime ClampEnd(DateTime? end) => (end ?? effectiveTo) > effectiveTo ? effectiveTo : (end ?? effectiveTo);
 
         var rawRows = await _context.ImmStatusHistory
             .Where(h => h.ImmId == id && h.ChangedAt < toUtc && (h.EndedAt == null || h.EndedAt > fromUtc))
@@ -414,7 +416,7 @@ public class ImmController : ControllerBase
             .Select(d => new Interval(d.StartTime, ClampEnd(d.EndTime)))
             .ToList();
 
-        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, toUtc);
+        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo);
 
         var dto = segments.Select(s => new EffectiveStatusSegmentDto
         {
