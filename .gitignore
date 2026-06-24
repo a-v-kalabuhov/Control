@@ -70,3 +70,6 @@ docs/inner/
 # Secrets
 .env
 
+
+# Brainstorm visual companion artifacts
+.superpowers/
