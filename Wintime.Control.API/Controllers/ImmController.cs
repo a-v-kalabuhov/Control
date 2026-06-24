@@ -359,6 +359,74 @@ public class ImmController : ControllerBase
     }
 
     /// <summary>
+    /// История эффективного состояния ТПА за период (реконструкция наложением рядов).
+    /// </summary>
+    [HttpGet("{id:guid}/effective-status-history")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
+    public async Task<ActionResult<IEnumerable<EffectiveStatusSegmentDto>>> GetImmEffectiveStatusHistory(
+        Guid id,
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to)
+    {
+        var immExists = await _context.Imms.AnyAsync(i => i.Id == id);
+        if (!immExists)
+            return NotFound();
+
+        var fromUtc = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+        var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
+        DateTime ClampEnd(DateTime? end) => (end ?? toUtc) > toUtc ? toUtc : (end ?? toUtc);
+
+        var rawRows = await _context.ImmStatusHistory
+            .Where(h => h.ImmId == id && h.ChangedAt < toUtc && (h.EndedAt == null || h.EndedAt > fromUtc))
+            .OrderBy(h => h.ChangedAt)
+            .Select(h => new { h.Status, h.ChangedAt, h.EndedAt })
+            .ToListAsync();
+
+        var taskRows = await _context.ShiftTasks
+            .Where(t => t.ImmId == id && t.SetupStartedAt != null && t.SetupStartedAt < toUtc)
+            .Select(t => new { t.SetupStartedAt, t.StartedAt, t.CompletedAt, t.ClosedAt })
+            .ToListAsync();
+
+        var downtimeRows = await _context.Events
+            .Where(e => e.ImmId == id && e.EventType == Core.Enums.EventType.Downtime
+                        && e.StartTime < toUtc && (e.EndTime == null || e.EndTime > fromUtc))
+            .Select(e => new { e.StartTime, e.EndTime })
+            .ToListAsync();
+
+        var raw = rawRows
+            .Select(r => new RawSegment(r.Status, r.ChangedAt, ClampEnd(r.EndedAt)))
+            .ToList();
+
+        var tasks = new List<TaskInterval>();
+        foreach (var t in taskRows)
+        {
+            var setupStart = t.SetupStartedAt!.Value;
+            var setupEnd   = t.StartedAt ?? t.CompletedAt ?? t.ClosedAt ?? toUtc;
+            tasks.Add(new TaskInterval(Core.Enums.ActiveTaskStatus.Setup, setupStart, ClampEnd(setupEnd)));
+            if (t.StartedAt != null)
+            {
+                var workEnd = t.CompletedAt ?? t.ClosedAt ?? toUtc;
+                tasks.Add(new TaskInterval(Core.Enums.ActiveTaskStatus.InProgress, t.StartedAt.Value, ClampEnd(workEnd)));
+            }
+        }
+
+        var downtimes = downtimeRows
+            .Select(d => new Interval(d.StartTime, ClampEnd(d.EndTime)))
+            .ToList();
+
+        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, toUtc);
+
+        var dto = segments.Select(s => new EffectiveStatusSegmentDto
+        {
+            EffectiveStatus = s.EffectiveStatus,
+            ChangedAt = s.Start,
+            EndedAt = s.End,
+        });
+
+        return Ok(dto);
+    }
+
+    /// <summary>
     /// Получить статистику по циклам за период
     /// </summary>
     [HttpGet("{id:guid}/statistics")]
