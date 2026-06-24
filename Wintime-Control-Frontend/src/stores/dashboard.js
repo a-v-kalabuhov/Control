@@ -24,25 +24,32 @@ export const useDashboardStore = defineStore('dashboard', {
     // Общее количество ТПА
     totalImms: (state) => state.imms.length,
 
-    // ТПА в работе (Auto)
-    workingImms: (state) => state.imms.filter(i => i.status === 'Auto'),
+    // ТПА в работе (Production)
+    workingImms: (state) => state.imms.filter(i => i.status === 'Production'),
 
-    // ТПА в наладке (Manual)
-    setupImms: (state) => state.imms.filter(i => i.status === 'Manual'),
+    // ТПА в наладке (Setup)
+    setupImms: (state) => state.imms.filter(i => i.status === 'Setup'),
 
-    // ТПА в аварии (Alarm)
-    alarmImms: (state) => state.imms.filter(i => i.status === 'Alarm'),
+    // ТПА в простое (Downtime)
+    downtimeImms: (state) => state.imms.filter(i => i.status === 'Downtime'),
 
-    // ТПА в простое (Idle)
-    idleImms: (state) => state.imms.filter(i => i.status === 'Idle'),
+    // ТПА без задания (NoTask)
+    noTaskImms: (state) => state.imms.filter(i => i.status === 'NoTask'),
+
+    // ТПА в незапланированном простое (Unplanned)
+    unplannedImms: (state) => state.imms.filter(i => i.status === 'Unplanned'),
 
     // ТПА оффлайн (Offline)
     offlineImms: (state) => state.imms.filter(i => i.status === 'Offline'),
 
-    // Мгновенная загрузка цеха: (Auto + Manual) / все активные
+    // TODO(Task 8): DashboardView ещё ссылается на alarmImms — удалить геттер,
+    // когда вьюха перейдёт на эффективные состояния (Alarm растворён в Downtime/Unplanned).
+    alarmImms: (state) => state.imms.filter(i => i.status === 'Alarm'),
+
+    // Мгновенная загрузка цеха: (Production + Setup) / все
     overallEfficiency: (state) => {
       if (state.imms.length === 0) return 0
-      const active = state.imms.filter(i => i.status === 'Auto' || i.status === 'Manual')
+      const active = state.imms.filter(i => i.status === 'Production' || i.status === 'Setup')
       return Math.round(active.length / state.imms.length * 100)
     },
 
@@ -101,10 +108,7 @@ export const useDashboardStore = defineStore('dashboard', {
       }
 
       return result
-    },
-
-    // Есть ли активные аварии
-    hasAlarms: (state) => state.alarmImms.length > 0
+    }
   },
 
   actions: {
@@ -140,7 +144,8 @@ export const useDashboardStore = defineStore('dashboard', {
 
         this.imms = response.data.map(imm => ({
           ...imm,
-          status: imm.status || 'Offline',
+          rawStatus: imm.status,                       // сырой — про запас (BL-19)
+          status: imm.effectiveStatus || 'Offline',    // на дашборде используем эффективный
           currentCycleTime: imm.avgCycleTime || 0
         }))
         this.lastUpdate = new Date()
@@ -178,7 +183,8 @@ export const useDashboardStore = defineStore('dashboard', {
           this.imms[index] = {
             ...this.imms[index],
             ...response.data,
-            status: response.data.status || 'Offline'
+            rawStatus: response.data.status,
+            status: response.data.effectiveStatus || 'Offline'
           }
         }
       } catch (error) {
