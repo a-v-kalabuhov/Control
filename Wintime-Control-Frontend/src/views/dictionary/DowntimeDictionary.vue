@@ -98,7 +98,9 @@ onMounted(async () => {
 const loadReasons = async () => {
   loading.value = true
   try {
-    const response = await downtimeApi.getReasons({ isActive: true })
+    // В справочнике показываем все причины, включая архивные (неактивные),
+    // чтобы менеджер мог их редактировать/реактивировать.
+    const response = await downtimeApi.getReasons()
     reasons.value = response.data
   } catch (error) {
     ElMessage.error('Ошибка загрузки причин простоев')
@@ -146,7 +148,7 @@ const saveReason = async () => {
       dialogVisible.value = false
       await loadReasons()
     } catch (error) {
-      ElMessage.error('Ошибка сохранения причины')
+      ElMessage.error(error.response?.data ?? 'Ошибка сохранения причины')
     } finally {
       saving.value = false
     }
@@ -164,7 +166,7 @@ const deleteReason = async (reason) => {
     await loadReasons()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('Ошибка удаления причины')
+      ElMessage.error(error.response?.data ?? 'Ошибка удаления причины')
     }
   }
 }
