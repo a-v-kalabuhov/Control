@@ -191,7 +191,7 @@ public class DowntimeController : ControllerBase
     /// История событий (аварии, простои, наладки)
     /// </summary>
     [HttpGet("events")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
     public async Task<ActionResult<IEnumerable<EventDto>>> GetEvents(
         [FromQuery] Guid? immId = null,
         [FromQuery] string? eventType = null,

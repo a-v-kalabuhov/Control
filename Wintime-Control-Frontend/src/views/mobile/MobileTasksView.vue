@@ -3,63 +3,105 @@
     <!-- Заголовок -->
     <div class="mb-4">
       <h2 class="text-xl font-bold text-gray-800">Мои задания</h2>
-      <p class="text-sm text-gray-600 mt-1">
-        {{ mobileStore.activeTasks.length }} активных |
-        {{ mobileStore.completedTasks.length }} завершённых
-      </p>
     </div>
 
-    <!-- Фильтры -->
-    <el-card class="mb-4">
-      <el-form :inline="true" class="mobile-filters">
-        <el-form-item>
-          <el-input
-            v-model="mobileStore.filters.search"
-            placeholder="Поиск ТПА, ПФ"
-            clearable
-            prefix-icon="Search"
-            class="w-full"
-            @input="loadTasks"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-select
-            v-model="mobileStore.filters.status"
-            placeholder="Все статусы"
-            clearable
-            class="w-full"
-            @change="loadTasks"
-          >
-            <el-option label="Выдано" value="Issued" />
-            <el-option label="Наладка" value="Setup" />
-            <el-option label="В работе" value="InProgress" />
-            <el-option label="Выполнено" value="Completed" />
-            <el-option label="Закрыто" value="Closed" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <!-- Поиск -->
+    <el-input
+      v-model="searchInput"
+      placeholder="Поиск по ТПА или пресс-форме"
+      clearable
+      size="large"
+      prefix-icon="Search"
+      class="mb-4"
+      @input="onSearchInput"
+      @clear="onSearchInput"
+    />
 
-    <!-- Список заданий -->
     <div
       v-loading="mobileStore.loading"
       element-loading-text="Загрузка заданий..."
-      class="space-y-3 min-h-[80px]"
+      class="min-h-[120px]"
     >
-      <MobileTaskCard
-        v-for="task in mobileStore.filteredTasks"
-        :key="task.id"
-        :task="task"
-        @click="openTaskDetail(task)"
-        @start="startTask(task)"
-        @complete-setup="completeSetup(task)"
-        @cancel-setup="cancelSetup(task)"
-        @complete="completeTask(task)"
-      />
-    </div>
+      <!-- ─── Текущая смена ─── -->
+      <section class="mb-6">
+        <h3 class="section-title">
+          Текущая смена
+          <span v-if="mobileStore.currentShiftTasks.length" class="section-count">
+            {{ mobileStore.currentShiftTasks.length }}
+          </span>
+        </h3>
 
-    <div v-if="!mobileStore.loading && mobileStore.filteredTasks.length === 0" class="text-center py-12">
-      <el-empty description="Заданий нет" />
+        <div v-if="mobileStore.currentShiftTasks.length" class="space-y-3">
+          <MobileTaskCard
+            v-for="task in mobileStore.currentShiftTasks"
+            :key="task.id"
+            :task="task"
+            @click="openTaskDetail(task)"
+            @start="startTask(task)"
+            @complete-setup="completeSetup(task)"
+            @cancel-setup="cancelSetup(task)"
+            @complete="completeTask(task)"
+          />
+        </div>
+        <el-empty v-else description="Нет заданий" :image-size="80" />
+      </section>
+
+      <!-- ─── Незавершённые (с прошедших смен) ─── -->
+      <section v-if="mobileStore.unfinishedTasks.length" class="mb-6">
+        <h3 class="section-title section-title--warning">
+          Незавершённые
+          <span class="section-count section-count--warning">
+            {{ mobileStore.unfinishedTasks.length }}
+          </span>
+        </h3>
+
+        <div class="space-y-3">
+          <MobileTaskCard
+            v-for="task in mobileStore.unfinishedTasks"
+            :key="task.id"
+            :task="task"
+            @click="openTaskDetail(task)"
+            @start="startTask(task)"
+            @complete-setup="completeSetup(task)"
+            @cancel-setup="cancelSetup(task)"
+            @complete="completeTask(task)"
+          />
+        </div>
+      </section>
+
+      <!-- ─── Архив заданий ─── -->
+      <section class="mb-6">
+        <h3 class="section-title">
+          Архив заданий
+          <span v-if="mobileStore.archiveTotal" class="section-count">
+            {{ mobileStore.archiveTotal }}
+          </span>
+        </h3>
+
+        <template v-if="mobileStore.archiveTasks.length">
+          <div class="space-y-3">
+            <MobileTaskCard
+              v-for="task in mobileStore.archiveTasks"
+              :key="task.id"
+              :task="task"
+              @click="openTaskDetail(task)"
+            />
+          </div>
+
+          <el-pagination
+            v-if="mobileStore.archiveTotal > mobileStore.archivePageSize"
+            class="mt-4 justify-center"
+            background
+            layout="prev, pager, next"
+            :pager-count="5"
+            :total="mobileStore.archiveTotal"
+            :page-size="mobileStore.archivePageSize"
+            :current-page="mobileStore.archivePage"
+            @current-change="mobileStore.setArchivePage"
+          />
+        </template>
+        <el-empty v-else description="Архив пуст" :image-size="80" />
+      </section>
     </div>
 
     <!-- Кнопка сканера -->
@@ -141,13 +183,24 @@ const scannerVisible = ref(false)
 const selectedTask = ref(null)
 const scanResult = ref(null)
 
+const searchInput = ref('')
+let searchTimer = null
+
 onMounted(async () => {
+  await mobileStore.loadShifts()
   await loadTasks()
   await mobileStore.loadDowntimeReasons()
 })
 
 const loadTasks = async () => {
   await mobileStore.loadMyTasks()
+}
+
+const onSearchInput = () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    mobileStore.applySearch(searchInput.value.trim())
+  }, 350)
 }
 
 const openTaskDetail = (task) => {
@@ -315,12 +368,30 @@ const handleScanError = (error) => {
   @apply p-4 pb-24;
 }
 
-.mobile-filters :deep(.el-form-item) {
-  @apply w-full mb-3;
+.section-title {
+  @apply flex items-center gap-2 text-base font-bold text-gray-700 mb-3;
 }
 
-.mobile-filters :deep(.el-input),
-.mobile-filters :deep(.el-select) {
-  @apply w-full;
+.section-title--warning {
+  @apply text-orange-600;
+}
+
+.section-count {
+  @apply inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2
+         text-sm font-semibold rounded-full bg-gray-200 text-gray-600;
+}
+
+.section-count--warning {
+  @apply bg-orange-100 text-orange-600;
+}
+
+/* Крупнее для пальца на планшете */
+.mobile-tasks-view :deep(.el-pagination.is-background .el-pager li),
+.mobile-tasks-view :deep(.el-pagination.is-background .btn-prev),
+.mobile-tasks-view :deep(.el-pagination.is-background .btn-next) {
+  min-width: 40px;
+  height: 40px;
+  line-height: 40px;
+  font-size: 16px;
 }
 </style>

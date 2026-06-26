@@ -1,69 +1,72 @@
 import { defineStore } from 'pinia'
 import { mobileApi } from '@/api/mobile'
+import { shiftsApi } from '@/api/shifts'
+import { computeShiftBoundary } from '@/constants/shift'
 import { ElMessage } from 'element-plus'
 
 export const useMobileStore = defineStore('mobile', {
   state: () => ({
-    tasks: [],
+    // Разделы заданий наладчика
+    currentShiftTasks: [],   // задания текущей (или ближайшей) смены, любой статус
+    unfinishedTasks: [],     // незавершённые задания прошедших смен
+    archiveTasks: [],        // завершённые/закрытые задания прошедших смен (страница)
+    archiveTotal: 0,
+    archivePage: 1,
+    archivePageSize: 20,
+
+    search: '',
+    shiftSchedule: [],
+
     loading: false,
     selectedTask: null,
     scannerActive: false,
     scannedData: null,
     downtimeReasons: [],
-    activeDowntime: null,
-    filters: {
-      status: null,
-      search: ''
-    }
+    activeDowntime: null
   }),
 
   getters: {
-    // Активные задания (включая наладку)
-    activeTasks: (state) => state.tasks.filter(t =>
-      ['Issued', 'Setup', 'InProgress'].includes(t.status)
-    ),
+    // Плоский список всех загруженных заданий — для поиска по id (сканер и пр.)
+    tasks: (state) => [
+      ...state.currentShiftTasks,
+      ...state.unfinishedTasks,
+      ...state.archiveTasks
+    ],
 
     // Задание в состоянии наладки (не более одного)
-    setupTask: (state) => state.tasks.find(t => t.status === 'Setup') ?? null,
-
-    // Завершённые задания
-    completedTasks: (state) => state.tasks.filter(t => 
-      ['Completed', 'Closed'].includes(t.status)
-    ),
-
-    // Задания в работе
-    inProgressTasks: (state) => state.tasks.filter(t => t.status === 'InProgress'),
-
-    // Фильтрованный список
-    filteredTasks: (state) => {
-      let result = state.tasks
-
-      if (state.filters.status) {
-        result = result.filter(t => t.status === state.filters.status)
-      }
-
-      if (state.filters.search) {
-        const search = state.filters.search.toLowerCase()
-        result = result.filter(t => 
-          t.immName?.toLowerCase().includes(search) ||
-          t.moldName?.toLowerCase().includes(search)
-        )
-      }
-
-      return result
-    }
+    setupTask: (state) =>
+      [...state.currentShiftTasks, ...state.unfinishedTasks].find(t => t.status === 'Setup') ?? null
   },
 
   actions: {
-    // Загрузка моих заданий
+    // Загрузка расписания смен (для вычисления границы смены)
+    async loadShifts() {
+      try {
+        const res = await shiftsApi.getShifts()
+        this.shiftSchedule = res.data ?? []
+      } catch {
+        this.shiftSchedule = []
+      }
+    },
+
+    // Загрузка моих заданий, разложенных по разделам
     async loadMyTasks() {
       this.loading = true
-      this.tasks = []
       try {
+        const boundary = computeShiftBoundary(this.shiftSchedule)
         const response = await mobileApi.getMyTasks({
-          status: this.filters.status || undefined
+          boundary: boundary.toISOString(),
+          search: this.search || undefined,
+          archivePage: this.archivePage,
+          archivePageSize: this.archivePageSize
         })
-        this.tasks = response.data ?? []
+        const data = response.data ?? {}
+        this.currentShiftTasks = data.currentShift ?? []
+        this.unfinishedTasks = data.unfinished ?? []
+        this.archiveTasks = data.archive?.items ?? []
+        this.archiveTotal = data.archive?.total ?? 0
+        this.archivePage = data.archive?.page ?? this.archivePage
+        this.archivePageSize = data.archive?.pageSize ?? this.archivePageSize
         return { success: true }
       } catch (error) {
         ElMessage.error('Ошибка загрузки заданий')
@@ -71,6 +74,19 @@ export const useMobileStore = defineStore('mobile', {
       } finally {
         this.loading = false
       }
+    },
+
+    // Смена страницы архива
+    async setArchivePage(page) {
+      this.archivePage = page
+      await this.loadMyTasks()
+    },
+
+    // Установка поиска — сбрасывает архив на первую страницу
+    async applySearch(value) {
+      this.search = value
+      this.archivePage = 1
+      await this.loadMyTasks()
     },
 
     // Выбор задания
@@ -147,19 +163,6 @@ export const useMobileStore = defineStore('mobile', {
       } catch (error) {
         ElMessage.error('Ошибка завершения простоя')
         return { success: false }
-      }
-    },
-
-    // Установка фильтра
-    setFilter(key, value) {
-      this.filters[key] = value
-    },
-
-    // Сброс фильтров
-    clearFilters() {
-      this.filters = {
-        status: null,
-        search: ''
       }
     }
   }

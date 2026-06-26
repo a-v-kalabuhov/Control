@@ -70,3 +70,23 @@ export function computeCurrentShift(shifts) {
   const start = todayAt(8 * 60)
   return { start, end: new Date(start.getTime() + 8 * 3_600_000) }
 }
+
+/**
+ * Граница текущей смены для разбивки заданий наладчика по разделам.
+ * Задание относится к текущей смене, если оно выдано (IssuedAt) на этой границе или позже;
+ * выданное раньше — к прошедшим сменам.
+ *
+ * - Если сейчас идёт смена → граница = её начало.
+ * - Если между сменами → граница = конец последней завершённой смены
+ *   (так задания, выданные заранее на ближайшую смену, попадают в «текущую»).
+ *
+ * @param {Array} shifts — массив ShiftDto
+ * @returns {Date}
+ */
+export function computeShiftBoundary(shifts) {
+  const { start, end } = computeCurrentShift(shifts)
+  // computeCurrentShift возвращает либо активную смену (start ≤ now ≤ end),
+  // либо последнюю завершённую (end ≤ now). В первом случае граница — начало смены,
+  // во втором — её конец (начало ожидания следующей смены).
+  return new Date() <= end ? start : end
+}
