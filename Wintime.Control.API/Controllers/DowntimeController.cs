@@ -78,6 +78,63 @@ public class DowntimeController : ControllerBase
     }
 
     /// <summary>
+    /// Редактировать причину простоя. Наименование обязательно и не должно дублировать
+    /// уже имеющуюся в справочнике причину.
+    /// </summary>
+    [HttpPut("reasons/{id}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<DowntimeReasonDto>> UpdateDowntimeReason(Guid id, [FromBody] UpdateDowntimeReasonRequestDto request)
+    {
+        var reason = await _context.DowntimeReasons.FindAsync(id);
+        if (reason == null)
+            return NotFound("Причина простоя не найдена");
+
+        var name = (request.Name ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(name))
+            return BadRequest("Наименование причины обязательно");
+
+        var duplicate = await _context.DowntimeReasons
+            .AnyAsync(r => r.Id != id && r.Name.ToLower() == name.ToLower());
+        if (duplicate)
+            return Conflict("Причина с таким наименованием уже существует");
+
+        reason.Name = name;
+        reason.Type = request.Type;
+        reason.IsActive = request.IsActive;
+        await _context.SaveChangesAsync();
+
+        return Ok(new DowntimeReasonDto
+        {
+            Id = reason.Id,
+            Name = reason.Name,
+            Type = reason.Type,
+            IsActive = reason.IsActive
+        });
+    }
+
+    /// <summary>
+    /// Удалить причину простоя. Разрешено только если причина не использовалась
+    /// ни в одной записи журнала простоев.
+    /// </summary>
+    [HttpDelete("reasons/{id}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<IActionResult> DeleteDowntimeReason(Guid id)
+    {
+        var reason = await _context.DowntimeReasons.FindAsync(id);
+        if (reason == null)
+            return NotFound("Причина простоя не найдена");
+
+        var isUsed = await _context.Events.AnyAsync(e => e.ReasonId == id);
+        if (isUsed)
+            return Conflict("Причина использовалась в журнале простоев и не может быть удалена. Сделайте её неактивной.");
+
+        _context.DowntimeReasons.Remove(reason);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    /// <summary>
     /// Начать простой (вручную)
     /// </summary>
     [HttpPost("events/downtime/start")]
