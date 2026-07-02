@@ -7,6 +7,8 @@ public static class Roles
     public const string Adjuster = "Adjuster";
     public const string Observer = "Observer";
     public const string Emulator = "Emulator";
-    
-    public static readonly string[] All = { Admin, Manager, Adjuster, Observer, Emulator };
+    // Заглушка под РОСОМС (ROS-03) — см. UserRole.Operator.
+    public const string Operator = "Operator";
+
+    public static readonly string[] All = { Admin, Manager, Adjuster, Observer, Emulator, Operator };
 }
