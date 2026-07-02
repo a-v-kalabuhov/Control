@@ -1,3 +1,5 @@
+using Wintime.Control.Core.Enums;
+
 namespace Wintime.Control.Core.Entities;
 
 public class Mold : BaseEntity
@@ -15,8 +17,12 @@ public class Mold : BaseEntity
     public string? PhotoPath { get; set; }
     public bool IsActive { get; set; } = true;
 
+    // Статус ПФ (ARCH-02). Nullable: Мун игнорирует, UI появится в ROS-01.
+    // Не подменяет IsActive (архивный флаг) — см. CLAUDE.md.
+    public MoldStatus? MoldStatus { get; set; }
+
     // Calculated (not mapped directly, calculated via Usage)
-    // public int TotalCycles { get; set; } 
+    // public int TotalCycles { get; set; }
 
     // Navigation
     public ICollection<ShiftTask> ShiftTasks { get; set; } = new List<ShiftTask>();
