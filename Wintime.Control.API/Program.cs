@@ -88,7 +88,9 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
     .AddPolicy("ManagerOrAdmin", policy => policy.RequireRole("Manager", "Admin"))
-    .AddPolicy("AdjusterOrHigher", policy => policy.RequireRole("Adjuster", "Manager", "Admin"));
+    .AddPolicy("AdjusterOrHigher", policy => policy.RequireRole("Adjuster", "Manager", "Admin"))
+    // Заглушка под РОСОМС (ROS-03): пока не привязана ни к одному endpoint. См. UserRole.Operator.
+    .AddPolicy("OperatorOrHigher", policy => policy.RequireRole("Operator", "Adjuster", "Manager", "Admin"));
 
 // CORS
 builder.Services.AddCors(options =>
