@@ -60,12 +60,14 @@ pnpm-debug.log*
 *.swp
 *~
 *.lscache
+.clinerules/
 
 # Docker build artifacts
 publish/
 
 # internal docs остаются локальными, но ADR версионируются (видны команде)
 docs/inner/
+docs/claude/
 
 # Secrets
 .env
