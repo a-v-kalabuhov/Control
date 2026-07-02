@@ -1,9 +1,11 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.Imm;
+using Wintime.Control.Core.DTOs.Mold;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.Policies;
@@ -453,6 +455,33 @@ public class ImmController : ControllerBase
         };
 
         return Task.FromResult<ActionResult<ImmStatisticsDto>>(Ok(statistics));
+    }
+
+    /// <summary>
+    /// Получить QR-код для ТПА
+    /// </summary>
+    [HttpGet("{id:guid}/qr")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<QrCodeDto>> GetImmQr(Guid id)
+    {
+        var imm = await _context.Imms.FindAsync(id);
+        if (imm == null)
+            return NotFound();
+
+        var qrData = JsonSerializer.Serialize(new
+        {
+            entity = "machine",
+            id = imm.Id
+        });
+
+        var dto = new QrCodeDto
+        {
+            EntityType = "machine",
+            EntityId = imm.Id.ToString(),
+            QrData = qrData
+        };
+
+        return Ok(dto);
     }
 
     private static DateTime? MaxDateTime(DateTime? a, DateTime? b)

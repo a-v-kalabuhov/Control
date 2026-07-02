@@ -27,5 +27,9 @@ export const immApi = {
   
   getStatistics(id, params) {
     return apiClient.get(`/imm/${id}/statistics`, { params })
+  },
+
+  getQr(id) {
+    return apiClient.get(`/imm/${id}/qr`)
   }
 }

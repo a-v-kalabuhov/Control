@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -219,14 +220,17 @@ public class MoldsController : ControllerBase
         if (mold == null)
             return NotFound();
 
-        var qrData = $"{{\"entity\":\"mold\",\"id\":\"{mold.FormId}\"}}";
+        var qrData = JsonSerializer.Serialize(new
+        {
+            entity = "mold",
+            id = mold.Id
+        });
 
         var dto = new QrCodeDto
         {
             EntityType = "mold",
             EntityId = mold.Id.ToString(),
             QrData = qrData
-            // QrImageBase64 можно сгенерировать через библиотеку QRCode
         };
 
         return Ok(dto);
