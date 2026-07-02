@@ -53,7 +53,8 @@
         <template #default="{ row }">
           <div class="flex flex-col items-start gap-1">
             <el-button size="small" style="width: 130px; margin: 0" @click="editImm(row)">Редактировать</el-button>
-            <el-button size="small" style="width: 130px; margin: 0" type="danger" @click="deleteImm(row)">Удалить</el-button>          
+            <el-button size="small" style="width: 130px; margin: 0" @click="showQr(row)">QR</el-button>
+            <el-button size="small" style="width: 130px; margin: 0" type="danger" @click="deleteImm(row)">Удалить</el-button>
           </div>
         </template>
       </el-table-column>
@@ -111,6 +112,8 @@
         <el-button type="primary" @click="saveImm" :loading="saving">Сохранить</el-button>
       </template>
     </el-dialog>
+
+    <QrCodeDialog v-model="qrDialogVisible" :qr-data="qrData" :label="qrLabel" />
   </div>
 </template>
 
@@ -119,6 +122,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { immApi } from '@/api/imm'
 import { templatesApi } from '@/api/templates'
+import QrCodeDialog from '@/components/common/QrCodeDialog.vue'
 import dayjs from 'dayjs'
 
 const loading = ref(false)
@@ -129,6 +133,21 @@ const formRef = ref(null)
 
 const imms = ref([])
 const templates = ref([])
+
+const qrDialogVisible = ref(false)
+const qrData = ref('')
+const qrLabel = ref('')
+
+const showQr = async (imm) => {
+  try {
+    const response = await immApi.getQr(imm.id)
+    qrData.value = response.data.qrData
+    qrLabel.value = imm.name
+    qrDialogVisible.value = true
+  } catch (error) {
+    ElMessage.error('Ошибка получения QR-кода')
+  }
+}
 
 const filters = reactive({
   isActive: null
