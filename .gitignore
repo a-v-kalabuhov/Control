@@ -60,7 +60,8 @@ pnpm-debug.log*
 *.swp
 *~
 *.lscache
-.clinerules/
+.clineignore
+/.clinerules/
 
 # Docker build artifacts
 publish/
