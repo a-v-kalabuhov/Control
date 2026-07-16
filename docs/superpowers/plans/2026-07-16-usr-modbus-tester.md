@@ -1263,7 +1263,7 @@ public static class RawMonitorScreen
                     table.AddRow("[red]связь[/]", Markup.Escape(ex.Message));
                 }
                 ctx.Refresh();
-                Thread.Sleep(session.TimeoutMs < 250 ? 250 : 250);
+                Thread.Sleep(250);
             }
         });
         reader?.Dispose();
