@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>UsrConnector.Core</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Единственная зависимость ядра — Modbus-клиент (протокол ОПРОСА УСТРОЙСТВА).
+    Инвариант "Core не знает о транспорте" относится к внешнему транспорту
+    (MQTT/REST/HTTP наружу) — он живёт только в Host.
+  -->
+  <ItemGroup>
+    <PackageReference Include="NModbus" Version="3.0.*" />
+  </ItemGroup>
+
+</Project>

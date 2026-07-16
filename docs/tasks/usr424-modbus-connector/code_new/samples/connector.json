@@ -1,0 +1,67 @@
+{
+  // Конфигурация пилота: одноузловая машина BM180-MT, USR-IO424T-EWR (4 DI + 2 AI).
+  // Точки съёма — по CYCLOGRAM_SINGLE_NODE.md §6:
+  //   дискретные статусы — сухие контакты реле KA (напрямую),
+  //   Injection — команда KEBA DO14 через оптопару,
+  //   аналог — датчики Miran LS2 (0–10 В), высокоомная врезка/изоляция.
+  "device": {
+    "host": "192.168.0.7",
+    "port": 502,            // фактический порт USR — регистр 0x1076, сверить
+    "unitId": 17,
+    "pollIntervalMs": 500,
+    "timeoutMs": 1000
+  },
+  "profile": "singleNode",
+  "stateMachine": {
+    "seedCycleMs": 300000,        // консервативный старт (реальные циклы 3…300 с)
+    "alarmTimeoutCoef": 2.0,
+    "idleTimeoutCoef": 3.0,
+    "averageWindowCycles": 10,
+    "offlineAfterFailedPolls": 3  // ~1.5 с при опросе 500 мс; поднять до сравнимого с циклом
+  },
+  "registers": [
+    // --- Дискретные входы USR (DI1..DI4 = 0x0020..0x0023, FC02) ---
+    {
+      "name": "Injection",
+      "address": "0x0020",
+      "access": "discreteInput",
+      "role": "injection"          // ЯКОРЬ ЦИКЛА (KEBA DO14 через оптопару)
+    },
+    {
+      "name": "EjectorFwdReached",
+      "address": "0x0021",
+      "access": "discreteInput",
+      "role": "ejectorFwdReached"  // штатное завершение E1 (сухой контакт KA27)
+    },
+    {
+      "name": "Reject",
+      "address": "0x0022",
+      "access": "discreteInput",
+      "role": "reject"             // вердикт качества (KA34)
+    },
+    {
+      "name": "MouldClosed",
+      "address": "0x0023",
+      "access": "discreteInput",
+      "role": "mouldClosed"        // начало рабочей фазы (KA23)
+    },
+
+    // --- Аналоговые входы USR (AI1=0x0058, AI2=0x0059, FC04, значение в мВ) ---
+    {
+      "name": "InjectionPosition",
+      "address": "0x0058",
+      "access": "inputRegister",
+      "role": "injectionPosition",
+      "scale": 0.0225,             // мВ → мм: 0.001 (мВ→В) × 22.5 (LS2-225 при UREF 10 В)
+      "unit": "mm"                 // подушка = минимум этого сигнала за цикл
+    },
+    {
+      "name": "MoldPosition",
+      "address": "0x0059",
+      "access": "inputRegister",
+      "role": "moldPosition",
+      "scale": 0.045,              // мВ → мм: 0.001 × 45.0 (LS2-450 при UREF 10 В)
+      "unit": "mm"
+    }
+  ]
+}

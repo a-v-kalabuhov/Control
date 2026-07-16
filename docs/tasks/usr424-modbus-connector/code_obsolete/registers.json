@@ -1,0 +1,64 @@
+{
+  "device": {
+    "host": "192.168.0.7",
+    "port": 502,
+    "unitId": 17,
+    "pollIntervalMs": 500,
+    "timeoutMs": 1000,
+    "maxBatchGap": 0
+  },
+  "registers": [
+    {
+      "name": "MoldClose",
+      "address": "0x0020",
+      "access": "discreteInput",
+      "rawType": "bit",
+      "target": "bool",
+      "valueMap": { "1": true, "0": false }
+    },
+    {
+      "name": "Injection",
+      "address": "0x0021",
+      "access": "discreteInput",
+      "rawType": "bit",
+      "target": "string",
+      "valueMap": { "1": "ON", "0": "OFF" }
+    },
+    {
+      "name": "Ejection",
+      "address": "0x0022",
+      "access": "discreteInput",
+      "rawType": "bit",
+      "target": "int",
+      "valueMap": { "1": 100, "0": 10 }
+    },
+    {
+      "name": "MoldOpen",
+      "address": "0x0023",
+      "access": "discreteInput",
+      "rawType": "bit",
+      "target": "bool",
+      "valueMap": { "1": true, "0": false }
+    },
+    {
+      "name": "PlatenDistance",
+      "address": "0x0058",
+      "access": "inputRegister",
+      "rawType": "uint16",
+      "scale": 0.001,
+      "offset": 0,
+      "unit": "V",
+      "target": "double"
+    },
+    {
+      "name": "Cushion",
+      "address": "0x0059",
+      "access": "inputRegister",
+      "rawType": "uint16",
+      "scale": 0.001,
+      "offset": 0,
+      "unit": "V",
+      "target": "double"
+    }
+  ]
+}
