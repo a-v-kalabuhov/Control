@@ -55,6 +55,17 @@ Kestrel отдаёт **и HTTP, и HTTPS одновременно**:
 все машины цеха. «HTTPS не нужен» остаётся верным для дашбордов; HTTPS точечно появляется там,
 где без него камера не работает.
 
+**Минимальная правка кода (нужна для http-дашбордов).** В Production API включает
+`UseHttpsRedirection` (`Program.cs`), который редиректит http→https и ломает доступ к дашбордам
+по http. Прячем редирект за конфиг-флаг (дефолт — прежнее поведение):
+
+```csharp
+if (!app.Environment.IsDevelopment() && builder.Configuration.GetValue("Https:Redirect", true))
+    app.UseHttpsRedirection();
+```
+
+В пилотном `.env` — `Https__Redirect=false`. Другие среды не затронуты (флаг по умолчанию `true`).
+
 ## Не-цели (осознанно отложено до боевого деплоя)
 
 | Отложено | Причина |
@@ -131,6 +142,9 @@ control-pzp-deploy/
 Сеть: коннектор в контейнере обращается к шлюзу USR по LAN-IP — исходящий трафик из
 контейнера в локальную сеть через NAT Docker Desktop работает штатно.
 
+Миграции БД применяются **автоматически** при старте API (`db.Database.Migrate()`, Program.cs) —
+ручной `dotnet ef database update` в деплое не нужен; на пустой БД схема создаётся сама.
+
 ## Секреты и параметры
 
 **`.env`** (читается docker-compose автоматически):
@@ -140,6 +154,7 @@ control-pzp-deploy/
 | `DB_PASSWORD` | пароль PostgreSQL |
 | `Bootstrap__AdminPassword` | пароль первого админа (создаётся при старте API) |
 | `CERT_PASSWORD` | пароль PFX-сертификата (задаётся при генерации `4-make-cert.bat`) |
+| `Https__Redirect` | `false` для пилота (иначе http-дашборды редиректятся на https) |
 | `Connector__ApiKey` | не используется в `Source=file`; оставить пустым/убрать |
 
 **`config/machines.json`** — список ТПА `[{immId, immName, connectorAlias}]`; на площадке вписать
