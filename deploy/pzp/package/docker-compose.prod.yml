@@ -40,6 +40,7 @@ services:
         condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      DemoMode: "false"
       ASPNETCORE_URLS: "http://+:8080;https://+:8443"
       ASPNETCORE_Kestrel__Certificates__Default__Path: /certs/pzp.pfx
       ASPNETCORE_Kestrel__Certificates__Default__Password: ${CERT_PASSWORD}
