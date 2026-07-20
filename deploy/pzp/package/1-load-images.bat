@@ -3,6 +3,10 @@ chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 echo Загрузка Docker-образов из images\ ...
+if not exist "images\*.tar" (
+  echo ОШИБКА: в папке images\ нет .tar-файлов образов. Пакет распакован полностью?
+  pause & exit /b 1
+)
 for %%f in (images\*.tar) do (
   echo   %%f
   docker load -i "%%f"
