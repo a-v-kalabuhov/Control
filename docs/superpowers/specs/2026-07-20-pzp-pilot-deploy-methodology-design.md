@@ -133,6 +133,10 @@ control-pzp-deploy/
   `ASPNETCORE_Kestrel__Certificates__Default__Path=/certs/pzp.pfx` +
   `ASPNETCORE_Kestrel__Certificates__Default__Password=${CERT_PASSWORD}`; volume `./certs:/certs:ro`;
   `DOTNET_gcServer=0`.
+- **api: `DemoMode=false` — обязательно.** В образе `appsettings.json` содержит `DemoMode=true`;
+  без переопределения API насидит **публичные демо-аккаунты** с известными паролями
+  (`admin/Admin123!`, `manager/Manager123!`, …) вместо bootstrap-админа — прямое нарушение
+  инварианта безопасности. Хардкодим `DemoMode: "false"` в compose (не секрет).
 - Порты наружу: `5000:8080` (http, дашборды) и `443:8443` (https, планшеты). `1883` брокера
   наружу **не публикуем** — коннектор ходит к `mosquitto` внутри compose-сети.
 - Каждому сервису — `restart: unless-stopped` (автоподъём после ребута) и `mem_limit`
@@ -152,7 +156,7 @@ control-pzp-deploy/
 | Ключ | Назначение |
 | --- | --- |
 | `DB_PASSWORD` | пароль PostgreSQL |
-| `Bootstrap__AdminPassword` | пароль первого админа (создаётся при старте API) |
+| `Bootstrap__AdminPassword` | пароль первого админа. Политика Identity: **≥8 символов, заглавная + строчная + цифра + спецсимвол** — иначе админ не создастся |
 | `CERT_PASSWORD` | пароль PFX-сертификата (задаётся при генерации `4-make-cert.bat`) |
 | `Https__Redirect` | `false` для пилота (иначе http-дашборды редиректятся на https) |
 | `Connector__ApiKey` | не используется в `Source=file`; оставить пустым/убрать |
