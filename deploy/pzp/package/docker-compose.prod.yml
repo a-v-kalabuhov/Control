@@ -1,0 +1,85 @@
+name: wtctrl-pzp
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wtctrl-pzp-postgres
+    environment:
+      POSTGRES_DB: WintimeControlDb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    command: postgres -c shared_buffers=128MB -c max_connections=20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d WintimeControlDb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+    networks: [wtctrl]
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: wtctrl-pzp-mosquitto
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    restart: unless-stopped
+    mem_limit: 64m
+    networks: [wtctrl]
+
+  api:
+    image: wintime/api:pilot
+    container_name: wtctrl-pzp-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: "http://+:8080;https://+:8443"
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /certs/pzp.pfx
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${CERT_PASSWORD}
+      DOTNET_gcServer: "0"
+      Https__Redirect: "${HTTPS_REDIRECT}"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=WintimeControlDb;Username=postgres;Password=${DB_PASSWORD};"
+      MqttSettings__BrokerUrl: mosquitto
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD}
+    ports:
+      - "5000:8080"
+      - "443:8443"
+    volumes:
+      - ./certs:/certs:ro
+    restart: unless-stopped
+    mem_limit: 768m
+    networks: [wtctrl]
+
+  connector:
+    image: wintime/connector:pilot
+    container_name: wtctrl-pzp-connector
+    depends_on:
+      mosquitto:
+        condition: service_started
+    environment:
+      DOTNET_gcServer: "0"
+      Connector__Source: file
+      Connector__SourcePath: config/machines.json
+      Connector__ConfigDir: config
+      Mqtt__BrokerHost: mosquitto
+      Mqtt__Port: "1883"
+    volumes:
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    mem_limit: 256m
+    networks: [wtctrl]
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+
+networks:
+  wtctrl:
+    driver: bridge

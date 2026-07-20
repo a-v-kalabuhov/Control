@@ -1,0 +1,39 @@
+{
+  // Конфиг под пилотную машину (KEBA + USR-IO424). Обвязка (заказчик):
+  //   DO14 Injection1  -> USR DI3 (0x0022)  -> injection          (якорь цикла, обяз.)
+  //   DO7  Ejector FWD -> USR DI2 (0x0021)  -> ejectorFwdReached  (штатное завершение E1, обяз.)
+  //   DO3  Mold close  -> USR DI1 (0x0020)  -> mouldClosed        (диагностика)
+  //   DO2  Mold open   -> USR DI4 (0x0023)  -> mouldOpened        (диагностика)
+  //   AI2  Inj1 Pos    -> USR AI2 (0x0059)  -> injectionPosition  (подушка)
+  //   AI0  Mold Pos    -> USR AI1 (0x0058)  -> moldPosition       (публикация)
+
+  "device": {
+    "host": "192.168.10.1",   // TODO ступень 0: реальный IP USR (дефолт web-конфигуратора 192.168.10.1)
+    "port": 502,              // TODO ступень 0: реальный порт (у USR конфигурируемый, регистр 0x1076 — НЕ факт что 502)
+    "unitId": 17,             // дефолт USR 0x11; проверить 0x00B1
+    "pollIntervalMs": 500,    // ступень 1.3: если импульс Injection короче — уменьшить (round-trip USR ~десятки мс)
+    "timeoutMs": 1000
+  },
+
+  "profile": "singleNode",
+
+  "stateMachine": {
+    "seedCycleMs": 300000,
+    "alarmTimeoutCoef": 2.0,
+    "idleTimeoutCoef": 3.0,
+    "averageWindowCycles": 10,
+    "offlineAfterFailedPolls": 3
+  },
+
+  "registers": [
+    // DI (FC02, уровень) — access=discreteInput. Для нормально-замкнутых контактов добавить "invert": true.
+    { "name": "MouldClosed",       "address": "0x0020", "access": "discreteInput", "role": "mouldClosed" },
+    { "name": "EjectorFwdReached", "address": "0x0021", "access": "discreteInput", "role": "ejectorFwdReached" },
+    { "name": "Injection",         "address": "0x0022", "access": "discreteInput", "role": "injection" },
+    { "name": "MouldOpened",       "address": "0x0023", "access": "discreteInput", "role": "mouldOpened" },
+
+    // AI (FC04, значение в мВ) — access=inputRegister. scale=1.0 => сырые мВ; калибровка в мм — ступень 3.
+    { "name": "MoldPosition",      "address": "0x0058", "access": "inputRegister", "role": "moldPosition",      "scale": 1.0, "unit": "mV" },
+    { "name": "InjectionPosition", "address": "0x0059", "access": "inputRegister", "role": "injectionPosition", "scale": 1.0, "unit": "mV" }
+  ]
+}
