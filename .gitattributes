@@ -1,0 +1,5 @@
+# Windows batch files must retain CRLF, or cmd.exe misparses multi-line
+# blocks (e.g. a parenthesised `if (...)`). Deploy package .bat files are run
+# on the customer PC, so this must hold regardless of core.autocrlf/platform.
+*.bat text eol=crlf
+*.cmd text eol=crlf
