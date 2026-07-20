@@ -365,8 +365,8 @@ KA24, оптопара не нужна.
 |---|---|---|
 | DI | Mould closed (KA23) | начало рабочей фазы |
 | DI | Ejector FWD reached (KA27) | граница цикла, счёт деталей |
-| DI | Reject (KA34) | вердикт качества |
-| DI | Mould openend / Injection¹ | конец фазы формы / фаза впрыска |
+| DI | Injection 1 (KA20 / YA23) | вердикт качества |
+| DI | Mould openend | конец фазы формы / фаза впрыска |
 | AI | Mold Position (AI0) | кривая смыкания, состояние формы |
 | AI | Injection1 Position (AI2) | подушка, профиль впрыска |
 
