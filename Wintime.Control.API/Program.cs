@@ -216,8 +216,10 @@ app.UseSerilogRequestLogging();
 // CORS должен быть перед HTTPS-редиректом для обработки preflight запросов
 app.UseCors("AllowFrontend");
 
-// В development среде отключаем HTTPS редирект для корректной работы preflight запросов
-if (!app.Environment.IsDevelopment())
+// В development среде отключаем HTTPS редирект для корректной работы preflight запросов.
+// В прочих средах редирект можно выключить флагом Https:Redirect (дефолт true) —
+// нужно для пилота с двойным доступом http (дашборды) + https (планшеты, mkcert).
+if (!app.Environment.IsDevelopment() && builder.Configuration.GetValue("Https:Redirect", true))
 {
     app.UseHttpsRedirection();
 }
