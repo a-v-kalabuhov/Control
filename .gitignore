@@ -73,6 +73,9 @@ docs/claude/
 # Secrets
 .env
 
+# Local dev HTTPS certs (mkcert)
+certs/
+
 
 # Brainstorm visual companion artifacts
 .superpowers/
