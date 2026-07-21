@@ -15,7 +15,10 @@
 param(
     [switch]$SkipBuild,
     [switch]$SkipTests,
-    [switch]$Dev
+    [switch]$Dev,
+    # IP(-и) хоста для HTTPS-сертификата и подсказки доступа с планшета.
+    # Не задан — определяются автоматически (интерфейсы с default gateway).
+    [string[]]$HostIp
 )
 
 Set-StrictMode -Version Latest
@@ -130,11 +133,67 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Ok "Миграции применены"
 
-# ── 5. Запуск API ─────────────────────────────────────────────────────────────
+# ── 5. HTTPS-сертификат для доступа по сети (планшет / QR-сканер) ──────────────
+# Камере браузера нужен secure context (HTTPS) — по http с планшета сканер не
+# запустится. Сертификат выпускает локальный CA mkcert; корень certs\rootCA.pem
+# ставится на планшет (Android: Установить сертификат ЦС; iOS: профиль + доверие).
+
+Write-Step "Проверка HTTPS-сертификата..."
+$certPath = Join-Path $root 'certs\dev.pfx'
+$certPass = 'changeit'
+$httpsUrl = $null
+
+# LAN-IP для SAN и подсказки. Явный -HostIp имеет приоритет; иначе берём адреса
+# интерфейсов с default gateway (так отсеиваются виртуальные адаптеры Docker/WSL,
+# у которых шлюза нет). APIPA (169.254.*) исключаем.
+if ($HostIp) {
+    $lanIps = @($HostIp)
+} else {
+    $lanIps = @(Get-NetIPConfiguration |
+        Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } |
+        ForEach-Object { $_.IPv4Address.IPAddress } |
+        Where-Object { $_ -and $_ -notlike '169.254.*' } |
+        Select-Object -Unique)
+}
+$lanIp = $lanIps | Select-Object -First 1   # для подсказки в итогах
+
+if (-not (Test-Path $certPath)) {
+    $mkcert = Get-Command mkcert -ErrorAction SilentlyContinue
+    if ($mkcert -and $lanIps) {
+        Write-Warn "Сертификат не найден — генерирую через mkcert (IP: $($lanIps -join ', '))..."
+        New-Item -ItemType Directory -Force (Split-Path $certPath) | Out-Null
+        & $mkcert.Source -pkcs12 -p12-file $certPath @lanIps 127.0.0.1 localhost
+        Copy-Item (Join-Path (& $mkcert.Source -CAROOT) 'rootCA.pem') `
+            (Join-Path $root 'certs\rootCA.pem') -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Warn "mkcert недоступен или не определён LAN-IP — HTTPS по сети выключен."
+    }
+}
+
+if (Test-Path $certPath) {
+    $env:ASPNETCORE_Kestrel__Certificates__Default__Path     = $certPath
+    $env:ASPNETCORE_Kestrel__Certificates__Default__Password = $certPass
+    $httpsUrl = 'https://0.0.0.0:7071'
+    Write-Ok "HTTPS включён (сертификат: certs\dev.pfx)"
+
+    # Доступ с планшета требует открытого входящего порта 7071 в файрволе.
+    $fwRule = Get-NetFirewallRule -DisplayName 'Wintime Control dev (HTTPS 7071)' -ErrorAction SilentlyContinue
+    if (-not $fwRule) {
+        Write-Warn "Нет правила файрвола на 7071. Выполните ОДИН раз в PowerShell от администратора:"
+        Write-Host "     New-NetFirewallRule -DisplayName 'Wintime Control dev (HTTPS 7071)' -Direction Inbound -Protocol TCP -LocalPort 7071 -Action Allow" -ForegroundColor DarkYellow
+    }
+} else {
+    Write-Warn "Запуск без HTTPS — камера QR-сканера с планшета работать не будет."
+}
+
+# ── 6. Запуск API ─────────────────────────────────────────────────────────────
 
 Write-Step "Запуск API..."
+# Бинд на 0.0.0.0 — чтобы приложение было доступно с других устройств в сети
+# (планшет). Файрвол должен пропускать входящие TCP 5007 и 7071.
+$apiUrls = if ($httpsUrl) { "$httpsUrl;http://0.0.0.0:5007" } else { "http://0.0.0.0:5007" }
 $apiProc = Start-Process -FilePath "dotnet" `
-    -ArgumentList "run --project `"$root\Wintime.Control.API`" --no-build" `
+    -ArgumentList "run --project `"$root\Wintime.Control.API`" --no-build --urls $apiUrls" `
     -PassThru
 Write-Host "  PID: $($apiProc.Id)"
 
@@ -145,7 +204,7 @@ if (-not (Wait-ForService "http://localhost:5007/swagger/v1/swagger.json" 60)) {
 }
 Write-Ok "API готов → http://localhost:5007"
 
-# ── 6. Запуск Emulator ────────────────────────────────────────────────────────
+# ── 7. Запуск Emulator ────────────────────────────────────────────────────────
 
 Write-Step "Запуск Emulator..."
 $emulatorProc = Start-Process -FilePath "dotnet" `
@@ -160,7 +219,7 @@ if (-not (Wait-ForService "http://localhost:5002/api/emulator/instances" 30)) {
 }
 Write-Ok "Emulator готов → http://localhost:5002"
 
-# ── 7. Запуск IMM-инстансов ───────────────────────────────────────────────────
+# ── 8. Запуск IMM-инстансов ───────────────────────────────────────────────────
 
 Write-Step "Запуск IMM-инстансов..."
 
@@ -209,7 +268,7 @@ try {
 
 Write-Ok "Запущено IMM-инстансов: $started"
 
-# ── 8. Frontend dev-сервер (опционально) ──────────────────────────────────────
+# ── 9. Frontend dev-сервер (опционально) ──────────────────────────────────────
 
 $frontendProc = $null
 $browserUrl = "http://localhost:5007"
@@ -224,12 +283,12 @@ if ($Dev) {
     $browserUrl = "http://localhost:3000"
 }
 
-# ── 9. Открываем браузер ──────────────────────────────────────────────────────
+# ── 10. Открываем браузер ─────────────────────────────────────────────────────
 
 Start-Sleep -Seconds 1
 Start-Process $browserUrl
 
-# ── 10. Итоги ────────────────────────────────────────────────────────────────
+# ── 11. Итоги ────────────────────────────────────────────────────────────────
 
 Write-Host "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
 Write-Host "  Dev-окружение запущено" -ForegroundColor Green
@@ -245,4 +304,7 @@ $summary | Format-Table -AutoSize
 
 Write-Host "  IMM-инстансов: $started" -ForegroundColor White
 Write-Host "  Swagger:       http://localhost:5007/swagger" -ForegroundColor White
+if ($httpsUrl -and $lanIp) {
+    Write-Host "  С планшета:    https://${lanIp}:7071  (нужен rootCA.pem на устройстве + порт 7071 в файрволе)" -ForegroundColor White
+}
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`n" -ForegroundColor Cyan

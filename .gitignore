@@ -73,6 +73,17 @@ docs/claude/
 # Secrets
 .env
 
+# Local dev HTTPS certs (mkcert)
+certs/
+
 
 # Brainstorm visual companion artifacts
 .superpowers/
+
+# PZP deploy — сборочные артефакты и секреты (не в git)
+deploy/pzp/dist/
+deploy/pzp/package/images/
+deploy/pzp/package/certs/
+deploy/pzp/package/CAROOT/
+deploy/pzp/package/mkcert.exe
+deploy/pzp/package/.env

@@ -16,17 +16,17 @@
         <span class="font-semibold">Последние сканирования</span>
       </template>
       <el-table :data="scanHistory" stripe style="width: 100%">
-        <el-table-column prop="timestamp" label="Время" width="160">
+        <el-table-column prop="timestamp" label="Время" width="110">
           <template #default="{ row }">
             {{ formatDate(row.timestamp) }}
           </template>
         </el-table-column>
-        <el-table-column prop="entity" label="Тип" width="100">
+        <el-table-column prop="typeLabel" label="Тип" width="130">
           <template #default="{ row }">
-            <el-tag size="small">{{ row.entity }}</el-tag>
+            <el-tag size="small">{{ row.typeLabel }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="id" label="ID" />
+        <el-table-column prop="details" label="Наименование" />
       </el-table>
     </el-card>
   </div>
@@ -36,30 +36,33 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import QrScanner from '@/components/mobile/QrScanner.vue'
+import { scannerErrorText } from '@/utils/scannerError'
+import { resolveScan } from '@/utils/scanDescription'
 import dayjs from 'dayjs'
 
 const scanHistory = ref([])
 
-const handleConfirm = (qrData) => {
-  try {
-    const parsed = JSON.parse(qrData)
-    
-    scanHistory.value.unshift({
-      timestamp: new Date(),
-      entity: parsed.entity,
-      id: parsed.id,
-      raw: qrData
-    })
+const handleConfirm = async (qrData) => {
+  const info = await resolveScan(qrData)
 
-    // Оставляем только последние 10
-    if (scanHistory.value.length > 10) {
-      scanHistory.value = scanHistory.value.slice(0, 10)
-    }
-
-    ElMessage.success(`Распознано: ${parsed.entity} - ${parsed.id}`)
-  } catch (error) {
-    ElMessage.warning('Неверный формат QR-кода')
+  // Нераспознанное (битый QR, чужой объект, архив) — не пишем в историю.
+  if (!info.ok) {
+    ElMessage.warning(info.text)
+    return
   }
+
+  scanHistory.value.unshift({
+    timestamp: new Date(),
+    typeLabel: info.typeLabel,
+    details: info.details
+  })
+
+  // Оставляем только последние 10
+  if (scanHistory.value.length > 10) {
+    scanHistory.value = scanHistory.value.slice(0, 10)
+  }
+
+  ElMessage.success('Распознано: ' + info.text)
 }
 
 const handleCancel = () => {
@@ -67,7 +70,7 @@ const handleCancel = () => {
 }
 
 const handleError = (error) => {
-  ElMessage.error('Ошибка сканера: ' + error.message)
+  ElMessage.error('Ошибка сканера: ' + scannerErrorText(error))
 }
 
 const formatDate = (date) => {
