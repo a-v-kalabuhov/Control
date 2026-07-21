@@ -169,20 +169,8 @@ onUnmounted(() => {
 
 const activeMenu = computed(() => route.path)
 
-const pageTitle = computed(() => {
-  const titles = {
-    '/': 'Дашборд',
-    '/tasks': 'Задания',
-    '/reports': 'Отчёты',
-    '/dictionary/imm': 'Справочник ТПА',
-    '/dictionary/molds': 'Справочник пресс-форм',
-    '/dictionary/personnel': 'Справочник персонала',
-    '/dictionary/shifts': 'Расписание смен',
-    '/dictionary/downtime-reasons': 'Причины простоев',
-    '/downtimes': 'Журнал простоев'
-  }
-  return titles[route.path] || 'CONTROL'
-})
+// Единый источник названия страницы — meta.title маршрута (см. router/index.js).
+const pageTitle = computed(() => route.meta?.title || 'CONTROL')
 
 const userInitials = computed(() => {
   const name = authStore.user?.fullName || 'U'
