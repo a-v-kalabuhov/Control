@@ -6,7 +6,7 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
-    meta: { requiresAuth: false }
+    meta: { requiresAuth: false, title: 'Вход' }
   },
   {
     path: '/',
@@ -28,7 +28,7 @@ const routes = [
         component: () => import('@/views/tasks/TasksView.vue'),
         meta: {
           roles: ['Admin', 'Manager'],
-          title: 'Диспетчерская'
+          title: 'Задания'
         }
       },
       {
@@ -72,31 +72,31 @@ const routes = [
             path: 'imm',
             name: 'DictionaryImm',
             component: () => import('@/views/dictionary/ImmDictionary.vue'),
-            meta: { roles: ['Admin', 'Manager'] }
+            meta: { roles: ['Admin', 'Manager'], title: 'Справочник ТПА' }
           },
           {
             path: 'molds',
             name: 'DictionaryMolds',
             component: () => import('@/views/dictionary/MoldDictionary.vue'),
-            meta: { roles: ['Admin', 'Manager'] }
+            meta: { roles: ['Admin', 'Manager'], title: 'Справочник пресс-форм' }
           },
           {
             path: 'personnel',
             name: 'DictionaryPersonnel',
             component: () => import('@/views/dictionary/PersonnelDictionary.vue'),
-            meta: { roles: ['Admin', 'Manager'] }
+            meta: { roles: ['Admin', 'Manager'], title: 'Справочник персонала' }
           },
           {
             path: 'shifts',
             name: 'DictionaryShifts',
             component: () => import('@/views/dictionary/ShiftsDictionary.vue'),
-            meta: { roles: ['Admin', 'Manager', 'Observer'] }
+            meta: { roles: ['Admin', 'Manager', 'Observer'], title: 'Расписание смен' }
           },
           {
             path: 'downtime-reasons',
             name: 'DictionaryDowntimeReasons',
             component: () => import('@/views/dictionary/DowntimeDictionary.vue'),
-            meta: { roles: ['Admin', 'Manager'] }
+            meta: { roles: ['Admin', 'Manager'], title: 'Причины простоев' }
           }
         ]
       },
@@ -108,13 +108,13 @@ const routes = [
             path: 'settings',
             name: 'AdminSettings',
             component: () => import('@/views/admin/SettingsView.vue'),
-            meta: { roles: ['Admin'] }
+            meta: { roles: ['Admin'], title: 'Настройки' }
           },
           {
             path: 'templates',
             name: 'AdminTemplates',
             component: () => import('@/views/admin/TemplatesView.vue'),
-            meta: { roles: ['Admin'] }
+            meta: { roles: ['Admin'], title: 'Шаблоны' }
           }
         ]
       }
@@ -148,7 +148,8 @@ const routes = [
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
-    component: () => import('@/views/errors/NotFoundView.vue')
+    component: () => import('@/views/errors/NotFoundView.vue'),
+    meta: { title: 'Страница не найдена' }
   }
 ]
 
@@ -188,6 +189,13 @@ router.beforeEach((to, from, next) => {
   }
 
   next()
+})
+
+// Заголовок вкладки браузера = название текущей страницы (то же, что в шапке).
+const APP_TITLE = 'CONTROL — управление цехом ТПА'
+router.afterEach((to) => {
+  const pageTitle = to.meta?.title
+  document.title = pageTitle ? `${pageTitle} — CONTROL` : APP_TITLE
 })
 
 export default router

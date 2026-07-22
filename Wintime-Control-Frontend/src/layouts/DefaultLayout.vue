@@ -1,17 +1,17 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <!-- Боковое меню -->
-    <aside 
-      class="fixed left-0 top-0 h-full w-64 bg-white shadow-lg z-50 transition-transform duration-300"
+    <aside
+      class="fixed left-0 top-0 h-full w-64 bg-white shadow-lg z-50 transition-transform duration-300 flex flex-col"
       :class="sidebarCollapsed ? '-translate-x-full' : 'translate-x-0'"
     >
       <!-- Логотип -->
-      <div class="h-16 flex items-center justify-center border-b border-gray-200">
+      <div class="h-16 flex-shrink-0 flex items-center justify-center border-b border-gray-200">
         <div class="text-xl font-bold text-primary-700">CONTROL</div>
       </div>
 
       <!-- Меню навигации -->
-      <nav class="p-4">
+      <nav class="p-4 flex-1 overflow-y-auto">
         <el-menu
           :default-active="activeMenu"
           class="border-none"
@@ -88,7 +88,7 @@
       </nav>
 
       <!-- Информация о пользователе -->
-      <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
+      <div class="flex-shrink-0 p-4 border-t border-gray-200 bg-white">
         <div class="flex items-center gap-3">
           <el-avatar :size="40" class="bg-primary-500">
             {{ userInitials }}
@@ -130,11 +130,6 @@
           <div class="text-sm text-gray-600">
             {{ currentTime }}
           </div>
-
-          <!-- Уведомления (заглушка) -->
-          <el-badge :value="3" class="item">
-            <el-button :icon="Bell" circle />
-          </el-badge>
         </div>
       </header>
 
@@ -174,20 +169,8 @@ onUnmounted(() => {
 
 const activeMenu = computed(() => route.path)
 
-const pageTitle = computed(() => {
-  const titles = {
-    '/': 'Дашборд',
-    '/tasks': 'Задания',
-    '/reports': 'Отчёты',
-    '/dictionary/imm': 'Справочник ТПА',
-    '/dictionary/molds': 'Справочник пресс-форм',
-    '/dictionary/personnel': 'Справочник персонала',
-    '/dictionary/shifts': 'Расписание смен',
-    '/dictionary/downtime-reasons': 'Причины простоев',
-    '/downtimes': 'Журнал простоев'
-  }
-  return titles[route.path] || 'CONTROL'
-})
+// Единый источник названия страницы — meta.title маршрута (см. router/index.js).
+const pageTitle = computed(() => route.meta?.title || 'CONTROL')
 
 const userInitials = computed(() => {
   const name = authStore.user?.fullName || 'U'

@@ -30,8 +30,10 @@
       </el-table-column>
       <el-table-column label="Действия" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="editReason(row)">Редактировать</el-button>
-          <el-button size="small" type="danger" @click="deleteReason(row)">Удалить</el-button>
+          <div class="flex flex-col items-start gap-1">
+            <el-button size="small" style="width: 130px; margin: 0" @click="editReason(row)">Редактировать</el-button>
+            <el-button size="small" type="danger" style="width: 130px; margin: 0" @click="deleteReason(row)">Удалить</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>

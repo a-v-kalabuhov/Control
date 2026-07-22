@@ -119,10 +119,15 @@ public class ReportService : IReportService
         var offlineSeconds = 0;
         var timeline = new List<TimelineItemDto>();
 
+        // Незакрытый (текущий) статус тянется только до «сейчас», а не до конца окна —
+        // иначе для сегодняшнего дня активный статус закрашивал бы будущее до конца суток.
+        var now = DateTime.UtcNow;
+        var windowEnd = periodEnd < now ? periodEnd : now;
+
         foreach (var entry in statusHistory)
         {
             var start = entry.ChangedAt < periodStart ? periodStart : entry.ChangedAt;
-            var end   = (entry.EndedAt == null || entry.EndedAt > periodEnd) ? periodEnd : entry.EndedAt.Value;
+            var end   = (entry.EndedAt == null || entry.EndedAt > windowEnd) ? windowEnd : entry.EndedAt.Value;
             if (end <= start) continue;
 
             var duration = (int)(end - start).TotalSeconds;
@@ -229,6 +234,11 @@ public class ReportService : IReportService
         var dateFromUtc = DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc);
         var periodEnd = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc).AddDays(1);
 
+        // Незакрытый (текущий) статус тянется только до «сейчас», а не до конца окна —
+        // иначе для сегодняшнего дня активный статус закрашивал бы будущее до конца суток.
+        var nowUtc = DateTime.UtcNow;
+        var windowEnd = periodEnd < nowUtc ? periodEnd : nowUtc;
+
         var report = new EquipmentReportDto
         {
             DateFrom = dateFromUtc,
@@ -274,7 +284,7 @@ public class ReportService : IReportService
             foreach (var entry in statusHistory)
             {
                 var segStart = entry.ChangedAt < dateFromUtc ? dateFromUtc : entry.ChangedAt;
-                var segEnd   = (entry.EndedAt == null || entry.EndedAt > periodEnd) ? periodEnd : entry.EndedAt.Value;
+                var segEnd   = (entry.EndedAt == null || entry.EndedAt > windowEnd) ? windowEnd : entry.EndedAt.Value;
                 if (segEnd <= segStart) continue;
 
                 var statusType = MapStatusToType(entry.Status);
