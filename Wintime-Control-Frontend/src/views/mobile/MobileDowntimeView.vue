@@ -51,17 +51,31 @@
           <span v-else class="ml-3 text-orange-600 font-medium">В процессе...</span>
         </div>
 
-        <!-- Кнопка завершения для активного -->
-        <el-button
-          v-if="!event.endTime"
-          type="danger"
-          size="large"
-          class="w-full"
-          :loading="stoppingId === event.id"
-          @click="stopDowntime(event)"
-        >
-          Завершить простой
-        </el-button>
+        <!-- Действия -->
+        <div class="space-y-2">
+          <!-- Указать/изменить причину (первичный ввод причины наладчиком) -->
+          <el-button
+            :type="event.reasonId ? 'default' : 'primary'"
+            :plain="!!event.reasonId"
+            size="large"
+            class="w-full"
+            @click="openReasonDialog(event)"
+          >
+            {{ event.reasonId ? 'Изменить причину' : 'Указать причину' }}
+          </el-button>
+
+          <!-- Кнопка завершения для активного -->
+          <el-button
+            v-if="!event.endTime"
+            type="danger"
+            size="large"
+            class="w-full"
+            :loading="stoppingId === event.id"
+            @click="stopDowntime(event)"
+          >
+            Завершить простой
+          </el-button>
+        </div>
       </div>
     </div>
 
@@ -124,6 +138,51 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- Диалог указания/изменения причины у существующего события -->
+    <el-dialog
+      v-model="reasonDialog.visible"
+      title="Причина простоя"
+      width="95%"
+    >
+      <el-form label-width="80px" class="mt-2">
+        <el-form-item label="Причина">
+          <el-select
+            v-model="reasonDialog.reasonId"
+            placeholder="Выберите причину"
+            class="w-full"
+            filterable
+          >
+            <el-option
+              v-for="reason in reasons"
+              :key="reason.id"
+              :label="reason.name"
+              :value="reason.id"
+            >
+              <span>{{ reason.name }}</span>
+              <el-tag
+                :type="reason.type === 'Planned' ? 'success' : 'danger'"
+                size="small"
+                class="ml-2"
+              >
+                {{ reason.type === 'Planned' ? 'Плановый' : 'Аварийный' }}
+              </el-tag>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button size="large" @click="reasonDialog.visible = false">Отмена</el-button>
+        <el-button
+          type="primary"
+          size="large"
+          :loading="reasonDialog.saving"
+          @click="confirmReason"
+        >
+          Сохранить
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -146,6 +205,13 @@ const reasons = ref([])
 const startDialog = reactive({
   visible: false,
   immId: null,
+  reasonId: null,
+  saving: false
+})
+
+const reasonDialog = reactive({
+  visible: false,
+  eventId: null,
   reasonId: null,
   saving: false
 })
@@ -212,6 +278,30 @@ const confirmStart = async () => {
     }
   } finally {
     startDialog.saving = false
+  }
+}
+
+const openReasonDialog = (event) => {
+  reasonDialog.eventId = event.id
+  reasonDialog.reasonId = event.reasonId
+  reasonDialog.visible = true
+}
+
+const confirmReason = async () => {
+  if (!reasonDialog.reasonId) {
+    ElMessage.warning('Выберите причину')
+    return
+  }
+  reasonDialog.saving = true
+  try {
+    await downtimeApi.updateEvent(reasonDialog.eventId, { reasonId: reasonDialog.reasonId })
+    ElMessage.success('Причина обновлена')
+    reasonDialog.visible = false
+    await loadEvents()
+  } catch {
+    ElMessage.error('Ошибка обновления причины')
+  } finally {
+    reasonDialog.saving = false
   }
 }
 
