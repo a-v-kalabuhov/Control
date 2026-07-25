@@ -21,6 +21,10 @@ public class Mold : BaseEntity
     // Не подменяет IsActive (архивный флаг) — см. CLAUDE.md.
     public MoldStatus? MoldStatus { get; set; }
 
+    // Тип изделия (PZP-09, ADR-0007). Nullable — старые ПФ без типа; для новых обязателен на уровне API.
+    public Guid? ProductTypeId { get; set; }
+    public ProductType? ProductType { get; set; }
+
     // Calculated (not mapped directly, calculated via Usage)
     // public int TotalCycles { get; set; }
 

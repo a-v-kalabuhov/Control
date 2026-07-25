@@ -27,6 +27,7 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
     // Идентификаторы тестовых данных, доступных во всех тестах
     public Guid TestImmId { get; } = Guid.NewGuid();
     public Guid TestMoldId { get; } = Guid.NewGuid();
+    public Guid TestProductTypeId { get; } = Guid.NewGuid();
     public Guid TestTemplateId { get; } = Guid.NewGuid();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -128,15 +129,27 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
             });
         }
 
+        if (!db.ProductTypes.Any(p => p.Id == TestProductTypeId))
+        {
+            db.ProductTypes.Add(new ProductType
+            {
+                Id       = TestProductTypeId,
+                Article  = "TYPE-TEST",
+                Name     = "Test Product",
+                IsActive = true
+            });
+        }
+
         if (!db.Molds.Any(m => m.Id == TestMoldId))
         {
             db.Molds.Add(new Mold
             {
-                Id       = TestMoldId,
-                Name     = "Test Mold",
-                FormId   = "TEST-001",
-                Cavities = 1,
-                IsActive = true
+                Id            = TestMoldId,
+                Name          = "Test Mold",
+                FormId        = "TEST-001",
+                Cavities      = 1,
+                IsActive      = true,
+                ProductTypeId = TestProductTypeId
             });
         }
 
