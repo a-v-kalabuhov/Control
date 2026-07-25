@@ -24,6 +24,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<Shift> Shifts { get; set; }
     public DbSet<ImmCycle> ImmCycles { get; set; }
     public DbSet<ProductType> ProductTypes { get; set; }
+    public DbSet<UnplannedRun> UnplannedRuns { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -138,5 +139,25 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.Property(e => e.LastHeartbeatAt).HasColumnType("timestamp with time zone");
             entity.ToTable("AppHeartbeat");
         });
+
+        // Конфигурация UnplannedRun (PZP-04)
+        builder.Entity<UnplannedRun>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Imm).WithMany().HasForeignKey(e => e.ImmId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.AssignedTask).WithMany().HasForeignKey(e => e.AssignedTaskId).OnDelete(DeleteBehavior.SetNull);
+            entity.Property(e => e.StartTime).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.ClosedAt).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.AssignedAt).HasColumnType("timestamp with time zone");
+            // Partial-индекс: поиск открытого эпизода ТПА (крошечный, только открытые)
+            entity.HasIndex(e => e.ImmId).HasFilter("\"ClosedAt\" IS NULL").HasDatabaseName("IX_UnplannedRuns_Imm_Open");
+            entity.ToTable("UnplannedRuns");
+        });
+
+        // Partial-индекс на ImmCycles под агрегат деривации и счётчик дашборда
+        builder.Entity<ImmCycle>()
+            .HasIndex(e => new { e.ImmId, e.EndTime })
+            .HasFilter("\"TaskId\" IS NULL")
+            .HasDatabaseName("IX_ImmCycles_Imm_Orphan");
     }
 }
