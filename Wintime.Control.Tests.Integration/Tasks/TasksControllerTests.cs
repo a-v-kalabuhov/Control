@@ -142,6 +142,53 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
     }
 
     /// <summary>
+    /// PZP-08: наладчик увеличивает план задания в работе (InProgress).
+    /// POST /add-quantity прибавляет delta к PlanQuantity, статус не меняется.
+    /// </summary>
+    [Fact]
+    public async Task AddQuantity_InProgress_IncreasesPlanQuantity()
+    {
+        var managerClient  = await CreateAuthenticatedClientAsync("test_manager",  "Manager123!");
+        var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
+        var immId = await _factory.CreateFreshImmAsync();
+
+        var taskId = await CreateTaskAsync(managerClient, immId); // план 100
+        await IssueTaskAsync(managerClient, taskId);
+        await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
+        await adjusterClient.PostAsync($"/api/tasks/{taskId}/complete-setup", null);
+
+        var response = await adjusterClient.PostAsJsonAsync(
+            $"/api/tasks/{taskId}/add-quantity",
+            new { delta = 20 });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var taskResponse = await adjusterClient.GetAsync($"/api/tasks/{taskId}");
+        var body = await taskResponse.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        body.GetProperty("planQuantity").GetInt32().Should().Be(120);
+        body.GetProperty("status").GetString().Should().Be("InProgress");
+    }
+
+    /// <summary>
+    /// PZP-08: увеличить план у задания не в работе (Issued) нельзя → 400.
+    /// </summary>
+    [Fact]
+    public async Task AddQuantity_NotInProgress_Returns400()
+    {
+        var managerClient  = await CreateAuthenticatedClientAsync("test_manager",  "Manager123!");
+        var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
+        var immId = await _factory.CreateFreshImmAsync();
+
+        var taskId = await CreateTaskAsync(managerClient, immId);
+        await IssueTaskAsync(managerClient, taskId); // статус Issued, не InProgress
+
+        var response = await adjusterClient.PostAsJsonAsync(
+            $"/api/tasks/{taskId}/add-quantity",
+            new { delta = 20 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
     /// Наладчик завершает задание → статус Completed, код ответа 200.
     /// Полный цикл: Draft → Issue → Start (Setup) → CompleteSetup (InProgress) → Complete.
     /// </summary>

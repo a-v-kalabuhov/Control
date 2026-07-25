@@ -358,6 +358,24 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
+    /// PZP-08: увеличить план задания в работе (компенсация брака / допвыпуск).
+    /// </summary>
+    [HttpPost("{id:guid}/add-quantity")]
+    [Authorize(Roles = $"{Roles.Adjuster},{Roles.Manager}")]
+    public async Task<IActionResult> AddQuantity(Guid id, [FromBody] AddQuantityRequestDto request)
+    {
+        var task = await _context.ShiftTasks.FindAsync(id);
+        if (task == null)
+            return NotFound();
+
+        task.AddPlannedQuantity(request.Delta);
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "План задания увеличен", planQuantity = task.PlanQuantity });
+    }
+
+    /// <summary>
     /// Закрыть задание (ручное закрытие в конце дня)
     /// </summary>
     [HttpPost("{id:guid}/close")]

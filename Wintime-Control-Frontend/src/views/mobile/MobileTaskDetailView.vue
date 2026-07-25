@@ -125,6 +125,17 @@
         </el-button>
 
         <el-button
+          type="success"
+          plain
+          size="large"
+          class="h-14 text-lg col-span-2"
+          @click="$emit('add-quantity', task)"
+        >
+          <el-icon class="mr-1"><Plus /></el-icon>
+          Продолжить выпуск
+        </el-button>
+
+        <el-button
           v-if="canClose"
           type="info"
           size="large"
@@ -212,7 +223,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'start', 'complete', 'complete-setup', 'cancel-setup', 'close'])
+const emit = defineEmits(['update:modelValue', 'start', 'complete', 'complete-setup', 'cancel-setup', 'close', 'add-quantity'])
 
 const mobileStore = useMobileStore()
 const authStore = useAuthStore()

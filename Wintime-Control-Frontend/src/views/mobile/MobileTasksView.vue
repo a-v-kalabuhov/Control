@@ -122,6 +122,7 @@
       @complete-setup="completeSetup"
       @cancel-setup="cancelSetup"
       @complete="completeTask"
+      @add-quantity="continueProduction"
       @close="closeTask"
     />
 
@@ -297,6 +298,37 @@ const completeTask = async (task) => {
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('Ошибка завершения задания')
+    }
+  }
+}
+
+const continueProduction = async (task) => {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      'Сколько деталей добавить к плану?',
+      'Продолжить выпуск',
+      {
+        inputPattern: /^\d+$/,
+        inputErrorMessage: 'Введите число',
+        inputValue: ''
+      }
+    )
+
+    const delta = parseInt(value)
+    if (!delta || delta <= 0) {
+      ElMessage.warning('Количество должно быть больше нуля')
+      return
+    }
+
+    const { data } = await mobileApi.addQuantity(task.id, { delta })
+    await loadTasks()
+    // Обновляем открытую карточку, чтобы отразить новый план
+    const { data: fresh } = await mobileApi.getTaskById(task.id)
+    selectedTask.value = fresh
+    ElMessage.success(`План увеличен до ${data.planQuantity} шт`)
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data ?? 'Ошибка увеличения плана')
     }
   }
 }

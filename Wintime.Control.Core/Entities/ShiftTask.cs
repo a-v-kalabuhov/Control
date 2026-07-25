@@ -96,6 +96,19 @@ public class ShiftTask : BaseEntity
         CompletedAt = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// PZP-08: увеличить план задания в работе (компенсация брака / допвыпуск).
+    /// Только в статусе InProgress; не меняет статус. Прибавляет к текущему плану.
+    /// </summary>
+    /// <param name="delta">Дополнительное количество; должно быть больше нуля.</param>
+    public void AddPlannedQuantity(int delta)
+    {
+        EnsureStatus(TaskStatus.InProgress, "Задание не в работе");
+        if (delta <= 0)
+            throw new DomainException("Дополнительное количество должно быть больше нуля");
+        PlanQuantity += delta;
+    }
+
     /// <summary>Закрыть задание (ручное закрытие в конце дня): любой статус → Closed.</summary>
     public void Close(string? closeReason)
     {

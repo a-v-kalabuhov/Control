@@ -120,6 +120,59 @@ public class ShiftTaskStateMachineTests
         task.CloseReason.Should().Be("Конец смены");
     }
 
+    // ── PZP-08: увеличение плана в работе ────────────────────────────────────
+
+    [Fact]
+    public void AddPlannedQuantity_FromInProgress_IncreasesPlanWithoutChangingStatus()
+    {
+        var task = NewTask(EntityTaskStatus.InProgress, plan: 100);
+
+        task.AddPlannedQuantity(10);
+
+        task.PlanQuantity.Should().Be(110);
+        task.Status.Should().Be(EntityTaskStatus.InProgress);
+    }
+
+    [Fact]
+    public void AddPlannedQuantity_MultipleCalls_Accumulate()
+    {
+        var task = NewTask(EntityTaskStatus.InProgress, plan: 100);
+
+        task.AddPlannedQuantity(10);
+        task.AddPlannedQuantity(5);
+
+        task.PlanQuantity.Should().Be(115);
+    }
+
+    [Theory]
+    [InlineData(EntityTaskStatus.Draft)]
+    [InlineData(EntityTaskStatus.Issued)]
+    [InlineData(EntityTaskStatus.Setup)]
+    [InlineData(EntityTaskStatus.Completed)]
+    [InlineData(EntityTaskStatus.Closed)]
+    public void AddPlannedQuantity_FromNonInProgress_Throws(EntityTaskStatus status)
+    {
+        var task = NewTask(status, plan: 100);
+
+        var act = () => task.AddPlannedQuantity(10);
+
+        act.Should().Throw<DomainException>();
+        task.PlanQuantity.Should().Be(100); // план не изменился
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void AddPlannedQuantity_WithNonPositiveDelta_Throws(int delta)
+    {
+        var task = NewTask(EntityTaskStatus.InProgress, plan: 100);
+
+        var act = () => task.AddPlannedQuantity(delta);
+
+        act.Should().Throw<DomainException>();
+        task.PlanQuantity.Should().Be(100);
+    }
+
     // ── Недопустимые переходы → DomainException ──────────────────────────────
 
     [Theory]
