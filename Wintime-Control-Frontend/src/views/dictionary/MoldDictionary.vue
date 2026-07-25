@@ -33,6 +33,12 @@
     <el-table :data="molds" stripe style="width: 100%" v-loading="loading">
       <el-table-column prop="formId" label="Артикул" width="120" />
       <el-table-column prop="name" label="Наименование" />
+      <el-table-column label="Тип изделия" width="200">
+        <template #default="{ row }">
+          <span v-if="row.productTypeName">{{ row.productTypeArticle }} · {{ row.productTypeName }}</span>
+          <el-tag v-else type="warning" size="small">не задан</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="cavities" label="Гнёзд" width="80" align="center" />
       <el-table-column label="Вес (г)" width="120">
         <template #default="{ row }">
@@ -84,6 +90,25 @@
           <el-col :span="12">
             <el-form-item label="Наименование" prop="name" required>
               <el-input v-model="form.name" placeholder="КлипДак (48)" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="Тип изделия" prop="productTypeId" required>
+              <el-select
+                v-model="form.productTypeId"
+                filterable
+                placeholder="Выберите изделие"
+                class="w-full"
+              >
+                <el-option
+                  v-for="pt in productTypes"
+                  :key="pt.id"
+                  :label="`${pt.article} · ${pt.name}`"
+                  :value="pt.id"
+                />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -166,6 +191,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { moldsApi } from '@/api/molds'
+import { productTypesApi } from '@/api/productTypes'
 import QrCodeDialog from '@/components/common/QrCodeDialog.vue'
 import dayjs from 'dayjs'
 
@@ -176,6 +202,7 @@ const editingMold = ref(null)
 const formRef = ref(null)
 
 const molds = ref([])
+const productTypes = ref([])
 
 const qrDialogVisible = ref(false)
 const qrData = ref('')
@@ -207,7 +234,8 @@ const form = reactive({
   to1Cycles: 0,
   to2Cycles: 0,
   storageLocationIndex: '',
-  isActive: true
+  isActive: true,
+  productTypeId: null,
 })
 
 const validateFormId = async (rule, value, callback) => {
@@ -229,11 +257,14 @@ const rules = {
   ],
   name: [{ required: true, message: 'Введите наименование', trigger: 'blur' }],
   cavities: [{ required: true, message: 'Укажите гнёздность', trigger: 'blur' }],
-  maxResourceCycles: [{ required: true, message: 'Укажите ресурс', trigger: 'blur' }]
+  maxResourceCycles: [{ required: true, message: 'Укажите ресурс', trigger: 'blur' }],
+  productTypeId: [{ required: true, message: 'Выберите тип изделия', trigger: 'change' }]
 }
 
 onMounted(async () => {
   await loadMolds()
+  const { data } = await productTypesApi.getList({ isActive: true })
+  productTypes.value = data
 })
 
 const loadMolds = async () => {
@@ -263,7 +294,8 @@ const showCreateModal = () => {
     to1Cycles: 0,
     to2Cycles: 0,
     storageLocationIndex: '',
-    isActive: true
+    isActive: true,
+    productTypeId: null,
   })
   dialogVisible.value = true
 }
@@ -280,7 +312,8 @@ const editMold = (mold) => {
     to1Cycles: mold.to1Cycles,
     to2Cycles: mold.to2Cycles,
     storageLocationIndex: mold.storageLocationIndex,
-    isActive: mold.isActive
+    isActive: mold.isActive,
+    productTypeId: mold.productTypeId ?? null,
   })
   dialogVisible.value = true
 }
@@ -304,7 +337,7 @@ const saveMold = async () => {
       dialogVisible.value = false
       await loadMolds()
     } catch (error) {
-      ElMessage.error('Ошибка сохранения пресс-формы')
+      ElMessage.error(error.response?.data ?? 'Ошибка сохранения пресс-формы')
     } finally {
       saving.value = false
     }
