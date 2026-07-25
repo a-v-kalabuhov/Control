@@ -207,9 +207,10 @@ const productTypes = ref([])
 // (не входит в productTypes, т.к. там только активные типы) — не влияет на список создания.
 const editingArchivedType = ref(null)
 const selectableProductTypes = computed(() => {
-  return editingArchivedType.value
-    ? [...productTypes.value, editingArchivedType.value]
-    : productTypes.value
+  const base = productTypes.value
+  const extra = editingArchivedType.value
+  if (extra && !base.some(pt => pt.id === extra.id)) return [...base, extra]
+  return base
 })
 
 const qrDialogVisible = ref(false)
@@ -269,14 +270,17 @@ const rules = {
   productTypeId: [{ required: true, message: 'Выберите тип изделия', trigger: 'change' }]
 }
 
-onMounted(async () => {
-  await loadMolds()
+const loadProductTypes = async () => {
   try {
     const { data } = await productTypesApi.getList({ isActive: true })
     productTypes.value = data
   } catch (error) {
     ElMessage.error('Ошибка загрузки типов изделий')
   }
+}
+
+onMounted(async () => {
+  await Promise.all([loadMolds(), loadProductTypes()])
 })
 
 const loadMolds = async () => {
