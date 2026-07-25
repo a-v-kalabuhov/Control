@@ -215,7 +215,7 @@ const startTask = async (task) => {
     await loadTasks()
     detailVisible.value = false
   } catch (error) {
-    ElMessage.error('Ошибка начала наладки')
+    ElMessage.error(error.response?.data ?? 'Ошибка начала наладки')
   }
 }
 

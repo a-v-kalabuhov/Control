@@ -265,6 +265,15 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
+        // На ТПА одновременно допустимо только одно активное задание (Setup/InProgress).
+        // Сначала завершите текущее, иначе циклы пойдут не тому заданию.
+        var hasActiveTask = await _context.ShiftTasks.AnyAsync(t =>
+            t.Id != task.Id &&
+            t.ImmId == task.ImmId &&
+            (t.Status == Core.Enums.TaskStatus.Setup || t.Status == Core.Enums.TaskStatus.InProgress));
+        if (hasActiveTask)
+            return BadRequest("На этом ТПА уже есть активное задание. Сначала завершите текущее задание.");
+
         task.StartSetup();
 
         await _context.SaveChangesAsync();

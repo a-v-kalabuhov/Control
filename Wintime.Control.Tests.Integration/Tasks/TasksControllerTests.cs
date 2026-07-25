@@ -81,8 +81,9 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
     {
         var managerClient  = await CreateAuthenticatedClientAsync("test_manager",  "Manager123!");
         var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
+        var immId = await _factory.CreateFreshImmAsync();
 
-        var taskId = await CreateTaskAsync(managerClient);
+        var taskId = await CreateTaskAsync(managerClient, immId);
         await IssueTaskAsync(managerClient, taskId);
 
         var startResponse = await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
@@ -104,12 +105,38 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
     {
         var managerClient  = await CreateAuthenticatedClientAsync("test_manager",  "Manager123!");
         var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
+        var immId = await _factory.CreateFreshImmAsync();
 
-        var taskId = await CreateTaskAsync(managerClient);
+        var taskId = await CreateTaskAsync(managerClient, immId);
         await IssueTaskAsync(managerClient, taskId);
         await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
 
         var secondStart = await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
+
+        secondStart.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// BL-28: нельзя начать наладку по заданию, если на том же ТПА уже есть
+    /// активное задание (Setup/InProgress). Второй /start должен вернуть 400.
+    /// </summary>
+    [Fact]
+    public async Task StartTask_WhenAnotherTaskActiveOnSameImm_Returns400()
+    {
+        var managerClient  = await CreateAuthenticatedClientAsync("test_manager",  "Manager123!");
+        var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
+        var immId = await _factory.CreateFreshImmAsync();
+
+        // Первое задание доводим до активного статуса (Setup) на этом ТПА.
+        var firstTaskId = await CreateTaskAsync(managerClient, immId);
+        await IssueTaskAsync(managerClient, firstTaskId);
+        var firstStart = await adjusterClient.PostAsync($"/api/tasks/{firstTaskId}/start", null);
+        firstStart.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Второе задание на том же ТПА — запуск наладки должен быть отклонён.
+        var secondTaskId = await CreateTaskAsync(managerClient, immId);
+        await IssueTaskAsync(managerClient, secondTaskId);
+        var secondStart = await adjusterClient.PostAsync($"/api/tasks/{secondTaskId}/start", null);
 
         secondStart.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -123,8 +150,9 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
     {
         var managerClient  = await CreateAuthenticatedClientAsync("test_manager",  "Manager123!");
         var adjusterClient = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
+        var immId = await _factory.CreateFreshImmAsync();
 
-        var taskId = await CreateTaskAsync(managerClient);
+        var taskId = await CreateTaskAsync(managerClient, immId);
         await IssueTaskAsync(managerClient, taskId);
         await adjusterClient.PostAsync($"/api/tasks/{taskId}/start", null);
         await adjusterClient.PostAsync($"/api/tasks/{taskId}/complete-setup", null);
@@ -209,17 +237,17 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         return client;
     }
 
-    private object MakeCreateRequest() => new
+    private object MakeCreateRequest(Guid? immId = null) => new
     {
-        immId = _factory.TestImmId,
+        immId = immId ?? _factory.TestImmId,
         moldId = _factory.TestMoldId,
         planQuantity = 100,
         note = "Integration test task"
     };
 
-    private async Task<Guid> CreateTaskAsync(HttpClient client)
+    private async Task<Guid> CreateTaskAsync(HttpClient client, Guid? immId = null)
     {
-        var response = await client.PostAsJsonAsync("/api/tasks", MakeCreateRequest());
+        var response = await client.PostAsJsonAsync("/api/tasks", MakeCreateRequest(immId));
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         return Guid.Parse(body.GetProperty("id").GetString()!);
