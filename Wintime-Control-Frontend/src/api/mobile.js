@@ -36,6 +36,11 @@ export const mobileApi = {
     return apiClient.post(`/tasks/${id}/complete`, data)
   },
 
+  // PZP-08: увеличить план задания в работе (компенсация брака / допвыпуск)
+  addQuantity(id, data) {
+    return apiClient.post(`/tasks/${id}/add-quantity`, data)
+  },
+
   // Закрыть задание
   closeTask(id, data) {
     return apiClient.post(`/tasks/${id}/close`, data)

@@ -265,6 +265,15 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
+        // На ТПА одновременно допустимо только одно активное задание (Setup/InProgress).
+        // Сначала завершите текущее, иначе циклы пойдут не тому заданию.
+        var hasActiveTask = await _context.ShiftTasks.AnyAsync(t =>
+            t.Id != task.Id &&
+            t.ImmId == task.ImmId &&
+            (t.Status == Core.Enums.TaskStatus.Setup || t.Status == Core.Enums.TaskStatus.InProgress));
+        if (hasActiveTask)
+            return BadRequest("На этом ТПА уже есть активное задание. Сначала завершите текущее задание.");
+
         task.StartSetup();
 
         await _context.SaveChangesAsync();
@@ -346,6 +355,24 @@ public class TasksController : ControllerBase
         await _emulator.SetModeAsync(task.ImmId.ToString(), "idle");
 
         return Ok(new { message = "Задание завершено" });
+    }
+
+    /// <summary>
+    /// PZP-08: увеличить план задания в работе (компенсация брака / допвыпуск).
+    /// </summary>
+    [HttpPost("{id:guid}/add-quantity")]
+    [Authorize(Roles = $"{Roles.Adjuster},{Roles.Manager}")]
+    public async Task<IActionResult> AddQuantity(Guid id, [FromBody] AddQuantityRequestDto request)
+    {
+        var task = await _context.ShiftTasks.FindAsync(id);
+        if (task == null)
+            return NotFound();
+
+        task.AddPlannedQuantity(request.Delta);
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "План задания увеличен", planQuantity = task.PlanQuantity });
     }
 
     /// <summary>
