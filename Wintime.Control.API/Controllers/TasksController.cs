@@ -183,6 +183,8 @@ public class TasksController : ControllerBase
         var mold = await _context.Molds.FindAsync(request.MoldId);
         if (mold == null || !mold.IsActive)
             return BadRequest("Указана неактивная или несуществующая пресс-форма.");
+        if (mold.ProductTypeId == null)
+            return BadRequest("У пресс-формы не задан тип изделия.");
 
         var task = new Core.Entities.ShiftTask
         {
