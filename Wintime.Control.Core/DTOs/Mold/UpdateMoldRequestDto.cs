@@ -12,4 +12,5 @@ public class UpdateMoldRequestDto
     public int? To2Cycles { get; set; }
     public string? StorageLocationIndex { get; set; }
     public bool? IsActive { get; set; }
+    public Guid? ProductTypeId { get; set; }
 }

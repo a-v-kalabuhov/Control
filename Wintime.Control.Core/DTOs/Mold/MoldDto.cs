@@ -16,5 +16,8 @@ public class MoldDto
     public string? PhotoPath { get; set; }
     public int TotalCycles { get; set; } // Расчётное
     public int RemainingResource { get; set; } // Расчётное
+    public Guid? ProductTypeId { get; set; }
+    public string? ProductTypeArticle { get; set; }
+    public string? ProductTypeName { get; set; }
     public bool IsActive { get; set; }
 }
