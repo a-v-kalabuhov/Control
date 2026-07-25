@@ -11,4 +11,5 @@ public class CreateMoldRequestDto
     public int? To1Cycles { get; set; }
     public int? To2Cycles { get; set; }
     public string? StorageLocationIndex { get; set; }
+    public Guid? ProductTypeId { get; set; }
 }

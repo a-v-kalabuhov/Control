@@ -23,6 +23,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<AppHeartbeat> AppHeartbeat { get; set; }
     public DbSet<Shift> Shifts { get; set; }
     public DbSet<ImmCycle> ImmCycles { get; set; }
+    public DbSet<ProductType> ProductTypes { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -54,7 +55,19 @@ public class ControlDbContext : IdentityDbContext<User>
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.FormId).IsUnique();
+            entity.HasOne(e => e.ProductType)
+                  .WithMany(pt => pt.Molds)
+                  .HasForeignKey(e => e.ProductTypeId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
+
+        // Конфигурация ProductType (PZP-09)
+        builder.Entity<ProductType>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Article).IsUnique();
+        });
+        builder.Entity<ProductType>().ToTable("ProductTypes");
 
         // Конфигурация Task
         builder.Entity<Wintime.Control.Core.Entities.ShiftTask>(entity =>

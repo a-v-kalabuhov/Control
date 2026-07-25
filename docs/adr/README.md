@@ -38,3 +38,4 @@
 - [ADR-0004](0004-single-role-source-user-role.md) — Единственный источник роли — `User.Role`
 - [ADR-0005](0005-cov-filter-variant-b-hold-last-value.md) — COV-фильтрация телеметрии: Вариант B (удержание последнего значения)
 - [ADR-0006](0006-effective-imm-state.md) — Эффективное состояние ТПА определяет обработку телеметрии и простои
+- [ADR-0007](0007-product-type-catalog.md) — Каталог изделий (`ProductType`) как общая номенклатурная основа
