@@ -103,7 +103,7 @@
                 class="w-full"
               >
                 <el-option
-                  v-for="pt in productTypes"
+                  v-for="pt in selectableProductTypes"
                   :key="pt.id"
                   :label="`${pt.article} · ${pt.name}`"
                   :value="pt.id"
@@ -188,7 +188,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { moldsApi } from '@/api/molds'
 import { productTypesApi } from '@/api/productTypes'
@@ -203,6 +203,14 @@ const formRef = ref(null)
 
 const molds = ref([])
 const productTypes = ref([])
+// Синтетическая опция для архивного типа изделия текущей редактируемой пресс-формы
+// (не входит в productTypes, т.к. там только активные типы) — не влияет на список создания.
+const editingArchivedType = ref(null)
+const selectableProductTypes = computed(() => {
+  return editingArchivedType.value
+    ? [...productTypes.value, editingArchivedType.value]
+    : productTypes.value
+})
 
 const qrDialogVisible = ref(false)
 const qrData = ref('')
@@ -263,8 +271,12 @@ const rules = {
 
 onMounted(async () => {
   await loadMolds()
-  const { data } = await productTypesApi.getList({ isActive: true })
-  productTypes.value = data
+  try {
+    const { data } = await productTypesApi.getList({ isActive: true })
+    productTypes.value = data
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки типов изделий')
+  }
 })
 
 const loadMolds = async () => {
@@ -284,6 +296,7 @@ const loadMolds = async () => {
 
 const showCreateModal = () => {
   editingMold.value = null
+  editingArchivedType.value = null
   Object.assign(form, {
     formId: '',
     name: '',
@@ -302,6 +315,9 @@ const showCreateModal = () => {
 
 const editMold = (mold) => {
   editingMold.value = mold
+  editingArchivedType.value = (mold.productTypeId && !productTypes.value.some(pt => pt.id === mold.productTypeId))
+    ? { id: mold.productTypeId, article: mold.productTypeArticle, name: mold.productTypeName }
+    : null
   Object.assign(form, {
     formId: mold.formId,
     name: mold.name,

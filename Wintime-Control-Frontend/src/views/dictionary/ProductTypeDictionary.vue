@@ -55,7 +55,7 @@
     >
       <el-form :model="form" label-width="140px" :rules="rules" ref="formRef">
         <el-form-item label="Артикул" prop="article" required>
-          <el-input v-model="form.article" placeholder="ART-001" />
+          <el-input v-model="form.article" placeholder="ART-001" @input="form.article = form.article.toUpperCase()" />
         </el-form-item>
         <el-form-item label="Наименование" prop="name" required>
           <el-input v-model="form.name" placeholder="Крышка 48мм" />
