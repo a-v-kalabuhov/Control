@@ -63,6 +63,7 @@
             </template>
             <el-menu-item index="/dictionary/imm">ТПА</el-menu-item>
             <el-menu-item index="/dictionary/molds">Пресс-формы</el-menu-item>
+            <el-menu-item index="/dictionary/product-types">Изделия</el-menu-item>
             <el-menu-item index="/dictionary/personnel">Персонал</el-menu-item>
             <el-menu-item index="/dictionary/shifts">Смены</el-menu-item>
             <el-menu-item index="/dictionary/downtime-reasons">Причины простоев</el-menu-item>

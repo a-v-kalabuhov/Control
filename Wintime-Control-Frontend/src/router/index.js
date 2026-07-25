@@ -81,6 +81,12 @@ const routes = [
             meta: { roles: ['Admin', 'Manager'], title: 'Справочник пресс-форм' }
           },
           {
+            path: 'product-types',
+            name: 'DictionaryProductTypes',
+            component: () => import('@/views/dictionary/ProductTypeDictionary.vue'),
+            meta: { roles: ['Admin', 'Manager'], title: 'Справочник изделий' }
+          },
+          {
             path: 'personnel',
             name: 'DictionaryPersonnel',
             component: () => import('@/views/dictionary/PersonnelDictionary.vue'),
