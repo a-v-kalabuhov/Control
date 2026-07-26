@@ -37,9 +37,12 @@ PZP-05 вводит сущность **`Order`** и связь `Order → ShiftT
    Тот же паттерн, что `UnplannedRun` (PZP-04). Отвергнут Вариант B (хранимый счётчик на `Order`,
    обновляемый из Стадии-2 хендлера) — дублирование правды, риск изоляции `DbContext`, лишняя
    синхронизация при привязке/отвязке; заказов немного, `Σ` по индексу `OrderId` тривиальна.
-5. **Завершение заказа — вручную менеджером.** Нет авто-перехода по достижению плана (устойчиво
-   к браку/перевыпуску, не нужен хук в конвейере циклов). Статусы: `Active` / `Completed` /
-   `Cancelled`. Отменённый скрыт из отчётов «выполняемых»; заказ физически не удаляется.
+5. **Завершение заказа — вручную менеджером, при достаточном выпуске.** Нет авто-перехода
+   (устойчиво к браку/перевыпуску, не нужен хук в конвейере циклов). Завершить (`Active → Completed`)
+   можно **только если выпущено достаточно годных** (`Σ(Actual − Defect) ≥ Quantity`); при недостатке
+   заказ можно лишь **отменить**. Статусы: `Active` / `Completed` / `Cancelled`. Отменённый скрыт из
+   отчётов «выполняемых»; заказ физически не удаляется. Гард завершения — в доменном методе
+   `Order.Complete(goodQuantity)`.
 6. **Учёт брака — новое поле `ShiftTask.DefectQuantity` (ручной ввод).** Брака как величины в
    системе не было (`TaskOutputHandler` считает только успешные циклы, `ImmCycle.IsSuccessful=false`
    = **авария**, не QC-брак). Оператор/наладчик указывает брак **при завершении задания**. Поле —
@@ -74,11 +77,11 @@ PZP-05 вводит сущность **`Order`** и связь `Order → ShiftT
 | --- | --- | --- | --- | --- |
 | UC-1 | Менеджер создаёт заказ | номер + даты + изделие + кол-во → заказ `Active` | `Quantity ≤ 0` → 400; `ProductType` не существует/архивный → 400; `Number` пустой → 400 | `POST /api/orders` · тест create/400 |
 | UC-2 | Менеджер редактирует заказ | правит номер/даты/кол-во/примечание → сохранено | смена `ProductTypeId` при наличии привязанных заданий → 409 | `PUT /api/orders/{id}` · тест lock-producttype |
-| UC-3 | Менеджер завершает заказ вручную | `Active → Completed` | заказ не `Active` → 400 | `POST /api/orders/{id}/complete` · тест guard |
+| UC-3 | Менеджер завершает заказ вручную | выпущено годных `Σ(Actual − Defect) ≥ Quantity` → `Active → Completed` | заказ не `Active` → 400; **годных `< Quantity` → 400** (заказ можно только отменить) | `POST /api/orders/{id}/complete` · тесты guard/insufficient |
 | UC-4 | Менеджер отменяет заказ | `Active → Cancelled`, скрыт из «выполняемых» | заказ не `Active` → 400 | `POST /api/orders/{id}/cancel` · тест guard |
 | UC-5 | Менеджер возобновляет заказ | `Completed/Cancelled → Active` | заказ уже `Active` → 400 | `POST /api/orders/{id}/reopen` · тест guard |
-| UC-6 | Менеджер привязывает задание к заказу | из формы задания ИЛИ карточки заказа → `OrderId` установлен | заказ не `Active` → 400; `Mold.ProductTypeId ≠ order.ProductTypeId` → 400; ПФ без типа → 400 | `POST /api/orders/{id}/tasks`, `POST /api/tasks/{id}/set-order` · тесты mismatch/inactive |
-| UC-7 | Менеджер отвязывает задание | `OrderId = null` (всегда разрешено) | — | `DELETE /api/orders/{id}/tasks/{taskId}`, `POST /api/tasks/{id}/set-order {orderId:null}` · тест detach |
+| UC-6 | Менеджер привязывает задание к заказу | из формы задания (селект) ИЛИ карточки заказа → `OrderId` установлен | заказ не `Active` → 400; `Mold.ProductTypeId ≠ order.ProductTypeId` → 400; ПФ без типа → 400 | `POST /api/orders/{id}/tasks`, `POST /api/tasks/{id}/set-order` · тесты mismatch/inactive |
+| UC-7 | Менеджер отвязывает задание | **только из карточки заказа** → `OrderId = null` (всегда разрешено) | из формы/карточки задания отвязка недоступна | `DELETE /api/orders/{id}/tasks/{taskId}` · тест detach |
 | UC-8 | Менеджер создаёт/ведёт задание без заказа | `OrderId = null` → задание работает как сейчас | — (модуль опционален) | `POST /api/tasks` · тест nullable-order |
 | UC-9 | Оператор/наладчик завершает задание с браком | вводит брак → `DefectQuantity` сохранён на задании | `Defect < 0` или `Defect > ActualQuantity` → 400 | `POST /api/tasks/{id}/complete` · тест defect-range |
 | UC-10 | Менеджер смотрит список заказов | таблица: заказано / выпущено / брак / **годных** / прогресс % / статус; фильтры статус, поиск по номеру, изделие | — | `GET /api/orders` · тест list-progress/GroupBy |
@@ -109,9 +112,13 @@ public class Order : BaseEntity              // Id (Guid) — суррогатн
     public ICollection<ShiftTask> Tasks { get; set; } = new List<ShiftTask>();
 
     // ── Конечный автомат статуса (паттерн ADR-0002: логика в сущности, DomainException → 400) ──
-    public void Complete()  // Active → Completed (ручное завершение менеджером)
+    // goodQuantity = Σ(ActualQuantity − DefectQuantity) по привязанным заданиям, считает вызывающий
+    // код (derive-on-read) и передаёт сюда — сущность прогресс не хранит.
+    public void Complete(int goodQuantity)  // Active → Completed (ручное завершение менеджером)
     {
         EnsureStatus(OrderStatus.Active, "Заказ не активен");
+        if (goodQuantity < Quantity)
+            throw new DomainException("Недостаточно годных для завершения заказа");
         Status = OrderStatus.Completed;
     }
     public void Cancel()    // Active → Cancelled
@@ -236,11 +243,11 @@ public static class OrderTaskBinding
 | GET | `/api/orders/{id:guid}` | заказ + разбивка прогресса + список привязанных заданий |
 | POST | `/api/orders` | создать (валидация `Number`, `Quantity>0`, существование/активность `ProductType`) |
 | PUT | `/api/orders/{id:guid}` | обновить (PATCH-семантика; смена `ProductTypeId` при наличии заданий → 409) |
-| POST | `/api/orders/{id:guid}/complete` | `Active → Completed` |
+| POST | `/api/orders/{id:guid}/complete` | `Active → Completed`; контроллер считает `goodQuantity` (derive-on-read) → `order.Complete(goodQuantity)`; недостаточно годных → 400 |
 | POST | `/api/orders/{id:guid}/cancel` | `Active → Cancelled` |
 | POST | `/api/orders/{id:guid}/reopen` | `Completed/Cancelled → Active` |
 | POST | `/api/orders/{id:guid}/tasks` | привязать существующее задание `{ taskId }` (валидация `OrderTaskBinding`) |
-| DELETE | `/api/orders/{id:guid}/tasks/{taskId:guid}` | отвязать задание (`OrderId = null`) |
+| DELETE | `/api/orders/{id:guid}/tasks/{taskId:guid}` | **единственная точка отвязки** задания (`OrderId = null`) |
 
 **Правки `TasksController`** (три однозначных механизма привязки, без PATCH-неоднозначности):
 
@@ -248,10 +255,10 @@ public static class OrderTaskBinding
   загрузить ПФ и заказ, вызвать `OrderTaskBinding.EnsureCanBind`, установить `OrderId`.
   `UpdateTaskRequestDto` **`OrderId` НЕ добавляем** — nullable-PATCH не различает «не передано» и
   «отвязать»; редактирование привязки идёт через `set-order` ниже.
-- **Редактирование/отвязка из формы задания:** `POST /api/tasks/{id}/set-order` (роли `Admin,Manager`),
-  тело `{ orderId: Guid? }`: `null` — отвязать (`OrderId=null`, всегда ок); иначе задание
-  `Include(Mold)` + заказ → `OrderTaskBinding.EnsureCanBind` → установить `OrderId`. Явный `null`
-  снимает неоднозначность PATCH.
+- **Привязка/смена из формы задания:** `POST /api/tasks/{id}/set-order` (роли `Admin,Manager`),
+  тело `{ orderId: Guid }` (**НЕ nullable** — отвязка из формы задания недоступна, UC-7): задание
+  `Include(Mold)` + заказ → `OrderTaskBinding.EnsureCanBind` → установить `OrderId`. Отвязка — только
+  из карточки заказа (`DELETE /orders/{id}/tasks/{taskId}`).
 - **Завершение с браком:** `CompleteTaskRequestDto` получает `DefectQuantity?`; `CompleteTask`
   передаёт его в `task.Complete(actualQuantity, completionReason, defectQuantity)`.
 
@@ -259,7 +266,7 @@ DTO (папка `DTOs/Order/`): `OrderDto` (реквизиты + `productTypeArt
 `producedQuantity`/`defectQuantity`/`goodQuantity`/`progressPercent` + `taskCount`),
 `OrderDetailsDto` (`OrderDto` + `IEnumerable<OrderTaskSummaryDto>`: taskId, immName, moldName,
 planQuantity, actualQuantity, defectQuantity, status), `CreateOrderRequestDto`,
-`UpdateOrderRequestDto`, `SetOrderRequestDto { Guid? OrderId }`. Маппинг вручную (как в
+`UpdateOrderRequestDto`, `SetOrderRequestDto { Guid OrderId }` (non-null, UC-7). Маппинг вручную (как в
 `ProductTypesController`/`MoldsController`, без AutoMapper).
 
 `TaskDto` дополняется: `OrderId` (Guid?), `OrderNumber` (string?), `DefectQuantity` (int) — для
@@ -274,11 +281,15 @@ planQuantity, actualQuantity, defectQuantity, status), `CreateOrderRequestDto`,
   статус + поиск по номеру; форма создания/редактирования; кнопки Завершить / Отменить / Возобновить.
 - **Карточка заказа** (модалка/страница по образцу `TaskDetailModal.vue`): реквизиты + разбивка
   (Заказано / Выпущено / Брак / **Годных** / Прогресс) + список привязанных заданий + кнопки
-  «Привязать существующее» (селект заданий того же `ProductType` без заказа) и «Отвязать».
+  «Привязать существующее» (селект заданий того же `ProductType` без заказа) и **«Отвязать»**
+  (единственная точка отвязки, UC-7). Кнопка «Завершить заказ» **активна только при `Годных ≥ Заказано`**
+  (UC-3); иначе доступна только «Отменить».
 - `src/constants/orderStatus.js` — палитра/подписи статусов (по образцу `effectiveStatus.js`).
 - Правки формы задания (`TasksView.vue` / `TaskDetailModal.vue`): опциональный `el-select`
   **«Заказ»** — активные заказы, **отфильтрованные по `ProductType` ПФ задания** (чтобы не предлагать
-  несовместимое). При смене ПФ — сброс/перефильтрация селекта.
+  несовместимое). При смене ПФ — сброс/перефильтрация селекта. **Отвязку из формы задания не
+  предоставляем** (UC-7): селект привязывает/меняет заказ, но не очищает в «нет» — снять привязку
+  можно только из карточки заказа.
 - Правка мобильного завершения (`MobileTaskDetailView.vue`): в диалоге «Завершить задание» — поле
   **«Брак»** (число, `0..выпущено`), уходит в `DefectQuantity` через `complete`.
 
@@ -286,7 +297,8 @@ planQuantity, actualQuantity, defectQuantity, status), `CreateOrderRequestDto`,
 
 - **xUnit (unit):**
   - `Order` — конечный автомат: `Complete`/`Cancel` из не-`Active` → `DomainException`; `Reopen`
-    из `Active` → `DomainException`; допустимые переходы меняют статус.
+    из `Active` → `DomainException`; **`Complete(goodQuantity)` при `goodQuantity < Quantity` →
+    `DomainException`; при `≥ Quantity` → `Completed`**; допустимые переходы меняют статус.
   - `OrderTaskBinding.EnsureCanBind` — не-`Active` заказ → throw; `ProductType` mismatch → throw;
     ПФ без типа → throw; совпадение + активный → ок.
   - `ShiftTask.Complete` — `DefectQuantity` вне `0..ActualQuantity` → `DomainException`; в диапазоне —
@@ -294,7 +306,8 @@ planQuantity, actualQuantity, defectQuantity, status), `CreateOrderRequestDto`,
 - **xUnit (integration):**
   - `OrdersController`: CRUD; `Quantity ≤ 0` → 400; `ProductType` архивный/несуществующий → 400;
     смена `ProductTypeId` при наличии привязанных заданий → 409; переходы complete/cancel/reopen +
-    guard'ы; список с фильтрами статус/поиск/изделие.
+    guard'ы; **complete при недостатке годных (`Σ(Actual−Defect) < Quantity`) → 400, при достатке →
+    Completed** (UC-3); список с фильтрами статус/поиск/изделие.
   - Привязка: совместимое задание → ок; `ProductType` mismatch → 400; ПФ без типа → 400; привязка к
     не-`Active` заказу → 400; отвязка (`set-order null` / DELETE) → `OrderId=null`.
   - Прогресс: `GET /api/orders/{id}` возвращает `good = Σ(Actual − Defect)` и `progressPercent`;
