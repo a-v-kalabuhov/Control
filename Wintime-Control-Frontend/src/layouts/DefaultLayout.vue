@@ -53,6 +53,15 @@
             <span>Работа без задания</span>
           </el-menu-item>
 
+          <!-- Заказы (для Manager, Admin) -->
+          <el-menu-item
+            v-if="canAccess(['Admin', 'Manager'])"
+            index="/orders"
+          >
+            <el-icon><List /></el-icon>
+            <span>Заказы</span>
+          </el-menu-item>
+
           <!-- Отчёты (для Manager, Admin) -->
           <el-menu-item
             v-if="canAccess(['Admin', 'Manager'])"
