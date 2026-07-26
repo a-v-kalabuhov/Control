@@ -126,6 +126,55 @@
       @close="closeTask"
     />
 
+    <!-- Диалог завершения задания -->
+    <el-dialog
+      v-model="completeVisible"
+      title="Завершение задания"
+      width="95%"
+      :close-on-click-modal="false"
+    >
+      <el-form label-position="top">
+        <el-form-item label="Фактическое количество">
+          <el-input-number
+            v-model="completeForm.actualQuantity"
+            :min="0"
+            class="w-full"
+            size="large"
+          />
+        </el-form-item>
+        <el-form-item label="Брак">
+          <el-input-number
+            v-model="completeForm.defectQuantity"
+            :min="0"
+            :max="completingTask?.actualQuantity || 0"
+            class="w-full complete-defect-input"
+            size="large"
+          />
+        </el-form-item>
+        <el-form-item
+          v-if="completeForm.actualQuantity < (completingTask?.planQuantity || 0)"
+          label="Причина невыполнения плана"
+        >
+          <el-input
+            v-model="completeForm.completionReason"
+            type="textarea"
+            :rows="2"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button
+          type="primary"
+          size="large"
+          class="w-full h-12"
+          @click="confirmComplete"
+        >
+          Завершить
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- Модальное окно сканера -->
     <el-dialog
       v-model="scannerVisible"
@@ -183,6 +232,10 @@ const detailVisible = ref(false)
 const scannerVisible = ref(false)
 const selectedTask = ref(null)
 const scanResult = ref(null)
+
+const completeVisible = ref(false)
+const completingTask = ref(null)
+const completeForm = ref({ actualQuantity: 0, defectQuantity: 0, completionReason: '' })
 
 const searchInput = ref('')
 let searchTimer = null
@@ -260,45 +313,40 @@ const cancelSetup = async (task) => {
   }
 }
 
-const completeTask = async (task) => {
+const completeTask = (task) => {
+  completingTask.value = task
+  completeForm.value = {
+    actualQuantity: task.planQuantity,
+    defectQuantity: 0,
+    completionReason: ''
+  }
+  completeVisible.value = true
+}
+
+const confirmComplete = async () => {
+  const task = completingTask.value
+  if (!task) return
+
+  const { actualQuantity, defectQuantity, completionReason } = completeForm.value
+
+  if (actualQuantity < task.planQuantity && !completionReason) {
+    ElMessage.warning('Укажите причину невыполнения плана')
+    return
+  }
+
   try {
-    const { value } = await ElMessageBox.prompt(
-      'Укажите фактическое количество (если отличается от плана)',
-      'Завершение задания',
-      {
-        inputPattern: /^\d+$/,
-        inputErrorMessage: 'Введите число',
-        inputValue: task.planQuantity
-      }
-    )
-
-    const actualQty = parseInt(value)
-    let completionReason = ''
-
-    if (actualQty < task.planQuantity) {
-      const { value: reason } = await ElMessageBox.prompt(
-        'Укажите причину невыполнения плана',
-        'Причина',
-        {
-          inputPattern: /.+/,
-          inputErrorMessage: 'Введите причину'
-        }
-      )
-      completionReason = reason
-    }
-
     await mobileApi.completeTask(task.id, {
-      actualQuantity: actualQty,
-      completionReason
+      actualQuantity,
+      defectQuantity,
+      completionReason: actualQuantity < task.planQuantity ? completionReason : ''
     })
 
     ElMessage.success('Задание завершено')
+    completeVisible.value = false
     await loadTasks()
     detailVisible.value = false
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('Ошибка завершения задания')
-    }
+    ElMessage.error(error.response?.data ?? 'Ошибка завершения задания')
   }
 }
 
