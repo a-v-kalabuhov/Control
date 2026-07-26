@@ -50,6 +50,12 @@ const routes = [
         }
       },
       {
+        path: 'orders',
+        name: 'orders',
+        component: () => import('@/views/OrdersView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'Заказы' }
+      },
+      {
         path: 'reports',
         name: 'Reports',
         component: () => import('@/views/reports/ReportsView.vue'),

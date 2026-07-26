@@ -55,6 +55,24 @@
         </el-select>
       </el-form-item>
 
+      <el-form-item label="Заказ">
+        <el-select
+          v-model="form.orderId"
+          placeholder="Выберите заказ"
+          class="w-full"
+          filterable
+          :clearable="false"
+          :disabled="!selectedProductTypeId"
+        >
+          <el-option
+            v-for="order in orderOptions"
+            :key="order.id"
+            :label="`${order.number}${order.productTypeArticle ? ' (' + order.productTypeArticle + ')' : ''}`"
+            :value="order.id"
+          />
+        </el-select>
+      </el-form-item>
+
       <el-form-item label="Наладчик" prop="personnelId">
         <el-select 
           v-model="form.personnelId" 
@@ -141,6 +159,8 @@ import { immApi } from '@/api/imm'
 import { moldsApi } from '@/api/molds'
 import { personnelApi } from '@/api/personnel'
 import { tasksApi } from '@/api/tasks'
+import { ordersApi } from '@/api/orders'
+import { apiErrorMessage } from '@/utils/apiError'
 
 const props = defineProps({
   modelValue: {
@@ -166,6 +186,8 @@ const editingTask = ref(null)
 const imms = ref([])
 const molds = ref([])
 const personnel = ref([])
+const orderOptions = ref([])
+const initialOrderId = ref(null)
 
 const form = reactive({
   immId: '',
@@ -173,7 +195,8 @@ const form = reactive({
   personnelId: '',
   planQuantity: 1000,
   plannedDate: null,
-  note: ''
+  note: '',
+  orderId: null
 })
 
 const rules = {
@@ -190,6 +213,8 @@ const selectedMoldInfo = computed(() => {
   return molds.value.find(m => m.id === form.moldId)
 })
 
+const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productTypeId || null)
+
 const resetForm = () => {
   Object.assign(form, {
     immId: '',
@@ -197,8 +222,42 @@ const resetForm = () => {
     personnelId: '',
     planQuantity: 1000,
     plannedDate: null,
-    note: ''
+    note: '',
+    orderId: null
   })
+  orderOptions.value = []
+  initialOrderId.value = null
+}
+
+const loadOrdersForProductType = async (productTypeId) => {
+  if (!productTypeId) {
+    orderOptions.value = []
+    form.orderId = null
+    return
+  }
+  try {
+    const response = await ordersApi.getList({ status: 'Active', productTypeId })
+    orderOptions.value = response.data
+    if (form.orderId && !orderOptions.value.some(o => o.id === form.orderId)) {
+      form.orderId = null
+    }
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки заказов')
+  }
+}
+
+watch(selectedProductTypeId, (productTypeId) => {
+  loadOrdersForProductType(productTypeId)
+})
+
+const loadMolds = async () => {
+  if (molds.value.length > 0) return
+  try {
+    const response = await moldsApi.getList({ isActive: true })
+    molds.value = response.data
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки пресс-форм')
+  }
 }
 
 const isPastDate = (date) => {
@@ -215,8 +274,14 @@ const populateForm = (task) => {
     personnelId: task.personnelId,
     planQuantity: task.planQuantity,
     plannedDate: task.plannedDate ? task.plannedDate.slice(0, 10) : null,
-    note: task.note || ''
+    note: task.note || '',
+    orderId: task.orderId || null
   })
+  initialOrderId.value = task.orderId || null
+  // В режиме редактирования селект ПФ задизейблен и никогда не получает
+  // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
+  // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
+  loadMolds()
 }
 
 watch(() => props.task, (newTask) => {
@@ -246,16 +311,6 @@ const loadImms = async () => {
   }
 }
 
-const loadMolds = async () => {
-  if (molds.value.length > 0) return
-  try {
-    const response = await moldsApi.getList({ isActive: true })
-    molds.value = response.data
-  } catch (error) {
-    ElMessage.error('Ошибка загрузки пресс-форм')
-  }
-}
-
 const loadPersonnel = async () => {
   if (personnel.value.length > 0) return
   try {
@@ -275,7 +330,13 @@ const handleSubmit = async () => {
     loading.value = true
     try {
       if (editingTask.value) {
-        await tasksApi.update(editingTask.value.id, form)
+        // orderId не входит в тело update — заказ меняется только через
+        // ordersApi.setTaskOrder (единая точка привязки/смены заказа).
+        const { orderId, ...updatePayload } = form
+        await tasksApi.update(editingTask.value.id, updatePayload)
+        if (form.orderId && form.orderId !== initialOrderId.value) {
+          await ordersApi.setTaskOrder(editingTask.value.id, form.orderId)
+        }
         ElMessage.success('Задание обновлено')
       } else {
         await tasksApi.create(form)
@@ -285,7 +346,7 @@ const handleSubmit = async () => {
       visible.value = false
       emit('success')
     } catch (error) {
-      ElMessage.error('Ошибка сохранения задания')
+      ElMessage.error(apiErrorMessage(error, 'Ошибка сохранения задания'))
     } finally {
       loading.value = false
     }

@@ -16,6 +16,11 @@ public class ShiftTask : BaseEntity
     public string? Note { get; set; }
     public string? CloseReason { get; set; }
 
+    // PZP-05: связь с заказом (nullable — задание может быть без заказа) + ручной брак.
+    public Guid? OrderId { get; set; }
+    public Order? Order { get; set; }
+    public int DefectQuantity { get; set; }   // брак (ручной ввод при завершении), default 0
+
     public DateTime? UpdatedAt { get; set; }
 
     public DateTime? PlannedDate { get; set; }
@@ -82,12 +87,20 @@ public class ShiftTask : BaseEntity
     /// <summary>Завершить задание: InProgress → Completed.</summary>
     /// <param name="actualQuantity">Фактический выпуск; если null — остаётся накопленное значение.</param>
     /// <param name="completionReason">Причина отклонения; фиксируется только при расхождении с планом.</param>
-    public void Complete(int? actualQuantity, string? completionReason)
+    /// <param name="defectQuantity">Брак (PZP-05); валидируется диапазоном 0..выпущено.</param>
+    public void Complete(int? actualQuantity, string? completionReason, int? defectQuantity = null)
     {
         EnsureStatus(TaskStatus.InProgress, "Задание не в работе");
 
         if (actualQuantity.HasValue)
             ActualQuantity = actualQuantity.Value;
+
+        if (defectQuantity.HasValue)
+        {
+            if (defectQuantity.Value < 0 || defectQuantity.Value > ActualQuantity)
+                throw new DomainException("Брак должен быть в диапазоне 0..выпущено");
+            DefectQuantity = defectQuantity.Value;
+        }
 
         if (ActualQuantity != PlanQuantity && completionReason != null)
             CloseReason = completionReason;

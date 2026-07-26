@@ -31,6 +31,9 @@ public static class TaskMappingExtensions
         ClosedAt = t.ClosedAt,
         CloseReason = t.CloseReason,
         Note = t.Note,
+        OrderId = t.OrderId,
+        OrderNumber = t.Order?.Number,
+        DefectQuantity = t.DefectQuantity,
         CreatedAt = t.CreatedAt,
         UpdatedAt = t.UpdatedAt
     };

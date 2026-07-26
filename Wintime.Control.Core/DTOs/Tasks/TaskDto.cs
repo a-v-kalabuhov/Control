@@ -23,6 +23,10 @@ public class TaskDto
     public DateTime? ClosedAt { get; set; }
     public string? CloseReason { get; set; }
     public string? Note { get; set; }
+    // PZP-05
+    public Guid? OrderId { get; set; }
+    public string? OrderNumber { get; set; }
+    public int DefectQuantity { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

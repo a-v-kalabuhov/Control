@@ -40,6 +40,7 @@ public class TasksController : ControllerBase
             .Include(t => t.Imm)
             .Include(t => t.Mold)
             .Include(t => t.Personnel)
+            .Include(t => t.Order)
             .AsQueryable();
 
         if (status.HasValue)
@@ -165,12 +166,30 @@ public class TasksController : ControllerBase
             .Include(t => t.Imm)
             .Include(t => t.Mold)
             .Include(t => t.Personnel)
+            .Include(t => t.Order)
             .FirstOrDefaultAsync(t => t.Id == id);
 
         if (task == null)
             return NotFound();
 
         return Ok(task.ToDto());
+    }
+
+    /// <summary>
+    /// Ищет заказ по Id и проверяет правило привязки (PZP-05: активен, тип изделия совпадает
+    /// с типом ПФ задания). Общая последовательность для CreateTask и SetOrder (M4).
+    /// Возвращает найденный заказ, либо готовый ActionResult ошибки (заказ не найден — 400;
+    /// нарушение правила привязки — DomainException, отдаётся глобальным хендлером как 400).
+    /// </summary>
+    private async Task<(Order? Order, ActionResult? Error)> ResolveOrderForBindingAsync(
+        Guid orderId, Guid? moldProductTypeId)
+    {
+        var order = await _context.Orders.FindAsync(orderId);
+        if (order == null)
+            return (null, BadRequest("Указан несуществующий заказ."));
+
+        Wintime.Control.Core.Policies.OrderTaskBinding.EnsureCanBind(order, moldProductTypeId);
+        return (order, null);
     }
 
     /// <summary>
@@ -199,6 +218,14 @@ public class TasksController : ControllerBase
                 : null,
             IssuedAt = DateTime.UtcNow
         };
+
+        if (request.OrderId.HasValue)
+        {
+            var (order, error) = await ResolveOrderForBindingAsync(request.OrderId.Value, mold.ProductTypeId);
+            if (error != null)
+                return error;
+            task.OrderId = order!.Id;
+        }
 
         _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
@@ -360,7 +387,7 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        task.Complete(request.ActualQuantity, request.CompletionReason);
+        task.Complete(request.ActualQuantity, request.CompletionReason, request.DefectQuantity);
 
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "idle");
@@ -384,6 +411,29 @@ public class TasksController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "План задания увеличен", planQuantity = task.PlanQuantity });
+    }
+
+    /// <summary>
+    /// PZP-05: привязать/сменить заказ задания из формы задания (UC-6).
+    /// Отвязка отсюда недоступна (UC-7) — только через карточку заказа (DELETE /orders/{id}/tasks/{taskId}).
+    /// </summary>
+    [HttpPost("{id:guid}/set-order")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<IActionResult> SetOrder(Guid id, [FromBody] SetOrderRequestDto request)
+    {
+        var task = await _context.ShiftTasks
+            .Include(t => t.Mold)
+            .FirstOrDefaultAsync(t => t.Id == id);
+        if (task == null)
+            return NotFound();
+
+        var (_, error) = await ResolveOrderForBindingAsync(request.OrderId, task.Mold?.ProductTypeId);
+        if (error != null)
+            return error;
+
+        task.OrderId = request.OrderId;
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Заказ задания обновлён" });
     }
 
     /// <summary>

@@ -220,4 +220,40 @@ public class ShiftTaskStateMachineTests
 
         act.Should().Throw<DomainException>();
     }
+
+    // ── PZP-05: брак при завершении ──────────────────────────────────────────
+
+    [Fact]
+    public void Complete_WithDefectInRange_StoresDefect()
+    {
+        var task = NewTask(EntityTaskStatus.InProgress, plan: 100);
+
+        task.Complete(actualQuantity: 100, completionReason: null, defectQuantity: 20);
+
+        task.DefectQuantity.Should().Be(20);
+        task.Status.Should().Be(EntityTaskStatus.Completed);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(101)]
+    public void Complete_WithDefectOutOfRange_Throws(int defect)
+    {
+        var task = NewTask(EntityTaskStatus.InProgress, plan: 100);
+
+        var act = () => task.Complete(actualQuantity: 100, completionReason: null, defectQuantity: defect);
+
+        act.Should().Throw<DomainException>();
+        task.Status.Should().Be(EntityTaskStatus.InProgress); // статус не сменился
+    }
+
+    [Fact]
+    public void Complete_WithoutDefect_KeepsDefectZero()
+    {
+        var task = NewTask(EntityTaskStatus.InProgress, plan: 100);
+
+        task.Complete(actualQuantity: 100, completionReason: null);
+
+        task.DefectQuantity.Should().Be(0);
+    }
 }

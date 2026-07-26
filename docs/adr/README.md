@@ -39,3 +39,5 @@
 - [ADR-0005](0005-cov-filter-variant-b-hold-last-value.md) — COV-фильтрация телеметрии: Вариант B (удержание последнего значения)
 - [ADR-0006](0006-effective-imm-state.md) — Эффективное состояние ТПА определяет обработку телеметрии и простои
 - [ADR-0007](0007-product-type-catalog.md) — Каталог изделий (`ProductType`) как общая номенклатурная основа
+- [ADR-0008](0008-cycle-pipeline-and-unplanned-run.md) — Конвейер обработки цикла + журнал «работы без задания» (UnplannedRun)
+- [ADR-0009](0009-orders-module.md) — Модуль учёта заказов (`Order`)
