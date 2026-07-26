@@ -60,6 +60,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidateTelemetryDataHandler, ValidateTelemetryDataHandler>();
         services.AddScoped<IStoreTelemetryDataHandler, StoreTelemetryDataHandler>();
         services.AddScoped<IUpdateImmStatusHandler, UpdateImmStatusHandler>();
+        // Конвейер обработки цикла (Стадия 2) — порядок важен
+        services.AddScoped<ICycleHandler, TaskOutputHandler>();
+        services.AddScoped<ICycleHandler, UnplannedRunHandler>();
         services.AddScoped<ICycleProcessingHandler, CycleProcessingHandler>();
         services.AddSingleton<ICycleTracker, CycleTracker>();
         services.AddScoped<MessageProcessingPipeline>();

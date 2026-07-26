@@ -44,6 +44,15 @@
             <span>Журнал простоев</span>
           </el-menu-item>
 
+          <!-- Журнал работы без задания (для Manager, Admin) -->
+          <el-menu-item
+            v-if="canAccess(['Admin', 'Manager'])"
+            index="/unplanned-runs"
+          >
+            <el-icon><Warning /></el-icon>
+            <span>Работа без задания</span>
+          </el-menu-item>
+
           <!-- Отчёты (для Manager, Admin) -->
           <el-menu-item
             v-if="canAccess(['Admin', 'Manager'])"

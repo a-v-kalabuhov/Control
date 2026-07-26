@@ -13,22 +13,27 @@ using SystemTask = System.Threading.Tasks.Task;
 
 namespace Wintime.Control.Infrastructure.Handlers;
 
+/// <summary>
+/// Оркестратор обработки циклов: детектирует завершение цикла по cycleCounter,
+/// СРАЗУ сохраняет ImmCycle (Стадия 1 — долговечность), затем поверх сохранённого
+/// цикла последовательно исполняет ICycleHandler (Стадия 2), каждый в try/catch.
+/// </summary>
 public class CycleProcessingHandler : ICycleProcessingHandler
 {
     private readonly ControlDbContext _db;
     private readonly ICycleTracker _tracker;
-    private readonly IEmulatorControlService _emulator;
+    private readonly IEnumerable<ICycleHandler> _handlers;
     private readonly ILogger<CycleProcessingHandler> _logger;
 
     public CycleProcessingHandler(
         ControlDbContext db,
         ICycleTracker tracker,
-        IEmulatorControlService emulator,
+        IEnumerable<ICycleHandler> handlers,
         ILogger<CycleProcessingHandler> logger)
     {
         _db = db;
         _tracker = tracker;
-        _emulator = emulator;
+        _handlers = handlers;
         _logger = logger;
     }
 
@@ -37,18 +42,14 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         var data = context.Data;
         var template = context.Template;
         var device = context.Device;
-
         if (data is null || template is null || device is null)
             return;
 
-        // Найти сенсор счётчика циклов по типу
         var counterSensor = template.Sensors.FirstOrDefault(s => s.ParameterType == "cycleCounter");
         if (counterSensor is null)
             return;
-
         if (!data.Sensors.TryGetValue(counterSensor.ParameterName, out var rawValue))
             return;
-
         if (!int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var currentCounter))
             return;
 
@@ -56,7 +57,6 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         var immId = device.Id;
         var currentTime = DateTimeOffset.FromUnixTimeSeconds(data.Timestamp).UtcDateTime;
 
-        // Активное задание: Setup (наладка) или InProgress (производство) — их не более одного.
         var activeTask = await _db.ShiftTasks
             .Include(t => t.Mold)
             .FirstOrDefaultAsync(
@@ -66,9 +66,6 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
         var taskStatus = ActiveTaskStatusMap.From(activeTask?.Status);
 
-        // Гейтинг по матрице Состояния_ТПА.xlsx: при Setup и при «нет задания + не-auto»
-        // циклы не обрабатываются. Сбрасываем активный цикл в трекере, чтобы он не
-        // «склеился» через границу наладки, и сохраняем счётчик/режим.
         if (!CycleProcessingPolicy.ShouldProcessCycle(currentMode, taskStatus))
         {
             _tracker.Set(immId, new CycleState(null, currentCounter, currentMode));
@@ -76,7 +73,6 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         }
 
         var state = _tracker.Get(immId);
-
         if (state is null)
         {
             var startTime = currentMode == ImmMode.Auto ? currentTime : (DateTime?)null;
@@ -87,7 +83,6 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         bool cycleWasActive = state.CycleStartTime.HasValue;
         bool counterChanged = state.LastCounterValue.HasValue && state.LastCounterValue.Value != currentCounter;
         bool modeChangedFromAuto = state.LastMode == ImmMode.Auto && currentMode != ImmMode.Auto;
-
         bool cycleEnded = cycleWasActive && (counterChanged || modeChangedFromAuto);
 
         if (cycleEnded)
@@ -95,7 +90,6 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             bool isSuccessful = currentMode != ImmMode.Alarm;
             var cycleStart = state.CycleStartTime!.Value;
             var duration = (int)(currentTime - cycleStart).TotalSeconds;
-
             var cavities = activeTask?.Mold.Cavities ?? 0;
 
             var cycle = new ImmCycle
@@ -110,29 +104,24 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                 Cavities = cavities
             };
             _db.ImmCycles.Add(cycle);
+            await _db.SaveChangesAsync(ct); // СТАДИЯ 1 — цикл долговечен
 
-            // Учёт выпуска — только если политика разрешает (InProgress + auto + нет открытого простоя).
-            bool hasOpenDowntime = await _db.Events.AnyAsync(
-                e => e.ImmId == immId
-                  && e.EventType == Core.Enums.EventType.Downtime
-                  && e.EndTime == null, ct);
-
-            if (isSuccessful
-                && activeTask is not null
-                && CycleProcessingPolicy.ShouldCountOutput(currentMode, taskStatus, hasOpenDowntime))
+            var completed = new CompletedCycle(cycle, activeTask, currentMode);
+            foreach (var handler in _handlers) // СТАДИЯ 2
             {
-                activeTask.ActualQuantity += cavities;
-                activeTask.ActualMaterialWeightGrams +=
-                    cavities * activeTask.Mold.PartWeightGrams
-                    + activeTask.Mold.RunnerWeightGrams;
-                if (activeTask.ActualQuantity >= activeTask.PlanQuantity)
-                    await _emulator.SetModeAsync(immId.ToString(), "idle", ct);
+                try
+                {
+                    await handler.HandleAsync(completed, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Cycle handler {Handler} failed for IMM {ImmId} (cycle {CycleId})",
+                        handler.GetType().Name, immId, cycle.Id);
+                }
             }
 
-            await _db.SaveChangesAsync(ct);
-
-            _logger.LogDebug(
-                "IMM {ImmId}: cycle saved — duration {Duration}s, successful={Success}",
+            _logger.LogDebug("IMM {ImmId}: cycle saved — duration {Duration}s, successful={Success}",
                 immId, duration, isSuccessful);
         }
 

@@ -41,6 +41,15 @@ const routes = [
         }
       },
       {
+        path: 'unplanned-runs',
+        name: 'UnplannedRunLog',
+        component: () => import('@/views/unplanned/UnplannedRunLogView.vue'),
+        meta: {
+          roles: ['Admin', 'Manager'],
+          title: 'Журнал работы без задания'
+        }
+      },
+      {
         path: 'reports',
         name: 'Reports',
         component: () => import('@/views/reports/ReportsView.vue'),
