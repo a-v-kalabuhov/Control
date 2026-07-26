@@ -116,4 +116,22 @@ describe('TaskFormModal — заказ', () => {
 
     expect(ordersApi.setTaskOrder).toHaveBeenCalledWith('task-1', 'order-1')
   })
+
+  it('в режиме редактирования сама открывает форму и без ручного loadMolds подгружает заказы по типу изделия задания', async () => {
+    const task = {
+      id: 'task-2', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
+      planQuantity: 10, plannedDate: null, note: '', orderId: null
+    }
+
+    // Никакого wrapper.vm.loadMolds() здесь — только открытие формы через prop `task`,
+    // как это делает TasksView в реальном режиме редактирования.
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(ordersApi.getList).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'Active', productTypeId: 'pt-X' })
+    )
+    expect(wrapper.vm.molds.length).toBeGreaterThan(0)
+    expect(wrapper.vm.selectedProductTypeId).toBe('pt-X')
+  })
 })

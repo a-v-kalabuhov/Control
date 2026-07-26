@@ -249,6 +249,16 @@ watch(selectedProductTypeId, (productTypeId) => {
   loadOrdersForProductType(productTypeId)
 })
 
+const loadMolds = async () => {
+  if (molds.value.length > 0) return
+  try {
+    const response = await moldsApi.getList({ isActive: true })
+    molds.value = response.data
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки пресс-форм')
+  }
+}
+
 const isPastDate = (date) => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -267,6 +277,10 @@ const populateForm = (task) => {
     orderId: task.orderId || null
   })
   initialOrderId.value = task.orderId || null
+  // В режиме редактирования селект ПФ задизейблен и никогда не получает
+  // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
+  // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
+  loadMolds()
 }
 
 watch(() => props.task, (newTask) => {
@@ -296,16 +310,6 @@ const loadImms = async () => {
   }
 }
 
-const loadMolds = async () => {
-  if (molds.value.length > 0) return
-  try {
-    const response = await moldsApi.getList({ isActive: true })
-    molds.value = response.data
-  } catch (error) {
-    ElMessage.error('Ошибка загрузки пресс-форм')
-  }
-}
-
 const loadPersonnel = async () => {
   if (personnel.value.length > 0) return
   try {
@@ -325,7 +329,10 @@ const handleSubmit = async () => {
     loading.value = true
     try {
       if (editingTask.value) {
-        await tasksApi.update(editingTask.value.id, form)
+        // orderId не входит в тело update — заказ меняется только через
+        // ordersApi.setTaskOrder (единая точка привязки/смены заказа).
+        const { orderId, ...updatePayload } = form
+        await tasksApi.update(editingTask.value.id, updatePayload)
         if (form.orderId && form.orderId !== initialOrderId.value) {
           await ordersApi.setTaskOrder(editingTask.value.id, form.orderId)
         }
