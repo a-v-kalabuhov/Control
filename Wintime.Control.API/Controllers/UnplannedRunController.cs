@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -142,6 +143,118 @@ public class UnplannedRunController : ControllerBase
         }).ToList();
 
         return Ok(candidates);
+    }
+
+    /// <summary>Ретро-привязка эпизода к заданию: бэкфилл сирот-циклов + пересчёт выпуска (UC-6/UC-7).</summary>
+    [HttpPost("{id:guid}/assign")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<IActionResult> Assign(Guid id, [FromBody] AssignTaskRequestDto request)
+    {
+        var run = await _context.UnplannedRuns.FirstOrDefaultAsync(r => r.Id == id);
+        if (run == null) return NotFound("Эпизод не найден");
+
+        var task = await _context.ShiftTasks.Include(t => t.Mold).FirstOrDefaultAsync(t => t.Id == request.TaskId);
+        if (task == null) return NotFound("Задание не найдено");
+
+        if (task.ImmId != run.ImmId)
+            return BadRequest("Задание принадлежит другому ТПА");
+        if (task.Mold.ProductTypeId == null)
+            return BadRequest("У пресс-формы задания не задан тип изделия");
+
+        var agg = await ComputeAggregatesAsync(run.ImmId, run.StartTime, run.ClosedAt, run.AssignedTaskId);
+        var episodeEnd = agg.EndTime ?? run.StartTime;
+        if (!await IsAdjacentAsync(task, run.StartTime, episodeEnd, agg.AvgCycleDuration))
+            return BadRequest("Задание не смежно эпизоду по времени");
+
+        // UC-7: откат прежней привязки (список циклов возвращается — они уже обнулены
+        // in-memory, но ещё не сохранены, поэтому запрос сирот их не увидит — сливаем вручную)
+        var rolledBackCycles = new List<Core.Entities.ImmCycle>();
+        if (run.AssignedTaskId.HasValue && run.AssignedTaskId.Value != task.Id)
+            rolledBackCycles = await RollbackBindingAsync(run, run.AssignedTaskId.Value);
+
+        // Бэкфилл сирот-циклов окна эпизода
+        var windowQuery = _context.ImmCycles.Where(c => c.ImmId == run.ImmId && c.TaskId == null && c.EndTime >= run.StartTime);
+        if (run.ClosedAt.HasValue)
+            windowQuery = windowQuery.Where(c => c.EndTime <= run.ClosedAt.Value);
+        var orphanCycles = await windowQuery.ToListAsync();
+        var cycles = orphanCycles
+            .UnionBy(rolledBackCycles, c => c.Id)
+            .ToList();
+
+        decimal addedQty = 0, addedWeight = 0;
+        foreach (var c in cycles)
+        {
+            c.TaskId = task.Id;
+            c.MoldId = task.MoldId;
+            c.Cavities = task.Mold.Cavities; // снапшот текущей гнёздности (ADR-0001)
+            if (c.IsSuccessful)
+            {
+                addedQty += c.Cavities;
+                addedWeight += c.Cavities * task.Mold.PartWeightGrams + task.Mold.RunnerWeightGrams;
+            }
+        }
+        task.ActualQuantity += (int)addedQty;
+        task.ActualMaterialWeightGrams += addedWeight;
+
+        run.AssignedTaskId = task.Id;
+        run.AssignedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        run.AssignedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Задание назначено" });
+    }
+
+    private async Task<bool> IsAdjacentAsync(Core.Entities.ShiftTask task, DateTime episodeStart, DateTime episodeEnd, double avgCycleDuration)
+    {
+        var avg = avgCycleDuration > 0 ? avgCycleDuration : 1;
+        var cyc = await _context.ImmCycles
+            .Where(c => c.TaskId == task.Id)
+            .GroupBy(c => c.TaskId)
+            .Select(g => new { First = g.Min(c => c.StartTime), Last = g.Max(c => c.EndTime), Count = g.Count() })
+            .FirstOrDefaultAsync();
+        bool hasCycles = cyc != null && cyc.Count > 0;
+
+        DateTime? tStart = task.SetupStartedAt ?? task.StartedAt;
+        DateTime? tEnd = task.ClosedAt ?? task.CompletedAt;
+        if (tStart.HasValue && tEnd.HasValue && UnplannedRunAdjacency.Overlaps(tStart.Value, tEnd.Value, episodeStart, episodeEnd))
+            return true;
+
+        DateTime? firstActivity = hasCycles ? cyc!.First : tStart;
+        if (firstActivity.HasValue && UnplannedRunAdjacency.AdjacentAfter(firstActivity.Value, episodeEnd, avg))
+            return true;
+        if (hasCycles && UnplannedRunAdjacency.AdjacentBefore(cyc!.Last, episodeStart, avg))
+            return true;
+
+        var taskDate = task.PlannedDate ?? task.IssuedAt ?? task.CreatedAt;
+        return !hasCycles && UnplannedRunAdjacency.SameDate(taskDate, episodeStart);
+    }
+
+    private async Task<List<Core.Entities.ImmCycle>> RollbackBindingAsync(Core.Entities.UnplannedRun run, Guid previousTaskId)
+    {
+        var prevTask = await _context.ShiftTasks.Include(t => t.Mold).FirstOrDefaultAsync(t => t.Id == previousTaskId);
+        var windowQuery = _context.ImmCycles.Where(c => c.ImmId == run.ImmId && c.TaskId == previousTaskId && c.EndTime >= run.StartTime);
+        if (run.ClosedAt.HasValue)
+            windowQuery = windowQuery.Where(c => c.EndTime <= run.ClosedAt.Value);
+        var cycles = await windowQuery.ToListAsync();
+
+        decimal qty = 0, weight = 0;
+        foreach (var c in cycles)
+        {
+            if (c.IsSuccessful && prevTask != null)
+            {
+                qty += c.Cavities;
+                weight += c.Cavities * prevTask.Mold.PartWeightGrams + prevTask.Mold.RunnerWeightGrams;
+            }
+            c.TaskId = null;
+            c.MoldId = null;
+            c.Cavities = 0;
+        }
+        if (prevTask != null)
+        {
+            prevTask.ActualQuantity -= (int)qty;
+            prevTask.ActualMaterialWeightGrams -= weight;
+        }
+        return cycles;
     }
 
     private record Aggregates(int CycleCount, DateTime? EndTime, double AvgCycleDuration);
