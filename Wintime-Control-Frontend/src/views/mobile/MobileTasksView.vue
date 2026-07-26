@@ -146,7 +146,7 @@
           <el-input-number
             v-model="completeForm.defectQuantity"
             :min="0"
-            :max="completingTask?.actualQuantity || 0"
+            :max="completeForm.actualQuantity || 0"
             class="w-full complete-defect-input"
             size="large"
           />
@@ -346,7 +346,7 @@ const confirmComplete = async () => {
     await loadTasks()
     detailVisible.value = false
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка завершения задания')
+    ElMessage.error(error.response?.data?.message ?? error.response?.data ?? 'Ошибка завершения задания')
   }
 }
 

@@ -80,4 +80,32 @@ describe('MobileTasksView — завершение задания с брако�
       expect.objectContaining({ defectQuantity: 5 })
     )
   })
+
+  it('«Брак» max следует за живым значением «Фактическое количество», не за снапшотом задания', async () => {
+    const wrapper = mount(MobileTasksView, {
+      global: {
+        plugins: [createPinia(), ElementPlus],
+        stubs: { QrScanner: true }
+      }
+    })
+    await flushPromises()
+
+    const completeButton = wrapper.findAll('button').find(b => b.text().includes('Завершить') && !b.text().includes('наладку'))
+    await completeButton.trigger('click')
+    await flushPromises()
+
+    const inputNumbers = wrapper.findAllComponents({ name: 'ElInputNumber' })
+    expect(inputNumbers.length).toBe(2)
+    const [actualQtyField, defectField] = inputNumbers
+
+    // Изначально форма заполнена planQuantity (100), а не task.actualQuantity (80) —
+    // max «Брака» должен смотреть на живое значение формы, а не на снапшот задания.
+    expect(defectField.props('max')).toBe(100)
+
+    await actualQtyField.find('input').setValue(50)
+    await actualQtyField.find('input').trigger('change')
+    await flushPromises()
+
+    expect(defectField.props('max')).toBe(50)
+  })
 })
