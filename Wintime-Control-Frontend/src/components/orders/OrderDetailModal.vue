@@ -72,6 +72,7 @@ import { ordersApi } from '@/api/orders'
 import { tasksApi } from '@/api/tasks'
 import { moldsApi } from '@/api/molds'
 import { getOrderStatusMeta } from '@/constants/orderStatus'
+import { apiErrorMessage } from '@/utils/apiError'
 
 const props = defineProps({
   modelValue: {
@@ -121,7 +122,7 @@ async function loadOrder() {
     const { data } = await ordersApi.getById(props.orderId)
     order.value = data
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка загрузки заказа')
+    ElMessage.error(apiErrorMessage(error, 'Ошибка загрузки заказа'))
   } finally {
     loading.value = false
   }
@@ -134,7 +135,7 @@ async function detach(row) {
     await loadOrder()
     emit('updated')
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка отвязки задания')
+    ElMessage.error(apiErrorMessage(error, 'Ошибка отвязки задания'))
   }
 }
 
@@ -150,7 +151,7 @@ async function openAttachDialog() {
     )
   } catch (error) {
     attachableTasks.value = []
-    ElMessage.error(error.response?.data ?? 'Не удалось загрузить задания для привязки')
+    ElMessage.error(apiErrorMessage(error, 'Не удалось загрузить задания для привязки'))
   } finally {
     attachLoading.value = false
   }
@@ -165,7 +166,7 @@ async function attach() {
     await loadOrder()
     emit('updated')
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка привязки задания')
+    ElMessage.error(apiErrorMessage(error, 'Ошибка привязки задания'))
   }
 }
 </script>

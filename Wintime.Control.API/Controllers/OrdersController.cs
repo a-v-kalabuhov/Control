@@ -38,6 +38,19 @@ public class OrdersController : ControllerBase
         return rows.ToDictionary(r => r.OrderId, r => (r.Produced, r.Defect, r.Count));
     }
 
+    // Копирует все публичные свойства OrderDto в OrderDetailsDto (наследник), чтобы новое поле
+    // в OrderDto само подхватывалось в деталях заказа, а не терялось из-за ручного перечисления (M2).
+    private static readonly System.Reflection.PropertyInfo[] OrderDtoProperties =
+        typeof(OrderDto).GetProperties();
+
+    private static OrderDetailsDto ToDetailsDto(OrderDto baseDto, List<OrderTaskSummaryDto> tasks)
+    {
+        var details = new OrderDetailsDto { Tasks = tasks };
+        foreach (var prop in OrderDtoProperties)
+            prop.SetValue(details, prop.GetValue(baseDto));
+        return details;
+    }
+
     private static OrderDto ToDto(Order o, (int produced, int defect, int count) agg)
     {
         var good = agg.produced - agg.defect;
@@ -95,23 +108,13 @@ public class OrdersController : ControllerBase
 
         var agg = (await ComputeAggregatesAsync(new[] { id })).GetValueOrDefault(id);
         var baseDto = ToDto(order, agg);
-        var details = new OrderDetailsDto
+        var tasks = order.Tasks.Select(t => new OrderTaskSummaryDto
         {
-            Id = baseDto.Id, Number = baseDto.Number, OrderDate = baseDto.OrderDate,
-            DueDate = baseDto.DueDate, ProductTypeId = baseDto.ProductTypeId,
-            ProductTypeArticle = baseDto.ProductTypeArticle, ProductTypeName = baseDto.ProductTypeName,
-            Quantity = baseDto.Quantity, Status = baseDto.Status, Note = baseDto.Note,
-            ProducedQuantity = baseDto.ProducedQuantity, DefectQuantity = baseDto.DefectQuantity,
-            GoodQuantity = baseDto.GoodQuantity, ProgressPercent = baseDto.ProgressPercent,
-            TaskCount = baseDto.TaskCount, CreatedAt = baseDto.CreatedAt,
-            Tasks = order.Tasks.Select(t => new OrderTaskSummaryDto
-            {
-                TaskId = t.Id, ImmName = t.Imm?.Name, MoldName = t.Mold?.Name,
-                PlanQuantity = t.PlanQuantity, ActualQuantity = t.ActualQuantity,
-                DefectQuantity = t.DefectQuantity, Status = t.Status
-            }).ToList()
-        };
-        return Ok(details);
+            TaskId = t.Id, ImmName = t.Imm?.Name, MoldName = t.Mold?.Name,
+            PlanQuantity = t.PlanQuantity, ActualQuantity = t.ActualQuantity,
+            DefectQuantity = t.DefectQuantity, Status = t.Status
+        }).ToList();
+        return Ok(ToDetailsDto(baseDto, tasks));
     }
 
     [HttpPost]

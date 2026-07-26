@@ -176,6 +176,23 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
+    /// Ищет заказ по Id и проверяет правило привязки (PZP-05: активен, тип изделия совпадает
+    /// с типом ПФ задания). Общая последовательность для CreateTask и SetOrder (M4).
+    /// Возвращает найденный заказ, либо готовый ActionResult ошибки (заказ не найден — 400;
+    /// нарушение правила привязки — DomainException, отдаётся глобальным хендлером как 400).
+    /// </summary>
+    private async Task<(Order? Order, ActionResult? Error)> ResolveOrderForBindingAsync(
+        Guid orderId, Guid? moldProductTypeId)
+    {
+        var order = await _context.Orders.FindAsync(orderId);
+        if (order == null)
+            return (null, BadRequest("Указан несуществующий заказ."));
+
+        Wintime.Control.Core.Policies.OrderTaskBinding.EnsureCanBind(order, moldProductTypeId);
+        return (order, null);
+    }
+
+    /// <summary>
     /// Создать новое задание (ССЗ)
     /// </summary>
     [HttpPost]
@@ -204,11 +221,10 @@ public class TasksController : ControllerBase
 
         if (request.OrderId.HasValue)
         {
-            var order = await _context.Orders.FindAsync(request.OrderId.Value);
-            if (order == null)
-                return BadRequest("Указан несуществующий заказ.");
-            Wintime.Control.Core.Policies.OrderTaskBinding.EnsureCanBind(order, mold.ProductTypeId);
-            task.OrderId = request.OrderId.Value;
+            var (order, error) = await ResolveOrderForBindingAsync(request.OrderId.Value, mold.ProductTypeId);
+            if (error != null)
+                return error;
+            task.OrderId = order!.Id;
         }
 
         _context.ShiftTasks.Add(task);
@@ -410,11 +426,11 @@ public class TasksController : ControllerBase
             .FirstOrDefaultAsync(t => t.Id == id);
         if (task == null)
             return NotFound();
-        var order = await _context.Orders.FindAsync(request.OrderId);
-        if (order == null)
-            return BadRequest("Указан несуществующий заказ.");
 
-        Wintime.Control.Core.Policies.OrderTaskBinding.EnsureCanBind(order, task.Mold?.ProductTypeId);
+        var (_, error) = await ResolveOrderForBindingAsync(request.OrderId, task.Mold?.ProductTypeId);
+        if (error != null)
+            return error;
+
         task.OrderId = request.OrderId;
         await _context.SaveChangesAsync();
         return Ok(new { message = "Заказ задания обновлён" });

@@ -32,7 +32,7 @@
     <el-table :data="orders" stripe style="width: 100%" v-loading="loading">
       <el-table-column prop="number" label="Номер" width="140" />
       <el-table-column label="Дата" width="120">
-        <template #default="{ row }">{{ formatDate(row.date) }}</template>
+        <template #default="{ row }">{{ formatDate(row.orderDate) }}</template>
       </el-table-column>
       <el-table-column label="Срок" width="120">
         <template #default="{ row }">{{ formatDate(row.dueDate) }}</template>
@@ -91,9 +91,9 @@
         <el-form-item label="Номер" prop="number" required>
           <el-input v-model="form.number" placeholder="ORD-001" />
         </el-form-item>
-        <el-form-item label="Дата" prop="date" required>
+        <el-form-item label="Дата" prop="orderDate" required>
           <el-date-picker
-            v-model="form.date"
+            v-model="form.orderDate"
             type="date"
             placeholder="Выберите дату"
             format="DD.MM.YYYY"
@@ -150,6 +150,7 @@ import { ordersApi } from '@/api/orders'
 import { productTypesApi } from '@/api/productTypes'
 import { ORDER_STATUS_KEYS, getOrderStatusMeta } from '@/constants/orderStatus'
 import OrderDetailModal from '@/components/orders/OrderDetailModal.vue'
+import { apiErrorMessage } from '@/utils/apiError'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -165,7 +166,7 @@ const productTypesLoading = ref(false)
 const filters = reactive({ status: null, search: '' })
 const form = reactive({
   number: '',
-  date: '',
+  orderDate: '',
   dueDate: '',
   productTypeId: null,
   quantity: 1,
@@ -174,7 +175,7 @@ const form = reactive({
 
 const rules = {
   number: [{ required: true, message: 'Введите номер заказа', trigger: 'blur' }],
-  date: [{ required: true, message: 'Укажите дату', trigger: 'change' }],
+  orderDate: [{ required: true, message: 'Укажите дату', trigger: 'change' }],
   dueDate: [{ required: true, message: 'Укажите срок', trigger: 'change' }],
   productTypeId: [{ required: true, message: 'Выберите тип изделия', trigger: 'change' }],
   quantity: [{ required: true, message: 'Укажите количество', trigger: 'change' }]
@@ -205,7 +206,7 @@ async function loadOrders() {
     })
     orders.value = data
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка загрузки заказов')
+    ElMessage.error(apiErrorMessage(error, 'Ошибка загрузки заказов'))
   } finally {
     loading.value = false
   }
@@ -225,7 +226,7 @@ async function loadProductTypes() {
 
 function showCreateModal() {
   editingId.value = null
-  Object.assign(form, { number: '', date: '', dueDate: '', productTypeId: null, quantity: 1, note: '' })
+  Object.assign(form, { number: '', orderDate: '', dueDate: '', productTypeId: null, quantity: 1, note: '' })
   dialogVisible.value = true
   loadProductTypes()
 }
@@ -234,7 +235,7 @@ function editItem(row) {
   editingId.value = row.id
   Object.assign(form, {
     number: row.number ?? '',
-    date: row.date ?? '',
+    orderDate: row.orderDate ?? '',
     dueDate: row.dueDate ?? '',
     productTypeId: row.productTypeId ?? null,
     quantity: row.quantity ?? 1,
@@ -260,7 +261,7 @@ async function save() {
       dialogVisible.value = false
       await loadOrders()
     } catch (error) {
-      ElMessage.error(error.response?.data ?? (editingId.value ? 'Ошибка обновления заказа' : 'Ошибка создания заказа'))
+      ElMessage.error(apiErrorMessage(error, editingId.value ? 'Ошибка обновления заказа' : 'Ошибка создания заказа'))
     } finally {
       saving.value = false
     }
@@ -278,7 +279,7 @@ async function completeOrder(row) {
     ElMessage.success('Заказ завершён')
     await loadOrders()
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка завершения заказа')
+    ElMessage.error(apiErrorMessage(error, 'Ошибка завершения заказа'))
   }
 }
 
@@ -288,7 +289,7 @@ async function cancelOrder(row) {
     ElMessage.success('Заказ отменён')
     await loadOrders()
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка отмены заказа')
+    ElMessage.error(apiErrorMessage(error, 'Ошибка отмены заказа'))
   }
 }
 
@@ -298,7 +299,7 @@ async function reopenOrder(row) {
     ElMessage.success('Заказ возобновлён')
     await loadOrders()
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка возобновления заказа')
+    ElMessage.error(apiErrorMessage(error, 'Ошибка возобновления заказа'))
   }
 }
 </script>

@@ -160,6 +160,7 @@ import { moldsApi } from '@/api/molds'
 import { personnelApi } from '@/api/personnel'
 import { tasksApi } from '@/api/tasks'
 import { ordersApi } from '@/api/orders'
+import { apiErrorMessage } from '@/utils/apiError'
 
 const props = defineProps({
   modelValue: {
@@ -345,7 +346,7 @@ const handleSubmit = async () => {
       visible.value = false
       emit('success')
     } catch (error) {
-      ElMessage.error('Ошибка сохранения задания')
+      ElMessage.error(apiErrorMessage(error, 'Ошибка сохранения задания'))
     } finally {
       loading.value = false
     }

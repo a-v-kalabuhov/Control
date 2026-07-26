@@ -81,7 +81,7 @@ describe('OrdersView', () => {
     const wrapper = mountView([
       { id: '5', number: 'ORD-5', productTypeArticle: 'E', quantity: 50,
         goodQuantity: 10, progressPercent: 20, status: 'Active', dueDate: null,
-        date: '2026-07-01', productTypeId: 'pt-1', note: 'старое примечание' }
+        orderDate: '2026-07-01', productTypeId: 'pt-1', note: 'старое примечание' }
     ])
     await flushPromises()
 
@@ -97,5 +97,34 @@ describe('OrdersView', () => {
 
     expect(ordersApi.update).toHaveBeenCalledWith('5', expect.objectContaining({ number: 'ORD-5' }))
     expect(ordersApi.create).not.toHaveBeenCalled()
+  })
+
+  it('создание заказа отправляет orderDate (а не date) в ordersApi.create', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+
+    const createButton = wrapper.findAll('button').find(b => b.text().includes('Создать заказ'))
+    expect(createButton).toBeTruthy()
+    await createButton.trigger('click')
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="ORD-001"]').setValue('ORD-NEW')
+    // Дата/срок/тип изделия не заполняем через UI (el-date-picker/el-select застублены) —
+    // подставляем значения напрямую через vm, чтобы обойти валидацию формы и проверить payload.
+    wrapper.vm.form.orderDate = '2026-07-27'
+    wrapper.vm.form.dueDate = '2026-08-01'
+    wrapper.vm.form.productTypeId = 'pt-1'
+    await flushPromises()
+
+    const saveButton = wrapper.findAll('button').find(b => b.text() === 'Сохранить')
+    expect(saveButton).toBeTruthy()
+    await saveButton.trigger('click')
+    await flushPromises()
+
+    expect(ordersApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({ orderDate: '2026-07-27' })
+    )
+    const callArg = ordersApi.create.mock.calls[0][0]
+    expect(callArg.date).toBeUndefined()
   })
 })
