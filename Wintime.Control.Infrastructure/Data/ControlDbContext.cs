@@ -25,6 +25,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<ImmCycle> ImmCycles { get; set; }
     public DbSet<ProductType> ProductTypes { get; set; }
     public DbSet<UnplannedRun> UnplannedRuns { get; set; }
+    public DbSet<Order> Orders { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -159,5 +160,28 @@ public class ControlDbContext : IdentityDbContext<User>
             .HasIndex(e => new { e.ImmId, e.EndTime })
             .HasFilter("\"TaskId\" IS NULL")
             .HasDatabaseName("IX_ImmCycles_Imm_Orphan");
+
+        // Конфигурация Order (PZP-05, ADR-0009)
+        builder.Entity<Order>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.ProductType)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProductTypeId)
+                  .OnDelete(DeleteBehavior.Restrict);   // ProductType физически не удаляют (IsActive)
+            entity.Property(e => e.OrderDate).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.DueDate).HasColumnType("timestamp with time zone");
+            entity.HasIndex(e => e.Number);              // Number НЕ уникален (решение п.2) — обычный индекс
+            entity.ToTable("Orders");
+        });
+
+        // Связь ShiftTask → Order (1:N, OrderId nullable)
+        builder.Entity<Wintime.Control.Core.Entities.ShiftTask>()
+            .HasOne(t => t.Order)
+            .WithMany(o => o.Tasks)
+            .HasForeignKey(t => t.OrderId)
+            .OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<Wintime.Control.Core.Entities.ShiftTask>()
+            .HasIndex(t => t.OrderId);                   // под Σ-агрегацию прогресса
     }
 }
