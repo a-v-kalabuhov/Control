@@ -278,6 +278,15 @@ public class TasksController : ControllerBase
 
         task.StartSetup();
 
+        // PZP-04: закрыть открытый эпизод «работы без задания» этого ТПА —
+        // старт задания = детерминированная граница эпизода.
+        var openRun = await _context.UnplannedRuns
+            .Where(r => r.ImmId == task.ImmId && r.ClosedAt == null)
+            .OrderBy(r => r.StartTime)
+            .FirstOrDefaultAsync();
+        if (openRun != null)
+            openRun.ClosedAt = DateTime.UtcNow;
+
         await _context.SaveChangesAsync();
         await _emulator.SetModeAsync(task.ImmId.ToString(), "manual");
 
