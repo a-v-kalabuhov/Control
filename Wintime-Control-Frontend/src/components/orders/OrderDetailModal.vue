@@ -148,8 +148,9 @@ async function openAttachDialog() {
     attachableTasks.value = tasksRes.data.filter(
       (t) => !t.orderId && productTypeByMoldId.get(t.moldId) === order.value?.productTypeId
     )
-  } catch {
-    ElMessage.error('Ошибка загрузки заданий')
+  } catch (error) {
+    attachableTasks.value = []
+    ElMessage.error(error.response?.data ?? 'Не удалось загрузить задания для привязки')
   } finally {
     attachLoading.value = false
   }
