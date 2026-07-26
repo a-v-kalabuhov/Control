@@ -27,6 +27,8 @@
       </el-form>
     </el-card>
 
+    <OrderDetailModal v-model="showDetail" :order-id="selectedOrderId" @updated="loadOrders" />
+
     <el-table :data="orders" stripe style="width: 100%" v-loading="loading">
       <el-table-column prop="number" label="Номер" width="140" />
       <el-table-column label="Дата" width="120">
@@ -147,10 +149,13 @@ import dayjs from 'dayjs'
 import { ordersApi } from '@/api/orders'
 import { productTypesApi } from '@/api/productTypes'
 import { ORDER_STATUS_KEYS, getOrderStatusMeta } from '@/constants/orderStatus'
+import OrderDetailModal from '@/components/orders/OrderDetailModal.vue'
 
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
+const showDetail = ref(false)
+const selectedOrderId = ref(null)
 const editingId = ref(null)
 const formRef = ref(null)
 const orders = ref([])
@@ -263,8 +268,8 @@ async function save() {
 }
 
 function openOrder(row) {
-  // Открытие карточки заказа реализуется в Task 11 (модалка с деталями/задачами).
-  ElMessage.info(`Заказ ${row.number}`)
+  selectedOrderId.value = row.id
+  showDetail.value = true
 }
 
 async function completeOrder(row) {
