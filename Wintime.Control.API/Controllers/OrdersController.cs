@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.DTOs.Order;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
 
@@ -214,5 +215,34 @@ public class OrdersController : ControllerBase
         order.Reopen();
         await _context.SaveChangesAsync();
         return Ok(new { message = "Заказ возобновлён" });
+    }
+
+    [HttpPost("{id:guid}/tasks")]
+    public async Task<IActionResult> AttachTask(Guid id, [FromBody] AttachTaskRequestDto request)
+    {
+        var order = await _context.Orders.FindAsync(id);
+        if (order == null)
+            return NotFound();
+        var task = await _context.ShiftTasks
+            .Include(t => t.Mold)
+            .FirstOrDefaultAsync(t => t.Id == request.TaskId);
+        if (task == null)
+            return NotFound("Задание не найдено.");
+
+        OrderTaskBinding.EnsureCanBind(order, task.Mold?.ProductTypeId);  // DomainException → 400
+        task.OrderId = id;
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Задание привязано к заказу" });
+    }
+
+    [HttpDelete("{id:guid}/tasks/{taskId:guid}")]
+    public async Task<IActionResult> DetachTask(Guid id, Guid taskId)
+    {
+        var task = await _context.ShiftTasks.FirstOrDefaultAsync(t => t.Id == taskId && t.OrderId == id);
+        if (task == null)
+            return NotFound("Задание не привязано к этому заказу.");
+        task.OrderId = null;
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Задание отвязано от заказа" });
     }
 }
