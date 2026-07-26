@@ -103,21 +103,21 @@ public class UnplannedRunController : ControllerBase
 
             DateTime? tStart = t.SetupStartedAt ?? t.StartedAt;
             DateTime? tEnd = t.ClosedAt ?? t.CompletedAt;
+            var taskDate = t.PlannedDate ?? t.IssuedAt ?? t.CreatedAt;
 
             bool overlaps = tStart.HasValue && tEnd.HasValue
                 && UnplannedRunAdjacency.Overlaps(tStart.Value, tEnd.Value, run.StartTime, episodeEnd);
-
             DateTime? firstActivity = hasCycles ? cyc!.First : tStart;
             bool after = firstActivity.HasValue
                 && UnplannedRunAdjacency.AdjacentAfter(firstActivity.Value, episodeEnd, avg);
-
             bool before = hasCycles
                 && UnplannedRunAdjacency.AdjacentBefore(cyc!.Last, run.StartTime, avg);
 
-            var taskDate = t.PlannedDate ?? t.IssuedAt ?? t.CreatedAt;
-            bool backdated = !hasCycles && UnplannedRunAdjacency.SameDate(taskDate, run.StartTime);
+            bool isEligible = IsTaskAdjacentToEpisode(
+                tStart, tEnd, hasCycles, firstActivity, hasCycles ? cyc!.Last : null,
+                taskDate, run.StartTime, episodeEnd, avg);
 
-            if (!(overlaps || after || before || backdated))
+            if (!isEligible)
                 continue;
 
             eligible.Add((t, overlaps, after, before));
@@ -216,17 +216,34 @@ public class UnplannedRunController : ControllerBase
 
         DateTime? tStart = task.SetupStartedAt ?? task.StartedAt;
         DateTime? tEnd = task.ClosedAt ?? task.CompletedAt;
-        if (tStart.HasValue && tEnd.HasValue && UnplannedRunAdjacency.Overlaps(tStart.Value, tEnd.Value, episodeStart, episodeEnd))
-            return true;
-
         DateTime? firstActivity = hasCycles ? cyc!.First : tStart;
-        if (firstActivity.HasValue && UnplannedRunAdjacency.AdjacentAfter(firstActivity.Value, episodeEnd, avg))
-            return true;
-        if (hasCycles && UnplannedRunAdjacency.AdjacentBefore(cyc!.Last, episodeStart, avg))
-            return true;
-
         var taskDate = task.PlannedDate ?? task.IssuedAt ?? task.CreatedAt;
-        return !hasCycles && UnplannedRunAdjacency.SameDate(taskDate, episodeStart);
+
+        return IsTaskAdjacentToEpisode(
+            tStart, tEnd, hasCycles, firstActivity, hasCycles ? cyc!.Last : null,
+            taskDate, episodeStart, episodeEnd, avg);
+    }
+
+    /// <summary>
+    /// Единственное место, где определяется правило смежности задания эпизоду (a/b/c/d).
+    /// Используется и <see cref="GetCandidates"/> (список кандидатов), и <see cref="IsAdjacentAsync"/>
+    /// (проверка при назначении) — чтобы список кандидатов и фактическая проверка никогда не расходились.
+    /// </summary>
+    private static bool IsTaskAdjacentToEpisode(
+        DateTime? taskWorkStart, DateTime? taskWorkEnd,
+        bool hasCycles, DateTime? firstActivity, DateTime? lastCycleEnd,
+        DateTime taskDate,
+        DateTime episodeStart, DateTime episodeEnd, double avgCycleSeconds)
+    {
+        bool overlaps = taskWorkStart.HasValue && taskWorkEnd.HasValue
+            && UnplannedRunAdjacency.Overlaps(taskWorkStart.Value, taskWorkEnd.Value, episodeStart, episodeEnd);
+        bool after = firstActivity.HasValue
+            && UnplannedRunAdjacency.AdjacentAfter(firstActivity.Value, episodeEnd, avgCycleSeconds);
+        bool before = hasCycles && lastCycleEnd.HasValue
+            && UnplannedRunAdjacency.AdjacentBefore(lastCycleEnd.Value, episodeStart, avgCycleSeconds);
+        bool backdated = !hasCycles && UnplannedRunAdjacency.SameDate(taskDate, episodeStart);
+
+        return overlaps || after || before || backdated;
     }
 
     private async Task<List<Core.Entities.ImmCycle>> RollbackBindingAsync(Core.Entities.UnplannedRun run, Guid previousTaskId)

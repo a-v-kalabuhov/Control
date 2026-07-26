@@ -112,6 +112,13 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
             taskAReloaded!.ActualQuantity.Should().Be(0, "откат прежней привязки уменьшил выпуск A");
             var taskBReloaded = await db.ShiftTasks.FindAsync(taskB);
             taskBReloaded!.ActualQuantity.Should().Be(2);
+
+            // Проверка не только агрегата, но и фактических строк циклов: окно эпизода
+            // должно быть полностью перепривязано на taskB, а не только сумма ActualQuantity.
+            var cycles = await db.ImmCycles.Where(c => c.ImmId == immId).ToListAsync();
+            cycles.Should().OnlyContain(c => c.TaskId == taskB);
+            cycles.Should().OnlyContain(c => c.MoldId == _factory.TestMoldId);
+            cycles.Should().OnlyContain(c => c.Cavities == 1); // из Mold.Cavities тестовой ПФ (=1)
         }
     }
 }
