@@ -77,7 +77,7 @@ public class UnplannedRunController : ControllerBase
         if (run == null) return NotFound("Эпизод не найден");
 
         var agg = await ComputeAggregatesAsync(run.ImmId, run.StartTime, run.ClosedAt, run.AssignedTaskId);
-        var episodeEnd = agg.EndTime ?? run.StartTime;
+        var episodeEnd = run.ClosedAt ?? agg.EndTime ?? run.StartTime;
         var avg = agg.AvgCycleDuration > 0 ? agg.AvgCycleDuration : 1; // защита от деления/нулевого порога
 
         // Все задания этого ТПА + агрегаты их циклов (первый/последний цикл, число)
@@ -162,7 +162,7 @@ public class UnplannedRunController : ControllerBase
             return BadRequest("У пресс-формы задания не задан тип изделия");
 
         var agg = await ComputeAggregatesAsync(run.ImmId, run.StartTime, run.ClosedAt, run.AssignedTaskId);
-        var episodeEnd = agg.EndTime ?? run.StartTime;
+        var episodeEnd = run.ClosedAt ?? agg.EndTime ?? run.StartTime;
         if (!await IsAdjacentAsync(task, run.StartTime, episodeEnd, agg.AvgCycleDuration))
             return BadRequest("Задание не смежно эпизоду по времени");
 

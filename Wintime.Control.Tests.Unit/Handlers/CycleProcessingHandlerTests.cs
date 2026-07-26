@@ -76,4 +76,68 @@ public class CycleProcessingHandlerTests
         throwing.Called.Should().BeTrue();
         spy.Called.Should().BeTrue("сбой одного хендлера не прерывает конвейер");
     }
+
+    [Fact]
+    public async SystemTask Setup_task_gates_cycle_write_even_with_active_tracker_cycle()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
+        var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
+        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.Setup };
+        db.AddRange(mold, imm, task);
+        await db.SaveChangesAsync();
+
+        // трекер уже держит "активный" цикл (auto, счётчик 5) — наладка всё равно должна гасить запись
+        _tracker.Get(immId).Returns(new CycleState(DateTime.UtcNow.AddSeconds(-20), 5, "auto"));
+
+        var sut = new CycleProcessingHandler(db, _tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, 6, "auto"));
+
+        (await db.ImmCycles.CountAsync()).Should().Be(0, "Setup (наладка) гасит запись цикла — ShouldProcessCycle=false");
+    }
+
+    [Fact]
+    public async SystemTask InProgress_cycle_snapshots_cavities_from_task_mold()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
+        var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
+        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.InProgress };
+        db.AddRange(mold, imm, task);
+        await db.SaveChangesAsync();
+
+        _tracker.Get(immId).Returns(new CycleState(DateTime.UtcNow.AddSeconds(-20), 5, "auto"));
+
+        var sut = new CycleProcessingHandler(db, _tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, 6, "auto"));
+
+        var cycle = await db.ImmCycles.SingleAsync();
+        cycle.Cavities.Should().Be(4, "снапшот из Mold.Cavities активного задания на момент цикла");
+    }
+
+    [Fact]
+    public async SystemTask Uppercase_ALARM_mode_change_ends_cycle_as_unsuccessful()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 2 };
+        var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
+        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.InProgress };
+        db.AddRange(mold, imm, task);
+        await db.SaveChangesAsync();
+
+        // активный цикл: последний режим auto, счётчик не изменится — цикл завершается по смене режима
+        _tracker.Get(immId).Returns(new CycleState(DateTime.UtcNow.AddSeconds(-20), 5, "auto"));
+
+        var sut = new CycleProcessingHandler(db, _tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, 5, "ALARM"));
+
+        var cycle = await db.ImmCycles.SingleAsync();
+        cycle.IsSuccessful.Should().BeFalse("режим ALARM (в любом регистре) нормализуется в alarm → цикл неуспешен");
+    }
 }
