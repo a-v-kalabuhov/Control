@@ -119,6 +119,36 @@ public class ImmController : ControllerBase
             }
         }
 
+        // PZP-06: у ТПА без активного задания счётчик циклов на карточке считаем по
+        // сиротам-циклам текущего открытого эпизода «работы без задания» (UnplannedRun,
+        // PZP-04) — то же окно деривации, что UnplannedRunController.ComputeAggregatesAsync.
+        var noTaskImmIds = imms.Where(i => !i.CurrentTaskId.HasValue).Select(i => i.Id).ToList();
+        if (noTaskImmIds.Count > 0)
+        {
+            var openRuns = await _context.UnplannedRuns
+                .Where(r => r.ClosedAt == null && noTaskImmIds.Contains(r.ImmId))
+                .GroupBy(r => r.ImmId)
+                .Select(g => new { ImmId = g.Key, StartTime = g.Max(r => r.StartTime) })
+                .ToListAsync();
+
+            if (openRuns.Count > 0)
+            {
+                var runImmIds = openRuns.Select(r => r.ImmId).ToList();
+                var minStart = openRuns.Min(r => r.StartTime);
+                var orphanCycles = await _context.ImmCycles
+                    .Where(c => c.TaskId == null && runImmIds.Contains(c.ImmId) && c.EndTime >= minStart)
+                    .Select(c => new { c.ImmId, c.EndTime })
+                    .ToListAsync();
+
+                foreach (var run in openRuns)
+                {
+                    var count = orphanCycles.Count(c => c.ImmId == run.ImmId && c.EndTime >= run.StartTime);
+                    if (count > 0)
+                        imms.First(d => d.Id == run.ImmId).CycleCount = count;
+                }
+            }
+        }
+
         var activeTaskStatuses = await query
             .Select(i => new
             {
