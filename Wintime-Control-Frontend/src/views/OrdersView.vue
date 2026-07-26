@@ -56,6 +56,7 @@
       <el-table-column label="Действия" width="280" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="openOrder(row)">Открыть</el-button>
+          <el-button size="small" @click="editItem(row)">Редактировать</el-button>
           <el-button
             size="small"
             type="success"
@@ -83,7 +84,7 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" title="Новый заказ" width="500px">
+    <el-dialog v-model="dialogVisible" :title="editingId ? 'Редактирование заказа' : 'Новый заказ'" width="500px">
       <el-form :model="form" label-width="140px" :rules="rules" ref="formRef">
         <el-form-item label="Номер" prop="number" required>
           <el-input v-model="form.number" placeholder="ORD-001" />
@@ -140,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import { ordersApi } from '@/api/orders'
@@ -150,6 +151,7 @@ import { ORDER_STATUS_KEYS, getOrderStatusMeta } from '@/constants/orderStatus'
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
+const editingId = ref(null)
 const formRef = ref(null)
 const orders = ref([])
 const productTypes = ref([])
@@ -175,6 +177,12 @@ const rules = {
 
 onMounted(loadOrders)
 
+// Сбрасываем режим редактирования при закрытии модалки (крестик/Esc/клик вне окна),
+// чтобы следующее открытие «Создать заказ» не унаследовало editingId.
+watch(dialogVisible, (visible) => {
+  if (!visible) editingId.value = null
+})
+
 function progressPercentage(row) {
   return Math.min(100, Math.round(row.progressPercent))
 }
@@ -191,8 +199,8 @@ async function loadOrders() {
       search: filters.search
     })
     orders.value = data
-  } catch {
-    ElMessage.error('Ошибка загрузки заказов')
+  } catch (error) {
+    ElMessage.error(error.response?.data ?? 'Ошибка загрузки заказов')
   } finally {
     loading.value = false
   }
@@ -211,7 +219,22 @@ async function loadProductTypes() {
 }
 
 function showCreateModal() {
+  editingId.value = null
   Object.assign(form, { number: '', date: '', dueDate: '', productTypeId: null, quantity: 1, note: '' })
+  dialogVisible.value = true
+  loadProductTypes()
+}
+
+function editItem(row) {
+  editingId.value = row.id
+  Object.assign(form, {
+    number: row.number ?? '',
+    date: row.date ?? '',
+    dueDate: row.dueDate ?? '',
+    productTypeId: row.productTypeId ?? null,
+    quantity: row.quantity ?? 1,
+    note: row.note ?? ''
+  })
   dialogVisible.value = true
   loadProductTypes()
 }
@@ -222,12 +245,17 @@ async function save() {
     if (!valid) return
     saving.value = true
     try {
-      await ordersApi.create(form)
-      ElMessage.success('Заказ создан')
+      if (editingId.value) {
+        await ordersApi.update(editingId.value, form)
+        ElMessage.success('Заказ обновлён')
+      } else {
+        await ordersApi.create(form)
+        ElMessage.success('Заказ создан')
+      }
       dialogVisible.value = false
       await loadOrders()
     } catch (error) {
-      ElMessage.error(error.response?.data ?? 'Ошибка создания заказа')
+      ElMessage.error(error.response?.data ?? (editingId.value ? 'Ошибка обновления заказа' : 'Ошибка создания заказа'))
     } finally {
       saving.value = false
     }
