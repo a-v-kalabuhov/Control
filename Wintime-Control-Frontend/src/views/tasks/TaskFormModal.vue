@@ -173,6 +173,8 @@ const props = defineProps({
   },
   // Заказ, из карточки которого открыли форму. Задан — заказ менять нельзя,
   // а список ПФ ограничен его типом изделия (см. спеку 2026-07-27).
+  // Взаимоисключим с task: lockedOrder — только для создания нового задания,
+  // при редактировании существующего (task задан) заказ через этот проп не подставляется.
   lockedOrder: {
     type: Object,
     default: null
@@ -278,6 +280,9 @@ const loadMolds = async () => {
 // карточка заказа уже передала всё для отображения.
 const applyLockedOrder = () => {
   if (!props.lockedOrder) return
+  // Режимы взаимоисключимы: task — это редактирование, где заказ меняется
+  // только через ordersApi.setTaskOrder, а не как побочный эффект открытия формы.
+  if (props.task) return
   orderOptions.value = [props.lockedOrder]
   form.orderId = props.lockedOrder.id
   // Список ПФ фильтруется по типу изделия заказа, поэтому нужен сразу,

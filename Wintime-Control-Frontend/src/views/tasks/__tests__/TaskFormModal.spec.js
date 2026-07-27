@@ -187,6 +187,12 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
 
     expect(wrapper.vm.form.orderId).toBe('order-9')
     expect(ordersApi.getList).not.toHaveBeenCalled()
+
+    // selectedProductTypeId здесь truthy (moldId выбран), поэтому эта проверка
+    // изолированно подтверждает именно ветку !!lockedOrder в :disabled, а не
+    // побочный эффект !selectedProductTypeId (см. следующий тест).
+    const orderSelect = wrapper.find('.el-select__wrapper.is-disabled')
+    expect(orderSelect.exists()).toBe(true)
   })
 
   it('без пропа список ПФ остаётся полным', async () => {
@@ -195,6 +201,16 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     await flushPromises()
 
     expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-1', 'mold-2'])
+  })
+
+  it('без пропа lockedOrder: поле «Заказ» активно после выбора ПФ', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+
+    expect(wrapper.vm.selectedProductTypeId).toBe('pt-X')
+    expect(wrapper.find('.el-select__wrapper.is-disabled').exists()).toBe(false)
   })
 
   it('создаёт задание с orderId заказа', async () => {
