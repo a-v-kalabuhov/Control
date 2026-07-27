@@ -56,18 +56,19 @@
 
     <!-- Столбик диаграмм -->
     <div v-if="orderedSignals.length" class="space-y-3">
-      <div v-for="(sig, idx) in orderedSignals" :key="sig.parameterName" class="relative">
-        <div class="absolute right-2 top-1.5 z-10 flex gap-1">
-          <el-button size="small" text :disabled="idx === 0" @click="move(idx, -1)">▲</el-button>
-          <el-button size="small" text :disabled="idx === orderedSignals.length - 1" @click="move(idx, 1)">▼</el-button>
-        </div>
+      <div v-for="(sig, idx) in orderedSignals" :key="sig.parameterName" class="flex items-start gap-2">
         <SignalChart
+          class="min-w-0 flex-1"
           :signal="sig"
           :cycles="cycles"
           :segments="segments"
           :window-start-ms="windowStartMs"
           :window-end-ms="windowEndMs"
         />
+        <div class="reorder-buttons flex w-8 shrink-0 flex-col items-center gap-1 pt-1.5">
+          <el-button size="small" text :disabled="idx === 0" @click="move(idx, -1)">▲</el-button>
+          <el-button size="small" text :disabled="idx === orderedSignals.length - 1" @click="move(idx, 1)">▼</el-button>
+        </div>
       </div>
     </div>
     <el-empty v-else description="Выберите сигнал для отображения" />
@@ -266,3 +267,13 @@ onMounted(async () => {
 
 onUnmounted(stopLive)
 </script>
+
+<style scoped>
+/* Element Plus разносит соседние кнопки по горизонтали — в колонке это лишний сдвиг */
+.reorder-buttons :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+.reorder-buttons :deep(.el-button) {
+  padding: 2px 4px;
+}
+</style>
