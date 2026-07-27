@@ -31,7 +31,10 @@ const fromZero = ref(false)
 const axisKind = computed(() => resolveAxisKind(props.signal.type))
 
 function buildOption() {
-  const seriesData = buildStepSeries(props.signal.points, props.windowEndMs)
+  const offlineStarts = props.segments
+    .filter(s => s.effectiveStatus === 'Offline')
+    .map(s => new Date(s.changedAt).getTime())
+  const seriesData = buildStepSeries(props.signal.points, props.windowEndMs, offlineStarts)
 
   // Фон эффективного статуса.
   const markArea = {

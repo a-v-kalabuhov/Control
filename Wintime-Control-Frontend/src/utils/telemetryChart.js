@@ -11,14 +11,31 @@ function numericValue(p) {
 }
 
 // Ступенчатая серия для echarts (series.step='end'): пары [timestampMs, value].
-// Держим последнее значение до конца окна замыкающей парой.
-export function buildStepSeries(points, windowEndMs) {
-  const data = points.map(p => [new Date(p.t).getTime(), numericValue(p)])
-  if (data.length > 0) {
-    const last = data[data.length - 1]
-    if (last[0] < windowEndMs) data.push([windowEndMs, last[1]])
+// Держим последнее значение до конца окна замыкающей парой — если только не наступил
+// Offline: тогда удержание обрывается на его начале (Вариант A, ADR/спека BL-23 §7).
+export function buildStepSeries(points, windowEndMs, offlineStarts = []) {
+  const raw = points.map(p => [new Date(p.t).getTime(), numericValue(p)])
+  if (raw.length === 0) return []
+  const firstOfflineStartIn = (t, tEnd) => {
+    for (const o of offlineStarts) if (o > t && o < tEnd) return o
+    return null
   }
-  return data
+  const out = []
+  for (let i = 0; i < raw.length; i++) {
+    const [t, v] = raw[i]
+    out.push([t, v])
+    const tEnd = (i + 1 < raw.length) ? raw[i + 1][0] : windowEndMs
+    if (tEnd > t) {
+      const o = firstOfflineStartIn(t, tEnd)
+      if (o != null) {
+        out.push([o, v])      // держим значение до ухода в Offline
+        out.push([o, null])   // разрыв — линии нет до следующего сэмпла
+      } else if (i === raw.length - 1) {
+        out.push([windowEndMs, v]) // правый край держим только если не оборвались в Offline
+      }
+    }
+  }
+  return out
 }
 
 // Тип оси: числовая шкала vs дорожка состояний.

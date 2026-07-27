@@ -34,6 +34,45 @@ describe('buildStepSeries', () => {
   })
 })
 
+describe('buildStepSeries + offline', () => {
+  it('правый край останавливается на начале Offline (не тянется до windowEndMs)', () => {
+    const t0 = t('2026-07-27T08:00:00Z')
+    const points = [{ t: '2026-07-27T08:00:00Z', num: 5 }]
+    const windowEndMs = t0 + 600_000
+    const offlineStarts = [t0 + 300_000]
+    const series = buildStepSeries(points, windowEndMs, offlineStarts)
+    expect(series).toContainEqual([t0 + 300_000, 5])
+    const idx = series.findIndex(p => p[0] === t0 + 300_000 && p[1] === 5)
+    expect(series[idx + 1]).toEqual([t0 + 300_000, null])
+    expect(series.some(p => p[0] === windowEndMs)).toBe(false)
+  })
+
+  it('разрыв между двумя точками через Offline-провал', () => {
+    const t0 = t('2026-07-27T08:00:00Z')
+    const points = [
+      { t: '2026-07-27T08:00:00Z', num: 1 },
+      { t: '2026-07-27T08:10:00Z', num: 2 },
+    ]
+    const windowEndMs = t0 + 600_000
+    const offlineStarts = [t0 + 200_000]
+    const series = buildStepSeries(points, windowEndMs, offlineStarts)
+    expect(series).toEqual([
+      [t0, 1],
+      [t0 + 200_000, 1],
+      [t0 + 200_000, null],
+      [t0 + 600_000, 2],
+    ])
+  })
+
+  it('без Offline поведение не меняется (замыкающая точка на правом крае)', () => {
+    const points = [{ t: '2026-07-27T08:00:00Z', num: 5 }]
+    const end = t('2026-07-27T08:05:00Z')
+    const series = buildStepSeries(points, end, [])
+    expect(series).toHaveLength(2)
+    expect(series[1]).toEqual([end, 5])
+  })
+})
+
 describe('resolveAxisKind', () => {
   it('числовые типы → numeric', () => {
     expect(resolveAxisKind('float')).toBe('numeric')
