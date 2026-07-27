@@ -57,31 +57,33 @@
       </el-table-column>
       <el-table-column label="Действия" width="280" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openOrder(row)">Открыть</el-button>
-          <el-button size="small" @click="editItem(row)">Редактировать</el-button>
-          <el-button
-            size="small"
-            type="success"
-            :disabled="row.goodQuantity < row.quantity"
-            @click="completeOrder(row)"
-          >
-            Завершить
-          </el-button>
-          <el-button
-            v-if="row.status !== 'Active'"
-            size="small"
-            @click="reopenOrder(row)"
-          >
-            Возобновить
-          </el-button>
-          <el-button
-            v-else
-            size="small"
-            type="danger"
-            @click="cancelOrder(row)"
-          >
-            Отменить
-          </el-button>
+          <div class="order-actions">
+            <el-button size="small" @click="openOrder(row)">Открыть</el-button>
+            <el-button size="small" @click="editItem(row)">Редактировать</el-button>
+            <el-button
+              size="small"
+              type="success"
+              :disabled="row.goodQuantity < row.quantity"
+              @click="completeOrder(row)"
+            >
+              Завершить
+            </el-button>
+            <el-button
+              v-if="row.status !== 'Active'"
+              size="small"
+              @click="reopenOrder(row)"
+            >
+              Возобновить
+            </el-button>
+            <el-button
+              v-else
+              size="small"
+              type="danger"
+              @click="cancelOrder(row)"
+            >
+              Отменить
+            </el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -303,3 +305,22 @@ async function reopenOrder(row) {
   }
 }
 </script>
+
+<style scoped>
+.order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+/* сбрасываем отступы Element Plus между соседними кнопками — расстояние задаёт gap */
+.order-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.order-actions :deep(.el-button) {
+  width: 118px;
+  margin: 0;
+}
+</style>
