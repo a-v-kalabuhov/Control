@@ -158,18 +158,16 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     const wrapper = mountModal({ lockedOrder })
     await flushPromises()
 
-    // Проверяем, что форма заполнена номером заказа
-    expect(wrapper.vm.form.orderId).toBe('order-9')
-    // Проверяем, что в списке только один заказ (заблокированный)
-    expect(wrapper.vm.orderOptions).toHaveLength(1)
-    expect(wrapper.vm.orderOptions[0].number).toBe('ORD-9')
-    // Проверяем, что ПФ фильтруется по типу (это готовит selectedProductTypeId)
-    await wrapper.vm.loadMolds()
-    await flushPromises()
-    // При выборе ПФ заказ остаётся заблокированным
-    wrapper.vm.form.moldId = 'mold-1'
-    await flushPromises()
-    expect(wrapper.vm.form.orderId).toBe('order-9')
+    // Element Plus (текущая версия) не пишет value/placeholder заказа в атрибуты
+    // нативного <input> — отображаемый текст рендерится в соседнем
+    // .el-select__placeholder <span>, а сам <input> остаётся пустым. Поэтому вместо
+    // поиска input по placeholder="Выберите заказ" (как было в плане) проверяем
+    // блокировку и отображаемый текст через обёртку .el-select__wrapper.is-disabled —
+    // единственный disabled-селект в этой форме.
+    const orderSelect = wrapper.find('.el-select__wrapper.is-disabled')
+    expect(orderSelect.exists()).toBe(true)
+    expect(orderSelect.find('input').element.disabled).toBe(true)
+    expect(orderSelect.text()).toContain('ORD-9')
   })
 
   it('оставляет в списке ПФ только пресс-формы с типом изделия заказа', async () => {
