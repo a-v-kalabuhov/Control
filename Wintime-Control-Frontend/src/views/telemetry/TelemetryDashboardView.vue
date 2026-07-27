@@ -131,6 +131,7 @@ async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null }
     signalsData.value = []
     cycles.value = []
     segments.value = []
+    truncated.value = false
     return
   }
   try {
@@ -157,6 +158,7 @@ async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null }
       signalsData.value = data.signals
     }
   } catch (e) {
+    truncated.value = false
     const status = e?.response?.status
     if (status === 400) ElMessage.warning(e.response.data ?? 'Некорректный период')
     else ElMessage.error('Не удалось загрузить телеметрию')
@@ -169,8 +171,8 @@ async function loadHistory() {
     ElMessage.warning('Укажите начало и конец периода')
     return
   }
-  const fromMs = new Date(historyFrom.value + 'Z').getTime()
-  const toMs = new Date(historyTo.value + 'Z').getTime()
+  const fromMs = new Date(historyFrom.value).getTime()
+  const toMs = new Date(historyTo.value).getTime()
   if (toMs - fromMs > 4 * 3600_000) {
     ElMessage.warning('Период не может превышать 4 часа')
     return

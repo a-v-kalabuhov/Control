@@ -83,6 +83,18 @@ public class TelemetryDashboardTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task NonExistent_Imm_Returns_404()
+    {
+        var from = new DateTime(2026, 7, 27, 8, 0, 0, DateTimeKind.Utc);
+        var immId = Guid.NewGuid();
+
+        var client = await ManagerClientAsync();
+        var url = $"/api/imm/{immId}/telemetry-dashboard?from={from:O}&to={from.AddHours(1):O}&parameters=temp";
+        var resp = await client.GetAsync(url);
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Window_Over_4h_Returns_400()
     {
         var from = new DateTime(2026, 7, 27, 8, 0, 0, DateTimeKind.Utc);
