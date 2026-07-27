@@ -224,7 +224,7 @@ git commit -m "refactor(BL-23): вынести сбор статус-рядов 
 - Consumes: `GatherEffectiveStatusInputsAsync` (Task 2); `ITemplateCache.GetById(Guid) → CachedTemplate?` с `Sensors: IReadOnlyList<SensorTemplate>` (`ParameterName`, `ParameterType`); `_context.Telemetry`, `_context.ImmCycles`, `_context.Imms`.
 - Produces:
   - `GET /api/imm/{id}/signals` → `List<TelemetrySignalMetaDto> { string ParameterName, string Name, string Type }`.
-  - `GET /api/imm/{id}/telemetry-dashboard?from&to&parameters` → `TelemetryDashboardDto`.
+  - `GET /api/imm/{id}/telemetry-dashboard?from&to&parameters[&pointsFrom]` → `TelemetryDashboardDto`. Необязательный `pointsFrom` сужает выборку **точек телеметрии** (дельта live); циклы и статус-сегменты всегда за полное окно `from..to`.
   - Типы: `TelemetryDashboardDto { List<TelemetrySignalDto> Signals; List<TelemetryCycleDto> Cycles; List<EffectiveStatusSegmentDto> StatusSegments; bool Truncated }`; `TelemetrySignalDto { string ParameterName; string Type; List<TelemetryPointDto> Points }`; `TelemetryPointDto { DateTime T; decimal? Num; string? Txt }`; `TelemetryCycleDto { DateTime Start; DateTime End; bool IsSuccessful }`.
 
 - [ ] **Step 1: Создать `TelemetryDashboardSettings`**
@@ -453,6 +453,26 @@ public class TelemetryDashboardTests : IClassFixture<IntegrationTestFactory>
         signals.Should().NotBeNull();
         signals!.Should().Contain(s => s.ParameterName == "temp" && s.Type == "float");
     }
+
+    [Fact]
+    public async Task PointsFrom_Narrows_Telemetry_But_Keeps_FullWindow_Cycles()
+    {
+        var from = new DateTime(2026, 7, 27, 8, 0, 0, DateTimeKind.Utc);
+        var to   = from.AddHours(1);
+        // Точки на +1 и +2 мин, цикл на +1..+2 мин.
+        var immId = await SeedImmWithTelemetryAsync(from);
+
+        var client = await ManagerClientAsync();
+        // pointsFrom на +90 c — первая точка (+1 мин) должна отсеяться, вторая (+2 мин) остаться.
+        var pointsFrom = from.AddSeconds(90);
+        var url = $"/api/imm/{immId}/telemetry-dashboard?from={from:O}&to={to:O}&parameters=temp&pointsFrom={pointsFrom:O}";
+        var resp = await client.GetAsync(url);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var dto = await resp.Content.ReadFromJsonAsync<TelemetryDashboardDto>();
+        dto!.Signals[0].Points.Should().ContainSingle("точки сужены pointsFrom");
+        dto.Cycles.Should().ContainSingle("циклы всегда за полное окно, pointsFrom их не трогает");
+    }
 }
 ```
 
@@ -498,7 +518,8 @@ public async Task<ActionResult<TelemetryDashboardDto>> GetTelemetryDashboard(
     Guid id,
     [FromQuery] DateTime from,
     [FromQuery] DateTime to,
-    [FromQuery] List<string>? parameters = null)
+    [FromQuery] List<string>? parameters = null,
+    [FromQuery] DateTime? pointsFrom = null)
 {
     // Guard: хотя бы один сигнал.
     if (parameters == null || parameters.Count == 0)
@@ -519,6 +540,13 @@ public async Task<ActionResult<TelemetryDashboardDto>> GetTelemetryDashboard(
     var nowUtc = DateTime.UtcNow;
     var effectiveTo = toUtc < nowUtc ? toUtc : nowUtc;
 
+    // Дельта-подгрузка live: точки телеметрии берём от pointsFrom (если задан и внутри окна),
+    // а циклы/статус-сегменты — всегда за полное окно [fromUtc, effectiveTo].
+    var pointsFromUtc = pointsFrom.HasValue
+        ? DateTime.SpecifyKind(pointsFrom.Value, DateTimeKind.Utc)
+        : fromUtc;
+    if (pointsFromUtc < fromUtc) pointsFromUtc = fromUtc;
+
     // Типы сигналов из шаблона (для оси/дорожки на фронте).
     var template = _templateCache.GetById(imm.TemplateId);
     var typeByName = (template?.Sensors ?? new List<SensorTemplate>())
@@ -529,7 +557,7 @@ public async Task<ActionResult<TelemetryDashboardDto>> GetTelemetryDashboard(
     var maxPoints = _telemetryDashboard.MaxPoints;
     var rows = await _context.Telemetry
         .Where(t => t.ImmId == id && parameters.Contains(t.ParameterName)
-                    && t.Timestamp >= fromUtc && t.Timestamp <= effectiveTo)
+                    && t.Timestamp >= pointsFromUtc && t.Timestamp <= effectiveTo)
         .OrderBy(t => t.Timestamp)
         .Take(maxPoints + 1)
         .Select(t => new { t.ParameterName, t.Timestamp, t.ValueNumeric, t.ValueText })
@@ -588,7 +616,7 @@ git rm Wintime.Control.Core/DTOs/Imm/TelemetryDto.cs
 - [ ] **Step 9: Запустить новые тесты — зелёные**
 
 Run: `dotnet test Wintime.Control.Tests.Integration --filter FullyQualifiedName~TelemetryDashboardTests`
-Expected: PASS (5 тестов).
+Expected: PASS (6 тестов).
 
 - [ ] **Step 10: Прогнать весь бэкенд — ничего не сломалось**
 
@@ -776,9 +804,10 @@ export const telemetryApi = {
   },
 
   // Агрегированное окно телеметрии. parameters — массив имён сигналов.
-  getDashboard(id, { from, to, parameters }) {
+  // pointsFrom (опц.) — дельта live: точки телеметрии от этого времени; циклы/статус — за полное окно.
+  getDashboard(id, { from, to, parameters, pointsFrom }) {
     return apiClient.get(`/imm/${id}/telemetry-dashboard`, {
-      params: { from, to, parameters },
+      params: { from, to, parameters, ...(pointsFrom ? { pointsFrom } : {}) },
       // ASP.NET List<string> ждёт повтор параметра без индексов: parameters=a&parameters=b
       paramsSerializer: { indexes: null },
     })
@@ -1049,7 +1078,7 @@ const immId = route.params.id
 
 const mode = ref('live')
 const livePeriodMin = ref(15)
-const livePollSec = ref(5) // частота live-опроса, сек (дефолт 5)
+const livePollSec = ref(10) // частота live-опроса, сек (дефолт 10)
 const historyFrom = ref(null)
 const historyTo = ref(null)
 
@@ -1076,7 +1105,7 @@ function toIsoUtc(ms) {
   return new Date(ms).toISOString()
 }
 
-async function fetchWindow(fromMs, toMs, { append = false } = {}) {
+async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null } = {}) {
   if (selected.value.length === 0) {
     signalsData.value = []
     cycles.value = []
@@ -1088,6 +1117,7 @@ async function fetchWindow(fromMs, toMs, { append = false } = {}) {
       from: toIsoUtc(fromMs),
       to: toIsoUtc(toMs),
       parameters: selected.value,
+      pointsFrom: pointsFromMs ? toIsoUtc(pointsFromMs) : undefined,
     })
     truncated.value = data.truncated
     cycles.value = data.cycles
@@ -1134,10 +1164,10 @@ async function liveTick(initial = false) {
   const now = Date.now()
   windowEndMs.value = now
   windowStartMs.value = now - livePeriodMin.value * 60000
-  const fetchFromMs = initial
-    ? windowStartMs.value
-    : lastLoadedMs() // дельта от последней точки
-  await fetchWindow(Math.max(fetchFromMs, windowStartMs.value), now, { append: !initial })
+  // Окно всегда полное (from..now) — для циклов/статуса; точки телеметрии на приросте берём
+  // дельтой через pointsFrom (от последней полученной точки).
+  const pointsFromMs = initial ? null : Math.max(lastLoadedMs(), windowStartMs.value)
+  await fetchWindow(windowStartMs.value, now, { append: !initial, pointsFromMs })
 }
 
 function lastLoadedMs() {
