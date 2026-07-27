@@ -22,7 +22,34 @@
 
       <div class="flex justify-between items-center mb-2">
         <span class="font-semibold">Задания</span>
-        <el-button size="small" type="primary" @click="openAttachDialog">Привязать существующее</el-button>
+        <div class="flex gap-2">
+          <!-- el-tooltip не получает события от disabled-кнопки — нужна обёртка -->
+          <el-tooltip
+            :disabled="isOrderActive"
+            content="Задание можно создать только для активного заказа"
+          >
+            <span>
+              <el-button
+                size="small"
+                type="primary"
+                :disabled="!isOrderActive"
+                @click="openCreateTask"
+              >
+                Создать задание
+              </el-button>
+            </span>
+          </el-tooltip>
+          <el-tooltip
+            :disabled="isOrderActive"
+            content="Привязать задание можно только к активному заказу"
+          >
+            <span>
+              <el-button size="small" :disabled="!isOrderActive" @click="openAttachDialog">
+                Привязать существующее
+              </el-button>
+            </span>
+          </el-tooltip>
+        </div>
       </div>
       <el-table :data="order?.tasks ?? []" stripe style="width: 100%">
         <el-table-column prop="immName" label="ТПА" />
@@ -61,6 +88,14 @@
         <el-button type="primary" :disabled="!selectedTaskId" @click="attach">Привязать</el-button>
       </template>
     </el-dialog>
+
+    <TaskFormModal
+      v-if="lockedOrder"
+      v-model="taskFormVisible"
+      :locked-order="lockedOrder"
+      append-to-body
+      @success="onTaskCreated"
+    />
   </el-dialog>
 </template>
 
@@ -73,6 +108,7 @@ import { tasksApi } from '@/api/tasks'
 import { moldsApi } from '@/api/molds'
 import { getOrderStatusMeta } from '@/constants/orderStatus'
 import { apiErrorMessage } from '@/utils/apiError'
+import TaskFormModal from '@/views/tasks/TaskFormModal.vue'
 
 const props = defineProps({
   modelValue: {
@@ -93,6 +129,7 @@ const attachDialogVisible = ref(false)
 const attachLoading = ref(false)
 const attachableTasks = ref([])
 const selectedTaskId = ref(null)
+const taskFormVisible = ref(false)
 
 const visible = computed({
   get: () => props.modelValue,
@@ -103,6 +140,20 @@ const progressPercentage = computed(() => {
   if (!order.value) return 0
   return Math.min(100, Math.round(order.value.progressPercent ?? 0))
 })
+
+const isOrderActive = computed(() => order.value?.status === 'Active')
+
+// Всё, что форме задания нужно знать о заказе: отдельный запрос ей не потребуется.
+const lockedOrder = computed(() =>
+  order.value
+    ? {
+        id: order.value.id,
+        number: order.value.number,
+        productTypeId: order.value.productTypeId,
+        productTypeArticle: order.value.productTypeArticle
+      }
+    : null
+)
 
 watch(
   () => props.modelValue,
@@ -168,5 +219,14 @@ async function attach() {
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, 'Ошибка привязки задания'))
   }
+}
+
+function openCreateTask() {
+  taskFormVisible.value = true
+}
+
+async function onTaskCreated() {
+  await loadOrder()
+  emit('updated')
 }
 </script>
