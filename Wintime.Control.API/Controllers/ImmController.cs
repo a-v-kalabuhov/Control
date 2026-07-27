@@ -24,15 +24,20 @@ public class ImmController : ControllerBase
     private readonly IImmStatusCache _statusCache;
     private readonly IImmCache _immCache;
     private readonly DowntimeSettings _downtime;
+    private readonly ITemplateCache _templateCache;
+    private readonly TelemetryDashboardSettings _telemetryDashboard;
     private readonly ILogger<ImmController> _logger;
 
     public ImmController(ControlDbContext context, IImmStatusCache statusCache, IImmCache immCache,
-        IOptions<DowntimeSettings> downtime, ILogger<ImmController> logger)
+        IOptions<DowntimeSettings> downtime, ITemplateCache templateCache,
+        IOptions<TelemetryDashboardSettings> telemetryDashboard, ILogger<ImmController> logger)
     {
         _context = context;
         _statusCache = statusCache;
         _immCache = immCache;
         _downtime = downtime.Value;
+        _templateCache = templateCache;
+        _telemetryDashboard = telemetryDashboard.Value;
         _logger = logger;
     }
 
@@ -329,37 +334,140 @@ public class ImmController : ControllerBase
     }
 
     /// <summary>
-    /// История телеметрии ТПА
+    /// Метаданные сигналов ТПА (для чекбоксов выбора) — из шаблона оборудования.
     /// </summary>
-    [HttpGet("{id:guid}/telemetry")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
-    public async Task<ActionResult<IEnumerable<TelemetryDto>>> GetImmTelemetry(
+    [HttpGet("{id:guid}/signals")]
+    [Authorize(Policy = "ManagerOrAdmin")]
+    public async Task<ActionResult<IEnumerable<TelemetrySignalMetaDto>>> GetImmSignals(Guid id)
+    {
+        var imm = await _context.Imms.FirstOrDefaultAsync(i => i.Id == id);
+        if (imm == null) return NotFound();
+
+        var template = _templateCache.GetById(imm.TemplateId);
+        var signals = (template?.Sensors ?? new List<SensorTemplate>())
+            .Select(s => new TelemetrySignalMetaDto
+            {
+                ParameterName = s.ParameterName,
+                Name = s.Name,
+                Type = s.ParameterType,
+            })
+            .ToList();
+
+        return Ok(signals);
+    }
+
+    /// <summary>
+    /// Агрегированное окно телеметрии одного ТПА: сигналы + циклы + сегменты эффективного статуса.
+    /// </summary>
+    [HttpGet("{id:guid}/telemetry-dashboard")]
+    [Authorize(Policy = "ManagerOrAdmin")]
+    public async Task<ActionResult<TelemetryDashboardDto>> GetTelemetryDashboard(
         Guid id,
         [FromQuery] DateTime from,
         [FromQuery] DateTime to,
-        [FromQuery] List<string>? parameters = null)
+        [FromQuery] List<string>? parameters = null,
+        [FromQuery] DateTime? pointsFrom = null)
     {
-        var query = _context.Telemetry
-            .Where(t => t.ImmId == id && t.Timestamp >= from && t.Timestamp <= to)
-            .AsQueryable();
+        // Guard: хотя бы один сигнал.
+        if (parameters == null || parameters.Count == 0)
+            return BadRequest("Выберите хотя бы один сигнал.");
 
-        if (parameters != null && parameters.Any())
-        {
-            query = query.Where(t => parameters.Contains(t.ParameterName));
-        }
+        var fromUtc = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+        var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
 
-        var telemetry = await query
+        // Guard: корректность и ширина окна.
+        if (toUtc <= fromUtc)
+            return BadRequest("Конец периода должен быть позже начала.");
+        if (toUtc - fromUtc > TimeSpan.FromHours(_telemetryDashboard.MaxWindowHours))
+            return BadRequest($"Период не может превышать {_telemetryDashboard.MaxWindowHours} ч.");
+
+        var imm = await _context.Imms.FirstOrDefaultAsync(i => i.Id == id);
+        if (imm == null) return NotFound();
+
+        var nowUtc = DateTime.UtcNow;
+        var effectiveTo = toUtc < nowUtc ? toUtc : nowUtc;
+
+        // Дельта-подгрузка live: точки телеметрии берём от pointsFrom (если задан и внутри окна),
+        // а циклы/статус-сегменты — всегда за полное окно [fromUtc, effectiveTo].
+        var pointsFromUtc = pointsFrom.HasValue
+            ? DateTime.SpecifyKind(pointsFrom.Value, DateTimeKind.Utc)
+            : fromUtc;
+        if (pointsFromUtc < fromUtc) pointsFromUtc = fromUtc;
+
+        // Типы сигналов из шаблона (для оси/дорожки на фронте).
+        var template = _templateCache.GetById(imm.TemplateId);
+        var typeByName = (template?.Sensors ?? new List<SensorTemplate>())
+            .GroupBy(s => s.ParameterName)
+            .ToDictionary(g => g.Key, g => g.First().ParameterType);
+
+        // Телеметрия окна с guard по объёму (Take N+1).
+        var maxPoints = _telemetryDashboard.MaxPoints;
+        var rows = await _context.Telemetry
+            .Where(t => t.ImmId == id && parameters.Contains(t.ParameterName)
+                        && t.Timestamp >= pointsFromUtc && t.Timestamp <= effectiveTo)
             .OrderBy(t => t.Timestamp)
-            .Select(t => new TelemetryDto
-            {
-                Timestamp = t.Timestamp,
-                ParameterName = t.ParameterName,
-                ValueNumeric = t.ValueNumeric,
-                ValueText = t.ValueText
-            })
+            .Take(maxPoints + 1)
+            .Select(t => new { t.ParameterName, t.Timestamp, t.ValueNumeric, t.ValueText })
             .ToListAsync();
 
-        return Ok(telemetry);
+        var truncated = rows.Count > maxPoints;
+        if (truncated) rows = rows.Take(maxPoints).ToList();
+
+        var pointsByName = rows
+            .GroupBy(r => r.ParameterName)
+            .ToDictionary(g => g.Key, g => g.Select(r => new TelemetryPointDto
+            {
+                T = r.Timestamp, Num = r.ValueNumeric, Txt = r.ValueText
+            }).ToList());
+
+        var signals = parameters.Select(p => new TelemetrySignalDto
+        {
+            ParameterName = p,
+            Type = typeByName.TryGetValue(p, out var tp) ? tp : "string",
+            Points = pointsByName.TryGetValue(p, out var pts) ? pts : new List<TelemetryPointDto>(),
+        }).ToList();
+
+        // Seed-точка (carry-in): значение сигнала на левой границе окна берём из последней записи
+        // ДО начала окна. Только на полном запросе (pointsFrom не задан) — на дельта-тике клиент
+        // сам держит carry-in из своего кеша.
+        if (pointsFrom == null)
+        {
+            foreach (var p in parameters.Distinct())
+            {
+                var seed = await _context.Telemetry
+                    .Where(t => t.ImmId == id && t.ParameterName == p && t.Timestamp < fromUtc)
+                    .OrderByDescending(t => t.Timestamp)
+                    .Select(t => new { t.Timestamp, t.ValueNumeric, t.ValueText })
+                    .FirstOrDefaultAsync();
+                if (seed != null)
+                {
+                    var sig = signals.FirstOrDefault(s => s.ParameterName == p);
+                    sig?.Points.Insert(0, new TelemetryPointDto { T = seed.Timestamp, Num = seed.ValueNumeric, Txt = seed.ValueText });
+                }
+            }
+        }
+
+        var cycles = await _context.ImmCycles
+            .Where(c => c.ImmId == id && c.StartTime < effectiveTo && c.EndTime > fromUtc)
+            .OrderBy(c => c.StartTime)
+            .Select(c => new TelemetryCycleDto { Start = c.StartTime, End = c.EndTime, IsSuccessful = c.IsSuccessful })
+            .ToListAsync();
+
+        var (raw, tasks, downtimes) = await GatherEffectiveStatusInputsAsync(id, fromUtc, toUtc, effectiveTo);
+        var statusSegments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo)
+            .Select(s => new EffectiveStatusSegmentDto
+            {
+                EffectiveStatus = s.EffectiveStatus, ChangedAt = s.Start, EndedAt = s.End
+            })
+            .ToList();
+
+        return Ok(new TelemetryDashboardDto
+        {
+            Signals = signals,
+            Cycles = cycles,
+            StatusSegments = statusSegments,
+            Truncated = truncated,
+        });
     }
 
     /// <summary>
@@ -408,6 +516,24 @@ public class ImmController : ControllerBase
         var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
         var nowUtc = DateTime.UtcNow;
         var effectiveTo = toUtc < nowUtc ? toUtc : nowUtc;
+
+        var (raw, tasks, downtimes) = await GatherEffectiveStatusInputsAsync(id, fromUtc, toUtc, effectiveTo);
+
+        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo);
+
+        var dto = segments.Select(s => new EffectiveStatusSegmentDto
+        {
+            EffectiveStatus = s.EffectiveStatus,
+            ChangedAt = s.Start,
+            EndedAt = s.End,
+        });
+
+        return Ok(dto);
+    }
+
+    private async Task<(List<RawSegment> raw, List<TaskInterval> tasks, List<Interval> downtimes)>
+        GatherEffectiveStatusInputsAsync(Guid id, DateTime fromUtc, DateTime toUtc, DateTime effectiveTo)
+    {
         DateTime ClampEnd(DateTime? end) => (end ?? effectiveTo) > effectiveTo ? effectiveTo : (end ?? effectiveTo);
 
         var rawRows = await _context.ImmStatusHistory
@@ -448,16 +574,7 @@ public class ImmController : ControllerBase
             .Select(d => new Interval(d.StartTime, ClampEnd(d.EndTime)))
             .ToList();
 
-        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo);
-
-        var dto = segments.Select(s => new EffectiveStatusSegmentDto
-        {
-            EffectiveStatus = s.EffectiveStatus,
-            ChangedAt = s.Start,
-            EndedAt = s.End,
-        });
-
-        return Ok(dto);
+        return (raw, tasks, downtimes);
     }
 
     /// <summary>

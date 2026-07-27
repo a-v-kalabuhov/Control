@@ -20,11 +20,7 @@ export const immApi = {
   getStatus(id) {
     return apiClient.get(`/imm/${id}/status`)
   },
-  
-  getTelemetry(id, params) {
-    return apiClient.get(`/imm/${id}/telemetry`, { params })
-  },
-  
+
   getStatistics(id, params) {
     return apiClient.get(`/imm/${id}/statistics`, { params })
   },

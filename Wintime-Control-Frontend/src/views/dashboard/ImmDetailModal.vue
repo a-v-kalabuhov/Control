@@ -67,6 +67,7 @@
     </div>
 
     <template #footer>
+      <el-button type="primary" plain @click="goToTelemetry">Телеметрия</el-button>
       <el-button @click="visible = false">Закрыть</el-button>
       <el-button type="primary" :loading="loading" @click="loadData">
         <el-icon class="mr-1"><Refresh /></el-icon>
@@ -78,6 +79,7 @@
 
 <script setup>
 import { ref, shallowRef, computed, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { dashboardApi } from '@/api/dashboard'
 import { tasksApi } from '@/api/tasks'
 import { shiftsApi } from '@/api/shifts'
@@ -94,10 +96,17 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue'])
 
+const router = useRouter()
+
 const visible = computed({
   get: () => props.modelValue,
   set: (v) => emit('update:modelValue', v),
 })
+
+function goToTelemetry() {
+  visible.value = false
+  router.push({ name: 'ImmTelemetry', params: { id: props.immId } })
+}
 
 const dashboardStore = useDashboardStore()
 

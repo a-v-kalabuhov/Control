@@ -11,11 +11,6 @@ export const dashboardApi = {
     return apiClient.get(`/imm/${id}/status`)
   },
 
-  // Получить телеметрию ТПА за период
-  getImmTelemetry(id, params) {
-    return apiClient.get(`/imm/${id}/telemetry`, { params })
-  },
-
   // Получить статистику по ТПА
   getImmStatistics(id, params) {
     return apiClient.get(`/imm/${id}/statistics`, { params })
