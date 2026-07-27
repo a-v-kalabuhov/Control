@@ -35,6 +35,7 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSett
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection(MqttSettings.SectionName));
 builder.Services.Configure<CorsSettings>(builder.Configuration.GetSection(CorsSettings.SectionName));
 builder.Services.Configure<DowntimeSettings>(builder.Configuration.GetSection(DowntimeSettings.SectionName));
+builder.Services.Configure<TelemetryDashboardSettings>(builder.Configuration.GetSection(TelemetryDashboardSettings.SectionName));
 
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()!;
 var corsSettings = builder.Configuration.GetSection(CorsSettings.SectionName).Get<CorsSettings>()!;
