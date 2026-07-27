@@ -981,6 +981,12 @@ Create `Wintime-Control-Frontend/src/views/telemetry/TelemetryDashboardView.vue`
               <el-option v-for="p in LIVE_PERIODS" :key="p.min" :label="p.label" :value="p.min" />
             </el-select>
           </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-600">Обновление:</span>
+            <el-select v-model="livePollSec" size="small" style="width: 120px" @change="restartLive">
+              <el-option v-for="s in LIVE_POLL_OPTIONS" :key="s" :label="`${s} c`" :value="s" />
+            </el-select>
+          </div>
         </template>
       </div>
 
@@ -1036,13 +1042,14 @@ const LIVE_PERIODS = [
   { min: 120, label: '2 часа' },
   { min: 240, label: '4 часа' },
 ]
-const LIVE_POLL_MS = 5000
+const LIVE_POLL_OPTIONS = [2, 5, 10] // секунды между запросами; выбор пользователя
 
 const route = useRoute()
 const immId = route.params.id
 
 const mode = ref('live')
 const livePeriodMin = ref(15)
+const livePollSec = ref(5) // частота live-опроса, сек (дефолт 5)
 const historyFrom = ref(null)
 const historyTo = ref(null)
 
@@ -1145,7 +1152,7 @@ function lastLoadedMs() {
 function startLive() {
   stopLive()
   liveTick(true)
-  pollTimer = setInterval(() => liveTick(false), LIVE_POLL_MS)
+  pollTimer = setInterval(() => liveTick(false), livePollSec.value * 1000)
 }
 
 function stopLive() {
@@ -1235,7 +1242,7 @@ Expected: сборка без ошибок; все Vitest-тесты зелён�
 - [ ] **Step 5: Ручной smoke (браузер)**
 
 Запустить API (`dotnet run --project Wintime.Control.API`), эмулятор (`dotnet run --project Wintime.Control.Emulator`) и фронт (`npm run dev`). Войти как Manager, открыть дашборд → клик по карточке ТПА → в модалке «Телеметрия». Проверить:
-- режим «Живые данные», выбор периода 1/5/15/30 мин, 1/2/4 ч; графики обновляются;
+- режим «Живые данные», выбор периода 1/5/15/30 мин, 1/2/4 ч и частоты обновления 2/5/10 с; графики обновляются;
 - чекбоксы сигналов, ≥1 отмечен; каждый сигнал — своя диаграмма;
 - crosshair синхронен по столбцу; ▲▼ меняют порядок; фон статуса и вертикали циклов видны;
 - режим «История»: диапазон ≤4 ч отдаёт срез; >4 ч — предупреждение.
