@@ -86,7 +86,9 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.ImmId, e.Timestamp });
             entity.HasIndex(e => e.ParameterName);
-            // Для MVP пока без партиционирования, но индекс обязателен
+            // BL-23: покрывающий индекс под «окно + выбранные сигналы одного ТПА».
+            entity.HasIndex(e => new { e.ImmId, e.ParameterName, e.Timestamp })
+                  .HasDatabaseName("IX_Telemetry_Imm_Param_Time");
         });
 
         // Конфигурация Event
