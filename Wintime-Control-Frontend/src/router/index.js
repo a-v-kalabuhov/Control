@@ -56,6 +56,12 @@ const routes = [
         meta: { roles: ['Admin', 'Manager'], title: 'Заказы' }
       },
       {
+        path: 'imm/:id/telemetry',
+        name: 'ImmTelemetry',
+        component: () => import('@/views/telemetry/TelemetryDashboardView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'Телеметрия ТПА' }
+      },
+      {
         path: 'reports',
         name: 'Reports',
         component: () => import('@/views/reports/ReportsView.vue'),
