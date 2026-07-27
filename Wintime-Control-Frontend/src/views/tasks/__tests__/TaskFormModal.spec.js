@@ -135,3 +135,84 @@ describe('TaskFormModal — заказ', () => {
     expect(wrapper.vm.selectedProductTypeId).toBe('pt-X')
   })
 })
+
+describe('TaskFormModal — заблокированный заказ (lockedOrder)', () => {
+  const lockedOrder = {
+    id: 'order-9',
+    number: 'ORD-9',
+    productTypeId: 'pt-X',
+    productTypeArticle: 'ART-X'
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it('подставляет заказ в форму и не запрашивает список заказов', async () => {
+    const wrapper = mountModal({ lockedOrder })
+    await flushPromises()
+
+    expect(wrapper.vm.form.orderId).toBe('order-9')
+    expect(ordersApi.getList).not.toHaveBeenCalled()
+  })
+
+  it('блокирует поле «Заказ» и показывает в нём номер заказа', async () => {
+    const wrapper = mountModal({ lockedOrder })
+    await flushPromises()
+
+    // Проверяем, что форма заполнена номером заказа
+    expect(wrapper.vm.form.orderId).toBe('order-9')
+    // Проверяем, что в списке только один заказ (заблокированный)
+    expect(wrapper.vm.orderOptions).toHaveLength(1)
+    expect(wrapper.vm.orderOptions[0].number).toBe('ORD-9')
+    // Проверяем, что ПФ фильтруется по типу (это готовит selectedProductTypeId)
+    await wrapper.vm.loadMolds()
+    await flushPromises()
+    // При выборе ПФ заказ остаётся заблокированным
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+    expect(wrapper.vm.form.orderId).toBe('order-9')
+  })
+
+  it('оставляет в списке ПФ только пресс-формы с типом изделия заказа', async () => {
+    const wrapper = mountModal({ lockedOrder })
+    await flushPromises()
+
+    // мок moldsApi отдаёт mold-1 (pt-X) и mold-2 (pt-Y)
+    expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-1'])
+  })
+
+  it('при выборе ПФ не сбрасывает orderId и не грузит заказы', async () => {
+    const wrapper = mountModal({ lockedOrder })
+    await flushPromises()
+
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+
+    expect(wrapper.vm.form.orderId).toBe('order-9')
+    expect(ordersApi.getList).not.toHaveBeenCalled()
+  })
+
+  it('без пропа список ПФ остаётся полным', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    await flushPromises()
+
+    expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-1', 'mold-2'])
+  })
+
+  it('создаёт задание с orderId заказа', async () => {
+    const wrapper = mountModal({ lockedOrder })
+    await flushPromises()
+
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.planQuantity = 10
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: 'order-9', moldId: 'mold-1' })
+    )
+  })
+})

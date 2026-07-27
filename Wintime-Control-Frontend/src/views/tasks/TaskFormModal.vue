@@ -41,7 +41,7 @@
           filterable
         >
           <el-option
-            v-for="mold in molds"
+            v-for="mold in availableMolds"
             :key="mold.id"
             :label="`${mold.name} (${mold.cavities} гнёзд)`"
             :value="mold.id"
@@ -62,7 +62,7 @@
           class="w-full"
           filterable
           :clearable="false"
-          :disabled="!selectedProductTypeId"
+          :disabled="!!lockedOrder || !selectedProductTypeId"
         >
           <el-option
             v-for="order in orderOptions"
@@ -170,6 +170,12 @@ const props = defineProps({
   task: {
     type: Object,
     default: null
+  },
+  // Заказ, из карточки которого открыли форму. Задан — заказ менять нельзя,
+  // а список ПФ ограничен его типом изделия (см. спеку 2026-07-27).
+  lockedOrder: {
+    type: Object,
+    default: null
   }
 })
 
@@ -215,6 +221,12 @@ const selectedMoldInfo = computed(() => {
 
 const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productTypeId || null)
 
+const availableMolds = computed(() =>
+  props.lockedOrder
+    ? molds.value.filter(m => m.productTypeId === props.lockedOrder.productTypeId)
+    : molds.value
+)
+
 const resetForm = () => {
   Object.assign(form, {
     immId: '',
@@ -223,9 +235,9 @@ const resetForm = () => {
     planQuantity: 1000,
     plannedDate: null,
     note: '',
-    orderId: null
+    orderId: props.lockedOrder?.id ?? null
   })
-  orderOptions.value = []
+  orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
   initialOrderId.value = null
 }
 
@@ -247,6 +259,8 @@ const loadOrdersForProductType = async (productTypeId) => {
 }
 
 watch(selectedProductTypeId, (productTypeId) => {
+  // При заблокированном заказе список заказов не нужен, а вызов затёр бы form.orderId.
+  if (props.lockedOrder) return
   loadOrdersForProductType(productTypeId)
 })
 
@@ -259,6 +273,19 @@ const loadMolds = async () => {
     ElMessage.error('Ошибка загрузки пресс-форм')
   }
 }
+
+// Единственная опция селекта — сам заказ: отдельный запрос не нужен,
+// карточка заказа уже передала всё для отображения.
+const applyLockedOrder = () => {
+  if (!props.lockedOrder) return
+  orderOptions.value = [props.lockedOrder]
+  form.orderId = props.lockedOrder.id
+  // Список ПФ фильтруется по типу изделия заказа, поэтому нужен сразу,
+  // не дожидаясь @focus на селекте.
+  loadMolds()
+}
+
+watch(() => props.lockedOrder, applyLockedOrder, { immediate: true })
 
 const isPastDate = (date) => {
   const today = new Date()
@@ -298,6 +325,9 @@ watch(() => props.task, (newTask) => {
 watch(() => props.modelValue, (isVisible) => {
   if (isVisible && props.task) {
     populateForm(props.task)
+  }
+  if (isVisible) {
+    applyLockedOrder()
   }
 })
 
