@@ -48,7 +48,7 @@ describe('resolveAxisKind', () => {
 })
 
 describe('mergeLivePoints', () => {
-  it('дописывает только точки новее последней и режет левый край', () => {
+  it('дописывает только точки новее последней и держит carry-in на левом крае', () => {
     const existing = [
       { t: '2026-07-27T08:00:00Z', num: 1 },
       { t: '2026-07-27T08:01:00Z', num: 2 },
@@ -59,7 +59,20 @@ describe('mergeLivePoints', () => {
     ]
     const windowStart = t('2026-07-27T08:01:00Z')
     const merged = mergeLivePoints(existing, incoming, windowStart)
-    expect(merged.map(p => p.num)).toEqual([2, 3]) // 08:00 ушёл за левый край
+    expect(merged.map(p => p.num)).toEqual([1, 2, 3]) // 08:00 остаётся как carry-in слева
+  })
+
+  it('держит ровно одну ближайшую carry-in точку, даже если слева от окна их несколько', () => {
+    const existing = [
+      { t: '2026-07-27T08:00:00Z', num: 1 },
+      { t: '2026-07-27T08:00:30Z', num: 2 },
+    ]
+    const incoming = [
+      { t: '2026-07-27T08:02:00Z', num: 3 },
+    ]
+    const windowStart = t('2026-07-27T08:01:00Z')
+    const merged = mergeLivePoints(existing, incoming, windowStart)
+    expect(merged.map(p => p.num)).toEqual([2, 3]) // только 08:00:30 (ближайшая слева), 08:00 отброшена
   })
 })
 

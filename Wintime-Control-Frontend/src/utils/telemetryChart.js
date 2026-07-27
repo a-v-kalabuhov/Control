@@ -26,11 +26,17 @@ export function resolveAxisKind(type) {
   return NUMERIC_TYPES.has(type) ? 'numeric' : 'state'
 }
 
-// Слияние live-точек: добавляем только новее последней, режем левый край окна.
+// Слияние live-точек: добавляем только новее последней; из левого края окна держим
+// carry-in — одну ближайшую точку строго до windowStartMs, — чтобы левая граница
+// оставалась определена, пока окно скользит.
 export function mergeLivePoints(existing, incoming, windowStartMs) {
   const lastT = existing.length ? new Date(existing[existing.length - 1].t).getTime() : -Infinity
   const fresh = incoming.filter(p => new Date(p.t).getTime() > lastT)
-  return existing.concat(fresh).filter(p => new Date(p.t).getTime() >= windowStartMs)
+  const all = existing.concat(fresh)
+  const inWindow = all.filter(p => new Date(p.t).getTime() >= windowStartMs)
+  const before = all.filter(p => new Date(p.t).getTime() < windowStartMs)
+  const carry = before.length ? before[before.length - 1] : null // одна ближайшая точка слева
+  return carry ? [carry, ...inWindow] : inWindow
 }
 
 // Не даём снять последний сигнал: если новый выбор пуст — сохраняем прежний.

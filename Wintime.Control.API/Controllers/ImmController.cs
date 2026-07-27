@@ -427,6 +427,26 @@ public class ImmController : ControllerBase
             Points = pointsByName.TryGetValue(p, out var pts) ? pts : new List<TelemetryPointDto>(),
         }).ToList();
 
+        // Seed-точка (carry-in): значение сигнала на левой границе окна берём из последней записи
+        // ДО начала окна. Только на полном запросе (pointsFrom не задан) — на дельта-тике клиент
+        // сам держит carry-in из своего кеша.
+        if (pointsFrom == null)
+        {
+            foreach (var p in parameters.Distinct())
+            {
+                var seed = await _context.Telemetry
+                    .Where(t => t.ImmId == id && t.ParameterName == p && t.Timestamp < fromUtc)
+                    .OrderByDescending(t => t.Timestamp)
+                    .Select(t => new { t.Timestamp, t.ValueNumeric, t.ValueText })
+                    .FirstOrDefaultAsync();
+                if (seed != null)
+                {
+                    var sig = signals.FirstOrDefault(s => s.ParameterName == p);
+                    sig?.Points.Insert(0, new TelemetryPointDto { T = seed.Timestamp, Num = seed.ValueNumeric, Txt = seed.ValueText });
+                }
+            }
+        }
+
         var cycles = await _context.ImmCycles
             .Where(c => c.ImmId == id && c.StartTime < effectiveTo && c.EndTime > fromUtc)
             .OrderBy(c => c.StartTime)

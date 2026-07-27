@@ -155,4 +155,64 @@ public class TelemetryDashboardTests : IClassFixture<IntegrationTestFactory>
         dto!.Signals[0].Points.Should().ContainSingle("точки сужены pointsFrom");
         dto.Cycles.Should().ContainSingle("циклы всегда за полное окно, pointsFrom их не трогает");
     }
+
+    [Fact]
+    public async Task Seed_Point_Prepended_When_Row_Before_Window()
+    {
+        var from = new DateTime(2026, 7, 27, 8, 0, 0, DateTimeKind.Utc);
+        var to   = from.AddHours(1);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var imm = new Core.Entities.Imm
+        {
+            Name = $"IMM-{Guid.NewGuid():N}", TemplateId = _factory.TestTemplateId, IsActive = true
+        };
+        db.Imms.Add(imm);
+        await db.SaveChangesAsync();
+
+        // Точка ДО окна (seed-кандидат) и точка внутри окна.
+        db.Telemetry.Add(new Telemetry { ImmId = imm.Id, Timestamp = from.AddMinutes(-1), ParameterName = "temp", ValueNumeric = 200m });
+        db.Telemetry.Add(new Telemetry { ImmId = imm.Id, Timestamp = from.AddMinutes(1), ParameterName = "temp", ValueNumeric = 210m });
+        await db.SaveChangesAsync();
+
+        var client = await ManagerClientAsync();
+        var url = $"/api/imm/{imm.Id}/telemetry-dashboard?from={from:O}&to={to:O}&parameters=temp";
+        var resp = await client.GetAsync(url);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var dto = await resp.Content.ReadFromJsonAsync<TelemetryDashboardDto>();
+        dto!.Signals[0].Points.Should().HaveCount(2, "seed-точка (до окна) + точка внутри окна");
+        dto.Signals[0].Points[0].T.Should().BeBefore(from, "seed сохраняет реальный timestamp, не подрезается к from");
+        dto.Signals[0].Points[0].Num.Should().Be(200m);
+    }
+
+    [Fact]
+    public async Task Seed_Point_Not_Added_On_Delta_Fetch()
+    {
+        var from = new DateTime(2026, 7, 27, 8, 0, 0, DateTimeKind.Utc);
+        var to   = from.AddHours(1);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var imm = new Core.Entities.Imm
+        {
+            Name = $"IMM-{Guid.NewGuid():N}", TemplateId = _factory.TestTemplateId, IsActive = true
+        };
+        db.Imms.Add(imm);
+        await db.SaveChangesAsync();
+
+        db.Telemetry.Add(new Telemetry { ImmId = imm.Id, Timestamp = from.AddMinutes(-1), ParameterName = "temp", ValueNumeric = 200m });
+        db.Telemetry.Add(new Telemetry { ImmId = imm.Id, Timestamp = from.AddMinutes(1), ParameterName = "temp", ValueNumeric = 210m });
+        await db.SaveChangesAsync();
+
+        var client = await ManagerClientAsync();
+        var url = $"/api/imm/{imm.Id}/telemetry-dashboard?from={from:O}&to={to:O}&parameters=temp&pointsFrom={from:O}";
+        var resp = await client.GetAsync(url);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var dto = await resp.Content.ReadFromJsonAsync<TelemetryDashboardDto>();
+        dto!.Signals[0].Points.Should().ContainSingle("на дельта-запросе seed не добавляется, только точка внутри окна");
+        dto.Signals[0].Points[0].Num.Should().Be(210m);
+    }
 }
