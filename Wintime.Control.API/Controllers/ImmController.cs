@@ -408,6 +408,24 @@ public class ImmController : ControllerBase
         var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
         var nowUtc = DateTime.UtcNow;
         var effectiveTo = toUtc < nowUtc ? toUtc : nowUtc;
+
+        var (raw, tasks, downtimes) = await GatherEffectiveStatusInputsAsync(id, fromUtc, toUtc, effectiveTo);
+
+        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo);
+
+        var dto = segments.Select(s => new EffectiveStatusSegmentDto
+        {
+            EffectiveStatus = s.EffectiveStatus,
+            ChangedAt = s.Start,
+            EndedAt = s.End,
+        });
+
+        return Ok(dto);
+    }
+
+    private async Task<(List<RawSegment> raw, List<TaskInterval> tasks, List<Interval> downtimes)>
+        GatherEffectiveStatusInputsAsync(Guid id, DateTime fromUtc, DateTime toUtc, DateTime effectiveTo)
+    {
         DateTime ClampEnd(DateTime? end) => (end ?? effectiveTo) > effectiveTo ? effectiveTo : (end ?? effectiveTo);
 
         var rawRows = await _context.ImmStatusHistory
@@ -448,16 +466,7 @@ public class ImmController : ControllerBase
             .Select(d => new Interval(d.StartTime, ClampEnd(d.EndTime)))
             .ToList();
 
-        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo);
-
-        var dto = segments.Select(s => new EffectiveStatusSegmentDto
-        {
-            EffectiveStatus = s.EffectiveStatus,
-            ChangedAt = s.Start,
-            EndedAt = s.End,
-        });
-
-        return Ok(dto);
+        return (raw, tasks, downtimes);
     }
 
     /// <summary>
