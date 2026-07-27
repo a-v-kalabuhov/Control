@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildStepSeries, resolveAxisKind, mergeLivePoints } from '@/utils/telemetryChart'
+import { buildStepSeries, resolveAxisKind, mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
 
 const t = (iso) => new Date(iso).getTime()
 
@@ -60,5 +60,20 @@ describe('mergeLivePoints', () => {
     const windowStart = t('2026-07-27T08:01:00Z')
     const merged = mergeLivePoints(existing, incoming, windowStart)
     expect(merged.map(p => p.num)).toEqual([2, 3]) // 08:00 ушёл за левый край
+  })
+})
+
+describe('enforceMinOneSignal', () => {
+  it('непустой новый выбор проходит как есть', () => {
+    expect(enforceMinOneSignal(['a', 'b'], ['a'])).toEqual(['a', 'b'])
+  })
+
+  it('пустой новый выбор откатывается на прежний', () => {
+    expect(enforceMinOneSignal([], ['a'])).toEqual(['a'])
+  })
+
+  it('не-массив/undefined откатывается на прежний', () => {
+    expect(enforceMinOneSignal(undefined, ['a'])).toEqual(['a'])
+    expect(enforceMinOneSignal(null, ['a'])).toEqual(['a'])
   })
 })

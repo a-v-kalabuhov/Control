@@ -32,3 +32,8 @@ export function mergeLivePoints(existing, incoming, windowStartMs) {
   const fresh = incoming.filter(p => new Date(p.t).getTime() > lastT)
   return existing.concat(fresh).filter(p => new Date(p.t).getTime() >= windowStartMs)
 }
+
+// Не даём снять последний сигнал: если новый выбор пуст — сохраняем прежний.
+export function enforceMinOneSignal(next, prev) {
+  return (Array.isArray(next) && next.length > 0) ? next : prev
+}

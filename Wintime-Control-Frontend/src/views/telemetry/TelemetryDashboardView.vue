@@ -80,7 +80,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import SignalChart from '@/components/telemetry/SignalChart.vue'
 import { telemetryApi } from '@/api/telemetry'
-import { mergeLivePoints } from '@/utils/telemetryChart'
+import { mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
 
 const LIVE_PERIODS = [
   { min: 1,   label: '1 минута' },
@@ -115,6 +115,7 @@ const windowStartMs = ref(Date.now() - 15 * 60000)
 const windowEndMs = ref(Date.now())
 
 let pollTimer = null
+let lastNonEmptySelection = [] // последний непустой выбор сигналов — для отката при попытке снять последний
 
 const orderedSignals = computed(() => {
   const byName = new Map(signalsData.value.map(s => [s.parameterName, s]))
@@ -218,7 +219,13 @@ function onModeChange() {
   else { stopLive(); signalsData.value = [] }
 }
 
-function onSelectionChange() {
+function onSelectionChange(next) {
+  // el-checkbox-group уже применил next к selected.value через v-model к моменту @change;
+  // enforceMinOneSignal — чистая функция, откатывает на прежний непустой выбор при попытке снять последний.
+  const resolved = enforceMinOneSignal(next, lastNonEmptySelection)
+  selected.value = resolved
+  if (!next || next.length === 0) return // ничего не меняем, кроме отката чекбокса
+  lastNonEmptySelection = [...resolved]
   syncOrder()
   if (mode.value === 'live') startLive()
   else if (historyFrom.value && historyTo.value) loadHistory()
@@ -246,6 +253,7 @@ onMounted(async () => {
     availableSignals.value = data
     if (data.length) {
       selected.value = [data[0].parameterName] // по умолчанию первый сигнал
+      lastNonEmptySelection = [...selected.value]
       syncOrder()
     }
   } catch {
