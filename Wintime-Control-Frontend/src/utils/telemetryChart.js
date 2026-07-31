@@ -10,11 +10,24 @@ function numericValue(p) {
   return Number.isNaN(n) ? null : n
 }
 
+// Метки времени телеметрии хранятся с точностью до секунды (unix seconds), а ТПА публикует
+// чаще — на одну секунду приходится несколько сэмплов. Для ступенчатой серии значим последний:
+// совпадающие по x точки иначе рисуются «столбиком» друг на друге, а подсказка echarts выводит
+// строку на каждую из них (все точки, равноудалённые от курсора) и растёт на весь экран.
+function dedupeByTimestamp(pairs) {
+  const out = []
+  for (const pair of pairs) {
+    if (out.length && out[out.length - 1][0] === pair[0]) out[out.length - 1] = pair
+    else out.push(pair)
+  }
+  return out
+}
+
 // Ступенчатая серия для echarts (series.step='end'): пары [timestampMs, value].
 // Держим последнее значение до конца окна замыкающей парой — если только не наступил
 // Offline: тогда удержание обрывается на его начале (Вариант A, ADR/спека BL-23 §7).
 export function buildStepSeries(points, windowEndMs, offlineStarts = []) {
-  const raw = points.map(p => [new Date(p.t).getTime(), numericValue(p)])
+  const raw = dedupeByTimestamp(points.map(p => [new Date(p.t).getTime(), numericValue(p)]))
   if (raw.length === 0) return []
   const firstOfflineStartIn = (t, tEnd) => {
     for (const o of offlineStarts) if (o > t && o < tEnd) return o
