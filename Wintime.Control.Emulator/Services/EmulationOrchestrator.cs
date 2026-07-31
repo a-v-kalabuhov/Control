@@ -39,7 +39,8 @@ public class EmulationOrchestrator
     }
 
     /// <summary>
-    /// Запускает все настроенные инстансы IMM в режиме Idle.
+    /// Запускает все настроенные инстансы IMM в режиме Auto — с рестарта эмулятор
+    /// сразу крутит шаги пресета, без ручного вызова /setmode.
     /// Настроенный инстанс — тот, у которого есть пресет с шагами и хотя бы одним ненулевым числовым датчиком.
     /// </summary>
     public async Task StartAllAsync(IEnumerable<string> immIds, CancellationToken ct)
@@ -63,7 +64,7 @@ public class EmulationOrchestrator
                 SensorConfigs = preset.SensorConfigs
             };
 
-            await StartAsync(immId, request, InstanceMode.Idle);
+            await StartAsync(immId, request, InstanceMode.Auto);
         }
     }
 
