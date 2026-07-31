@@ -27,6 +27,7 @@ const props = defineProps({
 const GROUP = 'telemetry-signals'
 const chartRef = ref(null)
 let chart = null
+let resizeObserver = null
 const fromZero = ref(false)
 const axisKind = computed(() => resolveAxisKind(props.signal.type))
 
@@ -96,11 +97,16 @@ onMounted(async () => {
   chart.group = GROUP
   echarts.connect(GROUP) // общий crosshair/zoom по всем диаграммам столбца
   render()
-  window.addEventListener('resize', onResize)
+  // ECharts фиксирует размер канваса при init и сам его не пересчитывает. Ширина контейнера
+  // меняется без window.resize (появился вертикальный скроллбар, свернулось меню) — тогда
+  // диаграммы столбца расходятся по правому краю. Следим за контейнером, а не за окном.
+  resizeObserver = new ResizeObserver(onResize)
+  resizeObserver.observe(chartRef.value)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', onResize)
+  resizeObserver?.disconnect()
+  resizeObserver = null
   chart?.dispose()
 })
 
