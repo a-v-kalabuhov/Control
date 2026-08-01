@@ -34,6 +34,9 @@ public static class TaskMappingExtensions
         OrderId = t.OrderId,
         OrderNumber = t.Order?.Number,
         DefectQuantity = t.DefectQuantity,
+        WorkMode = t.WorkMode,
+        PlannedFullCycleSeconds = t.PlannedFullCycleSeconds,
+        PlannedInjectionCycleSeconds = t.PlannedInjectionCycleSeconds,
         CreatedAt = t.CreatedAt,
         UpdatedAt = t.UpdatedAt
     };

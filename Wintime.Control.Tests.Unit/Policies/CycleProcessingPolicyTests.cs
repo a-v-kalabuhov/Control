@@ -34,7 +34,7 @@ public class CycleProcessingPolicyTests
     {
         CycleProcessingPolicy.ShouldProcessCycle(signal, task)
             .Should().Be(expectedCycle);
-        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime)
+        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime, WorkMode.Auto, endedByCounter: true)
             .Should().Be(expectedOutput);
     }
 
@@ -43,5 +43,40 @@ public class CycleProcessingPolicyTests
     {
         CycleProcessingPolicy.ShouldProcessCycle("AUTO", ActiveTaskStatus.None)
             .Should().BeTrue();
+    }
+
+    // В полуавтомате ТПА между циклами ждёт оператора, и коннектор по своему
+    // таймауту успевает уйти в idle до того, как цикл завершится. Требовать
+    // mode == auto здесь означало бы терять выпуск на каждом цикле.
+    [Theory]
+    // signal, task, hasOpenDowntime, expectedOutput
+    [InlineData("auto",   ActiveTaskStatus.InProgress, false, true)]
+    [InlineData("idle",   ActiveTaskStatus.InProgress, false, true)]
+    [InlineData("alarm",  ActiveTaskStatus.InProgress, false, true)]
+    [InlineData("manual", ActiveTaskStatus.InProgress, false, true)]
+    [InlineData("idle",   ActiveTaskStatus.InProgress, true,  false)] // открытый простой
+    [InlineData("idle",   ActiveTaskStatus.Setup,      false, false)] // наладка
+    [InlineData("idle",   ActiveTaskStatus.None,       false, false)] // нет задания
+    public void ShouldCountOutput_SemiAuto_IgnoresMode(
+        string signal, ActiveTaskStatus task, bool hasOpenDowntime, bool expectedOutput)
+    {
+        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime, WorkMode.SemiAuto, endedByCounter: true)
+            .Should().Be(expectedOutput);
+    }
+
+    // Находка 1: цикл, закрытый только сменой режима (не счётчиком), не должен
+    // засчитываться в выпуск — ни в Auto, ни в SemiAuto. Иначе тот же физический
+    // впрыск засчитывается дважды: один раз по counterChanged, второй раз по
+    // modeChangedFromAuto.
+    [Theory]
+    [InlineData("auto", WorkMode.Auto)]
+    [InlineData("idle", WorkMode.Auto)]
+    [InlineData("auto", WorkMode.SemiAuto)]
+    [InlineData("idle", WorkMode.SemiAuto)]
+    public void ShouldCountOutput_NotEndedByCounter_NeverCounts(string signal, WorkMode workMode)
+    {
+        CycleProcessingPolicy.ShouldCountOutput(
+                signal, ActiveTaskStatus.InProgress, hasOpenDowntime: false, workMode, endedByCounter: false)
+            .Should().BeFalse();
     }
 }

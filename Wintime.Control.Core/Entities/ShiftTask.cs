@@ -21,6 +21,23 @@ public class ShiftTask : BaseEntity
     public Order? Order { get; set; }
     public int DefectQuantity { get; set; }   // брак (ручной ввод при завершении), default 0
 
+    // Рабочий режим и эталонные длительности цикла (спека 2026-08-01).
+    // В будущем переезжают в технологическую карту.
+    public WorkMode WorkMode { get; set; } = WorkMode.Auto;
+
+    /// <summary>
+    /// Эталонная длительность полного цикла, секунды. Обязателен для новых заданий
+    /// (менеджер вычисляет его при планировании). <c>null</c> — legacy-задание,
+    /// созданное до появления поля.
+    /// </summary>
+    public int? PlannedFullCycleSeconds { get; set; }
+
+    /// <summary>
+    /// Эталонная длительность цикла литья, секунды. Необязателен: технологический
+    /// параметр, нужен только для анализа стабильности.
+    /// </summary>
+    public int? PlannedInjectionCycleSeconds { get; set; }
+
     public DateTime? UpdatedAt { get; set; }
 
     public DateTime? PlannedDate { get; set; }
@@ -130,6 +147,38 @@ public class ShiftTask : BaseEntity
 
         Status = TaskStatus.Closed;
         ClosedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Задать рабочий режим и эталонные длительности цикла.
+    /// </summary>
+    /// <param name="requireFullCycle">
+    /// <c>true</c> при создании задания — эталон полного цикла обязателен.
+    /// <c>false</c> при редактировании — legacy-задание можно сохранить без него.
+    /// </param>
+    public void SetCycleNorms(WorkMode workMode, int? fullCycleSeconds,
+                              int? injectionCycleSeconds, bool requireFullCycle)
+    {
+        if (requireFullCycle && fullCycleSeconds is null)
+            throw new DomainException("Не задан эталон полного цикла");
+
+        if (fullCycleSeconds is <= 0)
+            throw new DomainException("Эталон полного цикла должен быть больше нуля");
+
+        if (injectionCycleSeconds is <= 0)
+            throw new DomainException("Эталон цикла литья должен быть больше нуля");
+
+        if (injectionCycleSeconds is not null)
+        {
+            if (fullCycleSeconds is null)
+                throw new DomainException("Нельзя задать эталон цикла литья без эталона полного цикла");
+            if (injectionCycleSeconds > fullCycleSeconds)
+                throw new DomainException("Эталон цикла литья не может превышать эталон полного цикла");
+        }
+
+        WorkMode = workMode;
+        PlannedFullCycleSeconds = fullCycleSeconds;
+        PlannedInjectionCycleSeconds = injectionCycleSeconds;
     }
 
     private void EnsureStatus(TaskStatus expected, string message)

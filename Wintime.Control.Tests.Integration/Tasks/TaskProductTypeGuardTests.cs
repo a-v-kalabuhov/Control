@@ -40,7 +40,8 @@ public class TaskProductTypeGuardTests : IClassFixture<IntegrationTestFactory>
         var client = await ManagerClientAsync();
         var resp = await client.PostAsJsonAsync("/api/tasks", new
         {
-            immId = _factory.TestImmId, moldId, planQuantity = 10, note = "x"
+            immId = _factory.TestImmId, moldId, planQuantity = 10, note = "x",
+            plannedFullCycleSeconds = 30
         });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -53,7 +54,8 @@ public class TaskProductTypeGuardTests : IClassFixture<IntegrationTestFactory>
         var client = await ManagerClientAsync();
         var resp = await client.PostAsJsonAsync("/api/tasks", new
         {
-            immId = _factory.TestImmId, moldId = _factory.TestMoldId, planQuantity = 10, note = "x"
+            immId = _factory.TestImmId, moldId = _factory.TestMoldId, planQuantity = 10, note = "x",
+            plannedFullCycleSeconds = 30
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }

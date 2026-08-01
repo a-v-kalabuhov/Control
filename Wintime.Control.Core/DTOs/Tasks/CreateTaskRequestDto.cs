@@ -1,3 +1,5 @@
+using Wintime.Control.Core.Enums;
+
 namespace Wintime.Control.Core.DTOs.Tasks;
 
 public class CreateTaskRequestDto
@@ -9,4 +11,13 @@ public class CreateTaskRequestDto
     public int PlanQuantity { get; set; }
     public string? Note { get; set; }
     public DateTime? PlannedDate { get; set; }
+
+    /// <summary>Рабочий режим; не передан — «автомат».</summary>
+    public WorkMode WorkMode { get; set; } = WorkMode.Auto;
+
+    /// <summary>Эталон полного цикла, секунды. Обязателен.</summary>
+    public int? PlannedFullCycleSeconds { get; set; }
+
+    /// <summary>Эталон цикла литья, секунды. Необязателен.</summary>
+    public int? PlannedInjectionCycleSeconds { get; set; }
 }

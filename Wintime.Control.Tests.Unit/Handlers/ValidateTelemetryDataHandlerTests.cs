@@ -31,6 +31,8 @@ public class ValidateTelemetryDataHandlerTests
     [InlineData("boolean",      "true")]
     [InlineData("boolean",      "false")]
     [InlineData("cycleCounter", "100")]
+    [InlineData("injectionDuration", "12500")]
+    [InlineData("cyclePause", "3400")]
     [InlineData("string",       "any text")]
     public async Task ValidateAsync_ValidSensorValue_SensorPassesThrough(string type, string value)
     {
@@ -52,6 +54,8 @@ public class ValidateTelemetryDataHandlerTests
     [InlineData("int",          "3.14")]
     [InlineData("boolean",      "yes")]
     [InlineData("cycleCounter", "one")]
+    [InlineData("injectionDuration", "12.5")]
+    [InlineData("cyclePause", "abc")]
     public async Task ValidateAsync_InvalidSensorValue_SensorRemovedFromResult(string type, string value)
     {
         var immId = Guid.NewGuid();

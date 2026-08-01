@@ -90,6 +90,7 @@ describe('TaskFormModal — заказ', () => {
     wrapper.vm.form.moldId = 'mold-1'
     wrapper.vm.form.immId = 'imm-1'
     wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
     await flushPromises()
     wrapper.vm.form.orderId = 'order-1'
 
@@ -104,7 +105,8 @@ describe('TaskFormModal — заказ', () => {
   it('при редактировании — если orderId изменился, вызывает ordersApi.setTaskOrder', async () => {
     const task = {
       id: 'task-1', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
-      planQuantity: 10, plannedDate: null, note: '', orderId: null
+      planQuantity: 10, plannedDate: null, note: '', orderId: null,
+      plannedFullCycleSeconds: 60
     }
     const wrapper = mountModal({ task })
     await wrapper.vm.loadMolds()
@@ -220,6 +222,7 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     wrapper.vm.form.immId = 'imm-1'
     wrapper.vm.form.moldId = 'mold-1'
     wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
     await flushPromises()
 
     await wrapper.vm.handleSubmit()
@@ -228,5 +231,109 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     expect(tasksApi.create).toHaveBeenCalledWith(
       expect.objectContaining({ orderId: 'order-9', moldId: 'mold-1' })
     )
+  })
+})
+
+describe('TaskFormModal — рабочий режим и эталоны цикла', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('по умолчанию режим «автомат»', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    expect(wrapper.vm.form.workMode).toBe('Auto')
+  })
+
+  it('передаёт режим и эталоны в tasksApi.create', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.workMode = 'SemiAuto'
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedInjectionCycleSeconds = 25
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workMode: 'SemiAuto',
+        plannedFullCycleSeconds: 60,
+        plannedInjectionCycleSeconds: 25
+      })
+    )
+  })
+
+  it('не отправляет форму без эталона полного цикла', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = null
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).not.toHaveBeenCalled()
+  })
+
+  it('не отправляет форму, если цикл литья больше полного цикла', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedInjectionCycleSeconds = 61
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).not.toHaveBeenCalled()
+  })
+
+  // Находка 3: бэкенд не требует эталон при редактировании legacy-заданий
+  // (UpdateTask_LegacyTaskWithoutFullCycle_SavesWithoutRequiringCycle). Форма не
+  // должна блокировать сохранение сильнее бэкенда — иначе менеджер не может
+  // поправить старое задание, не выдумав цифру эталона.
+  it('при редактировании legacy-задания (plannedFullCycleSeconds: null) сохраняет без заполнения эталона', async () => {
+    const task = {
+      id: 'task-legacy', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
+      planQuantity: 10, plannedDate: null, note: '', orderId: null,
+      plannedFullCycleSeconds: null
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.vm.form.plannedFullCycleSeconds).toBeNull()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.update).toHaveBeenCalledWith(
+      'task-legacy',
+      expect.objectContaining({ plannedFullCycleSeconds: null })
+    )
+  })
+
+  it('при редактировании заполняет поля из задания', async () => {
+    const task = {
+      id: 'task-3', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
+      planQuantity: 10, plannedDate: null, note: '', orderId: null,
+      workMode: 'SemiAuto', plannedFullCycleSeconds: 90,
+      plannedInjectionCycleSeconds: 30
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.vm.form.workMode).toBe('SemiAuto')
+    expect(wrapper.vm.form.plannedFullCycleSeconds).toBe(90)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(30)
   })
 })

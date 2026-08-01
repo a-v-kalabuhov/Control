@@ -124,7 +124,8 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
 
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10, OrderId = orderId
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+            OrderId = orderId, PlannedFullCycleSeconds = 30
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -145,7 +146,8 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
 
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
-            ImmId = _factory.TestImmId, MoldId = otherMoldId, PlanQuantity = 10, OrderId = orderId
+            ImmId = _factory.TestImmId, MoldId = otherMoldId, PlanQuantity = 10,
+            OrderId = orderId, PlannedFullCycleSeconds = 30
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -158,7 +160,8 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
 
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10, OrderId = Guid.NewGuid()
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+            OrderId = Guid.NewGuid(), PlannedFullCycleSeconds = 30
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);

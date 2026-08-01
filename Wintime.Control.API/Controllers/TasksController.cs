@@ -219,6 +219,12 @@ public class TasksController : ControllerBase
             IssuedAt = DateTime.UtcNow
         };
 
+        task.SetCycleNorms(
+            request.WorkMode,
+            request.PlannedFullCycleSeconds,
+            request.PlannedInjectionCycleSeconds,
+            requireFullCycle: true);
+
         if (request.OrderId.HasValue)
         {
             var (order, error) = await ResolveOrderForBindingAsync(request.OrderId.Value, mold.ProductTypeId);
@@ -256,6 +262,20 @@ public class TasksController : ControllerBase
             if (request.PlannedDate.Value.Date < today)
                 return BadRequest("Плановая дата не может быть в прошлом");
             task.PlannedDate = DateTime.SpecifyKind(request.PlannedDate.Value, DateTimeKind.Utc);
+        }
+        bool cycleFieldsTouched = request.WorkMode.HasValue
+                               || request.PlannedFullCycleSeconds.HasValue
+                               || request.PlannedInjectionCycleSeconds.HasValue;
+        if (cycleFieldsTouched)
+        {
+            // Не переданные поля сохраняют текущее значение задания.
+            // requireFullCycle: false — legacy-задание без эталона можно сохранить,
+            // не вынуждая менеджера выдумывать цифру задним числом.
+            task.SetCycleNorms(
+                request.WorkMode ?? task.WorkMode,
+                request.PlannedFullCycleSeconds ?? task.PlannedFullCycleSeconds,
+                request.PlannedInjectionCycleSeconds ?? task.PlannedInjectionCycleSeconds,
+                requireFullCycle: false);
         }
         if (request.Status.HasValue)
             task.Status = request.Status.Value;

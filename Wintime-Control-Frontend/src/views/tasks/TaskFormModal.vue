@@ -105,6 +105,34 @@
         />
       </el-form-item>
 
+      <el-form-item label="Рабочий режим" prop="workMode">
+        <el-select v-model="form.workMode" class="w-full">
+          <el-option label="Автомат" value="Auto" />
+          <el-option label="Полуавтомат" value="SemiAuto" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="Полный цикл (сек.)" prop="plannedFullCycleSeconds" :required="isFullCycleRequired">
+        <el-input-number
+          v-model="form.plannedFullCycleSeconds"
+          :min="1"
+          :max="86400"
+          class="w-full"
+          controls-position="right"
+        />
+      </el-form-item>
+
+      <el-form-item label="Цикл литья (сек.)" prop="plannedInjectionCycleSeconds">
+        <el-input-number
+          v-model="form.plannedInjectionCycleSeconds"
+          :min="1"
+          :max="86400"
+          class="w-full"
+          controls-position="right"
+        />
+        <div class="text-xs text-gray-500 mt-1">Необязательно — нужен для анализа стабильности</div>
+      </el-form-item>
+
       <el-form-item label="Плановая дата" prop="plannedDate">
         <el-date-picker
           v-model="form.plannedDate"
@@ -204,7 +232,10 @@ const form = reactive({
   planQuantity: 1000,
   plannedDate: null,
   note: '',
-  orderId: null
+  orderId: null,
+  workMode: 'Auto',
+  plannedFullCycleSeconds: null,
+  plannedInjectionCycleSeconds: null
 })
 
 const rules = {
@@ -213,8 +244,43 @@ const rules = {
   planQuantity: [
     { required: true, message: 'Введите план', trigger: 'blur' },
     { type: 'number', min: 1, message: 'План должен быть больше 0', trigger: 'blur' }
+  ],
+  plannedFullCycleSeconds: [
+    {
+      // При создании эталон обязателен. При редактировании — как на бэкенде
+      // (UpdateTask_LegacyTaskWithoutFullCycle_SavesWithoutRequiringCycle):
+      // legacy-задания без эталона (null) сохраняются и дальше без него;
+      // обязателен он только если в задании уже есть непустое значение.
+      validator: (rule, value, callback) => {
+        const required = !editingTask.value || (editingTask.value.plannedFullCycleSeconds ?? null) !== null
+        if (value === null || value === undefined) {
+          return required ? callback(new Error('Введите эталон полного цикла')) : callback()
+        }
+        if (value < 1) return callback(new Error('Эталон должен быть больше 0'))
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ],
+  plannedInjectionCycleSeconds: [
+    {
+      validator: (rule, value, callback) => {
+        if (value === null || value === undefined) return callback()
+        if (value < 1) return callback(new Error('Эталон должен быть больше 0'))
+        if (form.plannedFullCycleSeconds && value > form.plannedFullCycleSeconds)
+          return callback(new Error('Цикл литья не может превышать полный цикл'))
+        callback()
+      },
+      trigger: 'blur'
+    }
   ]
 }
+
+// То же условие, что и в validator'е rules.plannedFullCycleSeconds, вынесено
+// сюда для визуальной звёздочки обязательности на el-form-item.
+const isFullCycleRequired = computed(() => {
+  return !editingTask.value || (editingTask.value.plannedFullCycleSeconds ?? null) !== null
+})
 
 const selectedMoldInfo = computed(() => {
   if (!form.moldId) return null
@@ -237,7 +303,10 @@ const resetForm = () => {
     planQuantity: 1000,
     plannedDate: null,
     note: '',
-    orderId: props.lockedOrder?.id ?? null
+    orderId: props.lockedOrder?.id ?? null,
+    workMode: 'Auto',
+    plannedFullCycleSeconds: null,
+    plannedInjectionCycleSeconds: null
   })
   orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
   initialOrderId.value = null
@@ -307,7 +376,10 @@ const populateForm = (task) => {
     planQuantity: task.planQuantity,
     plannedDate: task.plannedDate ? task.plannedDate.slice(0, 10) : null,
     note: task.note || '',
-    orderId: task.orderId || null
+    orderId: task.orderId || null,
+    workMode: task.workMode || 'Auto',
+    plannedFullCycleSeconds: task.plannedFullCycleSeconds ?? null,
+    plannedInjectionCycleSeconds: task.plannedInjectionCycleSeconds ?? null
   })
   initialOrderId.value = task.orderId || null
   // В режиме редактирования селект ПФ задизейблен и никогда не получает

@@ -85,6 +85,43 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     }
 
     /// <summary>
+    /// Находка 2: датчик типа <c>injectionDuration</c> (защёлкнутая длительность цикла
+    /// литья) должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>,
+    /// иначе числовая агрегация телеметрии его не видит.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_InjectionDurationSensor_StoresValueNumeric()
+    {
+        var context = BuildContext(
+            sensors: new Dictionary<string, string> { ["inj"] = "12500" },
+            templateSensors: [PipelineTestFixtures.MakeSensor("inj", "injectionDuration")]);
+
+        await CreateSut().SaveAsync(context);
+
+        var row = await _dbContext.Telemetry.SingleAsync();
+        row.ValueNumeric.Should().Be(12500m);
+        row.ValueText.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Находка 2: датчик типа <c>cyclePause</c> (защёлкнутая длительность паузы)
+    /// должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_CyclePauseSensor_StoresValueNumeric()
+    {
+        var context = BuildContext(
+            sensors: new Dictionary<string, string> { ["pause"] = "3400" },
+            templateSensors: [PipelineTestFixtures.MakeSensor("pause", "cyclePause")]);
+
+        await CreateSut().SaveAsync(context);
+
+        var row = await _dbContext.Telemetry.SingleAsync();
+        row.ValueNumeric.Should().Be(3400m);
+        row.ValueText.Should().BeNull();
+    }
+
+    /// <summary>
     /// Датчик типа <c>string</c> должен сохраняться в колонку <c>ValueText</c>,
     /// а <c>ValueNumeric</c> остаётся <c>null</c>.
     /// </summary>

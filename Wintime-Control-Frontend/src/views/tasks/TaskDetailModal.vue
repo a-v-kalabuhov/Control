@@ -23,6 +23,15 @@
         <el-descriptions-item label="Наладчик">
           {{ task?.personnelName || '—' }}
         </el-descriptions-item>
+        <el-descriptions-item label="Рабочий режим">
+          {{ workModeLabel }}
+        </el-descriptions-item>
+        <el-descriptions-item label="Полный цикл">
+          {{ task?.plannedFullCycleSeconds ? `${task.plannedFullCycleSeconds} с` : '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="Цикл литья">
+          {{ task?.plannedInjectionCycleSeconds ? `${task.plannedInjectionCycleSeconds} с` : '—' }}
+        </el-descriptions-item>
         <el-descriptions-item label="Начато">
           {{ formatDate(task?.startedAt) }}
         </el-descriptions-item>
@@ -168,6 +177,11 @@ const canComplete = computed(() => {
 const canClose = computed(() => {
   if (!props.task) return false
   return ['Completed', 'InProgress'].includes(props.task.status) && authStore.isManager
+})
+
+const workModeLabel = computed(() => {
+  if (!props.task?.workMode) return '—'
+  return props.task.workMode === 'SemiAuto' ? 'Полуавтомат' : 'Автомат'
 })
 
 const formatDate = (date) => {
