@@ -265,6 +265,73 @@ public class TemplateCacheTests
     }
 
     /// <summary>
+    /// Новые семантические типы длительностей должны разбираться так же,
+    /// как cycleCounter.
+    /// </summary>
+    [Theory]
+    [InlineData("injectionDuration")]
+    [InlineData("cyclePause")]
+    public void Upsert_DurationSensor_ParsesParameterType(string type)
+    {
+        var cache = new TemplateCache();
+        var template = MakeTemplate(json: $$"""
+            {
+                "sensors": [
+                    { "name": "s", "field": "s", "type": "{{type}}" }
+                ]
+            }
+            """);
+
+        cache.Upsert(template);
+
+        cache.GetById(template.Id)!.Sensors.Single().ParameterType.Should().Be(type);
+    }
+
+    /// <summary>
+    /// COV-фильтрация для длительностей цикла обязана быть выключена: ненулевой
+    /// порог в конфиге принудительно обнуляется, иначе фильтр (ADR-0005, вариант B)
+    /// подставит значение прошлого цикла и вариация схлопнется в ровную линию.
+    /// </summary>
+    [Theory]
+    [InlineData("injectionDuration")]
+    [InlineData("cyclePause")]
+    public void Upsert_DurationSensorWithThreshold_ForcesThresholdToZero(string type)
+    {
+        var cache = new TemplateCache();
+        var template = MakeTemplate(json: $$"""
+            {
+                "sensors": [
+                    { "name": "s", "field": "s", "type": "{{type}}", "threshold": 50 }
+                ]
+            }
+            """);
+
+        cache.Upsert(template);
+
+        cache.GetById(template.Id)!.Sensors.Single().Threshold.Should().Be(0m);
+    }
+
+    /// <summary>
+    /// Обнуление порога не должно задевать остальные типы.
+    /// </summary>
+    [Fact]
+    public void Upsert_FloatSensorWithThreshold_KeepsThreshold()
+    {
+        var cache = new TemplateCache();
+        var template = MakeTemplate(json: """
+            {
+                "sensors": [
+                    { "name": "s", "field": "s", "type": "float", "threshold": 50 }
+                ]
+            }
+            """);
+
+        cache.Upsert(template);
+
+        cache.GetById(template.Id)!.Sensors.Single().Threshold.Should().Be(50m);
+    }
+
+    /// <summary>
     /// Если поле <c>type</c> отсутствует в описании сенсора, должно
     /// использоваться значение по умолчанию <c>"float"</c>.
     /// </summary>

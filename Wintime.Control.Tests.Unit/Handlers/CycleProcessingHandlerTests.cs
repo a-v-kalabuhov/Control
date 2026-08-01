@@ -53,6 +53,31 @@ public class CycleProcessingHandlerTests
         return PipelineTestFixtures.MakeContext("control/imm/x/telemetry", "{}", data: message, device: device, template: template);
     }
 
+    /// <summary>
+    /// Контекст с тремя сенсорами: счётчик + защёлкнутые длительности цикла литья и паузы.
+    /// </summary>
+    private static MqttProcessingContext MakeCycleContextWithDurations(
+        Guid immId, int counter, string mode, string injectionMs, string pauseMs)
+    {
+        var sensors = new[]
+        {
+            PipelineTestFixtures.MakeSensor("counter", type: "cycleCounter"),
+            PipelineTestFixtures.MakeSensor("inj", type: "injectionDuration"),
+            PipelineTestFixtures.MakeSensor("pause", type: "cyclePause")
+        };
+        var template = PipelineTestFixtures.MakeTemplate(sensors);
+        var message = PipelineTestFixtures.MakeMessage(immId,
+            sensors: new Dictionary<string, string>
+            {
+                ["counter"] = counter.ToString(),
+                ["inj"] = injectionMs,
+                ["pause"] = pauseMs
+            }, mode: mode);
+        var device = PipelineTestFixtures.MakeImmDto(immId);
+        return PipelineTestFixtures.MakeContext("control/imm/x/telemetry", "{}",
+            data: message, device: device, template: template);
+    }
+
     [Fact]
     public async SystemTask Persists_orphan_cycle_and_runs_all_handlers_even_when_one_throws()
     {
@@ -139,5 +164,45 @@ public class CycleProcessingHandlerTests
 
         var cycle = await db.ImmCycles.SingleAsync();
         cycle.IsSuccessful.Should().BeFalse("режим ALARM (в любом регистре) нормализуется в alarm → цикл неуспешен");
+    }
+
+    [Fact]
+    public async SystemTask Completed_cycle_stores_injection_duration_and_pause()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+
+        _tracker.Get(immId).Returns(new CycleState(DateTime.UtcNow.AddSeconds(-20), 5, "auto"));
+
+        var sut = new CycleProcessingHandler(db, _tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        // Значения приходят защёлкнутыми в сообщении, закрывающем цикл.
+        await sut.ProcessAsync(MakeCycleContextWithDurations(immId, 6, "auto", "12500", "3400"));
+
+        var cycle = await db.ImmCycles.SingleAsync();
+        cycle.InjectionDurationMs.Should().Be(12500);
+        cycle.PauseDurationMs.Should().Be(3400);
+    }
+
+    [Fact]
+    public async SystemTask Completed_cycle_without_duration_sensors_leaves_fields_null()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+
+        _tracker.Get(immId).Returns(new CycleState(DateTime.UtcNow.AddSeconds(-20), 5, "auto"));
+
+        var sut = new CycleProcessingHandler(db, _tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        // MakeCycleContext даёт шаблон только со счётчиком — машина без сигналов формы.
+        await sut.ProcessAsync(MakeCycleContext(immId, 6, "auto"));
+
+        var cycle = await db.ImmCycles.SingleAsync();
+        cycle.InjectionDurationMs.Should().BeNull();
+        cycle.PauseDurationMs.Should().BeNull();
     }
 }

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Wintime.Control.Core.Cache;
 using Microsoft.Extensions.Logging;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.Entities;
@@ -92,6 +93,11 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             var duration = (int)(currentTime - cycleStart).TotalSeconds;
             var cavities = activeTask?.Mold.Cavities ?? 0;
 
+            // Длительности приходят защёлкнутыми: коннектор обновляет их на событиях
+            // формы и повторяет в каждом сообщении. Сенсоров нет — поля остаются null.
+            int? injectionDurationMs = ReadIntSensor(template, data, "injectionDuration");
+            int? pauseDurationMs = ReadIntSensor(template, data, "cyclePause");
+
             var cycle = new ImmCycle
             {
                 ImmId = immId,
@@ -101,7 +107,9 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                 EndTime = currentTime,
                 DurationSeconds = duration,
                 IsSuccessful = isSuccessful,
-                Cavities = cavities
+                Cavities = cavities,
+                InjectionDurationMs = injectionDurationMs,
+                PauseDurationMs = pauseDurationMs
             };
             _db.ImmCycles.Add(cycle);
             await _db.SaveChangesAsync(ct); // СТАДИЯ 1 — цикл долговечен
@@ -134,5 +142,22 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             newCycleStart = state.CycleStartTime;
 
         _tracker.Set(immId, new CycleState(newCycleStart, currentCounter, currentMode));
+    }
+
+    /// <summary>
+    /// Прочитать целочисленный сенсор по семантическому типу шаблона.
+    /// Возвращает <c>null</c>, если сенсор не описан в шаблоне, отсутствует
+    /// в сообщении или значение не парсится.
+    /// </summary>
+    private static int? ReadIntSensor(CachedTemplate template, MqttTelemetryMessage data, string parameterType)
+    {
+        var sensor = template.Sensors.FirstOrDefault(s => s.ParameterType == parameterType);
+        if (sensor is null)
+            return null;
+        if (!data.Sensors.TryGetValue(sensor.ParameterName, out var raw))
+            return null;
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
     }
 }

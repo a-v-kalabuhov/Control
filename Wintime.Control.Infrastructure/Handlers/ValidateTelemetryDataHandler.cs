@@ -148,6 +148,8 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
             "int"          => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
             "boolean"      => bool.TryParse(value, out _),
             "cycleCounter" => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+            "injectionDuration" => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+            "cyclePause"        => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
             _              => false
         };
 
@@ -269,7 +271,7 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
                 double.TryParse(cached, NumberStyles.Float, CultureInfo.InvariantCulture, out var cac))
                 return Math.Abs(cur - cac) > (double)sensor.Threshold;
         }
-        else if (sensor.ParameterType is "int" or "cycleCounter")
+        else if (sensor.ParameterType is "int" or "cycleCounter" or "injectionDuration" or "cyclePause")
         {
             if (int.TryParse(current, out var cur) && int.TryParse(cached, out var cac))
                 return Math.Abs(cur - cac) > (double)sensor.Threshold;
