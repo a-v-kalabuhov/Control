@@ -34,7 +34,7 @@ public class CycleProcessingPolicyTests
     {
         CycleProcessingPolicy.ShouldProcessCycle(signal, task)
             .Should().Be(expectedCycle);
-        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime, WorkMode.Auto)
+        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime, WorkMode.Auto, endedByCounter: true)
             .Should().Be(expectedOutput);
     }
 
@@ -60,7 +60,23 @@ public class CycleProcessingPolicyTests
     public void ShouldCountOutput_SemiAuto_IgnoresMode(
         string signal, ActiveTaskStatus task, bool hasOpenDowntime, bool expectedOutput)
     {
-        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime, WorkMode.SemiAuto)
+        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime, WorkMode.SemiAuto, endedByCounter: true)
             .Should().Be(expectedOutput);
+    }
+
+    // Находка 1: цикл, закрытый только сменой режима (не счётчиком), не должен
+    // засчитываться в выпуск — ни в Auto, ни в SemiAuto. Иначе тот же физический
+    // впрыск засчитывается дважды: один раз по counterChanged, второй раз по
+    // modeChangedFromAuto.
+    [Theory]
+    [InlineData("auto", WorkMode.Auto)]
+    [InlineData("idle", WorkMode.Auto)]
+    [InlineData("auto", WorkMode.SemiAuto)]
+    [InlineData("idle", WorkMode.SemiAuto)]
+    public void ShouldCountOutput_NotEndedByCounter_NeverCounts(string signal, WorkMode workMode)
+    {
+        CycleProcessingPolicy.ShouldCountOutput(
+                signal, ActiveTaskStatus.InProgress, hasOpenDowntime: false, workMode, endedByCounter: false)
+            .Should().BeFalse();
     }
 }

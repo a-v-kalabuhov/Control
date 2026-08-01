@@ -246,8 +246,21 @@ const rules = {
     { type: 'number', min: 1, message: 'План должен быть больше 0', trigger: 'blur' }
   ],
   plannedFullCycleSeconds: [
-    { required: true, message: 'Введите эталон полного цикла', trigger: 'blur' },
-    { type: 'number', min: 1, message: 'Эталон должен быть больше 0', trigger: 'blur' }
+    {
+      // При создании эталон обязателен. При редактировании — как на бэкенде
+      // (UpdateTask_LegacyTaskWithoutFullCycle_SavesWithoutRequiringCycle):
+      // legacy-задания без эталона (null) сохраняются и дальше без него;
+      // обязателен он только если в задании уже есть непустое значение.
+      validator: (rule, value, callback) => {
+        const required = !editingTask.value || (editingTask.value.plannedFullCycleSeconds ?? null) !== null
+        if (value === null || value === undefined) {
+          return required ? callback(new Error('Введите эталон полного цикла')) : callback()
+        }
+        if (value < 1) return callback(new Error('Эталон должен быть больше 0'))
+        callback()
+      },
+      trigger: 'blur'
+    }
   ],
   plannedInjectionCycleSeconds: [
     {

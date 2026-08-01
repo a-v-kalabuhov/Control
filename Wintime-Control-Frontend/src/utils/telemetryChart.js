@@ -1,6 +1,6 @@
 // Чистые хелперы для дашборда телеметрии BL-23 (без зависимостей от echarts/Vue).
 
-const NUMERIC_TYPES = new Set(['float', 'int', 'cycleCounter'])
+const NUMERIC_TYPES = new Set(['float', 'int', 'cycleCounter', 'injectionDuration', 'cyclePause'])
 
 function numericValue(p) {
   if (p.num !== null && p.num !== undefined) return Number(p.num)

@@ -48,6 +48,8 @@ public class StoreTelemetryDataHandler : IStoreTelemetryDataHandler
                         break;
                     case "int":
                     case "cycleCounter":
+                    case "injectionDuration":
+                    case "cyclePause":
                         if (decimal.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numI))
                             entry.ValueNumeric = numI;
                         else

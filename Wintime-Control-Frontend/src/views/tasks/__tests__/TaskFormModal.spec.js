@@ -298,6 +298,30 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
     expect(tasksApi.create).not.toHaveBeenCalled()
   })
 
+  // Находка 3: бэкенд не требует эталон при редактировании legacy-заданий
+  // (UpdateTask_LegacyTaskWithoutFullCycle_SavesWithoutRequiringCycle). Форма не
+  // должна блокировать сохранение сильнее бэкенда — иначе менеджер не может
+  // поправить старое задание, не выдумав цифру эталона.
+  it('при редактировании legacy-задания (plannedFullCycleSeconds: null) сохраняет без заполнения эталона', async () => {
+    const task = {
+      id: 'task-legacy', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
+      planQuantity: 10, plannedDate: null, note: '', orderId: null,
+      plannedFullCycleSeconds: null
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.vm.form.plannedFullCycleSeconds).toBeNull()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.update).toHaveBeenCalledWith(
+      'task-legacy',
+      expect.objectContaining({ plannedFullCycleSeconds: null })
+    )
+  })
+
   it('при редактировании заполняет поля из задания', async () => {
     const task = {
       id: 'task-3', immId: 'imm-1', moldId: 'mold-1', personnelId: '',

@@ -38,7 +38,7 @@ public class TaskOutputHandler : ICycleHandler
               && e.EventType == Core.Enums.EventType.Downtime
               && e.EndTime == null, ct);
 
-        if (!CycleProcessingPolicy.ShouldCountOutput(completed.Mode, taskStatus, hasOpenDowntime, task.WorkMode))
+        if (!CycleProcessingPolicy.ShouldCountOutput(completed.Mode, taskStatus, hasOpenDowntime, task.WorkMode, completed.EndedByCounter))
             return;
 
         task.ActualQuantity += cycle.Cavities;

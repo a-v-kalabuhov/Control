@@ -24,7 +24,7 @@
           {{ task?.personnelName || '—' }}
         </el-descriptions-item>
         <el-descriptions-item label="Рабочий режим">
-          {{ task?.workMode === 'SemiAuto' ? 'Полуавтомат' : 'Автомат' }}
+          {{ workModeLabel }}
         </el-descriptions-item>
         <el-descriptions-item label="Полный цикл">
           {{ task?.plannedFullCycleSeconds ? `${task.plannedFullCycleSeconds} с` : '—' }}
@@ -177,6 +177,11 @@ const canComplete = computed(() => {
 const canClose = computed(() => {
   if (!props.task) return false
   return ['Completed', 'InProgress'].includes(props.task.status) && authStore.isManager
+})
+
+const workModeLabel = computed(() => {
+  if (!props.task?.workMode) return '—'
+  return props.task.workMode === 'SemiAuto' ? 'Полуавтомат' : 'Автомат'
 })
 
 const formatDate = (date) => {

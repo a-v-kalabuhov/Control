@@ -114,7 +114,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             _db.ImmCycles.Add(cycle);
             await _db.SaveChangesAsync(ct); // СТАДИЯ 1 — цикл долговечен
 
-            var completed = new CompletedCycle(cycle, activeTask, currentMode);
+            var completed = new CompletedCycle(cycle, activeTask, currentMode, counterChanged);
             foreach (var handler in _handlers) // СТАДИЯ 2
             {
                 try

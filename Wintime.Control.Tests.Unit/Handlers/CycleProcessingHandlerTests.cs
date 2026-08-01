@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Wintime.Control.Core.DTOs.Mqtt;
+using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Infrastructure.Handlers;
@@ -204,5 +205,44 @@ public class CycleProcessingHandlerTests
         var cycle = await db.ImmCycles.SingleAsync();
         cycle.InjectionDurationMs.Should().BeNull();
         cycle.PauseDurationMs.Should().BeNull();
+    }
+
+    // Находка 1 (Critical): в SemiAuto цикл закрывается ДВАЖДЫ по одному физическому
+    // впрыску — сначала по смене счётчика (auto/N → auto/N+1), затем ещё раз по уходу
+    // из auto (auto/N+1 → idle/N+1), потому что коннектор объявляет idle отдельным
+    // сообщением, пока оператор вынимает изделие. Оба ImmCycle пишутся законно
+    // (это два ImmCycle-события — один настоящий и один по смене режима), но
+    // ActualQuantity обязано вырасти ровно один раз — за цикл, закрытый счётчиком.
+    [Fact]
+    public async SystemTask SemiAuto_counter_then_idle_counts_output_exactly_once()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 2, PartWeightGrams = 10m, RunnerWeightGrams = 5m };
+        var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
+        var task = new EntityTask
+        {
+            ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm,
+            PlanQuantity = 1000, Status = EntityTaskStatus.InProgress, WorkMode = WorkMode.SemiAuto
+        };
+        db.AddRange(mold, imm, task);
+        await db.SaveChangesAsync();
+
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var taskOutputHandler = new TaskOutputHandler(db, Substitute.For<IEmulatorControlService>());
+        var sut = new CycleProcessingHandler(db, tracker, [taskOutputHandler], NullLogger<CycleProcessingHandler>.Instance);
+
+        // auto/N: первое сообщение — просто фиксирует старт цикла в трекере.
+        await sut.ProcessAsync(MakeCycleContext(immId, 5, "auto"));
+        // auto/N+1: счётчик вырос → цикл A закрыт по counterChanged → +Cavities.
+        await sut.ProcessAsync(MakeCycleContext(immId, 6, "auto"));
+        // idle/N+1: тот же физический впрыск, коннектор объявил idle отдельно →
+        // цикл B закрыт по modeChangedFromAuto — НЕ должен засчитаться повторно.
+        await sut.ProcessAsync(MakeCycleContext(immId, 6, "idle"));
+
+        (await db.ImmCycles.CountAsync()).Should().Be(2, "оба ImmCycle-события по-прежнему пишутся");
+
+        var reloaded = await db.ShiftTasks.FindAsync(task.Id);
+        reloaded!.ActualQuantity.Should().Be(2, "выпуск засчитан ровно один раз — за цикл, закрытый счётчиком");
     }
 }

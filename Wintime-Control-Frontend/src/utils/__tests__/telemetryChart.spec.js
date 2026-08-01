@@ -97,6 +97,12 @@ describe('resolveAxisKind', () => {
     expect(resolveAxisKind('int')).toBe('numeric')
     expect(resolveAxisKind('cycleCounter')).toBe('numeric')
   })
+  // Находка 2: injectionDuration/cyclePause — защёлкнутые числовые длительности
+  // цикла литья и паузы; должны разбираться как numeric, а не проваливаться в state.
+  it('injectionDuration/cyclePause → numeric', () => {
+    expect(resolveAxisKind('injectionDuration')).toBe('numeric')
+    expect(resolveAxisKind('cyclePause')).toBe('numeric')
+  })
   it('boolean/string → state', () => {
     expect(resolveAxisKind('boolean')).toBe('state')
     expect(resolveAxisKind('string')).toBe('state')
