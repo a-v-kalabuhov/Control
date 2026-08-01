@@ -288,6 +288,37 @@ public class StoreTelemetryDataHandlerTests : IDisposable
         _dbContext.Telemetry.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Два сообщения внутри одной секунды должны дать строки с различным
+    /// <c>Timestamp</c>. Регрессия: раньше метка обрезалась до секунды, и до 10
+    /// сообщений в секунду получали одинаковое время — порядок строк терялся.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_MessagesWithinSameSecond_KeepDistinctTimestamps()
+    {
+        var immId = Guid.NewGuid();
+        var first  = new DateTime(2023, 11, 14, 22, 13, 20, 100, DateTimeKind.Utc);
+        var second = new DateTime(2023, 11, 14, 22, 13, 20, 200, DateTimeKind.Utc);
+        var templateSensors = new[] { PipelineTestFixtures.MakeSensor("temp", "float") };
+
+        await CreateSut().SaveAsync(BuildContext(
+            immId: immId,
+            sensors: new Dictionary<string, string> { ["temp"] = "20.0" },
+            templateSensors: templateSensors,
+            timestampUtc: first));
+
+        await CreateSut().SaveAsync(BuildContext(
+            immId: immId,
+            sensors: new Dictionary<string, string> { ["temp"] = "20.1" },
+            templateSensors: templateSensors,
+            timestampUtc: second));
+
+        var rows = await _dbContext.Telemetry.OrderBy(t => t.Timestamp).ToListAsync();
+        rows.Should().HaveCount(2);
+        rows[0].Timestamp.Should().Be(first);
+        rows[1].Timestamp.Should().Be(second);
+    }
+
     // =========================================================================
     // Вспомогательный метод
     // =========================================================================

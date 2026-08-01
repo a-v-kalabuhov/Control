@@ -301,6 +301,41 @@ public class ValidateTelemetryDataHandlerTests
         result.Data!.Sensors["temp"].Should().Be("20.3", "первое сообщение после офлайна — порог игнорируется");
     }
 
+    /// <summary>
+    /// Сообщение, отставшее на 100 мс от закешированного, должно распознаваться как
+    /// out-of-order и проходить мимо COV-фильтра. Регрессия: при обрезании метки до
+    /// секунды обе величины совпадали, перестановка внутри секунды не детектировалась
+    /// и значение подменялось закешированным.
+    /// </summary>
+    [Fact]
+    public async Task ValidateAsync_MessageOlderByMilliseconds_SkipsCovFilter()
+    {
+        var immId = Guid.NewGuid();
+        var sensor = PipelineTestFixtures.MakeSensor("temp", "float", threshold: 5);
+        var template = PipelineTestFixtures.MakeTemplate([sensor], timeoutSeconds: 60);
+
+        // Кеш хранит время более позднего сообщения — в той же секунде, но на 100 мс позже.
+        var cachedAt  = new DateTime(2023, 11, 14, 22, 13, 20, 200, DateTimeKind.Utc);
+        var messageAt = new DateTime(2023, 11, 14, 22, 13, 20, 100, DateTimeKind.Utc);
+
+        _immCache.GetEntry(immId).Returns(PipelineTestFixtures.MakeImmCacheEntry(
+            immId, cachedAt,
+            new Dictionary<string, string> { ["temp"] = "20.0" },
+            timeoutSeconds: 60));
+
+        // Изменение в пределах порога: нормальный путь подменил бы значение на "20.0".
+        var message = PipelineTestFixtures.MakeMessage(immId,
+            new Dictionary<string, string> { ["temp"] = "20.3" },
+            timestampUtc: messageAt);
+        var context = BuildContext(immId, message, template);
+
+        var (success, result) = await _sut.ValidateAsync(context);
+
+        success.Should().BeTrue();
+        result.Data!.Sensors["temp"].Should().Be("20.3",
+            "сообщение out-of-order проходит без COV-фильтрации");
+    }
+
     // =========================================================================
     // Вспомогательные методы
     // =========================================================================
