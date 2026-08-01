@@ -314,9 +314,13 @@ public class ValidateTelemetryDataHandlerTests
         var sensor = PipelineTestFixtures.MakeSensor("temp", "float", threshold: 5);
         var template = PipelineTestFixtures.MakeTemplate([sensor], timeoutSeconds: 60);
 
-        // Кеш хранит время более позднего сообщения — в той же секунде, но на 100 мс позже.
-        var cachedAt  = new DateTime(2023, 11, 14, 22, 13, 20, 200, DateTimeKind.Utc);
-        var messageAt = new DateTime(2023, 11, 14, 22, 13, 20, 100, DateTimeKind.Utc);
+        // Кеш хранит время более позднего сообщения — на 100 мс позже пришедшего.
+        // Время берётся от текущего момента: ImmCacheEntry.IsOnline считается по
+        // системным часам, и абсолютная дата в прошлом увела бы проверку в ветку
+        // «офлайн», где значение тоже проходит без фильтрации, — тест перестал бы
+        // различать ветки.
+        var cachedAt  = DateTime.UtcNow;
+        var messageAt = cachedAt.AddMilliseconds(-100);
 
         _immCache.GetEntry(immId).Returns(PipelineTestFixtures.MakeImmCacheEntry(
             immId, cachedAt,
