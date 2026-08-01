@@ -2,8 +2,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Wintime.Control.Core.Entities;
+using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
+using TaskStatus = Wintime.Control.Core.Enums.TaskStatus;
 
 namespace Wintime.Control.Tests.Integration.Tasks;
 
@@ -126,5 +130,36 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
         var after = await client.GetFromJsonAsync<JsonElement>($"/api/tasks/{id}", JsonOptions);
         after.GetProperty("workMode").GetString().Should().Be("SemiAuto");
         after.GetProperty("plannedFullCycleSeconds").GetInt32().Should().Be(75);
+        after.GetProperty("plannedInjectionCycleSeconds").GetInt32().Should().Be(25);
+    }
+
+    [Fact]
+    public async Task UpdateTask_LegacyTaskWithoutFullCycle_SavesWithoutRequiringCycle()
+    {
+        Guid id;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var task = new ShiftTask
+            {
+                ImmId = _factory.TestImmId,
+                MoldId = _factory.TestMoldId,
+                PlanQuantity = 100,
+                Status = TaskStatus.Draft,
+                PlannedFullCycleSeconds = null,
+                PlannedInjectionCycleSeconds = null
+            };
+            db.ShiftTasks.Add(task);
+            await db.SaveChangesAsync();
+            id = task.Id;
+        }
+
+        var client = await ManagerClientAsync();
+
+        var resp = await client.PutAsJsonAsync($"/api/tasks/{id}", new { note = "легаси-задание" });
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var after = await client.GetFromJsonAsync<JsonElement>($"/api/tasks/{id}", JsonOptions);
+        after.GetProperty("plannedFullCycleSeconds").ValueKind.Should().Be(JsonValueKind.Null);
     }
 }
