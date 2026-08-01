@@ -18,6 +18,21 @@ public class ImmCycle : BaseEntity
     /// </summary>
     public int Cavities { get; set; }
 
+    /// <summary>
+    /// Длительность цикла литья, миллисекунды: смыкание ПФ↑ → полное раскрытие↑.
+    /// Приходит от коннектора сенсором типа <c>injectionDuration</c>.
+    /// <c>null</c> — машина не отдаёт сигналы формы (штатный случай).
+    /// </summary>
+    public int? InjectionDurationMs { get; set; }
+
+    /// <summary>
+    /// Длительность паузы ПЕРЕД этим циклом литья, миллисекунды:
+    /// предыдущее раскрытие↑ → смыкание↑. Сенсор типа <c>cyclePause</c>.
+    /// Полный цикл = <see cref="InjectionDurationMs"/> + <see cref="PauseDurationMs"/>,
+    /// отдельно не хранится.
+    /// </summary>
+    public int? PauseDurationMs { get; set; }
+
     // Navigation
     public Imm Imm { get; set; } = null!;
     public ShiftTask? Task { get; set; }
