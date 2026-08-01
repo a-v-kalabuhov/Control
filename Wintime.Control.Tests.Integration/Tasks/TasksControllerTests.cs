@@ -289,7 +289,8 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         immId = immId ?? _factory.TestImmId,
         moldId = _factory.TestMoldId,
         planQuantity = 100,
-        note = "Integration test task"
+        note = "Integration test task",
+        plannedFullCycleSeconds = 30
     };
 
     private async Task<Guid> CreateTaskAsync(HttpClient client, Guid? immId = null)

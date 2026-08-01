@@ -27,6 +27,10 @@ public class TaskDto
     public Guid? OrderId { get; set; }
     public string? OrderNumber { get; set; }
     public int DefectQuantity { get; set; }
+    // Рабочий режим и эталоны цикла (спека 2026-08-01)
+    public Enums.WorkMode WorkMode { get; set; }
+    public int? PlannedFullCycleSeconds { get; set; }
+    public int? PlannedInjectionCycleSeconds { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
