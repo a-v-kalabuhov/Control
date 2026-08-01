@@ -112,7 +112,7 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item label="Полный цикл (сек.)" prop="plannedFullCycleSeconds">
+      <el-form-item label="Полный цикл (сек.)" prop="plannedFullCycleSeconds" :required="isFullCycleRequired">
         <el-input-number
           v-model="form.plannedFullCycleSeconds"
           :min="1"
@@ -275,6 +275,12 @@ const rules = {
     }
   ]
 }
+
+// То же условие, что и в validator'е rules.plannedFullCycleSeconds, вынесено
+// сюда для визуальной звёздочки обязательности на el-form-item.
+const isFullCycleRequired = computed(() => {
+  return !editingTask.value || (editingTask.value.plannedFullCycleSeconds ?? null) !== null
+})
 
 const selectedMoldInfo = computed(() => {
   if (!form.moldId) return null
