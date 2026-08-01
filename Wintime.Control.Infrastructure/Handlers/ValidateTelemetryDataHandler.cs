@@ -64,7 +64,7 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
 
         var newMessage = new MqttTelemetryMessage
         {
-            Timestamp = context.Data!.Timestamp,
+            TimestampUtc = context.Data!.TimestampUtc,
             DeviceId = context.Data.DeviceId,
             Mode = context.Data.Mode,
             Sensors = outputSensors
@@ -186,7 +186,7 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
     {
         var immId = context.Device!.Id;
         var template = context.Template!;
-        var messageAt = DateTimeOffset.FromUnixTimeSeconds(context.Data!.Timestamp).UtcDateTime;
+        var messageAt = context.Data!.TimestampUtc;
 
         var entry = _immCache.GetEntry(immId);
 

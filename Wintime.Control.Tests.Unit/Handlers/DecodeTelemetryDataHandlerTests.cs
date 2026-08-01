@@ -178,19 +178,20 @@ public class DecodeTelemetryDataHandlerTests : IDisposable
         var (success, result) = await CreateSut().DecodeAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Timestamp.Should().Be(unixTs);
+        result.Data!.TimestampUtc.Should().Be(DateTimeOffset.FromUnixTimeSeconds(unixTs).UtcDateTime);
+        result.Data.TimestampUtc.Kind.Should().Be(DateTimeKind.Utc);
     }
 
     [Fact]
-    public async Task DecodeAsync_IsoTimestampString_ConvertedToUnixSeconds()
+    public async Task DecodeAsync_IsoTimestampString_PreservesSubSecondPrecision()
     {
         var immId = Guid.NewGuid();
         var templateId = Guid.NewGuid();
         await SeedImm(immId, templateId);
         _templateCache.GetById(templateId).Returns(PipelineTestFixtures.MakeTemplate());
 
-        var isoTime = "2023-11-14T22:13:20Z";
-        var expectedUnix = new DateTimeOffset(2023, 11, 14, 22, 13, 20, TimeSpan.Zero).ToUnixTimeSeconds();
+        var isoTime = "2023-11-14T22:13:20.1230000Z";
+        var expected = new DateTime(2023, 11, 14, 22, 13, 20, 123, DateTimeKind.Utc);
         var topic = $"control/imm/{immId}/telemetry";
         var payload = "{\"timestamp\": \"" + isoTime + "\", \"mode\": \"auto\", \"sensors\": {\"s\": \"1\"}}";
         var context = PipelineTestFixtures.MakeContext(topic, payload);
@@ -198,7 +199,29 @@ public class DecodeTelemetryDataHandlerTests : IDisposable
         var (success, result) = await CreateSut().DecodeAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Timestamp.Should().Be(expectedUnix);
+        result.Data!.TimestampUtc.Should().Be(expected);
+        result.Data.TimestampUtc.Kind.Should().Be(DateTimeKind.Utc);
+    }
+
+    [Fact]
+    public async Task DecodeAsync_TwoIsoTimestampsInSameSecond_ProduceDistinctValues()
+    {
+        var immId = Guid.NewGuid();
+        var templateId = Guid.NewGuid();
+        await SeedImm(immId, templateId);
+        _templateCache.GetById(templateId).Returns(PipelineTestFixtures.MakeTemplate());
+
+        var topic = $"control/imm/{immId}/telemetry";
+        var first  = "{\"timestamp\": \"2023-11-14T22:13:20.1000000Z\", \"mode\": \"auto\", \"sensors\": {\"s\": \"1\"}}";
+        var second = "{\"timestamp\": \"2023-11-14T22:13:20.2000000Z\", \"mode\": \"auto\", \"sensors\": {\"s\": \"1\"}}";
+
+        var (ok1, r1) = await CreateSut().DecodeAsync(PipelineTestFixtures.MakeContext(topic, first));
+        var (ok2, r2) = await CreateSut().DecodeAsync(PipelineTestFixtures.MakeContext(topic, second));
+
+        ok1.Should().BeTrue();
+        ok2.Should().BeTrue();
+        r2.Data!.TimestampUtc.Should().BeAfter(r1.Data!.TimestampUtc,
+            "два сообщения внутри одной секунды обязаны различаться по времени");
     }
 
     // =========================================================================

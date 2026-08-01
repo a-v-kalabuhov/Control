@@ -34,7 +34,7 @@ public class UpdateImmStatusHandler : IUpdateImmStatusHandler
     {
         var immId = context.Device!.Id;
         var status = MapModeToStatus(context.Data?.Mode);
-        var changedAt = DateTimeOffset.FromUnixTimeSeconds(context.Data!.Timestamp).UtcDateTime;
+        var changedAt = context.Data!.TimestampUtc;
 
         await _statusService.UpdateStatusAsync(immId, status, changedAt);
     }

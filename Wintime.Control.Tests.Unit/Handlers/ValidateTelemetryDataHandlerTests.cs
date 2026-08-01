@@ -185,10 +185,9 @@ public class ValidateTelemetryDataHandlerTests
 
         // Новое значение: 20.3 — изменение 0.3, порог 0.5 → COV не срабатывает
         var messageAt = cachedAt.AddSeconds(1);
-        var unixTs = new DateTimeOffset(messageAt).ToUnixTimeSeconds();
         var message = PipelineTestFixtures.MakeMessage(immId,
             new Dictionary<string, string> { ["temp"] = "20.3" },
-            timestamp: unixTs);
+            timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
@@ -212,10 +211,9 @@ public class ValidateTelemetryDataHandlerTests
 
         // Новое значение: 20.7 — изменение 0.7, порог 0.5 → COV срабатывает
         var messageAt = cachedAt.AddSeconds(1);
-        var unixTs = new DateTimeOffset(messageAt).ToUnixTimeSeconds();
         var message = PipelineTestFixtures.MakeMessage(immId,
             new Dictionary<string, string> { ["temp"] = "20.7" },
-            timestamp: unixTs);
+            timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
@@ -238,10 +236,9 @@ public class ValidateTelemetryDataHandlerTests
         _immCache.GetEntry(immId).Returns(cacheEntry);
 
         var messageAt = cachedAt.AddSeconds(1);
-        var unixTs = new DateTimeOffset(messageAt).ToUnixTimeSeconds();
         var message = PipelineTestFixtures.MakeMessage(immId,
             new Dictionary<string, string> { ["cycle"] = "101" },
-            timestamp: unixTs);
+            timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
@@ -265,10 +262,9 @@ public class ValidateTelemetryDataHandlerTests
         _immCache.GetEntry(immId).Returns(cacheEntry);
 
         var oldMessageTime = cacheTime.AddSeconds(-10); // старше кэша
-        var unixTs = new DateTimeOffset(oldMessageTime).ToUnixTimeSeconds();
         var message = PipelineTestFixtures.MakeMessage(immId,
             new Dictionary<string, string> { ["temp"] = "25.0" },
-            timestamp: unixTs);
+            timestampUtc: oldMessageTime);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
@@ -294,10 +290,9 @@ public class ValidateTelemetryDataHandlerTests
 
         // Новое значение в пределах порога, но устройство было offline
         var messageAt = DateTime.UtcNow;
-        var unixTs = new DateTimeOffset(messageAt).ToUnixTimeSeconds();
         var message = PipelineTestFixtures.MakeMessage(immId,
             new Dictionary<string, string> { ["temp"] = "20.3" },
-            timestamp: unixTs);
+            timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
@@ -322,7 +317,7 @@ public class ValidateTelemetryDataHandlerTests
 
     private void SetupCacheEntry(Guid immId, MqttProcessingContext context)
     {
-        var messageAt = DateTimeOffset.FromUnixTimeSeconds(context.Data!.Timestamp).UtcDateTime;
+        var messageAt = context.Data!.TimestampUtc;
         // Уже существующий кэш с тем же timestamp — устройство онлайн
         var entry = PipelineTestFixtures.MakeImmCacheEntry(
             immId,

@@ -56,7 +56,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
         var currentMode = ImmMode.Normalize(data.Mode);
         var immId = device.Id;
-        var currentTime = DateTimeOffset.FromUnixTimeSeconds(data.Timestamp).UtcDateTime;
+        var currentTime = data.TimestampUtc;
 
         var activeTask = await _db.ShiftTasks
             .Include(t => t.Mold)

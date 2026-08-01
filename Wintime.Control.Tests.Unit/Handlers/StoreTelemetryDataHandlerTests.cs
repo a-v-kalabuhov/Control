@@ -200,21 +200,19 @@ public class StoreTelemetryDataHandlerTests : IDisposable
 
     /// <summary>
     /// Поля <c>ImmId</c>, <c>ParameterName</c> и <c>Timestamp</c> должны точно
-    /// соответствовать значениям из контекста; <c>Timestamp</c> конвертируется
-    /// из Unix-секунд в UTC <c>DateTime</c>.
+    /// соответствовать значениям из контекста, включая доли секунды.
     /// </summary>
     [Fact]
     public async Task SaveAsync_SavesCorrectImmIdParameterNameAndTimestamp()
     {
         var immId = Guid.NewGuid();
-        var unixTs = 1_700_000_000L;
-        var expectedTimestamp = DateTimeOffset.FromUnixTimeSeconds(unixTs).UtcDateTime;
+        var expectedTimestamp = new DateTime(2023, 11, 14, 22, 13, 20, 123, DateTimeKind.Utc);
 
         var context = BuildContext(
             immId: immId,
             sensors: new Dictionary<string, string> { ["temp"] = "20.0" },
             templateSensors: [PipelineTestFixtures.MakeSensor("temp", "float")],
-            timestamp: unixTs);
+            timestampUtc: expectedTimestamp);
 
         await CreateSut().SaveAsync(context);
 
@@ -298,12 +296,12 @@ public class StoreTelemetryDataHandlerTests : IDisposable
         Dictionary<string, string> sensors,
         IReadOnlyList<SensorTemplate> templateSensors,
         Guid? immId = null,
-        long? timestamp = null)
+        DateTime? timestampUtc = null)
     {
         var id = immId ?? Guid.NewGuid();
-        var ts = timestamp ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var ts = timestampUtc ?? DateTime.UtcNow;
 
-        var message  = PipelineTestFixtures.MakeMessage(id, sensors, timestamp: ts);
+        var message  = PipelineTestFixtures.MakeMessage(id, sensors, timestampUtc: ts);
         var device   = PipelineTestFixtures.MakeImmDto(id);
         var template = PipelineTestFixtures.MakeTemplate(templateSensors);
 

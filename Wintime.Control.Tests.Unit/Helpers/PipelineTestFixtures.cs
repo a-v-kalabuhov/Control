@@ -22,10 +22,10 @@ internal static class PipelineTestFixtures
         Guid immId,
         Dictionary<string, string>? sensors = null,
         string? mode = "auto",
-        long? timestamp = null)
+        DateTime? timestampUtc = null)
         => new()
         {
-            Timestamp = timestamp ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            TimestampUtc = timestampUtc ?? DateTime.UtcNow,
             DeviceId = immId.ToString(),
             Mode = mode,
             Sensors = sensors ?? []

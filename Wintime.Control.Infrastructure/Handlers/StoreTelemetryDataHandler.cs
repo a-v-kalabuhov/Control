@@ -21,7 +21,7 @@ public class StoreTelemetryDataHandler : IStoreTelemetryDataHandler
     {
         var data = context.Data!;
         var immId = context.Device!.Id;
-        var timestamp = DateTimeOffset.FromUnixTimeSeconds(data.Timestamp).UtcDateTime;
+        var timestamp = data.TimestampUtc;
 
         var sensorsByName = context.Template!.Sensors.ToDictionary(s => s.ParameterName);
 
