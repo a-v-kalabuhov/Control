@@ -44,12 +44,12 @@ public class CycleProcessingHandlerTests
         }
     }
 
-    private static MqttProcessingContext MakeCycleContext(Guid immId, int counter, string mode)
+    private static MqttProcessingContext MakeCycleContext(Guid immId, int counter, string mode, DateTime? timestampUtc = null)
     {
         var sensor = PipelineTestFixtures.MakeSensor("counter", type: "cycleCounter");
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
         var message = PipelineTestFixtures.MakeMessage(immId,
-            sensors: new Dictionary<string, string> { ["counter"] = counter.ToString() }, mode: mode);
+            sensors: new Dictionary<string, string> { ["counter"] = counter.ToString() }, mode: mode, timestampUtc: timestampUtc);
         var device = PipelineTestFixtures.MakeImmDto(immId);
         return PipelineTestFixtures.MakeContext("control/imm/x/telemetry", "{}", data: message, device: device, template: template);
     }
@@ -244,5 +244,31 @@ public class CycleProcessingHandlerTests
 
         var reloaded = await db.ShiftTasks.FindAsync(task.Id);
         reloaded!.ActualQuantity.Should().Be(2, "выпуск засчитан ровно один раз — за цикл, закрытый счётчиком");
+    }
+
+    // Находка (Important): (int) от дробной разности усекает к нулю — цикл 9.9с
+    // записывался бы как 9. С сообщениями, несущими доли секунды, разность больше
+    // не целая, поэтому DurationSeconds обязан округляться к ближайшей секунде.
+    [Fact]
+    public async SystemTask Fractional_cycle_duration_rounds_to_nearest_second()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        var cycleStart = new DateTime(2024, 1, 1, 12, 0, 0, 0, DateTimeKind.Utc);
+        var cycleEnd = cycleStart.AddSeconds(9.9); // усечение → 9, округление → 10
+
+        // auto/5: открывает окно цикла в момент cycleStart.
+        await sut.ProcessAsync(MakeCycleContext(immId, 5, "auto", cycleStart));
+        // auto/6: счётчик изменился 9.9с спустя → цикл закрыт.
+        await sut.ProcessAsync(MakeCycleContext(immId, 6, "auto", cycleEnd));
+
+        var cycle = await db.ImmCycles.SingleAsync();
+        cycle.DurationSeconds.Should().Be(10, "9.9с округляется к ближайшей секунде, а не усекается до 9");
     }
 }

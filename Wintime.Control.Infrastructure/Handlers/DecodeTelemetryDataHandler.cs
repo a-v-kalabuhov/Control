@@ -246,7 +246,7 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                         out var parsed))
                     return false;
 
-                utc = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+                utc = parsed;
                 return true;
 
             case JsonValueKind.Number:
