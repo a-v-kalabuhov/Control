@@ -23,6 +23,15 @@
         <el-descriptions-item label="Наладчик">
           {{ task?.personnelName || '—' }}
         </el-descriptions-item>
+        <el-descriptions-item label="Рабочий режим">
+          {{ task?.workMode === 'SemiAuto' ? 'Полуавтомат' : 'Автомат' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="Полный цикл">
+          {{ task?.plannedFullCycleSeconds ? `${task.plannedFullCycleSeconds} с` : '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="Цикл литья">
+          {{ task?.plannedInjectionCycleSeconds ? `${task.plannedInjectionCycleSeconds} с` : '—' }}
+        </el-descriptions-item>
         <el-descriptions-item label="Начато">
           {{ formatDate(task?.startedAt) }}
         </el-descriptions-item>

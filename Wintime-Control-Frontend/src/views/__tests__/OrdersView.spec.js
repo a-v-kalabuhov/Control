@@ -80,7 +80,7 @@ describe('OrdersView', () => {
   it('редактирование существующего заказа вызывает ordersApi.update', async () => {
     const wrapper = mountView([
       { id: '5', number: 'ORD-5', productTypeArticle: 'E', quantity: 50,
-        goodQuantity: 10, progressPercent: 20, status: 'Active', dueDate: null,
+        goodQuantity: 10, progressPercent: 20, status: 'Active', dueDate: '2026-08-01T00:00:00Z',
         orderDate: '2026-07-01', productTypeId: 'pt-1', note: 'старое примечание' }
     ])
     await flushPromises()
