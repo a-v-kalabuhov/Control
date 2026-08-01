@@ -34,7 +34,7 @@ public class CycleProcessingPolicyTests
     {
         CycleProcessingPolicy.ShouldProcessCycle(signal, task)
             .Should().Be(expectedCycle);
-        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime)
+        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime, WorkMode.Auto)
             .Should().Be(expectedOutput);
     }
 
@@ -43,5 +43,24 @@ public class CycleProcessingPolicyTests
     {
         CycleProcessingPolicy.ShouldProcessCycle("AUTO", ActiveTaskStatus.None)
             .Should().BeTrue();
+    }
+
+    // В полуавтомате ТПА между циклами ждёт оператора, и коннектор по своему
+    // таймауту успевает уйти в idle до того, как цикл завершится. Требовать
+    // mode == auto здесь означало бы терять выпуск на каждом цикле.
+    [Theory]
+    // signal, task, hasOpenDowntime, expectedOutput
+    [InlineData("auto",   ActiveTaskStatus.InProgress, false, true)]
+    [InlineData("idle",   ActiveTaskStatus.InProgress, false, true)]
+    [InlineData("alarm",  ActiveTaskStatus.InProgress, false, true)]
+    [InlineData("manual", ActiveTaskStatus.InProgress, false, true)]
+    [InlineData("idle",   ActiveTaskStatus.InProgress, true,  false)] // открытый простой
+    [InlineData("idle",   ActiveTaskStatus.Setup,      false, false)] // наладка
+    [InlineData("idle",   ActiveTaskStatus.None,       false, false)] // нет задания
+    public void ShouldCountOutput_SemiAuto_IgnoresMode(
+        string signal, ActiveTaskStatus task, bool hasOpenDowntime, bool expectedOutput)
+    {
+        CycleProcessingPolicy.ShouldCountOutput(signal, task, hasOpenDowntime, WorkMode.SemiAuto)
+            .Should().Be(expectedOutput);
     }
 }

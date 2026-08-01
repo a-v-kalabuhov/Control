@@ -11,7 +11,8 @@ namespace Wintime.Control.Infrastructure.Handlers;
 
 /// <summary>
 /// Стадия 2: учёт выпуска и материала активного InProgress-задания по завершённому циклу.
-/// Правила — CycleProcessingPolicy.ShouldCountOutput (InProgress + auto + нет открытого простоя).
+/// Правила — CycleProcessingPolicy.ShouldCountOutput (InProgress + нет простоя;
+/// в автомате дополнительно mode == auto, в полуавтомате это условие снято).
 /// </summary>
 public class TaskOutputHandler : ICycleHandler
 {
@@ -37,7 +38,7 @@ public class TaskOutputHandler : ICycleHandler
               && e.EventType == Core.Enums.EventType.Downtime
               && e.EndTime == null, ct);
 
-        if (!CycleProcessingPolicy.ShouldCountOutput(completed.Mode, taskStatus, hasOpenDowntime))
+        if (!CycleProcessingPolicy.ShouldCountOutput(completed.Mode, taskStatus, hasOpenDowntime, task.WorkMode))
             return;
 
         task.ActualQuantity += cycle.Cavities;

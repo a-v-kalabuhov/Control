@@ -22,10 +22,18 @@ public static class CycleProcessingPolicy
 
     /// <summary>
     /// Учитывать ли выпуск (ActualQuantity / материал задания).
-    /// Только: задание InProgress И режим auto И нет открытого простоя.
+    /// Общее условие: задание InProgress И нет открытого простоя.
+    /// В автомате дополнительно требуется режим auto; в полуавтомате это условие
+    /// снято — там ТПА между циклами ждёт оператора, и коннектор по своему таймауту
+    /// успевает уйти в idle до завершения цикла.
     /// </summary>
-    public static bool ShouldCountOutput(string mode, ActiveTaskStatus task, bool hasOpenDowntime) =>
-        task == ActiveTaskStatus.InProgress
-        && ImmMode.Normalize(mode) == ImmMode.Auto
-        && !hasOpenDowntime;
+    public static bool ShouldCountOutput(string mode, ActiveTaskStatus task,
+                                         bool hasOpenDowntime, WorkMode workMode)
+    {
+        if (task != ActiveTaskStatus.InProgress || hasOpenDowntime)
+            return false;
+
+        return workMode == WorkMode.SemiAuto
+            || ImmMode.Normalize(mode) == ImmMode.Auto;
+    }
 }
