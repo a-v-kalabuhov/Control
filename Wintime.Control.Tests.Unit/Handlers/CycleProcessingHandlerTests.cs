@@ -53,10 +53,15 @@ public class CycleProcessingHandlerTests
     private sealed class RecordingLogger<T> : ILogger<T>
     {
         public List<LogLevel> Levels { get; } = new();
+        public List<string> Messages { get; } = new();
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) => Levels.Add(logLevel);
+            Func<TState, Exception?, string> formatter)
+        {
+            Levels.Add(logLevel);
+            Messages.Add(formatter(state, exception));
+        }
     }
 
     private static MqttProcessingContext MakeCycleContext(Guid immId, int counter, string mode, DateTime? timestampUtc = null)
@@ -511,11 +516,21 @@ public class CycleProcessingHandlerTests
         await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "auto", t0, t1));
         recordingLogger.Levels.Should().NotContain(LogLevel.Warning, "первый close валиден, отклонений нет");
 
-        // idle/6: тот же физический впрыск, латч НЕ сдвинулся (cycleEnd == prevEnd) — цикл B
-        // закрыт по modeChangedFromAuto (counterChanged=false). Ожидаемый паттерн.
-        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "idle", t1, t1));
+        // idle/6: тот же физический впрыск — латч НЕ сдвинулся ни на старте, ни на конце
+        // (защёлка держит одни и те же значения между событиями формы, как публикует
+        // коннектор): cycleStart(2) == cycleStart(1) == t0, cycleEnd(2) == cycleEnd(1) == t1.
+        // Цикл B закрыт по modeChangedFromAuto (counterChanged=false). Ожидаемый паттерн —
+        // и, что важно, здесь реально валятся ДВЕ проверки разом (notStale И
+        // notOlderThanPrevEnd), не одна: t1 == prevEnd(=t1) валит notStale; t0 < prevEnd(=t1)
+        // валит notOlderThanPrevEnd (впрыск(1) был ненулевой, поэтому t0 < t1 всегда).
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "idle", t0, t1));
 
-        recordingLogger.Levels.Should().Contain(LogLevel.Debug, "ожидаемый SemiAuto double-close пишется в Debug");
+        recordingLogger.Messages.Count(m => m.Contains("expected SemiAuto double-close")).Should().Be(1,
+            "именно rejection-лог double-close должен сработать, а не побочный LogDebug('cycle saved...')");
+        var doubleCloseIndex = recordingLogger.Messages.FindIndex(m => m.Contains("expected SemiAuto double-close"));
+        doubleCloseIndex.Should().BeGreaterThanOrEqualTo(0);
+        recordingLogger.Levels[doubleCloseIndex].Should().Be(LogLevel.Debug,
+            "ожидаемый SemiAuto double-close пишется в Debug, а не просто где-то в логе есть Debug");
         recordingLogger.Levels.Should().NotContain(LogLevel.Warning,
             "ожидаемый паттерн не должен шуметь в Warning на каждом цикле SemiAuto");
 

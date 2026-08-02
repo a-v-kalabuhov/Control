@@ -157,13 +157,31 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                     // затем ещё раз по modeChangedFromAuto (idle) для того же, ещё не сдвинувшегося
                     // латча cycleEnd (см. "Находка 1" в тестах, SemiAuto_counter_then_idle_...).
                     // Это ожидаемо на каждом цикле, а не аномалия — не варт LogWarning-шума.
-                    // Отличаем по точному совпадению латча (не просто "<=", как при настоящем
-                    // протухании) и по тому, что это закрытие вызвано НЕ counterChanged.
-                    bool isExpectedSemiAutoDoubleClose = failedGuards.Count == 1
-                        && !notStale
-                        && prevCycleEndMs.HasValue
+                    //
+                    // Реальный паттерн валит ДВЕ проверки одновременно, не одну: cycleEnd(N) точно
+                    // равен prevCycleEndMs (не просто "<=" — это и есть "тот же латч, то же
+                    // сообщение"), поэтому notStale проваливается; а поскольку cycleStart(N) не
+                    // сдвинулся, а cycleEnd(N) < prevCycleEndMs уже не может быть (латч не идёт
+                    // назад), cycleStart(N) < prevCycleEndMs почти всегда — значит и
+                    // notOlderThanPrevEnd проваливается тоже. Ключимся на ПРИЧИНУ (точное
+                    // совпадение латча + закрытие не по счётчику), а не на количестве
+                    // провалившихся проверок — notOlderThanPrevEnd намеренно не требуется здесь,
+                    // её провал в этом сценарии ожидаем.
+                    //
+                    // pauseFitsInt32 НЕ требуется по той же причине: её проверка на неотрицательность
+                    // (pauseRawMs = cycleStart(N) − prevCycleEndMs >= 0) — это буквально тот же
+                    // предикат, что и notOlderThanPrevEnd, только с обратным знаком. Раз мы терпим
+                    // провал notOlderThanPrevEnd, требовать pauseFitsInt32 здесь же означало бы
+                    // требовать то же самое условие держаться — снова тупиковый код, как и
+                    // Count == 1 до этого фикса. injectionFitsInt32 — независимая защита (впрыск
+                    // считается из тех же start/end, что и в исходном валидном закрытии) и
+                    // по-прежнему обязана пройти; notReversed — тоже, иначе это не «тот же цикл
+                    // ещё раз», а действительно плохие данные.
+                    bool isExpectedSemiAutoDoubleClose = prevCycleEndMs.HasValue
                         && cycleEndMs.Value == prevCycleEndMs.Value
-                        && !counterChanged;
+                        && !counterChanged
+                        && notReversed
+                        && injectionFitsInt32;
 
                     if (isExpectedSemiAutoDoubleClose)
                     {
