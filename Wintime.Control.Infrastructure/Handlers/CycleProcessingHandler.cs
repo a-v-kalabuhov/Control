@@ -67,17 +67,18 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
         var taskStatus = ActiveTaskStatusMap.From(activeTask?.Status);
 
+        var state = _tracker.Get(immId);
+
         if (!CycleProcessingPolicy.ShouldProcessCycle(currentMode, taskStatus))
         {
-            _tracker.Set(immId, new CycleState(null, currentCounter, currentMode));
+            _tracker.Set(immId, new CycleState(null, currentCounter, currentMode, state?.LastCycleEndMs));
             return;
         }
 
-        var state = _tracker.Get(immId);
         if (state is null)
         {
             var startTime = currentMode == ImmMode.Auto ? currentTime : (DateTime?)null;
-            _tracker.Set(immId, new CycleState(startTime, currentCounter, currentMode));
+            _tracker.Set(immId, new CycleState(startTime, currentCounter, currentMode, null));
             return;
         }
 
@@ -86,25 +87,66 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         bool modeChangedFromAuto = state.LastMode == ImmMode.Auto && currentMode != ImmMode.Auto;
         bool cycleEnded = cycleWasActive && (counterChanged || modeChangedFromAuto);
 
+        long? newLastCycleEndMs = state.LastCycleEndMs;
+
         if (cycleEnded)
         {
             bool isSuccessful = currentMode != ImmMode.Alarm;
-            var cycleStart = state.CycleStartTime!.Value;
-            var duration = (int)Math.Round((currentTime - cycleStart).TotalSeconds);
+            var fallbackCycleStart = state.CycleStartTime!.Value;
             var cavities = activeTask?.Mold.Cavities ?? 0;
 
-            // Длительности приходят защёлкнутыми: коннектор обновляет их на событиях
-            // формы и повторяет в каждом сообщении. Сенсоров нет — поля остаются null.
-            int? injectionDurationMs = ReadIntSensor(template, data, "injectionDuration");
-            int? pauseDurationMs = ReadIntSensor(template, data, "cyclePause");
+            var cycleStartMs = ReadLongSensor(template, data, "cycleStart");
+            var cycleEndMs = ReadLongSensor(template, data, "cycleEnd");
+            var prevCycleEndMs = state.LastCycleEndMs;
+
+            bool sensorBoundaryValid = false;
+            if (cycleStartMs.HasValue && cycleEndMs.HasValue)
+            {
+                bool notStale = !prevCycleEndMs.HasValue || cycleEndMs.Value > prevCycleEndMs.Value;
+                bool notReversed = cycleEndMs.Value >= cycleStartMs.Value;
+
+                if (notStale && notReversed)
+                {
+                    sensorBoundaryValid = true;
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "IMM {ImmId}: rejected cycleStart/cycleEnd latch (start={Start}, end={End}, prevEnd={PrevEnd}) — falling back to message timestamps",
+                        immId, cycleStartMs, cycleEndMs, prevCycleEndMs);
+                }
+            }
+
+            DateTime cycleStartTime;
+            DateTime cycleEndTime;
+            int? injectionDurationMs = null;
+            int? pauseDurationMs = null;
+
+            if (sensorBoundaryValid)
+            {
+                cycleEndTime = DateTimeOffset.FromUnixTimeMilliseconds(cycleEndMs!.Value).UtcDateTime;
+                cycleStartTime = prevCycleEndMs.HasValue
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(prevCycleEndMs.Value).UtcDateTime
+                    : DateTimeOffset.FromUnixTimeMilliseconds(cycleStartMs!.Value).UtcDateTime;
+                injectionDurationMs = (int)(cycleEndMs.Value - cycleStartMs!.Value);
+                pauseDurationMs = prevCycleEndMs.HasValue ? (int)(cycleStartMs.Value - prevCycleEndMs.Value) : null;
+                newLastCycleEndMs = cycleEndMs.Value;
+            }
+            else
+            {
+                cycleStartTime = fallbackCycleStart;
+                cycleEndTime = currentTime;
+            }
+
+            var duration = (int)Math.Round((cycleEndTime - cycleStartTime).TotalSeconds);
 
             var cycle = new ImmCycle
             {
                 ImmId = immId,
                 TaskId = activeTask?.Id,
                 MoldId = activeTask?.MoldId,
-                StartTime = cycleStart,
-                EndTime = currentTime,
+                StartTime = cycleStartTime,
+                EndTime = cycleEndTime,
                 DurationSeconds = duration,
                 IsSuccessful = isSuccessful,
                 Cavities = cavities,
@@ -141,22 +183,22 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         else if (cycleWasActive && !cycleEnded)
             newCycleStart = state.CycleStartTime;
 
-        _tracker.Set(immId, new CycleState(newCycleStart, currentCounter, currentMode));
+        _tracker.Set(immId, new CycleState(newCycleStart, currentCounter, currentMode, newLastCycleEndMs));
     }
 
     /// <summary>
-    /// Прочитать целочисленный сенсор по семантическому типу шаблона.
+    /// Прочитать целочисленный (64-битный) сенсор по семантическому типу шаблона.
     /// Возвращает <c>null</c>, если сенсор не описан в шаблоне, отсутствует
     /// в сообщении или значение не парсится.
     /// </summary>
-    private static int? ReadIntSensor(CachedTemplate template, MqttTelemetryMessage data, string parameterType)
+    private static long? ReadLongSensor(CachedTemplate template, MqttTelemetryMessage data, string parameterType)
     {
         var sensor = template.Sensors.FirstOrDefault(s => s.ParameterType == parameterType);
         if (sensor is null)
             return null;
         if (!data.Sensors.TryGetValue(sensor.ParameterName, out var raw))
             return null;
-        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+        return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
     }
