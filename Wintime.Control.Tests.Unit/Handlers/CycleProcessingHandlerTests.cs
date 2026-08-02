@@ -273,6 +273,69 @@ public class CycleProcessingHandlerTests
     }
 
     [Fact]
+    public async SystemTask Zero_cycle_start_latch_falls_back_instead_of_overflowing_int32()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        const long t0 = 1_700_000_000_000L;
+        const long t1 = t0 + 12_300;
+        var msg1Time = new DateTime(2024, 1, 1, 12, 0, 1, DateTimeKind.Utc);
+        var msg2Time = new DateTime(2024, 1, 1, 12, 0, 2, DateTimeKind.Utc);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, 5, "auto"));
+        // Закрывает цикл 1 нормально, LastCycleEndMs трекера становится t1.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "auto", t0, t1, msg1Time));
+        // cycleStart(2) = 0 (сброшенная/неинициализированная защёлка коннектора), cycleEnd(2) — живое
+        // значение. Обе существующие проверки (notStale, notReversed) проходят, но сырая разница
+        // (~1.7e12 мс) переполнила бы int32 при приведении — граница должна быть отвергнута.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 7, "auto", 0L, t1 + 20_000, msg2Time));
+
+        var cycle2 = await db.ImmCycles.OrderBy(c => c.StartTime).Skip(1).SingleAsync();
+        cycle2.InjectionDurationMs.Should().BeNull("cycleStart=0 → разница переполнила бы int32 → запасной путь");
+        cycle2.PauseDurationMs.Should().BeNull();
+        cycle2.StartTime.Should().Be(msg1Time, "запасной путь: старт — метка предыдущего сообщения из трекера");
+        cycle2.EndTime.Should().Be(msg2Time, "запасной путь: конец — метка текущего сообщения");
+    }
+
+    [Fact]
+    public async SystemTask CycleStart_older_than_previous_cycleEnd_falls_back_to_message_timestamps()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        const long t0 = 1_700_000_000_000L;
+        const long t1 = t0 + 12_300;
+        var msg1Time = new DateTime(2024, 1, 1, 12, 0, 1, DateTimeKind.Utc);
+        var msg2Time = new DateTime(2024, 1, 1, 12, 0, 2, DateTimeKind.Utc);
+
+        await sut.ProcessAsync(MakeCycleContext(immId, 5, "auto"));
+        // Закрывает цикл 1 нормально, LastCycleEndMs трекера становится t1.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "auto", t0, t1, msg1Time));
+        // cycleStart(2) < cycleEnd(1) — защёлка старта отстаёт от предыдущего конца (пропущенное
+        // закрытие / частично обновлённая пара защёлок). cycleEnd(2) при этом больше cycleEnd(1)
+        // и >= cycleStart(2), так что обе СУЩЕСТВУЮЩИЕ проверки (notStale, notReversed) проходят —
+        // именно новая проверка notOlderThanPrevEnd должна отвергнуть границу.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 7, "auto", t1 - 1_000, t1 + 5_000, msg2Time));
+
+        var cycle2 = await db.ImmCycles.OrderBy(c => c.StartTime).Skip(1).SingleAsync();
+        cycle2.InjectionDurationMs.Should().BeNull("cycleStart(2) < cycleEnd(1) → отрицательная пауза → запасной путь");
+        cycle2.PauseDurationMs.Should().BeNull();
+        cycle2.StartTime.Should().Be(msg1Time);
+        cycle2.EndTime.Should().Be(msg2Time);
+    }
+
+    [Fact]
     public async SystemTask Completed_cycle_without_duration_sensors_leaves_fields_null()
     {
         var immId = Guid.NewGuid();

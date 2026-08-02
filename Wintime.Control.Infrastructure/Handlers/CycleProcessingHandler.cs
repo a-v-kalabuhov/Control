@@ -104,8 +104,14 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             {
                 bool notStale = !prevCycleEndMs.HasValue || cycleEndMs.Value > prevCycleEndMs.Value;
                 bool notReversed = cycleEndMs.Value >= cycleStartMs.Value;
+                bool notOlderThanPrevEnd = !prevCycleEndMs.HasValue || cycleStartMs.Value >= prevCycleEndMs.Value;
 
-                if (notStale && notReversed)
+                var injectionRawMs = cycleEndMs.Value - cycleStartMs.Value;
+                var pauseRawMs = prevCycleEndMs.HasValue ? cycleStartMs.Value - prevCycleEndMs.Value : (long?)null;
+                bool injectionFitsInt32 = injectionRawMs >= 0 && injectionRawMs <= int.MaxValue;
+                bool pauseFitsInt32 = !pauseRawMs.HasValue || (pauseRawMs.Value >= 0 && pauseRawMs.Value <= int.MaxValue);
+
+                if (notStale && notReversed && notOlderThanPrevEnd && injectionFitsInt32 && pauseFitsInt32)
                 {
                     sensorBoundaryValid = true;
                 }
