@@ -50,11 +50,11 @@ public sealed class TemplateCache : ITemplateCache
                     var type = s.TryGetProperty("type", out var t) ? t.GetString() ?? "float" : "float";
                     var threshold = s.TryGetProperty("threshold", out var th) && th.TryGetDecimal(out var thVal) ? thVal : 0m;
 
-                    // COV-фильтрация для длительностей цикла обязана быть выключена:
-                    // при ненулевом пороге фильтр подставит значение прошлого цикла
-                    // (ADR-0005, вариант B) и вместо реальной вариации получится ровная
-                    // линия — то есть потеряется ровно то, ради чего эти сенсоры заведены.
-                    if (type is "injectionDuration" or "cyclePause" && threshold != 0m)
+                    // COV-фильтрация для границ цикла обязана быть выключена:
+                    // при ненулевом пороге фильтр подставит защёлкнутое значение прошлого
+                    // цикла (ADR-0005, вариант B) и границы перестанут двигаться — то есть
+                    // потеряется ровно то, ради чего эти сенсоры заведены.
+                    if (type is "cycleStart" or "cycleEnd" && threshold != 0m)
                         threshold = 0m;
 
                     IReadOnlyList<string>? allowed = null;

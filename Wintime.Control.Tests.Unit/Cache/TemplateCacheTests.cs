@@ -265,13 +265,13 @@ public class TemplateCacheTests
     }
 
     /// <summary>
-    /// Новые семантические типы длительностей должны разбираться так же,
+    /// Новые семантические типы границ цикла должны разбираться так же,
     /// как cycleCounter.
     /// </summary>
     [Theory]
-    [InlineData("injectionDuration")]
-    [InlineData("cyclePause")]
-    public void Upsert_DurationSensor_ParsesParameterType(string type)
+    [InlineData("cycleStart")]
+    [InlineData("cycleEnd")]
+    public void Upsert_CycleBoundarySensor_ParsesParameterType(string type)
     {
         var cache = new TemplateCache();
         var template = MakeTemplate(json: $$"""
@@ -288,14 +288,14 @@ public class TemplateCacheTests
     }
 
     /// <summary>
-    /// COV-фильтрация для длительностей цикла обязана быть выключена: ненулевой
+    /// COV-фильтрация для границ цикла обязана быть выключена: ненулевой
     /// порог в конфиге принудительно обнуляется, иначе фильтр (ADR-0005, вариант B)
-    /// подставит значение прошлого цикла и вариация схлопнется в ровную линию.
+    /// подставит защёлкнутое значение прошлого цикла и границы перестанут двигаться.
     /// </summary>
     [Theory]
-    [InlineData("injectionDuration")]
-    [InlineData("cyclePause")]
-    public void Upsert_DurationSensorWithThreshold_ForcesThresholdToZero(string type)
+    [InlineData("cycleStart")]
+    [InlineData("cycleEnd")]
+    public void Upsert_CycleBoundarySensorWithThreshold_ForcesThresholdToZero(string type)
     {
         var cache = new TemplateCache();
         var template = MakeTemplate(json: $$"""
