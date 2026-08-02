@@ -137,16 +137,47 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                         // рестарта» (effectivePrevCycleEndMs=null), не отдельная ветка.
                         effectivePrevCycleEndMs = null;
                         _logger.LogWarning(
-                            "IMM {ImmId}: rejected pause span (start={Start}, prevEnd={PrevEnd}, span={SpanMs}ms > {ThresholdMs}ms) — " +
+                            "IMM {ImmId}: rejected: pause span exceeds {ThresholdMs}ms (start={Start}, prevEnd={PrevEnd}, span={SpanMs}ms) — " +
                             "PauseDurationMs set to null, injection duration still measured from sensors",
-                            immId, cycleStartMs, prevCycleEndMs, pauseRawMs, MaxPauseSpanMs);
+                            immId, MaxPauseSpanMs, cycleStartMs, prevCycleEndMs, pauseRawMs);
                     }
                 }
                 else
                 {
-                    _logger.LogWarning(
-                        "IMM {ImmId}: rejected cycleStart/cycleEnd latch (start={Start}, end={End}, prevEnd={PrevEnd}) — falling back to message timestamps",
-                        immId, cycleStartMs, cycleEndMs, prevCycleEndMs);
+                    // Называем конкретную провалившуюся защиту в тексте лога (минор #4 финального
+                    // ревью, эскалирован) — вместо одного общего "rejected latch" для всех причин.
+                    var failedGuards = new List<string>();
+                    if (!notStale) failedGuards.Add("stale cycleEnd latch");
+                    if (!notReversed) failedGuards.Add("inverted boundaries");
+                    if (!notOlderThanPrevEnd) failedGuards.Add("cycleStart precedes previous cycleEnd");
+                    if (!injectionFitsInt32 || !pauseFitsInt32) failedGuards.Add("injection/pause span overflows int32");
+                    var reason = string.Join("; ", failedGuards);
+
+                    // SemiAuto закрывает каждый физический цикл ДВАЖДЫ: сначала по counterChanged,
+                    // затем ещё раз по modeChangedFromAuto (idle) для того же, ещё не сдвинувшегося
+                    // латча cycleEnd (см. "Находка 1" в тестах, SemiAuto_counter_then_idle_...).
+                    // Это ожидаемо на каждом цикле, а не аномалия — не варт LogWarning-шума.
+                    // Отличаем по точному совпадению латча (не просто "<=", как при настоящем
+                    // протухании) и по тому, что это закрытие вызвано НЕ counterChanged.
+                    bool isExpectedSemiAutoDoubleClose = failedGuards.Count == 1
+                        && !notStale
+                        && prevCycleEndMs.HasValue
+                        && cycleEndMs.Value == prevCycleEndMs.Value
+                        && !counterChanged;
+
+                    if (isExpectedSemiAutoDoubleClose)
+                    {
+                        _logger.LogDebug(
+                            "IMM {ImmId}: rejected: {Reason} — expected SemiAuto double-close, not an anomaly " +
+                            "(start={Start}, end={End}, prevEnd={PrevEnd}) — falling back to message timestamps",
+                            immId, reason, cycleStartMs, cycleEndMs, prevCycleEndMs);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "IMM {ImmId}: rejected: {Reason} (start={Start}, end={End}, prevEnd={PrevEnd}) — falling back to message timestamps",
+                            immId, reason, cycleStartMs, cycleEndMs, prevCycleEndMs);
+                    }
                 }
             }
 

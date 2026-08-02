@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Wintime.Control.Core.DTOs.Mqtt;
@@ -42,6 +43,20 @@ public class CycleProcessingHandlerTests
             Called = true;
             return SystemTask.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// Кодовая база не заводит своей конвенции для проверки уровня лога — этот
+    /// минимальный фейк-логгер существует только ради Fix 3 (финальное ревью):
+    /// доказать, что ожидаемый SemiAuto double-close пишется в Debug, а не в Warning.
+    /// </summary>
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<LogLevel> Levels { get; } = new();
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Levels.Add(logLevel);
     }
 
     private static MqttProcessingContext MakeCycleContext(Guid immId, int counter, string mode, DateTime? timestampUtc = null)
@@ -462,6 +477,49 @@ public class CycleProcessingHandlerTests
 
         var reloaded = await db.ShiftTasks.FindAsync(task.Id);
         reloaded!.ActualQuantity.Should().Be(2, "выпуск засчитан ровно один раз — за цикл, закрытый счётчиком");
+    }
+
+    // Fix 3 (Important, финальное ревью): SemiAuto double-close (см. предыдущий тест) — это
+    // ожидаемое, рутинное отклонение защёлки cycleStart/cycleEnd, а не аномалия; оно
+    // случается на каждом цикле SemiAuto. rejected-лог для этого конкретного случая
+    // должен идти в Debug, а не в Warning — иначе журнал зашумляется на каждом цикле.
+    [Fact]
+    public async SystemTask SemiAuto_double_close_with_unchanged_latch_logs_at_debug_not_warning()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 2 };
+        var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
+        var task = new EntityTask
+        {
+            ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm,
+            PlanQuantity = 1000, Status = EntityTaskStatus.InProgress, WorkMode = WorkMode.SemiAuto
+        };
+        db.AddRange(mold, imm, task);
+        await db.SaveChangesAsync();
+
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var recordingLogger = new RecordingLogger<CycleProcessingHandler>();
+        var sut = new CycleProcessingHandler(db, tracker, [], recordingLogger);
+
+        const long t0 = 1_700_000_000_000L;
+        const long t1 = t0 + 12_300;
+
+        // auto/5: сеет трекер.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 5, "auto", t0, t0));
+        // auto/6: цикл A закрыт по counterChanged — латч t1 валиден, LastCycleEndMs = t1.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "auto", t0, t1));
+        recordingLogger.Levels.Should().NotContain(LogLevel.Warning, "первый close валиден, отклонений нет");
+
+        // idle/6: тот же физический впрыск, латч НЕ сдвинулся (cycleEnd == prevEnd) — цикл B
+        // закрыт по modeChangedFromAuto (counterChanged=false). Ожидаемый паттерн.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "idle", t1, t1));
+
+        recordingLogger.Levels.Should().Contain(LogLevel.Debug, "ожидаемый SemiAuto double-close пишется в Debug");
+        recordingLogger.Levels.Should().NotContain(LogLevel.Warning,
+            "ожидаемый паттерн не должен шуметь в Warning на каждом цикле SemiAuto");
+
+        (await db.ImmCycles.CountAsync()).Should().Be(2, "оба ImmCycle-события по-прежнему пишутся");
     }
 
     // Находка (Important): (int) от дробной разности усекает к нулю — цикл 9.9с
