@@ -214,6 +214,76 @@ public class CycleProcessingHandlerTests
             "инвариант: DurationSeconds и сумма длительностей описывают один и тот же отрезок");
     }
 
+    // Fix 1 (Critical, финальное ревью): гигантский разрыв cycleStart(N) − cycleEnd(N−1)
+    // (наладка/простой в часы между заданиями) не должен превратиться в фантомную
+    // PauseDurationMs — все пять СУЩЕСТВУЮЩИХ проверок формально проходят (защёлка
+    // свежая, не переставлена, cycleStart >= prevEnd, обе разницы влезают в int32), но
+    // шестая (максимальный разрыв, порог ADR-0010=900_000мс) должна отсечь именно паузу,
+    // сохранив при этом измерение впрыска.
+    [Fact]
+    public async SystemTask Pause_span_exceeding_downtime_threshold_nulls_pause_but_keeps_injection()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        const long t0 = 1_700_000_000_000L;
+        const long t1 = t0 + 12_300;                 // cycleEnd(1) → LastCycleEndMs = t1
+        const long gapMs = 7_200_000;                // 2 часа — многократно больше порога 900_000мс
+        const long t2 = t1 + gapMs;                   // cycleStart(2) — после долгой наладки/простоя
+        const long injection2Ms = 11_500;
+        const long t3 = t2 + injection2Ms;             // cycleEnd(2) — нормальный впрыск
+
+        await sut.ProcessAsync(MakeCycleContext(immId, 5, "auto"));
+        // Закрывает цикл 1 нормально, LastCycleEndMs трекера становится t1.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "auto", t0, t1));
+        // Закрывает цикл 2: пауза (2 часа) превышает порог ADR-0010, но сам впрыск
+        // cycleStart(2)→cycleEnd(2) измерен штатно.
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 7, "auto", t2, t3));
+
+        var cycle2 = await db.ImmCycles.OrderBy(c => c.StartTime).Skip(1).SingleAsync();
+        cycle2.PauseDurationMs.Should().BeNull("разрыв превышает порог простоя ADR-0010 (900_000мс) — паузе не доверяем");
+        cycle2.InjectionDurationMs.Should().Be((int)injection2Ms, "сам впрыск измерен штатно — не нулим его вместе с паузой");
+        cycle2.StartTime.Should().Be(DateTimeOffset.FromUnixTimeMilliseconds(t2).UtcDateTime,
+            "StartTime = cycleStart(2), а не протухший prevEnd — тот же код, что для первого цикла после рестарта");
+        cycle2.DurationSeconds.Should().Be((int)Math.Round(injection2Ms / 1000.0),
+            "DurationSeconds для этой строки — только впрыск, не впрыск+пауза");
+    }
+
+    // Подтверждает, что порог 900_000мс не задевает обычные паузы: соседний тест
+    // Two_consecutive_cycles_derive_boundaries_from_latched_sensors уже использует паузу
+    // 3200мс между циклами — она многократно меньше порога, поэтому PauseDurationMs(2)
+    // остаётся заполненным (см. cycle2.PauseDurationMs.Should().Be(3200) там же).
+    [Fact]
+    public async SystemTask Normal_pause_well_under_threshold_is_not_nulled()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        const long t0 = 1_700_000_000_000L;
+        const long t1 = t0 + 12_300;
+        const long t2 = t1 + 30_000; // 30с пауза — далеко под порогом 900_000мс
+        const long t3 = t2 + 12_200;
+
+        await sut.ProcessAsync(MakeCycleContext(immId, 5, "auto"));
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 6, "auto", t0, t1));
+        await sut.ProcessAsync(MakeCycleContextWithBoundaries(immId, 7, "auto", t2, t3));
+
+        var cycle2 = await db.ImmCycles.OrderBy(c => c.StartTime).Skip(1).SingleAsync();
+        cycle2.PauseDurationMs.Should().Be(30_000, "30с пауза далеко под порогом простоя ADR-0010 — не отсекается");
+        cycle2.InjectionDurationMs.Should().Be(12_200);
+        cycle2.StartTime.Should().Be(DateTimeOffset.FromUnixTimeMilliseconds(t1).UtcDateTime);
+    }
+
     [Fact]
     public async SystemTask Stale_cycle_end_latch_falls_back_to_message_timestamps()
     {

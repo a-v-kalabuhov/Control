@@ -21,6 +21,15 @@ namespace Wintime.Control.Infrastructure.Handlers;
 /// </summary>
 public class CycleProcessingHandler : ICycleProcessingHandler
 {
+    /// <summary>
+    /// Максимально допустимый разрыв между cycleEnd(N−1) и cycleStart(N), при котором
+    /// пауза ещё считается измеренной. Совпадает с порогом простоя из ADR-0010 (900 с):
+    /// если машина стояла дольше этого порога (наладка, простой между заданиями), это
+    /// уже не пауза оператора между циклами, а отдельный интервал — доверять ей как
+    /// PauseDurationMs нельзя (см. ADR-0011).
+    /// </summary>
+    private const long MaxPauseSpanMs = 900_000L;
+
     private readonly ControlDbContext _db;
     private readonly ICycleTracker _tracker;
     private readonly IEnumerable<ICycleHandler> _handlers;
@@ -100,6 +109,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             var prevCycleEndMs = state.LastCycleEndMs;
 
             bool sensorBoundaryValid = false;
+            long? effectivePrevCycleEndMs = prevCycleEndMs;
             if (cycleStartMs.HasValue && cycleEndMs.HasValue)
             {
                 bool notStale = !prevCycleEndMs.HasValue || cycleEndMs.Value > prevCycleEndMs.Value;
@@ -110,10 +120,27 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                 var pauseRawMs = prevCycleEndMs.HasValue ? cycleStartMs.Value - prevCycleEndMs.Value : (long?)null;
                 bool injectionFitsInt32 = injectionRawMs >= 0 && injectionRawMs <= int.MaxValue;
                 bool pauseFitsInt32 = !pauseRawMs.HasValue || (pauseRawMs.Value >= 0 && pauseRawMs.Value <= int.MaxValue);
+                // Шестая защита: разрыв cycleStart(N) − cycleEnd(N−1) не должен превышать порог
+                // простоя ADR-0010. Иначе многочасовая наладка/простой между заданиями попал бы
+                // в PauseDurationMs как фантомная пауза, хотя все остальные проверки формально
+                // проходят (защёлка свежая, не переставлена, в пределах int32).
+                bool pauseNotTooOld = !pauseRawMs.HasValue || pauseRawMs.Value <= MaxPauseSpanMs;
 
                 if (notStale && notReversed && notOlderThanPrevEnd && injectionFitsInt32 && pauseFitsInt32)
                 {
                     sensorBoundaryValid = true;
+                    if (!pauseNotTooOld)
+                    {
+                        // Пауза не заслуживает доверия, но cycleStart(N)/cycleEnd(N) сами по себе
+                        // измерены штатно — впрыск остаётся валидным величиной, доверяем только
+                        // ему. Дальше используется тот же код, что и для «первого цикла после
+                        // рестарта» (effectivePrevCycleEndMs=null), не отдельная ветка.
+                        effectivePrevCycleEndMs = null;
+                        _logger.LogWarning(
+                            "IMM {ImmId}: rejected pause span (start={Start}, prevEnd={PrevEnd}, span={SpanMs}ms > {ThresholdMs}ms) — " +
+                            "PauseDurationMs set to null, injection duration still measured from sensors",
+                            immId, cycleStartMs, prevCycleEndMs, pauseRawMs, MaxPauseSpanMs);
+                    }
                 }
                 else
                 {
@@ -131,11 +158,11 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             if (sensorBoundaryValid)
             {
                 cycleEndTime = DateTimeOffset.FromUnixTimeMilliseconds(cycleEndMs!.Value).UtcDateTime;
-                cycleStartTime = prevCycleEndMs.HasValue
-                    ? DateTimeOffset.FromUnixTimeMilliseconds(prevCycleEndMs.Value).UtcDateTime
+                cycleStartTime = effectivePrevCycleEndMs.HasValue
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(effectivePrevCycleEndMs.Value).UtcDateTime
                     : DateTimeOffset.FromUnixTimeMilliseconds(cycleStartMs!.Value).UtcDateTime;
                 injectionDurationMs = (int)(cycleEndMs.Value - cycleStartMs!.Value);
-                pauseDurationMs = prevCycleEndMs.HasValue ? (int)(cycleStartMs.Value - prevCycleEndMs.Value) : null;
+                pauseDurationMs = effectivePrevCycleEndMs.HasValue ? (int)(cycleStartMs.Value - effectivePrevCycleEndMs.Value) : null;
                 newLastCycleEndMs = cycleEndMs.Value;
             }
             else
