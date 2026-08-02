@@ -71,11 +71,10 @@ public class UpdateImmStatusHandlerTests
     public async Task UpdateStatusAsync_PassesCorrectTimestampToService()
     {
         var immId = Guid.NewGuid();
-        var unixTs = 1_700_000_000L;
-        var expectedUtc = DateTimeOffset.FromUnixTimeSeconds(unixTs).UtcDateTime;
+        var expectedUtc = new DateTime(2023, 11, 14, 22, 13, 20, 123, DateTimeKind.Utc);
 
         var device = PipelineTestFixtures.MakeImmDto(immId);
-        var message = PipelineTestFixtures.MakeMessage(immId, mode: "auto", timestamp: unixTs);
+        var message = PipelineTestFixtures.MakeMessage(immId, mode: "auto", timestampUtc: expectedUtc);
         var context = PipelineTestFixtures.MakeContext("control/imm/x/telemetry", "{}", data: message, device: device);
 
         await _sut.UpdateStatusAsync(context);

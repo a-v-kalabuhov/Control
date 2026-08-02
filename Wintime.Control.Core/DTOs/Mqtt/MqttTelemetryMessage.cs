@@ -5,9 +5,12 @@ namespace Wintime.Control.Core.DTOs.Mqtt;
 public class MqttTelemetryMessage
 {
     /// <summary>
-    /// Unix timestamp
+    /// Момент формирования сообщения продюсером. Всегда UTC (<see cref="DateTimeKind.Utc"/>):
+    /// значение уходит в колонку <c>timestamptz</c>, а <c>Kind=Unspecified</c> там даёт
+    /// исключение Npgsql. Точность — как пришла от продюсера, собственного округления нет.
+    /// Единственный производитель значения — <c>DecodeTelemetryDataHandler</c>.
     /// </summary>
-    public long Timestamp { get; set; }
+    public DateTime TimestampUtc { get; set; }
     /// <summary>
     /// ID устройства
     /// </summary>

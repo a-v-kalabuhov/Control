@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using System.Globalization;
 using Wintime.Control.Core.Cache;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Interfaces;
@@ -178,19 +179,22 @@ public class DecodeTelemetryDataHandlerTests : IDisposable
         var (success, result) = await CreateSut().DecodeAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Timestamp.Should().Be(unixTs);
+        result.Data!.TimestampUtc.Should().Be(DateTimeOffset.FromUnixTimeSeconds(unixTs).UtcDateTime);
+        result.Data.TimestampUtc.Kind.Should().Be(DateTimeKind.Utc);
     }
 
-    [Fact]
-    public async Task DecodeAsync_IsoTimestampString_ConvertedToUnixSeconds()
+    [Theory]
+    [InlineData("2023-11-14T22:13:20.1230000Z", "2023-11-14T22:13:20.123")]
+    [InlineData("2023-11-14T22:13:20.1230000+03:00", "2023-11-14T19:13:20.123")]
+    [InlineData("2023-11-14T22:13:20.1230000", "2023-11-14T22:13:20.123")]
+    public async Task DecodeAsync_IsoTimestampAllThreeForms_NormalizesToUtc(string isoTime, string expectedUtc)
     {
         var immId = Guid.NewGuid();
         var templateId = Guid.NewGuid();
         await SeedImm(immId, templateId);
         _templateCache.GetById(templateId).Returns(PipelineTestFixtures.MakeTemplate());
 
-        var isoTime = "2023-11-14T22:13:20Z";
-        var expectedUnix = new DateTimeOffset(2023, 11, 14, 22, 13, 20, TimeSpan.Zero).ToUnixTimeSeconds();
+        var expected = DateTime.SpecifyKind(DateTime.Parse(expectedUtc, CultureInfo.InvariantCulture), DateTimeKind.Utc);
         var topic = $"control/imm/{immId}/telemetry";
         var payload = "{\"timestamp\": \"" + isoTime + "\", \"mode\": \"auto\", \"sensors\": {\"s\": \"1\"}}";
         var context = PipelineTestFixtures.MakeContext(topic, payload);
@@ -198,7 +202,29 @@ public class DecodeTelemetryDataHandlerTests : IDisposable
         var (success, result) = await CreateSut().DecodeAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Timestamp.Should().Be(expectedUnix);
+        result.Data!.TimestampUtc.Should().Be(expected);
+        result.Data.TimestampUtc.Kind.Should().Be(DateTimeKind.Utc);
+    }
+
+    [Fact]
+    public async Task DecodeAsync_TwoIsoTimestampsInSameSecond_ProduceDistinctValues()
+    {
+        var immId = Guid.NewGuid();
+        var templateId = Guid.NewGuid();
+        await SeedImm(immId, templateId);
+        _templateCache.GetById(templateId).Returns(PipelineTestFixtures.MakeTemplate());
+
+        var topic = $"control/imm/{immId}/telemetry";
+        var first  = "{\"timestamp\": \"2023-11-14T22:13:20.1000000Z\", \"mode\": \"auto\", \"sensors\": {\"s\": \"1\"}}";
+        var second = "{\"timestamp\": \"2023-11-14T22:13:20.2000000Z\", \"mode\": \"auto\", \"sensors\": {\"s\": \"1\"}}";
+
+        var (ok1, r1) = await CreateSut().DecodeAsync(PipelineTestFixtures.MakeContext(topic, first));
+        var (ok2, r2) = await CreateSut().DecodeAsync(PipelineTestFixtures.MakeContext(topic, second));
+
+        ok1.Should().BeTrue();
+        ok2.Should().BeTrue();
+        r2.Data!.TimestampUtc.Should().BeAfter(r1.Data!.TimestampUtc,
+            "два сообщения внутри одной секунды обязаны различаться по времени");
     }
 
     // =========================================================================

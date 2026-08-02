@@ -200,21 +200,19 @@ public class StoreTelemetryDataHandlerTests : IDisposable
 
     /// <summary>
     /// Поля <c>ImmId</c>, <c>ParameterName</c> и <c>Timestamp</c> должны точно
-    /// соответствовать значениям из контекста; <c>Timestamp</c> конвертируется
-    /// из Unix-секунд в UTC <c>DateTime</c>.
+    /// соответствовать значениям из контекста, включая доли секунды.
     /// </summary>
     [Fact]
     public async Task SaveAsync_SavesCorrectImmIdParameterNameAndTimestamp()
     {
         var immId = Guid.NewGuid();
-        var unixTs = 1_700_000_000L;
-        var expectedTimestamp = DateTimeOffset.FromUnixTimeSeconds(unixTs).UtcDateTime;
+        var expectedTimestamp = new DateTime(2023, 11, 14, 22, 13, 20, 123, DateTimeKind.Utc);
 
         var context = BuildContext(
             immId: immId,
             sensors: new Dictionary<string, string> { ["temp"] = "20.0" },
             templateSensors: [PipelineTestFixtures.MakeSensor("temp", "float")],
-            timestamp: unixTs);
+            timestampUtc: expectedTimestamp);
 
         await CreateSut().SaveAsync(context);
 
@@ -290,6 +288,37 @@ public class StoreTelemetryDataHandlerTests : IDisposable
         _dbContext.Telemetry.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Два сообщения внутри одной секунды должны дать строки с различным
+    /// <c>Timestamp</c>. Регрессия: раньше метка обрезалась до секунды, и до 10
+    /// сообщений в секунду получали одинаковое время — порядок строк терялся.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_MessagesWithinSameSecond_KeepDistinctTimestamps()
+    {
+        var immId = Guid.NewGuid();
+        var first  = new DateTime(2023, 11, 14, 22, 13, 20, 100, DateTimeKind.Utc);
+        var second = new DateTime(2023, 11, 14, 22, 13, 20, 200, DateTimeKind.Utc);
+        var templateSensors = new[] { PipelineTestFixtures.MakeSensor("temp", "float") };
+
+        await CreateSut().SaveAsync(BuildContext(
+            immId: immId,
+            sensors: new Dictionary<string, string> { ["temp"] = "20.0" },
+            templateSensors: templateSensors,
+            timestampUtc: first));
+
+        await CreateSut().SaveAsync(BuildContext(
+            immId: immId,
+            sensors: new Dictionary<string, string> { ["temp"] = "20.1" },
+            templateSensors: templateSensors,
+            timestampUtc: second));
+
+        var rows = await _dbContext.Telemetry.OrderBy(t => t.Timestamp).ToListAsync();
+        rows.Should().HaveCount(2);
+        rows[0].Timestamp.Should().Be(first);
+        rows[1].Timestamp.Should().Be(second);
+    }
+
     // =========================================================================
     // Вспомогательный метод
     // =========================================================================
@@ -298,12 +327,12 @@ public class StoreTelemetryDataHandlerTests : IDisposable
         Dictionary<string, string> sensors,
         IReadOnlyList<SensorTemplate> templateSensors,
         Guid? immId = null,
-        long? timestamp = null)
+        DateTime? timestampUtc = null)
     {
         var id = immId ?? Guid.NewGuid();
-        var ts = timestamp ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var ts = timestampUtc ?? DateTime.UtcNow;
 
-        var message  = PipelineTestFixtures.MakeMessage(id, sensors, timestamp: ts);
+        var message  = PipelineTestFixtures.MakeMessage(id, sensors, timestampUtc: ts);
         var device   = PipelineTestFixtures.MakeImmDto(id);
         var template = PipelineTestFixtures.MakeTemplate(templateSensors);
 

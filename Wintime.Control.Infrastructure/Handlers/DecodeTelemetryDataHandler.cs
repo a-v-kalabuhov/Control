@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text.Json.Nodes;
 using System.Text.Json;
+using System.Globalization;
 using Wintime.Control.Core.DTOs.Imm;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Interfaces;
@@ -189,88 +190,75 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
             return (false, context);
         }
 
-        // Attempt to extract and convert timestamp
-        try
+        // Нормализация timestamp. ISO-строка сохраняет доли секунды; число трактуется
+        // как Unix-СЕКУНДЫ — обратная совместимость с продюсерами, шлющими число.
+        // timestampToken объявлен как JsonNode? — на этой строке он уже проверен на null
+        // выше (ранний выход «Payload does not contain 'timestamp' field»), поэтому «!».
+        if (!TryParseTimestamp(timestampToken!, out var timestampUtc))
         {
-            // If timestamp is ISO string, convert to Unix timestamp
-            if (timestampToken.GetValueKind() == JsonValueKind.String)
-            {
-                string timestampStr = timestampToken.ToString();
-                DateTime timestamp;
-                if (DateTime.TryParse(timestampStr, out timestamp))
-                {
-                    var unixTimestamp = ((DateTimeOffset) timestamp).ToUnixTimeSeconds();
-                    
-                    // Create MqttTelemetryMessage object with data from payload
-                    var existingData = context.Data ?? new MqttTelemetryMessage
-                    {
-                        Timestamp = unixTimestamp,
-                        DeviceId = deviceId.ToString(),
-                        Mode = mode,
-                        Sensors = sensorsDict
-                    };
-
-                    // Return a new context with updated data, keeping other properties intact
-                    var newContext = new MqttProcessingContext(
-                        context.MessageId,
-                        context.Topic,
-                        context.Payload,
-                        existingData,
-                        immDto,
-                        cachedTemplate
-                    );
-                    
-                return (true, newContext); 
-                }
-                else
-                {
-                    _logger.LogError("Cannot parse timestamp value: {timestampStr} in topic: {Topic}", timestampStr, context.Topic);
-                    return (false, context);
-                }
-            }
-            else if (timestampToken.GetValueKind() == JsonValueKind.Number)
-            {
-                // If timestamp is already a Unix timestamp (number)
-                var unixTimestamp = timestampToken.GetValue<long>();
-                
-                // Create MqttTelemetryMessage object with data from payload
-                var existingData = context.Data ?? new MqttTelemetryMessage
-                {
-                    Timestamp = unixTimestamp,
-                    DeviceId = deviceId.ToString(),
-                    Sensors = sensorsDict
-                };
-                
-                var newTelemetryMessage = new MqttTelemetryMessage
-                {
-                    Timestamp = unixTimestamp,
-                    DeviceId = deviceId.ToString(),
-                    Mode = mode,
-                    Sensors = sensorsDict
-                };
-                
-                // Since records are immutable, we return success (true), 
-                // and expect MessageProcessingPipeline to update context
-                // by calling context with { Data = newTelemetryMessage, Device = immDto, Template = cachedTemplate }
-                // upon return from DecodeAsync when true is returned.
-                
-                return (true, context with 
-                {
-                    Data = newTelemetryMessage,
-                    Device = immDto,
-                    Template = cachedTemplate
-                }); 
-            }
-            else
-            {
-                _logger.LogError("Timestamp field has invalid type in topic: {Topic}", context.Topic);
-                return (false, context);
-            }
-        }
-        catch (Exception ex)
-        {
-             _logger.LogError(ex, "Error while processing timestamp in topic: {Topic}, value: {TimestampValue}", context.Topic, timestampToken);
+            _logger.LogError("Cannot parse timestamp {TimestampValue} in topic: {Topic}",
+                timestampToken.ToJsonString(), context.Topic);
             return (false, context);
+        }
+
+        var telemetryMessage = new MqttTelemetryMessage
+        {
+            TimestampUtc = timestampUtc,
+            DeviceId = deviceId.ToString(),
+            Mode = mode,
+            Sensors = sensorsDict
+        };
+
+        return (true, context with
+        {
+            Data = telemetryMessage,
+            Device = immDto,
+            Template = cachedTemplate
+        });
+    }
+
+    /// <summary>Границы диапазона, который принимает <see cref="DateTimeOffset.FromUnixTimeSeconds"/>.</summary>
+    private const long MinUnixSeconds = -62135596800L;
+    private const long MaxUnixSeconds = 253402300799L;
+
+    /// <summary>
+    /// Разбирает поле <c>timestamp</c>: ISO-8601 строка (доли секунды сохраняются)
+    /// либо число — Unix-секунды. Результат всегда <see cref="DateTimeKind.Utc"/>.
+    /// </summary>
+    /// <param name="token">Узел JSON со значением поля <c>timestamp</c>.</param>
+    /// <param name="utc">Разобранный момент времени в UTC.</param>
+    /// <returns><see langword="true"/> при успешном разборе; иначе <see langword="false"/>.</returns>
+    private static bool TryParseTimestamp(JsonNode token, out DateTime utc)
+    {
+        utc = default;
+
+        switch (token.GetValueKind())
+        {
+            case JsonValueKind.String:
+                // AdjustToUniversal конвертирует смещение (если есть) в UTC; AssumeUniversal
+                // трактует строку без указания зоны как уже-UTC (а не локальное время) —
+                // все продюсеры шлют UTC, а Kind=Unspecified недопустим для timestamptz.
+                // (RoundtripKind несовместим с AdjustToUniversal — кидает ArgumentException.)
+                if (!DateTime.TryParse(
+                        token.GetValue<string>(),
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal,
+                        out var parsed))
+                    return false;
+
+                utc = parsed;
+                return true;
+
+            case JsonValueKind.Number:
+                if (!token.AsValue().TryGetValue<long>(out var seconds))
+                    return false;
+                if (seconds < MinUnixSeconds || seconds > MaxUnixSeconds)
+                    return false;
+                utc = DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
+                return true;
+
+            default:
+                return false;
         }
     }
 }

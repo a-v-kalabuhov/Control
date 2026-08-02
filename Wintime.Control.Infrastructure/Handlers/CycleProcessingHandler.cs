@@ -56,7 +56,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
         var currentMode = ImmMode.Normalize(data.Mode);
         var immId = device.Id;
-        var currentTime = DateTimeOffset.FromUnixTimeSeconds(data.Timestamp).UtcDateTime;
+        var currentTime = data.TimestampUtc;
 
         var activeTask = await _db.ShiftTasks
             .Include(t => t.Mold)
@@ -90,7 +90,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         {
             bool isSuccessful = currentMode != ImmMode.Alarm;
             var cycleStart = state.CycleStartTime!.Value;
-            var duration = (int)(currentTime - cycleStart).TotalSeconds;
+            var duration = (int)Math.Round((currentTime - cycleStart).TotalSeconds);
             var cavities = activeTask?.Mold.Cavities ?? 0;
 
             // Длительности приходят защёлкнутыми: коннектор обновляет их на событиях
