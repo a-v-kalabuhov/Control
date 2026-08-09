@@ -68,61 +68,6 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// Датчик типа <c>cycleCounter</c> должен сохраняться в <c>ValueNumeric</c>,
-    /// так как обрабатывается тем же путём, что и <c>int</c>.
-    /// </summary>
-    [Fact]
-    public async Task SaveAsync_CycleCounterSensor_StoresValueNumeric()
-    {
-        var context = BuildContext(
-            sensors: new Dictionary<string, SignalValue> { ["cycles"] = new("1000", Error: false) },
-            templateSensors: [PipelineTestFixtures.MakeSensor("cycles", "cycleCounter")]);
-
-        await CreateSut().SaveAsync(context);
-
-        var row = await _dbContext.Telemetry.SingleAsync();
-        row.ValueNumeric.Should().Be(1000m);
-        row.ValueText.Should().BeNull();
-    }
-
-    /// <summary>
-    /// Находка 2: датчик типа <c>injectionDuration</c> (защёлкнутая длительность цикла
-    /// литья) должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>,
-    /// иначе числовая агрегация телеметрии его не видит.
-    /// </summary>
-    [Fact]
-    public async Task SaveAsync_InjectionDurationSensor_StoresValueNumeric()
-    {
-        var context = BuildContext(
-            sensors: new Dictionary<string, SignalValue> { ["inj"] = new("12500", Error: false) },
-            templateSensors: [PipelineTestFixtures.MakeSensor("inj", "injectionDuration")]);
-
-        await CreateSut().SaveAsync(context);
-
-        var row = await _dbContext.Telemetry.SingleAsync();
-        row.ValueNumeric.Should().Be(12500m);
-        row.ValueText.Should().BeNull();
-    }
-
-    /// <summary>
-    /// Находка 2: датчик типа <c>cyclePause</c> (защёлкнутая длительность паузы)
-    /// должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>.
-    /// </summary>
-    [Fact]
-    public async Task SaveAsync_CyclePauseSensor_StoresValueNumeric()
-    {
-        var context = BuildContext(
-            sensors: new Dictionary<string, SignalValue> { ["pause"] = new("3400", Error: false) },
-            templateSensors: [PipelineTestFixtures.MakeSensor("pause", "cyclePause")]);
-
-        await CreateSut().SaveAsync(context);
-
-        var row = await _dbContext.Telemetry.SingleAsync();
-        row.ValueNumeric.Should().Be(3400m);
-        row.ValueText.Should().BeNull();
-    }
-
-    /// <summary>
     /// Зарезервированное имя <c>cycleCounter</c> должно сохраняться как числовое значение
     /// даже если его нет в шаблоне датчиков (оно никогда не объявляется в Template.Sensors).
     /// </summary>
@@ -259,7 +204,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
             templateSensors:
             [
                 PipelineTestFixtures.MakeSensor("temp",   "float"),
-                PipelineTestFixtures.MakeSensor("cycles", "cycleCounter"),
+                PipelineTestFixtures.MakeSensor("cycles", "int"),
                 PipelineTestFixtures.MakeSensor("status", "string")
             ]);
 
