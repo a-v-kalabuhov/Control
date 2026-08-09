@@ -27,7 +27,7 @@ public class UnplannedRunHandler : ICycleHandler
         if (hasOpen)
             return;
 
-        _db.UnplannedRuns.Add(new UnplannedRun { ImmId = immId, StartTime = completed.Cycle.EndTime });
+        _db.UnplannedRuns.Add(new UnplannedRun { ImmId = immId, StartTime = completed.Cycle.EndTime!.Value });
         await _db.SaveChangesAsync(ct);
     }
 }
