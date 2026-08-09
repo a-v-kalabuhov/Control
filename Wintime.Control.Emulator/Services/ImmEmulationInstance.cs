@@ -15,8 +15,10 @@ public class ImmEmulationInstance : IAsyncDisposable
     private readonly IEmulatorMqttService _mqtt;
     private readonly CancellationTokenSource _cts = new();
     private readonly Dictionary<string, ISignalGenerator> _generators = [];
-    private string? _cycleCounterSensorName;
     private int _counter = 0;
+    private int? _currentCycleNumber;
+    private DateTime? _currentCycleStart;
+    private CompletedCycleDto? _lastCompletedCycle;
     private Task? _runTask;
     private bool _disposed;
 
@@ -49,11 +51,6 @@ public class ImmEmulationInstance : IAsyncDisposable
         foreach (var cfg in request.SensorConfigs)
         {
             var mqttKey = string.IsNullOrEmpty(cfg.Field) ? cfg.Name : cfg.Field;
-            if (cfg.Type == "cycleCounter")
-            {
-                _cycleCounterSensorName = mqttKey;
-                continue;
-            }
 
             _generators[mqttKey] = cfg.Type switch
             {
@@ -155,7 +152,11 @@ public class ImmEmulationInstance : IAsyncDisposable
             var stepEnd = DateTime.UtcNow.AddSeconds(step.DurationSeconds);
 
             if (!firstStep && step.Mode == "auto")
+            {
                 _counter++;
+                _currentCycleNumber = _counter;
+                _currentCycleStart = DateTime.UtcNow;
+            }
             firstStep = false;
 
             while (DateTime.UtcNow < stepEnd && !ct.IsCancellationRequested && _mode == InstanceMode.Auto)
@@ -166,6 +167,19 @@ public class ImmEmulationInstance : IAsyncDisposable
                 var modeChangedTask = _modeChanged.Task;
                 var remainingMs = (int)(stepEnd - DateTime.UtcNow).TotalMilliseconds;
                 await Task.WhenAny(Task.Delay(Math.Min(intervalMs, Math.Max(remainingMs, 0)), ct), modeChangedTask);
+            }
+
+            if (step.Mode == "auto" && _currentCycleStart.HasValue)
+            {
+                _lastCompletedCycle = new CompletedCycleDto
+                {
+                    Number = _currentCycleNumber!.Value,
+                    StartTime = _currentCycleStart.Value,
+                    EndTime = DateTime.UtcNow,
+                    InjectionStartTime = null,
+                    Cushion = null
+                };
+                _currentCycleStart = null;
             }
 
             profileIndex = (profileIndex + 1) % _request.Profile.Count;
@@ -188,14 +202,23 @@ public class ImmEmulationInstance : IAsyncDisposable
         {
             Timestamp = DateTime.UtcNow,
             Mode = mode,
-            Sensors = []
+            Sensors = [],
+            CurrentCycle = (mode == "auto" && _currentCycleStart.HasValue)
+                ? new CurrentCycleDto
+                {
+                    Number = _currentCycleNumber!.Value,
+                    StartTime = _currentCycleStart.Value,
+                    InjectionStartTime = null,
+                    Cushion = null
+                }
+                : null,
+            LastCycle = _lastCompletedCycle
         };
 
-        if (_cycleCounterSensorName != null)
-            payload.Sensors[_cycleCounterSensorName] = _counter;
+        payload.Sensors["cycleCounter"] = new SignalValueDto { Value = _counter.ToString(), Error = false };
 
         foreach (var gen in _generators)
-            payload.Sensors[gen.Key] = gen.Value.GenerateValue(mode);
+            payload.Sensors[gen.Key] = new SignalValueDto { Value = gen.Value.GenerateValue(mode)?.ToString() ?? "", Error = false };
 
         return payload;
     }
