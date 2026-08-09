@@ -144,6 +144,8 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                 if (state?.OpenCycleId == row.Id)
                     _tracker.Set(immId, new CycleState(null, null, null));
 
+                // endedByCounter всегда true под контрактом v2 — цикл закрывается только по lastCycle
+                // от коннектора, старой развилки "закрыт счётчиком vs закрыт сменой режима" больше нет.
                 var completed = new CompletedCycle(row, activeTask, currentMode, true);
                 foreach (var handler in _handlers) // СТАДИЯ 2
                 {
