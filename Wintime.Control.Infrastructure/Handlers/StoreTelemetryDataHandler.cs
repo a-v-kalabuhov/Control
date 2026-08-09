@@ -55,9 +55,6 @@ public class StoreTelemetryDataHandler : IStoreTelemetryDataHandler
                             entry.ValueText = sv.Value;
                         break;
                     case "int":
-                    case "cycleCounter":
-                    case "injectionDuration":
-                    case "cyclePause":
                         if (decimal.TryParse(sv.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numI))
                             entry.ValueNumeric = numI;
                         else
