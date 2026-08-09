@@ -239,6 +239,29 @@ public class CycleProcessingHandlerTests
     }
 
     [Fact]
+    public async SystemTask Setup_task_gates_row_creation_on_close_with_no_prior_open_row()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
+        var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
+        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.Setup };
+        db.AddRange(mold, imm, task);
+        await db.SaveChangesAsync();
+
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+
+        var start = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
+        // Control не видела currentCycle (нет открытой строки) — сообщение пришло уже с lastCycle,
+        // задание в наладке: ни строки, ни ICycleHandler'ов заводиться не должно.
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(1, start, start.AddSeconds(10), null, null)));
+
+        (await db.ImmCycles.CountAsync()).Should().Be(0, "Setup (наладка) гасит запись цикла даже при внезапном lastCycle без открытой строки");
+    }
+
+    [Fact]
     public async SystemTask InProgress_cycle_snapshots_cavities_and_task_at_open_time()
     {
         var immId = Guid.NewGuid();

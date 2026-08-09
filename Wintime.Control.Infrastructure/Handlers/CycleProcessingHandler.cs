@@ -106,7 +106,15 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             row ??= await _db.ImmCycles.FirstOrDefaultAsync(
                 c => c.ImmId == immId && c.CycleNumber == last.Number && c.StartTime == last.StartTime, ct);
 
-            if (row is null || row.EndTime is null)
+            // Создание новой строки на закрытии (внезапный lastCycle без ранее увиденного
+            // currentCycle) гейтится политикой так же, как открытие — наладка/нет задания без
+            // auto не должны заводить циклы. Финализация УЖЕ существующей строки — нет: она
+            // обязана закрыться независимо от текущего режима/задания (см. комментарий выше).
+            if (row is null && !shouldProcess)
+            {
+                // ничего не делать: ни строки, ни ICycleHandler'ов, ни изменений трекера.
+            }
+            else if (row is null || row.EndTime is null)
             {
                 var isNewRow = row is null;
                 row ??= new ImmCycle
