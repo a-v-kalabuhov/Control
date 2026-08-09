@@ -1,6 +1,4 @@
-using System.Globalization;
 using Microsoft.EntityFrameworkCore;
-using Wintime.Control.Core.Cache;
 using Microsoft.Extensions.Logging;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.Entities;
@@ -15,9 +13,9 @@ using SystemTask = System.Threading.Tasks.Task;
 namespace Wintime.Control.Infrastructure.Handlers;
 
 /// <summary>
-/// Оркестратор обработки циклов: детектирует завершение цикла по cycleCounter,
-/// СРАЗУ сохраняет ImmCycle (Стадия 1 — долговечность), затем поверх сохранённого
-/// цикла последовательно исполняет ICycleHandler (Стадия 2), каждый в try/catch.
+/// Оркестратор обработки циклов (контракт v2): открывает ImmCycle по currentCycle,
+/// закрывает по lastCycle. Идентичность цикла — пара (CycleNumber, StartTime), не
+/// один номер (счётчик коннектора легитимно обнуляется между сериями без разрыва связи).
 /// </summary>
 public class CycleProcessingHandler : ICycleProcessingHandler
 {
@@ -41,22 +39,12 @@ public class CycleProcessingHandler : ICycleProcessingHandler
     public async SystemTask ProcessAsync(MqttProcessingContext context, CancellationToken ct = default)
     {
         var data = context.Data;
-        var template = context.Template;
         var device = context.Device;
-        if (data is null || template is null || device is null)
-            return;
-
-        var counterSensor = template.Sensors.FirstOrDefault(s => s.ParameterType == "cycleCounter");
-        if (counterSensor is null)
-            return;
-        if (!data.Sensors.TryGetValue(counterSensor.ParameterName, out var rawValue))
-            return;
-        if (!int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var currentCounter))
+        if (data is null || device is null)
             return;
 
         var currentMode = ImmMode.Normalize(data.Mode);
         var immId = device.Id;
-        var currentTime = data.TimestampUtc;
 
         var activeTask = await _db.ShiftTasks
             .Include(t => t.Mold)
@@ -66,98 +54,112 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                 ct);
 
         var taskStatus = ActiveTaskStatusMap.From(activeTask?.Status);
-
-        if (!CycleProcessingPolicy.ShouldProcessCycle(currentMode, taskStatus))
-        {
-            _tracker.Set(immId, new CycleState(null, currentCounter, currentMode));
-            return;
-        }
+        var shouldProcess = CycleProcessingPolicy.ShouldProcessCycle(currentMode, taskStatus);
 
         var state = _tracker.Get(immId);
-        if (state is null)
+
+        // 1. Открыть новую строку по currentCycle, если пара (Number, StartTime) новая.
+        // Открытие гейтится политикой (наладка/нет задания без auto не должны заводить новых
+        // циклов) — закрытие ниже НЕ гейтится: уже отслеживаемый открытый цикл обязан быть
+        // закрыт, даже если текущее сообщение пришло в Alarm/без активного задания.
+        if (shouldProcess && data.CurrentCycle is { } current &&
+            (state?.OpenCycleNumber != current.Number || state?.OpenCycleStartTime != current.StartTime))
         {
-            var startTime = currentMode == ImmMode.Auto ? currentTime : (DateTime?)null;
-            _tracker.Set(immId, new CycleState(startTime, currentCounter, currentMode));
-            return;
-        }
+            var existing = await _db.ImmCycles.FirstOrDefaultAsync(
+                c => c.ImmId == immId && c.CycleNumber == current.Number && c.StartTime == current.StartTime, ct);
 
-        bool cycleWasActive = state.CycleStartTime.HasValue;
-        bool counterChanged = state.LastCounterValue.HasValue && state.LastCounterValue.Value != currentCounter;
-        bool modeChangedFromAuto = state.LastMode == ImmMode.Auto && currentMode != ImmMode.Auto;
-        bool cycleEnded = cycleWasActive && (counterChanged || modeChangedFromAuto);
-
-        if (cycleEnded)
-        {
-            bool isSuccessful = currentMode != ImmMode.Alarm;
-            var cycleStart = state.CycleStartTime!.Value;
-            var duration = (int)Math.Round((currentTime - cycleStart).TotalSeconds);
-            var cavities = activeTask?.Mold.Cavities ?? 0;
-
-            // Длительности приходят защёлкнутыми: коннектор обновляет их на событиях
-            // формы и повторяет в каждом сообщении. Сенсоров нет — поля остаются null.
-            int? injectionDurationMs = ReadIntSensor(template, data, "injectionDuration");
-            int? pauseDurationMs = ReadIntSensor(template, data, "cyclePause");
-
-            var cycle = new ImmCycle
+            if (existing is null)
             {
-                ImmId = immId,
-                TaskId = activeTask?.Id,
-                MoldId = activeTask?.MoldId,
-                StartTime = cycleStart,
-                EndTime = currentTime,
-                DurationSeconds = duration,
-                IsSuccessful = isSuccessful,
-                Cavities = cavities,
-                InjectionDurationMs = injectionDurationMs,
-                PauseDurationMs = pauseDurationMs
-            };
-            _db.ImmCycles.Add(cycle);
-            await _db.SaveChangesAsync(ct); // СТАДИЯ 1 — цикл долговечен
-
-            var completed = new CompletedCycle(cycle, activeTask, currentMode, counterChanged);
-            foreach (var handler in _handlers) // СТАДИЯ 2
-            {
-                try
+                var cavities = activeTask?.Mold.Cavities ?? 0;
+                var opened = new ImmCycle
                 {
-                    await handler.HandleAsync(completed, ct);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex,
-                        "Cycle handler {Handler} failed for IMM {ImmId} (cycle {CycleId})",
-                        handler.GetType().Name, immId, cycle.Id);
-                }
+                    ImmId = immId,
+                    TaskId = activeTask?.Id,
+                    MoldId = activeTask?.MoldId,
+                    StartTime = current.StartTime,
+                    EndTime = null,
+                    CycleNumber = current.Number,
+                    InjectionStartTime = current.InjectionStartTime,
+                    Cavities = cavities,
+                    IsSuccessful = true // временно — уточняется при закрытии
+                };
+                _db.ImmCycles.Add(opened);
+                await _db.SaveChangesAsync(ct);
+                existing = opened;
+                _logger.LogDebug("IMM {ImmId}: cycle {Number}/{StartTime:O} opened", immId, current.Number, current.StartTime);
             }
 
-            _logger.LogDebug("IMM {ImmId}: cycle saved — duration {Duration}s, successful={Success}",
-                immId, duration, isSuccessful);
+            state = new CycleState(current.Number, current.StartTime, existing.Id);
+            _tracker.Set(immId, state);
         }
 
-        DateTime? newCycleStart = null;
-        if (counterChanged && currentMode == ImmMode.Auto)
-            newCycleStart = currentTime;
-        else if (!cycleWasActive && currentMode == ImmMode.Auto)
-            newCycleStart = currentTime;
-        else if (cycleWasActive && !cycleEnded)
-            newCycleStart = state.CycleStartTime;
+        // 2-4. Закрыть строку по lastCycle (или создать+закрыть, если старт не видели)
+        if (data.LastCycle is { } last)
+        {
+            ImmCycle? row = null;
+            if (state is { OpenCycleId: { } openId } &&
+                state.OpenCycleNumber == last.Number && state.OpenCycleStartTime == last.StartTime)
+            {
+                row = await _db.ImmCycles.FindAsync([openId], ct);
+            }
 
-        _tracker.Set(immId, new CycleState(newCycleStart, currentCounter, currentMode));
-    }
+            row ??= await _db.ImmCycles.FirstOrDefaultAsync(
+                c => c.ImmId == immId && c.CycleNumber == last.Number && c.StartTime == last.StartTime, ct);
 
-    /// <summary>
-    /// Прочитать целочисленный сенсор по семантическому типу шаблона.
-    /// Возвращает <c>null</c>, если сенсор не описан в шаблоне, отсутствует
-    /// в сообщении или значение не парсится.
-    /// </summary>
-    private static int? ReadIntSensor(CachedTemplate template, MqttTelemetryMessage data, string parameterType)
-    {
-        var sensor = template.Sensors.FirstOrDefault(s => s.ParameterType == parameterType);
-        if (sensor is null)
-            return null;
-        if (!data.Sensors.TryGetValue(sensor.ParameterName, out var raw))
-            return null;
-        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
-            ? value
-            : null;
+            if (row is null || row.EndTime is null)
+            {
+                var isNewRow = row is null;
+                row ??= new ImmCycle
+                {
+                    ImmId = immId,
+                    TaskId = activeTask?.Id,
+                    MoldId = activeTask?.MoldId,
+                    StartTime = last.StartTime,
+                    CycleNumber = last.Number,
+                    Cavities = activeTask?.Mold.Cavities ?? 0
+                };
+
+                row.EndTime = last.EndTime;
+                row.InjectionStartTime ??= last.InjectionStartTime;
+                row.Cushion = last.Cushion;
+                row.DurationSeconds = (int)Math.Round((last.EndTime - row.StartTime).TotalSeconds);
+                row.InjectionDurationMs = row.InjectionStartTime.HasValue
+                    ? (int)(last.EndTime - row.InjectionStartTime.Value).TotalMilliseconds
+                    : null;
+                row.IsSuccessful = currentMode != ImmMode.Alarm;
+
+                if (isNewRow)
+                    _db.ImmCycles.Add(row);
+
+                await _db.SaveChangesAsync(ct); // СТАДИЯ 1 — цикл долговечен
+
+                if (state?.OpenCycleId == row.Id)
+                    _tracker.Set(immId, new CycleState(null, null, null));
+
+                var completed = new CompletedCycle(row, activeTask, currentMode, true);
+                foreach (var handler in _handlers) // СТАДИЯ 2
+                {
+                    try
+                    {
+                        await handler.HandleAsync(completed, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "Cycle handler {Handler} failed for IMM {ImmId} (cycle {CycleId})",
+                            handler.GetType().Name, immId, row.Id);
+                    }
+                }
+
+                _logger.LogDebug("IMM {ImmId}: cycle {Number}/{StartTime:O} closed — duration {Duration}s, successful={Success}",
+                    immId, row.CycleNumber, row.StartTime, row.DurationSeconds, row.IsSuccessful);
+            }
+            // else: row.EndTime уже заполнен — повторная публикация lastCycle, дедупликация
+        }
+
+        // Вне производственного состояния (наладка/нет задания без auto) трекер не должен
+        // держать псевдо-открытый цикл — закрытие выше (если было) уже сбросило его точечно.
+        if (!shouldProcess)
+            _tracker.Set(immId, new CycleState(null, null, null));
     }
 }
