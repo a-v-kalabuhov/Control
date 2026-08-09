@@ -24,22 +24,20 @@ public class ValidateTelemetryDataHandlerTests
     // =========================================================================
 
     [Theory]
-    [InlineData("float",        "3.14")]
-    [InlineData("float",        "-0.5")]
-    [InlineData("int",          "42")]
-    [InlineData("int",          "-7")]
-    [InlineData("boolean",      "true")]
-    [InlineData("boolean",      "false")]
-    [InlineData("cycleCounter", "100")]
-    [InlineData("injectionDuration", "12500")]
-    [InlineData("cyclePause", "3400")]
-    [InlineData("string",       "any text")]
+    [InlineData("float",   "3.14")]
+    [InlineData("float",   "-0.5")]
+    [InlineData("int",     "42")]
+    [InlineData("int",     "-7")]
+    [InlineData("boolean", "true")]
+    [InlineData("boolean", "false")]
+    [InlineData("string",  "any text")]
     public async Task ValidateAsync_ValidSensorValue_SensorPassesThrough(string type, string value)
     {
         var immId = Guid.NewGuid();
         var sensor = PipelineTestFixtures.MakeSensor("s1", type, threshold: 0);
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
-        var message = PipelineTestFixtures.MakeMessage(immId, new Dictionary<string, string> { ["s1"] = value });
+        var sensors = new Dictionary<string, SignalValue> { ["s1"] = new(value, Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
         var context = BuildContext(immId, message, template);
         SetupCacheEntry(immId, context);
 
@@ -50,18 +48,16 @@ public class ValidateTelemetryDataHandlerTests
     }
 
     [Theory]
-    [InlineData("float",        "abc")]
-    [InlineData("int",          "3.14")]
-    [InlineData("boolean",      "yes")]
-    [InlineData("cycleCounter", "one")]
-    [InlineData("injectionDuration", "12.5")]
-    [InlineData("cyclePause", "abc")]
+    [InlineData("float",   "abc")]
+    [InlineData("int",     "3.14")]
+    [InlineData("boolean", "yes")]
     public async Task ValidateAsync_InvalidSensorValue_SensorRemovedFromResult(string type, string value)
     {
         var immId = Guid.NewGuid();
         var sensor = PipelineTestFixtures.MakeSensor("s1", type, threshold: 0, required: false);
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
-        var message = PipelineTestFixtures.MakeMessage(immId, new Dictionary<string, string> { ["s1"] = value });
+        var sensors = new Dictionary<string, SignalValue> { ["s1"] = new(value, Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
         var context = BuildContext(immId, message, template);
         SetupCacheEntry(immId, context);
 
@@ -72,12 +68,62 @@ public class ValidateTelemetryDataHandlerTests
     }
 
     [Fact]
+    public async Task ValidateAsync_SensorWithErrorTrue_IsDropped()
+    {
+        var immId = Guid.NewGuid();
+        var sensor = PipelineTestFixtures.MakeSensor("s1", "float", threshold: 0);
+        var template = PipelineTestFixtures.MakeTemplate([sensor]);
+        var sensors = new Dictionary<string, SignalValue> { ["s1"] = new("1.23", Error: true) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
+        var context = BuildContext(immId, message, template);
+        SetupCacheEntry(immId, context);
+
+        var (success, result) = await _sut.ValidateAsync(context);
+
+        success.Should().BeTrue();
+        result.Data!.Sensors.Should().NotContainKey("s1", "error=true — сбой чтения, сигнал не публикуется дальше");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_CycleCounterSensor_AlwaysValidWithoutTemplateEntry()
+    {
+        var immId = Guid.NewGuid();
+        var template = PipelineTestFixtures.MakeTemplate([]); // cycleCounter НЕ объявлен в шаблоне
+        var sensors = new Dictionary<string, SignalValue> { ["cycleCounter"] = new("42", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
+        var context = BuildContext(immId, message, template);
+        SetupCacheEntry(immId, context);
+
+        var (success, result) = await _sut.ValidateAsync(context);
+
+        success.Should().BeTrue();
+        result.Data!.Sensors["cycleCounter"].Should().Be(new SignalValue("42", false));
+    }
+
+    [Fact]
+    public async Task ValidateAsync_CycleCounterWithNonIntValue_IsDropped()
+    {
+        var immId = Guid.NewGuid();
+        var template = PipelineTestFixtures.MakeTemplate([]);
+        var sensors = new Dictionary<string, SignalValue> { ["cycleCounter"] = new("not-a-number", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
+        var context = BuildContext(immId, message, template);
+        SetupCacheEntry(immId, context);
+
+        var (success, result) = await _sut.ValidateAsync(context);
+
+        success.Should().BeTrue();
+        result.Data!.Sensors.Should().NotContainKey("cycleCounter");
+    }
+
+    [Fact]
     public async Task ValidateAsync_RequiredSensorInvalid_ReturnsFalse()
     {
         var immId = Guid.NewGuid();
         var sensor = PipelineTestFixtures.MakeSensor("s1", "float", required: true);
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
-        var message = PipelineTestFixtures.MakeMessage(immId, new Dictionary<string, string> { ["s1"] = "not_a_number" });
+        var sensors = new Dictionary<string, SignalValue> { ["s1"] = new("not_a_number", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
         var context = BuildContext(immId, message, template);
 
         var (success, _) = await _sut.ValidateAsync(context);
@@ -91,7 +137,8 @@ public class ValidateTelemetryDataHandlerTests
         var immId = Guid.NewGuid();
         var sensor = PipelineTestFixtures.MakeSensor("required_sensor", "float", required: true);
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
-        var message = PipelineTestFixtures.MakeMessage(immId, new Dictionary<string, string> { ["other_sensor"] = "1.0" });
+        var sensors = new Dictionary<string, SignalValue> { ["other_sensor"] = new("1.0", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
         var context = BuildContext(immId, message, template);
 
         var (success, _) = await _sut.ValidateAsync(context);
@@ -104,7 +151,8 @@ public class ValidateTelemetryDataHandlerTests
     {
         var immId = Guid.NewGuid();
         var template = PipelineTestFixtures.MakeTemplate([]); // пустой шаблон
-        var message = PipelineTestFixtures.MakeMessage(immId, new Dictionary<string, string> { ["unknown"] = "42" });
+        var sensors = new Dictionary<string, SignalValue> { ["unknown"] = new("42", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
         var context = BuildContext(immId, message, template);
         SetupCacheEntry(immId, context);
 
@@ -120,7 +168,8 @@ public class ValidateTelemetryDataHandlerTests
         var immId = Guid.NewGuid();
         var sensor = PipelineTestFixtures.MakeSensor("mode", "string", allowedValues: ["run", "stop", "idle"]);
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
-        var message = PipelineTestFixtures.MakeMessage(immId, new Dictionary<string, string> { ["mode"] = "run" });
+        var sensors = new Dictionary<string, SignalValue> { ["mode"] = new("run", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
         var context = BuildContext(immId, message, template);
         SetupCacheEntry(immId, context);
 
@@ -136,7 +185,8 @@ public class ValidateTelemetryDataHandlerTests
         var immId = Guid.NewGuid();
         var sensor = PipelineTestFixtures.MakeSensor("mode", "string", allowedValues: ["run", "stop"]);
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
-        var message = PipelineTestFixtures.MakeMessage(immId, new Dictionary<string, string> { ["mode"] = "unknown" });
+        var sensors = new Dictionary<string, SignalValue> { ["mode"] = new("unknown", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
         var context = BuildContext(immId, message, template);
         SetupCacheEntry(immId, context);
 
@@ -156,7 +206,8 @@ public class ValidateTelemetryDataHandlerTests
         var immId = Guid.NewGuid();
         var sensor = PipelineTestFixtures.MakeSensor("temp", "float", threshold: 0.5m);
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
-        var message = PipelineTestFixtures.MakeMessage(immId, new Dictionary<string, string> { ["temp"] = "20.0" });
+        var sensors = new Dictionary<string, SignalValue> { ["temp"] = new("20.0", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors);
         var context = BuildContext(immId, message, template);
 
         // Кэш пуст — устройство видим впервые
@@ -165,7 +216,7 @@ public class ValidateTelemetryDataHandlerTests
         var (success, result) = await _sut.ValidateAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Sensors["temp"].Should().Be("20.0");
+        result.Data!.Sensors["temp"].Should().Be(new SignalValue("20.0", false));
         _immCache.Received(1).AddImm(immId, Arg.Any<int>());
         _immCache.Received(1).UpdateEntry(immId, Arg.Any<DateTime>(), Arg.Any<int>(), Arg.Any<IReadOnlyDictionary<string, string>>());
     }
@@ -185,15 +236,14 @@ public class ValidateTelemetryDataHandlerTests
 
         // Новое значение: 20.3 — изменение 0.3, порог 0.5 → COV не срабатывает
         var messageAt = cachedAt.AddSeconds(1);
-        var message = PipelineTestFixtures.MakeMessage(immId,
-            new Dictionary<string, string> { ["temp"] = "20.3" },
-            timestampUtc: messageAt);
+        var sensors = new Dictionary<string, SignalValue> { ["temp"] = new("20.3", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors, timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Sensors["temp"].Should().Be("20.0", "значение в пределах порога — подставляется кэшированное");
+        result.Data!.Sensors["temp"].Should().Be(new SignalValue("20.0", false), "значение в пределах порога — подставляется кэшированное");
     }
 
     [Fact]
@@ -211,22 +261,21 @@ public class ValidateTelemetryDataHandlerTests
 
         // Новое значение: 20.7 — изменение 0.7, порог 0.5 → COV срабатывает
         var messageAt = cachedAt.AddSeconds(1);
-        var message = PipelineTestFixtures.MakeMessage(immId,
-            new Dictionary<string, string> { ["temp"] = "20.7" },
-            timestampUtc: messageAt);
+        var sensors = new Dictionary<string, SignalValue> { ["temp"] = new("20.7", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors, timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Sensors["temp"].Should().Be("20.7", "изменение за пределами порога — новое значение");
+        result.Data!.Sensors["temp"].Should().Be(new SignalValue("20.7", false), "изменение за пределами порога — новое значение");
     }
 
     [Fact]
     public async Task ValidateAsync_ZeroThreshold_AlwaysPassesNewValue()
     {
         var immId = Guid.NewGuid();
-        var sensor = PipelineTestFixtures.MakeSensor("cycle", "cycleCounter", threshold: 0);
+        var sensor = PipelineTestFixtures.MakeSensor("cycle", "int", threshold: 0);
         var template = PipelineTestFixtures.MakeTemplate([sensor]);
 
         var cachedAt = DateTime.UtcNow.AddSeconds(-5);
@@ -236,15 +285,14 @@ public class ValidateTelemetryDataHandlerTests
         _immCache.GetEntry(immId).Returns(cacheEntry);
 
         var messageAt = cachedAt.AddSeconds(1);
-        var message = PipelineTestFixtures.MakeMessage(immId,
-            new Dictionary<string, string> { ["cycle"] = "101" },
-            timestampUtc: messageAt);
+        var sensors = new Dictionary<string, SignalValue> { ["cycle"] = new("101", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors, timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Sensors["cycle"].Should().Be("101", "Threshold=0 отключает COV — всегда проходит новое значение");
+        result.Data!.Sensors["cycle"].Should().Be(new SignalValue("101", false), "Threshold=0 отключает COV — всегда проходит новое значение");
     }
 
     [Fact]
@@ -262,15 +310,14 @@ public class ValidateTelemetryDataHandlerTests
         _immCache.GetEntry(immId).Returns(cacheEntry);
 
         var oldMessageTime = cacheTime.AddSeconds(-10); // старше кэша
-        var message = PipelineTestFixtures.MakeMessage(immId,
-            new Dictionary<string, string> { ["temp"] = "25.0" },
-            timestampUtc: oldMessageTime);
+        var sensors = new Dictionary<string, SignalValue> { ["temp"] = new("25.0", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors, timestampUtc: oldMessageTime);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Sensors["temp"].Should().Be("25.0", "out-of-order сообщение проходит без COV-фильтрации");
+        result.Data!.Sensors["temp"].Should().Be(new SignalValue("25.0", false), "out-of-order сообщение проходит без COV-фильтрации");
     }
 
     [Fact]
@@ -290,15 +337,14 @@ public class ValidateTelemetryDataHandlerTests
 
         // Новое значение в пределах порога, но устройство было offline
         var messageAt = DateTime.UtcNow;
-        var message = PipelineTestFixtures.MakeMessage(immId,
-            new Dictionary<string, string> { ["temp"] = "20.3" },
-            timestampUtc: messageAt);
+        var sensors = new Dictionary<string, SignalValue> { ["temp"] = new("20.3", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors, timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Sensors["temp"].Should().Be("20.3", "первое сообщение после офлайна — порог игнорируется");
+        result.Data!.Sensors["temp"].Should().Be(new SignalValue("20.3", false), "первое сообщение после офлайна — порог игнорируется");
     }
 
     /// <summary>
@@ -328,15 +374,14 @@ public class ValidateTelemetryDataHandlerTests
             timeoutSeconds: 60));
 
         // Изменение в пределах порога: нормальный путь подменил бы значение на "20.0".
-        var message = PipelineTestFixtures.MakeMessage(immId,
-            new Dictionary<string, string> { ["temp"] = "20.3" },
-            timestampUtc: messageAt);
+        var sensors = new Dictionary<string, SignalValue> { ["temp"] = new("20.3", Error: false) };
+        var message = PipelineTestFixtures.MakeMessage(immId, sensors: sensors, timestampUtc: messageAt);
         var context = BuildContext(immId, message, template);
 
         var (success, result) = await _sut.ValidateAsync(context);
 
         success.Should().BeTrue();
-        result.Data!.Sensors["temp"].Should().Be("20.3",
+        result.Data!.Sensors["temp"].Should().Be(new SignalValue("20.3", false),
             "сообщение out-of-order проходит без COV-фильтрации");
     }
 
@@ -346,8 +391,8 @@ public class ValidateTelemetryDataHandlerTests
 
     private static MqttProcessingContext BuildContext(
         Guid immId,
-        Wintime.Control.Core.DTOs.Mqtt.MqttTelemetryMessage message,
-        Wintime.Control.Core.Cache.CachedTemplate template)
+        MqttTelemetryMessage message,
+        CachedTemplate template)
     {
         var device = PipelineTestFixtures.MakeImmDto(immId);
         return PipelineTestFixtures.MakeContext(
@@ -361,7 +406,7 @@ public class ValidateTelemetryDataHandlerTests
         var entry = PipelineTestFixtures.MakeImmCacheEntry(
             immId,
             messageAt.AddSeconds(-10),
-            context.Data.Sensors.ToDictionary(k => k.Key, v => v.Value),
+            context.Data.Sensors.ToDictionary(k => k.Key, v => v.Value.Value),
             timeoutSeconds: context.Template!.DeviceTimeoutSeconds);
         _immCache.GetEntry(immId).Returns(entry);
     }
