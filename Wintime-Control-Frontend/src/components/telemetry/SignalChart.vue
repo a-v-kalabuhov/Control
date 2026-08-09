@@ -52,10 +52,13 @@ function buildOption() {
     silent: true,
     symbol: 'none',
     label: { show: false },
-    data: props.cycles.flatMap(c => ([
-      { xAxis: new Date(c.start).getTime(), lineStyle: { color: c.isSuccessful ? '#16a34a' : '#dc2626', type: 'solid', width: 1 } },
-      { xAxis: new Date(c.end).getTime(),   lineStyle: { color: '#9ca3af', type: 'dashed', width: 1 } },
-    ])),
+    data: props.cycles.flatMap(c => {
+      const lines = [{ xAxis: new Date(c.start).getTime(), lineStyle: { color: c.isSuccessful ? '#16a34a' : '#dc2626', type: 'solid', width: 1 } }]
+      if (c.end) {
+        lines.push({ xAxis: new Date(c.end).getTime(), lineStyle: { color: '#9ca3af', type: 'dashed', width: 1 } })
+      }
+      return lines
+    }),
   }
 
   const yAxis = axisKind.value === 'numeric'
