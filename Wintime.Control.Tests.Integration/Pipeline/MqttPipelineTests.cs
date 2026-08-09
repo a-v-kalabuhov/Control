@@ -77,6 +77,95 @@ public class MqttPipelineTests : IClassFixture<IntegrationTestFactory>
     }
 
     // =========================================================================
+    // Циклы
+    // =========================================================================
+
+    /// <summary>
+    /// Полный цикл жизни ImmCycle через реальный pipeline: открытие по currentCycle,
+    /// закрытие по lastCycle, дедупликация повторной публикации того же lastCycle.
+    /// </summary>
+    [Fact]
+    public async Task FullCycle_OpenCloseDedup_ProducesSingleRow()
+    {
+        var immId = await _factory.CreateFreshImmAsync();
+
+        var t0 = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
+        var injectionStart = t0.AddMilliseconds(800);
+        var endTime = t0.AddSeconds(12);
+
+        // 1. Открытие цикла
+        await RunPipelineAsync(BuildCycleContext(
+            immId,
+            currentCycleJson: $$$"""
+                {
+                    "number": 1,
+                    "startTime": "{{{t0:O}}}",
+                    "injectionStartTime": "{{{injectionStart:O}}}",
+                    "cushion": null
+                }
+                """,
+            lastCycleJson: "null"));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var rows = await db.ImmCycles.AsNoTracking().Where(c => c.ImmId == immId).ToListAsync();
+
+            rows.Should().ContainSingle();
+            rows[0].EndTime.Should().BeNull();
+            rows[0].CycleNumber.Should().Be(1);
+            rows[0].StartTime.Should().Be(t0);
+        }
+
+        // 2. Закрытие цикла
+        await RunPipelineAsync(BuildCycleContext(
+            immId,
+            currentCycleJson: "null",
+            lastCycleJson: $$$"""
+                {
+                    "number": 1,
+                    "startTime": "{{{t0:O}}}",
+                    "endTime": "{{{endTime:O}}}",
+                    "injectionStartTime": "{{{injectionStart:O}}}",
+                    "cushion": 5.1
+                }
+                """));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var rows = await db.ImmCycles.AsNoTracking().Where(c => c.ImmId == immId).ToListAsync();
+
+            rows.Should().ContainSingle();
+            rows[0].EndTime.Should().Be(endTime);
+            rows[0].DurationSeconds.Should().Be(12);
+            rows[0].Cushion.Should().Be(5.1m);
+        }
+
+        // 3. Повторная публикация того же lastCycle — дедупликация
+        await RunPipelineAsync(BuildCycleContext(
+            immId,
+            currentCycleJson: "null",
+            lastCycleJson: $$$"""
+                {
+                    "number": 1,
+                    "startTime": "{{{t0:O}}}",
+                    "endTime": "{{{endTime:O}}}",
+                    "injectionStartTime": "{{{injectionStart:O}}}",
+                    "cushion": 5.1
+                }
+                """));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var rows = await db.ImmCycles.AsNoTracking().Where(c => c.ImmId == immId).ToListAsync();
+
+            rows.Should().ContainSingle("повторная публикация lastCycle не должна создавать дубликат");
+        }
+    }
+
+    // =========================================================================
     // Статус ТПА
     // =========================================================================
 
@@ -209,6 +298,37 @@ public class MqttPipelineTests : IClassFixture<IntegrationTestFactory>
                 },
                 "currentCycle": null,
                 "lastCycle": null
+            }
+            """;
+
+        return new MqttProcessingContext(
+            Guid.NewGuid(),
+            Topic:   $"control/imm/{immId}/telemetry",
+            Payload: payload,
+            Data: null, Device: null, Template: null);
+    }
+
+    /// <summary>
+    /// Как <see cref="BuildContext"/>, но с явными блоками currentCycle/lastCycle
+    /// (сырой JSON-фрагмент или буквально "null") — для тестов на цикл открытия/закрытия.
+    /// </summary>
+    private static MqttProcessingContext BuildCycleContext(
+        Guid immId,
+        string currentCycleJson,
+        string lastCycleJson,
+        string mode = "auto")
+    {
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var payload   = $$$"""
+            {
+                "timestamp": {{{timestamp}}},
+                "mode": "{{{mode}}}",
+                "sensors": {
+                    "temp": {"value": "25.5", "error": false},
+                    "cycleCounter": {"value": "1", "error": false}
+                },
+                "currentCycle": {{{currentCycleJson}}},
+                "lastCycle": {{{lastCycleJson}}}
             }
             """;
 
