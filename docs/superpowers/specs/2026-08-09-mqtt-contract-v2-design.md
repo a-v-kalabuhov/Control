@@ -1,0 +1,189 @@
+# MQTT-контракт v2 (коннектор → Control) и изменения Control
+
+**Дата:** 2026-08-09
+**Статус:** дизайн согласован, ждёт плана реализации
+**Область:** `Wintime.Control` (Core/Infrastructure/API); коннекторы — отдельная работа
+**Отменяет:** `docs/superpowers/specs/2026-08-01-cycle-boundaries-from-connector-design.md` и план
+`docs/superpowers/plans/2026-08-02-cycle-boundaries-from-connector.md` целиком (оба помечены
+Superseded by этим документом) — узкий контракт `cycleStart`/`cycleEnd` заменяется более полным.
+
+## Проблема
+
+Сегодняшний контракт между коннектором и Control — плоский набор именованных сигналов
+(`sensors: { name: string }`) плюс `mode`. Control сам детектирует границы цикла литья по
+изменению сигнала `cycleCounter` и использует **метки MQTT-сообщений** как границы цикла —
+неточно (см. отменяемую спеку 2026-08-01): между реальным физическим событием на ТПА
+(смыкание/раскрытие формы) и ближайшим опросом коннектора лежит до одного интервала опроса.
+
+Коннектор при этом располагает собственным автоматом состояний, который отслеживает цикл
+литья по фронтам сигналов формы и точно знает моменты начала/впрыска/завершения, а также
+может вычислить «подушку» (минимальное значение сигнала положения инжекции за время впрыска).
+Логично перенести детекцию цикла на коннектор целиком, а не пытаться передать Control ещё две
+точки времени (`cycleStart`/`cycleEnd`) для самостоятельной пересборки цикла — этим и
+отличается контракт v2 от отменяемого узкого дизайна.
+
+## Решение
+
+### A. Схема JSON payload
+
+Топик MQTT не меняется: `control/imm/{immId:guid}/telemetry`. При `mode = offline` сообщение
+не публикуется вообще — офлайн определяется таймаутом на стороне Control
+(`Template.DeviceTimeoutSeconds`), не значением `mode`.
+
+```json
+{
+  "timestamp": "2026-08-09T12:34:56.789Z",
+  "mode": "auto",
+  "sensors": {
+    "cycleCounter": { "value": "42", "error": false },
+    "matTemp1":     { "value": "215.3", "error": false },
+    "doorSensor":   { "value": "0", "error": true }
+  },
+  "currentCycle": {
+    "number": 42,
+    "startTime": "2026-08-09T12:34:50.000Z",
+    "injectionStartTime": "2026-08-09T12:34:50.800Z",
+    "cushion": 5.2
+  },
+  "lastCycle": {
+    "number": 41,
+    "startTime": "2026-08-09T12:34:35.000Z",
+    "endTime": "2026-08-09T12:34:50.000Z",
+    "injectionStartTime": "2026-08-09T12:34:35.800Z",
+    "cushion": 5.1
+  }
+}
+```
+
+Правила:
+- `mode` — один из `auto`/`manual`/`idle`/`alarm` (как сегодня; `offline` на проводе не
+  встречается — сообщение просто не шлётся).
+- `sensors` — только сигналы, помеченные `published` в конфиге коннектора конкретной машины,
+  плюс всегда `cycleCounter` — зарезервированное имя, не требует записи в
+  `Template.JsonConfig`, вычисляется коннектором в памяти (не чтение регистра), поэтому
+  `error` для него всегда `false`.
+- `currentCycle`/`lastCycle` — весь объект `null`, когда неприменимо (`currentCycle=null`,
+  если цикл сейчас не выполняется; `lastCycle=null`, если с момента рестарта коннектора ни
+  один цикл ещё не завершился). Поля внутри объекта заполняются/пустеют синхронно (по
+  автомату коннектора они не бывают частично заполнены), поэтому не нужен вариант
+  «объект есть, но часть полей null».
+- `ParameterType` в `Template.JsonConfig` сокращается до `string`/`float`/`int`/`boolean`.
+  `cycleCounter`, `injectionDuration`, `cyclePause`, `cycleStart`, `cycleEnd` из контракта
+  убираются — эта информация теперь идёт структурированными полями, а не типизированными
+  сенсорами.
+
+### B. Изменения в Control
+
+**Decode** (`DecodeTelemetryDataHandler`): парсит новую форму `sensors`
+(`Dictionary<string, SignalValue>`, `SignalValue(string Value, bool Error)`) и два новых
+nullable-объекта `CurrentCycle`/`LastCycle` на `MqttTelemetryMessage`
+(`CycleSnapshot(int Number, DateTime StartTime, DateTime? InjectionStartTime, decimal? Cushion)`
+для `CurrentCycle`; `CompletedCycleSnapshot(int Number, DateTime StartTime, DateTime EndTime,
+DateTime? InjectionStartTime, decimal? Cushion)` для `LastCycle`). Сообщение без `sensors`,
+`currentCycle` или `lastCycle` в JSON — отклоняется (обязательные секции контракта v2, старый
+контракт не поддерживается параллельно — осознанный breaking change).
+
+**Validate** (`ValidateTelemetryDataHandler`): тип-свитч сокращается до `string/float/int/
+boolean`. Сигналы с `error=true` **пропускаются** — не проходят в результат валидации, не
+попадают в `Telemetry`, не участвуют в COV-сравнении (аналогично тому, как сегодня
+отбрасываются невалидные значения). `cycleCounter` валидируется как `int` без обращения к
+`Template.Sensors` — зарезервированное имя всегда проходит.
+
+**Store** (`StoreTelemetryDataHandler`): без изменений в механике — пишет `Telemetry` по
+сенсорам, объявленным в `Template`, плюс всегда `cycleCounter` той же дорогой.
+
+**Cycle processing** (`CycleProcessingHandler`, ключевое изменение) — полностью заменяет
+текущую логику детекции по `cycleCounter`/timestamp. На каждое сообщение:
+1. Если `currentCycle != null` и его `Number` отличается от последнего известного открытого
+   номера в трекере → создать `ImmCycle` со `StartTime=currentCycle.StartTime`,
+   `EndTime=null`, `InjectionStartTime=currentCycle.InjectionStartTime`; номер и Id строки
+   запоминаются в трекере как «открытый цикл».
+2. Если `lastCycle != null` и его `Number` совпадает с номером открытого цикла в трекере →
+   дозаполнить эту строку (`EndTime`, `Cushion`, `DurationSeconds`,
+   `InjectionDurationMs`), затем прогнать `ICycleHandler[]` пайплайн (Stage 2, как сегодня,
+   каждый обработчик в try/catch — ADR-0008 не меняется).
+3. Если `lastCycle != null`, но ни одна открытая строка с таким номером не найдена (Control
+   не видела старта — пропущенное сообщение или рестарт Control) → создать и сразу закрыть
+   `ImmCycle` одним шагом.
+4. Повторный `lastCycle` с тем же номером, что у уже закрытой строки (блок повторяется в
+   каждом сообщении, пока не появится следующий цикл) — не обрабатывается повторно
+   (дедупликация по номеру).
+5. `DurationSeconds = round((EndTime-StartTime).TotalSeconds)`,
+   `InjectionDurationMs = (EndTime-InjectionStartTime)?.TotalMilliseconds`.
+
+`CycleProcessingPolicy`/`ImmMode`/`ImmEffectiveStatus` — без изменений (значения `mode`
+остаются теми же строками `auto/manual/idle/alarm`).
+
+### C. Схема БД
+
+`ImmCycle`:
+- `EndTime` становится **nullable** (сегодня обязателен) — открытый, ещё не завершённый цикл
+  хранится без него.
+- Новые nullable-поля: `Cushion decimal?`, `InjectionStartTime DateTime?`.
+- `IsSuccessful`/`Cavities`/`TaskId`/`MoldId` заполняются как сегодня, в момент открытия
+  строки (активное задание уже известно на старте цикла).
+
+`ICycleTracker`/`CycleState` упрощаются: коннектор теперь несёт всю детекцию, трекеру нужно
+только помнить, какая строка `ImmCycle` сейчас открыта, чтобы найти её при получении
+`lastCycle`: `CycleState(int? OpenCycleNumber, Guid? OpenCycleId)`.
+
+Миграция: `dotnet ef migrations add MqttContractV2_CycleBoundaries --project
+Wintime.Control.Infrastructure --startup-project Wintime.Control.API`.
+
+### D. Ошибки и граничные случаи
+
+- **Обрыв связи посреди цикла**: Control перестаёт получать сообщения → открытая строка
+  `ImmCycle` (`EndTime=null`) остаётся как есть. По восстановлении связи коннектор либо
+  продолжит тот же цикл (валидация в его FSM подтвердила непрерывность — придёт `lastCycle` с
+  тем же номером), либо после собственного таймера начнёт новый. **Детект «зависших» открытых
+  циклов по таймауту устройства — отдельная задача, вне этой спеки** (не блокирует
+  реализацию: `Template.DeviceTimeoutSeconds` уже существует и может быть использован позже
+  для батч-закрытия зависших `ImmCycle` с `EndTime=null`).
+- **`lastCycle.Number` без соответствующей открытой строки**: создаём и сразу закрываем
+  `ImmCycle` целиком за один шаг (B.3).
+- **Повтор `lastCycle`**: дедупликация по номеру, если строка с этим номером уже закрыта.
+- **`currentCycle.Number` меньше/равен последнему известному** (коннектор перезапустился,
+  счётчик обнулился): открываем новую строку без попытки «продолжить» старую; если старая
+  была открыта и не закрыта — она так и останется открытой (см. TODO выше).
+- **Невалидный/незнакомый `mode`**: сообщение отклоняется целиком.
+- **`sensors`/`currentCycle`/`lastCycle` отсутствуют в JSON**: сообщение отклоняется —
+  контракт v1 не поддерживается параллельно.
+
+### E. Тестирование
+
+xUnit, `Wintime.Control.Tests.Unit`:
+- `DecodeTelemetryDataHandlerTests` — новая форма `sensors` ({value,error}), `currentCycle`/
+  `lastCycle` null и заполненных, отклонение сообщений без обязательных секций.
+- `ValidateTelemetryDataHandlerTests` — сокращённый список `ParameterType`, `cycleCounter` как
+  всегда валидный без записи в `Template`, сигналы с `error=true` отбрасываются.
+- `StoreTelemetryDataHandlerTests` — без существенных изменений + кейс с `cycleCounter`.
+- `CycleProcessingHandlerTests` — переписывается почти целиком: открытие по `currentCycle`,
+  закрытие по `lastCycle` с совпадающим номером, дедупликация повторного `lastCycle`,
+  «внезапный» `lastCycle` без открытой строки, сброс номера при рестарте коннектора.
+- Интеграционный тест (если есть проект `Wintime.Control.Tests.Integration`): полный проход
+  одного цикла через MQTT-пайплайн от decode до записи `ImmCycle`.
+
+## Альтернативы
+
+- **Оставить `cycleStart`/`cycleEnd` как два отдельных типа сенсоров** (отменяемый дизайн
+  2026-08-01) — отвергнуто: Control всё равно вынужден сам пересобирать цикл (сопоставлять
+  пары значений, отслеживать «протухшую»/перевёрнутую защёлку), хотя коннектор уже прогнал
+  эти данные через собственный надёжный автомат состояний. Контракт v2 передаёт результат
+  этой работы напрямую, а не сырые точки для повторного вычисления на стороне Control.
+- **Передавать `sensors` в естественных JSON-типах** (число/булево вместо строки) — отвергнуто
+  для этой итерации: минимизирует изменения в `Validate`/`StoreTelemetryDataHandler`, тип по
+  прежнему объявляется в `Template.JsonConfig`.
+
+## Последствия
+
+- Breaking change контракта: коннекторы, не обновлённые под v2, не смогут публиковать
+  телеметрию (сообщения будут отклоняться на decode). USR-Modbus переписывается отдельной
+  спекой сразу под v2; Keba и OpcUa остаются на текущем (эмулируемом Control?) контракте до
+  отдельной миграции — см. пункты в `feature_backlog.md`.
+- `CycleProcessingHandler` резко упрощается: вся эвристика детекции границ и COV-логика для
+  «времязначных» сенсоров исчезает, остаётся сопоставление номеров циклов.
+- Открытые (`EndTime=null`) циклы — новое явление в `ImmCycle`: отчёты и агрегации, которые
+  сегодня не ожидают `null` в `EndTime`/`DurationSeconds`, нужно проверить на этот случай
+  отдельно при реализации (не в этой спеке — фиксируется как риск).
+- Детект зависших открытых циклов (обрыв связи, коннектор так и не восстановился) — вынесен в
+  беклог, не блокирует эту спеку.
