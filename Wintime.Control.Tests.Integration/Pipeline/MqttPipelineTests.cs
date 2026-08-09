@@ -47,7 +47,7 @@ public class MqttPipelineTests : IClassFixture<IntegrationTestFactory>
 
         var row = await db.Telemetry
             .AsNoTracking()
-            .SingleAsync(r => r.ImmId == immId);
+            .SingleAsync(r => r.ImmId == immId && r.ParameterName == "temp");
 
         row.ParameterName.Should().Be("temp");
         row.ValueNumeric.Should().Be(25.5m);
@@ -71,7 +71,7 @@ public class MqttPipelineTests : IClassFixture<IntegrationTestFactory>
 
         var count = await db.Telemetry
             .AsNoTracking()
-            .CountAsync(r => r.ImmId == immId);
+            .CountAsync(r => r.ImmId == immId && r.ParameterName == "temp");
 
         count.Should().Be(2);
     }
@@ -199,7 +199,18 @@ public class MqttPipelineTests : IClassFixture<IntegrationTestFactory>
         string mode = "auto")
     {
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var payload   = $$$"""{"timestamp": {{{timestamp}}}, "mode": "{{{mode}}}", "sensors": {"temp": {{{temp}}}}}""";
+        var payload   = $$$"""
+            {
+                "timestamp": {{{timestamp}}},
+                "mode": "{{{mode}}}",
+                "sensors": {
+                    "temp": {"value": "{{{temp}}}", "error": false},
+                    "cycleCounter": {"value": "0", "error": false}
+                },
+                "currentCycle": null,
+                "lastCycle": null
+            }
+            """;
 
         return new MqttProcessingContext(
             Guid.NewGuid(),
