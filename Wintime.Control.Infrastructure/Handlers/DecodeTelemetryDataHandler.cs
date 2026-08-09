@@ -282,7 +282,10 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                         out var parsed))
                     return false;
 
-                utc = parsed;
+                // Округляем до миллисекунды: Npgsql/timestamptz хранит с точностью до микросекунд,
+                // а DateTime.TryParse сохраняет полную точность тиков (100нс) из ISO-строки — без
+                // усечения сравнение (CycleNumber, StartTime) после round-trip через БД не совпадёт.
+                utc = parsed.AddTicks(-(parsed.Ticks % TimeSpan.TicksPerMillisecond));
                 return true;
 
             case JsonValueKind.Number:

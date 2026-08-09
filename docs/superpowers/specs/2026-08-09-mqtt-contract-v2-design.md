@@ -71,6 +71,9 @@ Superseded by этим документом) — узкий контракт `cy
   `cycleCounter`, `injectionDuration`, `cyclePause`, `cycleStart`, `cycleEnd` из контракта
   убираются — эта информация теперь идёт структурированными полями, а не типизированными
   сенсорами.
+- Временные метки (`timestamp`, `startTime`, `endTime`, `injectionStartTime`) обрабатываются с точностью
+  до миллисекунды — более мелкая точность на проводе не запрещена, но Control округляет её до мс при
+  разборе (нужно для точного сравнения `(CycleNumber, StartTime)` после round-trip через БД).
 
 ### B. Изменения в Control
 
