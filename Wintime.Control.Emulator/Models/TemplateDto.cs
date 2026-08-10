@@ -55,8 +55,9 @@ public class SensorConfig
     public string Field { get; set; } = "";
     /// <summary>
     /// Тип данных, передаваемых датчиком.
-    /// Доступные значения float, boolean, string, cycleCounter.
-    /// cycleCounter - целое число, счетчик циклов.
+    /// Доступные значения float, boolean, string.
+    /// cycleCounter больше не является конфигурируемым типом — это зарезервированное
+    /// имя датчика, которое эмулятор публикует всегда, независимо от профиля.
     /// </summary>
     public string Type { get; set; } = "";
     /// <summary>

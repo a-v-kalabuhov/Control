@@ -88,9 +88,9 @@ public class UnplannedRunController : ControllerBase
             .ToListAsync();
 
         var cycleAgg = await _context.ImmCycles
-            .Where(c => c.ImmId == run.ImmId && c.TaskId != null)
+            .Where(c => c.ImmId == run.ImmId && c.TaskId != null && c.EndTime != null)
             .GroupBy(c => c.TaskId!.Value)
-            .Select(g => new { TaskId = g.Key, First = g.Min(c => c.StartTime), Last = g.Max(c => c.EndTime), Count = g.Count() })
+            .Select(g => new { TaskId = g.Key, First = g.Min(c => c.StartTime), Last = g.Max(c => c.EndTime!.Value), Count = g.Count() })
             .ToListAsync();
 
         // Для каждого eligible-задания считаем признаки смежности один раз — переиспользуем
@@ -173,6 +173,8 @@ public class UnplannedRunController : ControllerBase
             rolledBackCycles = await RollbackBindingAsync(run, run.AssignedTaskId.Value);
 
         // Бэкфилл сирот-циклов окна эпизода
+        // ПРИМЕЧАНИЕ: открытый цикл (EndTime=null) на момент бэкфилла не попадёт в это
+        // окно — известное ограничение контракта v2, не устраняется в этой задаче.
         var windowQuery = _context.ImmCycles.Where(c => c.ImmId == run.ImmId && c.TaskId == null && c.EndTime >= run.StartTime);
         if (run.ClosedAt.HasValue)
             windowQuery = windowQuery.Where(c => c.EndTime <= run.ClosedAt.Value);
@@ -208,9 +210,9 @@ public class UnplannedRunController : ControllerBase
     {
         var avg = avgCycleDuration > 0 ? avgCycleDuration : 1;
         var cyc = await _context.ImmCycles
-            .Where(c => c.TaskId == task.Id)
+            .Where(c => c.TaskId == task.Id && c.EndTime != null)
             .GroupBy(c => c.TaskId)
-            .Select(g => new { First = g.Min(c => c.StartTime), Last = g.Max(c => c.EndTime), Count = g.Count() })
+            .Select(g => new { First = g.Min(c => c.StartTime), Last = g.Max(c => c.EndTime!.Value), Count = g.Count() })
             .FirstOrDefaultAsync();
         bool hasCycles = cyc != null && cyc.Count > 0;
 
@@ -249,6 +251,8 @@ public class UnplannedRunController : ControllerBase
     private async Task<List<Core.Entities.ImmCycle>> RollbackBindingAsync(Core.Entities.UnplannedRun run, Guid previousTaskId)
     {
         var prevTask = await _context.ShiftTasks.Include(t => t.Mold).FirstOrDefaultAsync(t => t.Id == previousTaskId);
+        // ПРИМЕЧАНИЕ: открытый цикл (EndTime=null) на момент бэкфилла не попадёт в это
+        // окно — известное ограничение контракта v2, не устраняется в этой задаче.
         var windowQuery = _context.ImmCycles.Where(c => c.ImmId == run.ImmId && c.TaskId == previousTaskId && c.EndTime >= run.StartTime);
         if (run.ClosedAt.HasValue)
             windowQuery = windowQuery.Where(c => c.EndTime <= run.ClosedAt.Value);
@@ -280,7 +284,7 @@ public class UnplannedRunController : ControllerBase
     private async Task<Aggregates> ComputeAggregatesAsync(
         Guid immId, DateTime startTime, DateTime? closedAt, Guid? assignedTaskId)
     {
-        var q = _context.ImmCycles.Where(c => c.ImmId == immId && c.EndTime >= startTime);
+        var q = _context.ImmCycles.Where(c => c.ImmId == immId && c.EndTime != null && c.EndTime >= startTime);
         if (closedAt.HasValue)
             q = q.Where(c => c.EndTime <= closedAt.Value);
         // сироты + (после назначения) циклы назначенного задания

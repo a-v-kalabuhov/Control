@@ -95,7 +95,7 @@ public class ReportService : IReportService
 
         // Успешные циклы за период
         var cycles = await _context.ImmCycles
-            .Where(c => c.ImmId == imm.Id && c.IsSuccessful
+            .Where(c => c.ImmId == imm.Id && c.IsSuccessful && c.EndTime != null
                 && c.StartTime >= periodStart && c.StartTime < periodEnd)
             .ToListAsync(ct);
 
@@ -272,7 +272,7 @@ public class ReportService : IReportService
                 .ToListAsync(ct);
 
             var cycles = await _context.ImmCycles
-                .Where(c => c.ImmId == imm.Id && c.IsSuccessful
+                .Where(c => c.ImmId == imm.Id && c.IsSuccessful && c.EndTime != null
                     && c.StartTime >= dateFromUtc && c.StartTime < periodEnd)
                 .ToListAsync(ct);
 
@@ -390,6 +390,7 @@ public class ReportService : IReportService
                 .Where(c => c.MoldId != null
                          && moldIds.Contains(c.MoldId.Value)
                          && c.IsSuccessful
+                         && c.EndTime != null
                          && c.StartTime >= dateFromUtc
                          && c.StartTime < periodEnd)
                 .GroupBy(c => c.MoldId!.Value)
@@ -401,7 +402,8 @@ public class ReportService : IReportService
                 })
                 .ToListAsync(ct);
 
-            // Суммарные смыкания за всё время — для расчёта остатка ресурса
+            // Суммарные смыкания за всё время — для расчёта остатка ресурса (включая
+            // открытые циклы: незавершённый цикл уже изнашивает форму)
             var allTimeCycleStats = await _context.ImmCycles
                 .Where(c => c.MoldId != null && moldIds.Contains(c.MoldId.Value) && c.IsSuccessful)
                 .GroupBy(c => c.MoldId!.Value)
@@ -492,6 +494,7 @@ public class ReportService : IReportService
                 .Where(c => c.MoldId != null
                          && moldIds.Contains(c.MoldId.Value)
                          && c.IsSuccessful
+                         && c.EndTime != null
                          && c.StartTime >= dateFromUtc
                          && c.StartTime < periodEnd)
                 .GroupBy(c => new { c.MoldId, c.ImmId })
@@ -504,7 +507,8 @@ public class ReportService : IReportService
                 })
                 .ToListAsync(ct);
 
-            // Суммарные смыкания за всё время — для расчёта остатка ресурса
+            // Суммарные смыкания за всё время — для расчёта остатка ресурса (включая
+            // открытые циклы: незавершённый цикл уже изнашивает форму)
             var allTimeCycleStats = await _context.ImmCycles
                 .Where(c => c.MoldId != null && moldIds.Contains(c.MoldId.Value) && c.IsSuccessful)
                 .GroupBy(c => c.MoldId!.Value)

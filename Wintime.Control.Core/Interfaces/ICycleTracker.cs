@@ -1,6 +1,6 @@
 namespace Wintime.Control.Core.Interfaces;
 
-public record CycleState(DateTime? CycleStartTime, int? LastCounterValue, string? LastMode, long? LastCycleEndMs = null);
+public record CycleState(int? OpenCycleNumber, DateTime? OpenCycleStartTime, Guid? OpenCycleId);
 
 /// <summary>
 /// In-memory хранилище состояния отслеживания циклов по каждому ТПА.

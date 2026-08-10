@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using System.Text.Json.Nodes;
 using System.Text.Json;
 using System.Globalization;
+using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.Imm;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Interfaces;
@@ -116,51 +117,84 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
             return (false, context);
         }
 
-        // 2. Verify JSON has required fields: timestamp and sensors
-        var timestampToken = payloadObject?["timestamp"];
-        var sensorsToken = payloadObject?["sensors"];
-        var modeToken = payloadObject?["mode"];
+        // 2. Verify JSON has required top-level sections: mode, sensors, currentCycle, lastCycle
+        var rootObj = payloadObject!.AsObject();
 
+        var timestampToken = rootObj["timestamp"];
         if (timestampToken == null)
         {
             _logger.LogError("Payload does not contain 'timestamp' field in topic: {Topic}", context.Topic);
             return (false, context);
         }
 
+        var modeToken = rootObj["mode"];
         if (modeToken == null)
         {
             _logger.LogError("Payload does not contain 'mode' field in topic: {Topic}", context.Topic);
             return (false, context);
         }
-        var mode = modeToken.GetValueKind() == JsonValueKind.String 
+        var mode = modeToken.GetValueKind() == JsonValueKind.String
             ? modeToken.GetValue<string>() : modeToken.ToJsonString();
-
-        if (sensorsToken == null)
+        var normalizedMode = ImmMode.Normalize(mode);
+        if (normalizedMode is not (ImmMode.Auto or ImmMode.Manual or ImmMode.Idle or ImmMode.Alarm))
         {
-            _logger.LogError("Payload does not contain 'sensors' field in topic: {Topic}", context.Topic);
+            _logger.LogError("Unknown 'mode' value '{Mode}' in topic: {Topic}", mode, context.Topic);
             return (false, context);
         }
 
-        // 3. Verify sensors array is not empty
-        var sensorsAsObject = sensorsToken.AsObject();
-        if ((sensorsAsObject == null) || (sensorsAsObject.Count == 0))
+        if (!rootObj.ContainsKey("sensors") || rootObj["sensors"] is not JsonObject sensorsAsObject)
         {
-            _logger.LogError("Sensors array is empty in topic: {Topic}", context.Topic);
+            _logger.LogError("Payload does not contain 'sensors' object in topic: {Topic}", context.Topic);
             return (false, context);
         }
 
-        // Build sensors dictionary from JSON
-        var sensorsDict = new Dictionary<string, string>();
-        foreach(var prop in sensorsAsObject)
+        if (!rootObj.ContainsKey("currentCycle") || !rootObj.ContainsKey("lastCycle"))
         {
-            if(prop.Value != null)
+            _logger.LogError("Payload missing 'currentCycle'/'lastCycle' section in topic: {Topic}", context.Topic);
+            return (false, context);
+        }
+
+        // Build sensors dictionary: { name: { value, error } }
+        var sensorsDict = new Dictionary<string, SignalValue>();
+        foreach (var prop in sensorsAsObject)
+        {
+            if (prop.Value is not JsonObject sigObj)
+                continue;
+            var valueToken = sigObj["value"];
+            if (valueToken == null)
+                continue;
+            var value = valueToken.GetValueKind() == JsonValueKind.String
+                ? valueToken.GetValue<string>() : valueToken.ToJsonString();
+            var error = sigObj["error"] is { } errToken && errToken.GetValueKind() == JsonValueKind.True;
+            sensorsDict[prop.Key] = new SignalValue(value, error);
+        }
+
+        if (sensorsDict.Count == 0 || !sensorsDict.ContainsKey("cycleCounter"))
+        {
+            _logger.LogError("Sensors missing or missing reserved 'cycleCounter' key in topic: {Topic}", context.Topic);
+            return (false, context);
+        }
+
+        CycleSnapshot? currentCycle = null;
+        if (rootObj["currentCycle"] is JsonObject ccObj)
+        {
+            if (!TryParseCycleSnapshot(ccObj, out currentCycle))
             {
-                sensorsDict[prop.Key] = prop.Value.GetValueKind() == JsonValueKind.String
-                    ? prop.Value.GetValue<string>()
-                    : prop.Value.ToJsonString();
+                _logger.LogError("Cannot parse 'currentCycle' in topic: {Topic}", context.Topic);
+                return (false, context);
             }
         }
-        
+
+        CompletedCycleSnapshot? lastCycle = null;
+        if (rootObj["lastCycle"] is JsonObject lcObj)
+        {
+            if (!TryParseCompletedCycleSnapshot(lcObj, out lastCycle))
+            {
+                _logger.LogError("Cannot parse 'lastCycle' in topic: {Topic}", context.Topic);
+                return (false, context);
+            }
+        }
+
         // 5. Find and validate device exists in DB
         var immEntity = await _dbContext.Imms.FirstOrDefaultAsync(x => x.Id == deviceId);
         if (immEntity == null)
@@ -206,7 +240,9 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
             TimestampUtc = timestampUtc,
             DeviceId = deviceId.ToString(),
             Mode = mode,
-            Sensors = sensorsDict
+            Sensors = sensorsDict,
+            CurrentCycle = currentCycle,
+            LastCycle = lastCycle
         };
 
         return (true, context with
@@ -246,7 +282,10 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                         out var parsed))
                     return false;
 
-                utc = parsed;
+                // Округляем до миллисекунды: Npgsql/timestamptz хранит с точностью до микросекунд,
+                // а DateTime.TryParse сохраняет полную точность тиков (100нс) из ISO-строки — без
+                // усечения сравнение (CycleNumber, StartTime) после round-trip через БД не совпадёт.
+                utc = parsed.AddTicks(-(parsed.Ticks % TimeSpan.TicksPerMillisecond));
                 return true;
 
             case JsonValueKind.Number:
@@ -260,5 +299,65 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
             default:
                 return false;
         }
+    }
+
+    private static bool TryParseCycleSnapshot(JsonObject obj, out CycleSnapshot? snapshot)
+    {
+        snapshot = null;
+
+        if (obj["number"] is not { } numberToken || !numberToken.AsValue().TryGetValue<int>(out var number))
+            return false;
+        if (obj["startTime"] is not { } startToken || !TryParseTimestamp(startToken, out var startTime))
+            return false;
+
+        DateTime? injectionStartTime = null;
+        if (obj["injectionStartTime"] is { } injToken)
+        {
+            if (!TryParseTimestamp(injToken, out var inj))
+                return false;
+            injectionStartTime = inj;
+        }
+
+        decimal? cushion = null;
+        if (obj["cushion"] is { } cushionToken)
+        {
+            if (!cushionToken.AsValue().TryGetValue<decimal>(out var c))
+                return false;
+            cushion = c;
+        }
+
+        snapshot = new CycleSnapshot(number, startTime, injectionStartTime, cushion);
+        return true;
+    }
+
+    private static bool TryParseCompletedCycleSnapshot(JsonObject obj, out CompletedCycleSnapshot? snapshot)
+    {
+        snapshot = null;
+
+        if (obj["number"] is not { } numberToken || !numberToken.AsValue().TryGetValue<int>(out var number))
+            return false;
+        if (obj["startTime"] is not { } startToken || !TryParseTimestamp(startToken, out var startTime))
+            return false;
+        if (obj["endTime"] is not { } endToken || !TryParseTimestamp(endToken, out var endTime))
+            return false;
+
+        DateTime? injectionStartTime = null;
+        if (obj["injectionStartTime"] is { } injToken)
+        {
+            if (!TryParseTimestamp(injToken, out var inj))
+                return false;
+            injectionStartTime = inj;
+        }
+
+        decimal? cushion = null;
+        if (obj["cushion"] is { } cushionToken)
+        {
+            if (!cushionToken.AsValue().TryGetValue<decimal>(out var c))
+                return false;
+            cushion = c;
+        }
+
+        snapshot = new CompletedCycleSnapshot(number, startTime, endTime, injectionStartTime, cushion);
+        return true;
     }
 }

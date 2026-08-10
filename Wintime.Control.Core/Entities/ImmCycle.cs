@@ -6,7 +6,13 @@ public class ImmCycle : BaseEntity
     public Guid? TaskId { get; set; }
     public Guid? MoldId { get; set; }
     public DateTime StartTime { get; set; }
-    public DateTime EndTime { get; set; }
+
+    /// <summary>
+    /// <c>null</c> — цикл открыт (получен <c>currentCycle</c>, <c>lastCycle</c> с тем же
+    /// номером ещё не пришёл). Открытые циклы уже учитываются в износе формы
+    /// (<see cref="Cavities"/>), но не в агрегатах длительности/выпуска.
+    /// </summary>
+    public DateTime? EndTime { get; set; }
     public int DurationSeconds { get; set; }
     public bool IsSuccessful { get; set; }
 
@@ -19,18 +25,39 @@ public class ImmCycle : BaseEntity
     public int Cavities { get; set; }
 
     /// <summary>
-    /// Длительность цикла литья, мс. Вычисляется как cycleEnd(N) − cycleStart(N)
-    /// по защёлкнутым сенсорам границ формы. <c>null</c>, если сенсоры не
-    /// сконфигурированы в шаблоне или граница цикла не прошла проверку.
+    /// Длительность цикла литья, миллисекунды: смыкание ПФ↑ → полное раскрытие↑.
+    /// Вычисляется из <see cref="InjectionStartTime"/> и <see cref="EndTime"/> по данным
+    /// коннектора (контракт v2, блоки currentCycle/lastCycle).
+    /// <c>null</c> — машина не отдаёт сигналы формы (штатный случай).
     /// </summary>
     public int? InjectionDurationMs { get; set; }
 
     /// <summary>
-    /// Длительность паузы перед циклом, мс. Вычисляется как cycleStart(N) − cycleEnd(N−1).
-    /// <c>null</c> для первого цикла после рестарта (cycleEnd(N−1) неизвестен) либо
-    /// если сенсоры границ не сконфигурированы/не прошли проверку.
+    /// Длительность паузы ПЕРЕД этим циклом литья, миллисекунды:
+    /// предыдущее раскрытие↑ → смыкание↑.
+    /// Полный цикл = <see cref="InjectionDurationMs"/> + <see cref="PauseDurationMs"/>,
+    /// отдельно не хранится.
     /// </summary>
     public int? PauseDurationMs { get; set; }
+
+    /// <summary>
+    /// Момент начала впрыска (контракт v2). Источник для <see cref="InjectionDurationMs"/>.
+    /// </summary>
+    public DateTime? InjectionStartTime { get; set; }
+
+    /// <summary>
+    /// Подушка (минимальное значение сигнала роли InjectionPosition за время впрыска),
+    /// вычисляется коннектором. <c>null</c>, пока цикл не завершён или машина не отдаёт
+    /// сигнал положения инжекции.
+    /// </summary>
+    public decimal? Cushion { get; set; }
+
+    /// <summary>
+    /// Номер цикла как его видит коннектор (счётчик его автомата состояний). НЕ уникален
+    /// сам по себе — обнуляется коннектором между сериями выпуска без разрыва связи.
+    /// Идентичность цикла — пара (<see cref="CycleNumber"/>, <see cref="StartTime"/>).
+    /// </summary>
+    public int? CycleNumber { get; set; }
 
     // Navigation
     public Imm Imm { get; set; } = null!;

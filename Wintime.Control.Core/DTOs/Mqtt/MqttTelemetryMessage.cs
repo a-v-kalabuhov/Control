@@ -11,14 +11,10 @@ public class MqttTelemetryMessage
     /// Единственный производитель значения — <c>DecodeTelemetryDataHandler</c>.
     /// </summary>
     public DateTime TimestampUtc { get; set; }
-    /// <summary>
-    /// ID устройства
-    /// </summary>
     public string DeviceId { get; set; } = string.Empty;
     [JsonPropertyName("mode")]
     public string? Mode { get; set; }
-    /// <summary>
-    /// Список показаний датчиков
-    /// </summary>
-    public Dictionary<string, string> Sensors = [];
+    public Dictionary<string, SignalValue> Sensors { get; set; } = [];
+    public CycleSnapshot? CurrentCycle { get; set; }
+    public CompletedCycleSnapshot? LastCycle { get; set; }
 }

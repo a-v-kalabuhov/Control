@@ -1,3 +1,6 @@
+> **SUPERSEDED (2026-08-09):** заменено более широким MQTT-контрактом v2 — см.
+> `docs/superpowers/specs/2026-08-09-mqtt-contract-v2-design.md`. Этот план не реализовывать.
+
 # Границы цикла измеряет коннектор — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

@@ -27,7 +27,7 @@ public class StoreTelemetryDataHandler : IStoreTelemetryDataHandler
 
         var entries = new List<Telemetry>(data.Sensors.Count);
 
-        foreach (var (name, value) in data.Sensors)
+        foreach (var (name, sv) in data.Sensors)
         {
             var entry = new Telemetry
             {
@@ -36,33 +36,38 @@ public class StoreTelemetryDataHandler : IStoreTelemetryDataHandler
                 ParameterName = name
             };
 
-            if (sensorsByName.TryGetValue(name, out var sensorTemplate))
+            if (name == "cycleCounter")
+            {
+                entry.ValueNumeric = decimal.TryParse(sv.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numC)
+                    ? numC
+                    : null;
+                if (entry.ValueNumeric is null)
+                    entry.ValueText = sv.Value;
+            }
+            else if (sensorsByName.TryGetValue(name, out var sensorTemplate))
             {
                 switch (sensorTemplate.ParameterType)
                 {
                     case "float":
-                        if (decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numF))
+                        if (decimal.TryParse(sv.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numF))
                             entry.ValueNumeric = numF;
                         else
-                            entry.ValueText = value;
+                            entry.ValueText = sv.Value;
                         break;
                     case "int":
-                    case "cycleCounter":
-                    case "cycleStart":
-                    case "cycleEnd":
-                        if (decimal.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numI))
+                        if (decimal.TryParse(sv.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numI))
                             entry.ValueNumeric = numI;
                         else
-                            entry.ValueText = value;
+                            entry.ValueText = sv.Value;
                         break;
                     default: // string, boolean
-                        entry.ValueText = value;
+                        entry.ValueText = sv.Value;
                         break;
                 }
             }
             else
             {
-                entry.ValueText = value; // неизвестный датчик — сохраняем как текст
+                entry.ValueText = sv.Value; // неизвестный датчик — сохраняем как текст
             }
 
             entries.Add(entry);

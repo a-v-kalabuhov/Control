@@ -141,7 +141,7 @@ public class ImmController : ControllerBase
                 var runImmIds = openRuns.Select(r => r.ImmId).ToList();
                 var minStart = openRuns.Min(r => r.StartTime);
                 var orphanCycles = await _context.ImmCycles
-                    .Where(c => c.TaskId == null && runImmIds.Contains(c.ImmId) && c.EndTime >= minStart)
+                    .Where(c => c.TaskId == null && runImmIds.Contains(c.ImmId) && c.EndTime != null && c.EndTime >= minStart)
                     .Select(c => new { c.ImmId, c.EndTime })
                     .ToListAsync();
 
@@ -448,7 +448,7 @@ public class ImmController : ControllerBase
         }
 
         var cycles = await _context.ImmCycles
-            .Where(c => c.ImmId == id && c.StartTime < effectiveTo && c.EndTime > fromUtc)
+            .Where(c => c.ImmId == id && c.StartTime < effectiveTo && (c.EndTime == null || c.EndTime > fromUtc))
             .OrderBy(c => c.StartTime)
             .Select(c => new TelemetryCycleDto { Start = c.StartTime, End = c.EndTime, IsSuccessful = c.IsSuccessful })
             .ToListAsync();

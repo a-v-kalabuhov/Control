@@ -20,16 +20,30 @@ internal static class PipelineTestFixtures
 
     public static MqttTelemetryMessage MakeMessage(
         Guid immId,
-        Dictionary<string, string>? sensors = null,
+        Dictionary<string, SignalValue>? sensors = null,
         string? mode = "auto",
-        DateTime? timestampUtc = null)
+        DateTime? timestampUtc = null,
+        CycleSnapshot? currentCycle = null,
+        CompletedCycleSnapshot? lastCycle = null)
         => new()
         {
             TimestampUtc = timestampUtc ?? DateTime.UtcNow,
             DeviceId = immId.ToString(),
             Mode = mode,
-            Sensors = sensors ?? []
+            Sensors = sensors ?? [],
+            CurrentCycle = currentCycle,
+            LastCycle = lastCycle
         };
+
+    public static Dictionary<string, SignalValue> MakeSensors(params (string Name, string Value)[] values)
+    {
+        var dict = new Dictionary<string, SignalValue>();
+        foreach (var (name, value) in values)
+            dict[name] = new SignalValue(value, Error: false);
+        if (!dict.ContainsKey("cycleCounter"))
+            dict["cycleCounter"] = new SignalValue("0", Error: false);
+        return dict;
+    }
 
     public static CachedTemplate MakeTemplate(
         IReadOnlyList<SensorTemplate>? sensors = null,

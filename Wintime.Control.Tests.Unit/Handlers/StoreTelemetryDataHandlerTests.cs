@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Infrastructure.Handlers;
@@ -38,7 +39,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_FloatSensor_StoresValueNumeric()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["temp"] = "25.5" },
+            sensors: new Dictionary<string, SignalValue> { ["temp"] = new("25.5", Error: false) },
             templateSensors: [PipelineTestFixtures.MakeSensor("temp", "float")]);
 
         await CreateSut().SaveAsync(context);
@@ -56,7 +57,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_IntSensor_StoresValueNumeric()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["count"] = "42" },
+            sensors: new Dictionary<string, SignalValue> { ["count"] = new("42", Error: false) },
             templateSensors: [PipelineTestFixtures.MakeSensor("count", "int")]);
 
         await CreateSut().SaveAsync(context);
@@ -67,56 +68,21 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// Датчик типа <c>cycleCounter</c> должен сохраняться в <c>ValueNumeric</c>,
-    /// так как обрабатывается тем же путём, что и <c>int</c>.
+    /// Зарезервированное имя <c>cycleCounter</c> должно сохраняться как числовое значение
+    /// даже если его нет в шаблоне датчиков (оно никогда не объявляется в Template.Sensors).
     /// </summary>
     [Fact]
-    public async Task SaveAsync_CycleCounterSensor_StoresValueNumeric()
+    public async Task SaveAsync_CycleCounterSensor_StoresValueNumericWithoutTemplateEntry()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["cycles"] = "1000" },
-            templateSensors: [PipelineTestFixtures.MakeSensor("cycles", "cycleCounter")]);
+            sensors: new Dictionary<string, SignalValue> { ["cycleCounter"] = new("42", Error: false) },
+            templateSensors: []); // cycleCounter НЕ в шаблоне
 
         await CreateSut().SaveAsync(context);
 
         var row = await _dbContext.Telemetry.SingleAsync();
-        row.ValueNumeric.Should().Be(1000m);
-        row.ValueText.Should().BeNull();
-    }
-
-    /// <summary>
-    /// Датчик типа <c>cycleStart</c> (защёлкнутый момент смыкания формы, unix-мс)
-    /// должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>.
-    /// </summary>
-    [Fact]
-    public async Task SaveAsync_CycleStartSensor_StoresValueNumeric()
-    {
-        var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["cs"] = "1700000012345" },
-            templateSensors: [PipelineTestFixtures.MakeSensor("cs", "cycleStart")]);
-
-        await CreateSut().SaveAsync(context);
-
-        var row = await _dbContext.Telemetry.SingleAsync();
-        row.ValueNumeric.Should().Be(1700000012345m);
-        row.ValueText.Should().BeNull();
-    }
-
-    /// <summary>
-    /// Датчик типа <c>cycleEnd</c> (защёлкнутый момент раскрытия формы, unix-мс)
-    /// должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>.
-    /// </summary>
-    [Fact]
-    public async Task SaveAsync_CycleEndSensor_StoresValueNumeric()
-    {
-        var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["ce"] = "1700000027700" },
-            templateSensors: [PipelineTestFixtures.MakeSensor("ce", "cycleEnd")]);
-
-        await CreateSut().SaveAsync(context);
-
-        var row = await _dbContext.Telemetry.SingleAsync();
-        row.ValueNumeric.Should().Be(1700000027700m);
+        row.ParameterName.Should().Be("cycleCounter");
+        row.ValueNumeric.Should().Be(42m);
         row.ValueText.Should().BeNull();
     }
 
@@ -128,7 +94,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_StringSensor_StoresValueText()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["label"] = "running" },
+            sensors: new Dictionary<string, SignalValue> { ["label"] = new("running", Error: false) },
             templateSensors: [PipelineTestFixtures.MakeSensor("label", "string")]);
 
         await CreateSut().SaveAsync(context);
@@ -146,7 +112,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_BooleanSensor_StoresValueText()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["door"] = "true" },
+            sensors: new Dictionary<string, SignalValue> { ["door"] = new("true", Error: false) },
             templateSensors: [PipelineTestFixtures.MakeSensor("door", "boolean")]);
 
         await CreateSut().SaveAsync(context);
@@ -164,7 +130,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_SensorNotInTemplate_FallsBackToValueText()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["unknown"] = "some_value" },
+            sensors: new Dictionary<string, SignalValue> { ["unknown"] = new("some_value", Error: false) },
             templateSensors: []); // шаблон пустой
 
         await CreateSut().SaveAsync(context);
@@ -183,7 +149,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_UnparseableFloat_FallsBackToValueText()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["temp"] = "N/A" },
+            sensors: new Dictionary<string, SignalValue> { ["temp"] = new("N/A", Error: false) },
             templateSensors: [PipelineTestFixtures.MakeSensor("temp", "float")]);
 
         await CreateSut().SaveAsync(context);
@@ -209,7 +175,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
 
         var context = BuildContext(
             immId: immId,
-            sensors: new Dictionary<string, string> { ["temp"] = "20.0" },
+            sensors: new Dictionary<string, SignalValue> { ["temp"] = new("20.0", Error: false) },
             templateSensors: [PipelineTestFixtures.MakeSensor("temp", "float")],
             timestampUtc: expectedTimestamp);
 
@@ -229,16 +195,16 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_MultipleSensors_SavesOneRowPerSensor()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string>
+            sensors: new Dictionary<string, SignalValue>
             {
-                ["temp"]   = "25.0",
-                ["cycles"] = "500",
-                ["status"] = "running"
+                ["temp"]   = new("25.0", Error: false),
+                ["cycles"] = new("500", Error: false),
+                ["status"] = new("running", Error: false)
             },
             templateSensors:
             [
                 PipelineTestFixtures.MakeSensor("temp",   "float"),
-                PipelineTestFixtures.MakeSensor("cycles", "cycleCounter"),
+                PipelineTestFixtures.MakeSensor("cycles", "int"),
                 PipelineTestFixtures.MakeSensor("status", "string")
             ]);
 
@@ -262,7 +228,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_WithSensors_ReturnsTrue()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["temp"] = "20.0" },
+            sensors: new Dictionary<string, SignalValue> { ["temp"] = new("20.0", Error: false) },
             templateSensors: [PipelineTestFixtures.MakeSensor("temp", "float")]);
 
         var result = await CreateSut().SaveAsync(context);
@@ -278,7 +244,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     public async Task SaveAsync_EmptySensors_ReturnsFalseAndSavesNothing()
     {
         var context = BuildContext(
-            sensors: [],
+            sensors: new Dictionary<string, SignalValue>(),
             templateSensors: [PipelineTestFixtures.MakeSensor("temp", "float")]);
 
         var result = await CreateSut().SaveAsync(context);
@@ -302,13 +268,13 @@ public class StoreTelemetryDataHandlerTests : IDisposable
 
         await CreateSut().SaveAsync(BuildContext(
             immId: immId,
-            sensors: new Dictionary<string, string> { ["temp"] = "20.0" },
+            sensors: new Dictionary<string, SignalValue> { ["temp"] = new("20.0", Error: false) },
             templateSensors: templateSensors,
             timestampUtc: first));
 
         await CreateSut().SaveAsync(BuildContext(
             immId: immId,
-            sensors: new Dictionary<string, string> { ["temp"] = "20.1" },
+            sensors: new Dictionary<string, SignalValue> { ["temp"] = new("20.1", Error: false) },
             templateSensors: templateSensors,
             timestampUtc: second));
 
@@ -323,7 +289,7 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     // =========================================================================
 
     private static Wintime.Control.Core.DTOs.Mqtt.MqttProcessingContext BuildContext(
-        Dictionary<string, string> sensors,
+        Dictionary<string, SignalValue> sensors,
         IReadOnlyList<SensorTemplate> templateSensors,
         Guid? immId = null,
         DateTime? timestampUtc = null)

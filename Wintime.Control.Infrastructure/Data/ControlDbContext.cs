@@ -115,8 +115,18 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.HasOne(e => e.Mold).WithMany().HasForeignKey(e => e.MoldId).OnDelete(DeleteBehavior.SetNull);
             entity.Property(e => e.StartTime).HasColumnType("timestamp with time zone");
             entity.Property(e => e.EndTime).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.InjectionStartTime).HasColumnType("timestamp with time zone");
             entity.ToTable("ImmCycles");
         });
+
+        // Идентичность цикла (Number, StartTime) — опора для ЗА-проверки перед открытием
+        // строки и защита от дублей на уровне БД (контракт v2, счётчик коннектора легитимно
+        // обнуляется между сериями выпуска без разрыва связи, поэтому один Number не уникален).
+        builder.Entity<ImmCycle>()
+            .HasIndex(e => new { e.ImmId, e.CycleNumber, e.StartTime })
+            .IsUnique()
+            .HasFilter("\"CycleNumber\" IS NOT NULL")
+            .HasDatabaseName("IX_ImmCycles_Imm_CycleNumber_StartTime");
 
         // Конфигурация ImmStatusHistory
         builder.Entity<ImmStatusHistory>(entity =>

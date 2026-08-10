@@ -19,6 +19,9 @@ namespace Wintime.Control.Infrastructure.Handlers;
 ///     типу и списку допустимых значений из шаблона (<see cref="SensorTemplate"/>).
 ///     Датчики с неверными значениями исключаются; если среди них оказывается
 ///     обязательный датчик (<c>Required = true</c>), всё сообщение отклоняется.
+///     Датчики со значением <c>Error = true</c> (сбой чтения на ТПА) отбрасываются
+///     сразу, без попытки типовой проверки. Зарезервированное имя <c>cycleCounter</c>
+///     всегда валидно как целое число и не требует записи в шаблоне.
 ///   </item>
 ///   <item>
 ///     <b>COV-фильтрация (Вариант B)</b> — значения, изменившиеся в пределах
@@ -67,7 +70,9 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
             TimestampUtc = context.Data!.TimestampUtc,
             DeviceId = context.Data.DeviceId,
             Mode = context.Data.Mode,
-            Sensors = outputSensors
+            Sensors = outputSensors,
+            CurrentCycle = context.Data.CurrentCycle,
+            LastCycle = context.Data.LastCycle
         };
 
         return Task.FromResult((true, context with { Data = newMessage }));
@@ -83,19 +88,31 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
     /// Кортеж: признак успеха и словарь датчиков, прошедших валидацию.
     /// Возвращает <c>false</c>, если хотя бы один обязательный датчик не прошёл проверку.
     /// </returns>
-    private (bool Success, Dictionary<string, string> Sensors) ValidateTypes(MqttProcessingContext context)
+    private (bool Success, Dictionary<string, SignalValue> Sensors) ValidateTypes(MqttProcessingContext context)
     {
         var sensors = context.Data!.Sensors;
         var sensorsByName = context.Template!.Sensors.ToDictionary(s => s.ParameterName);
         var invalidSensors = new List<string>();
-        var validSensors = new Dictionary<string, string>(sensors.Count);
+        var validSensors = new Dictionary<string, SignalValue>(sensors.Count);
 
-        foreach (var (name, value) in sensors)
+        foreach (var (name, sv) in sensors)
         {
+            if (sv.Error)
+                continue; // сбой чтения на ТПА — не публикуется дальше
+
+            if (name == "cycleCounter")
+            {
+                if (int.TryParse(sv.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                    validSensors[name] = sv;
+                else
+                    invalidSensors.Add(name);
+                continue;
+            }
+
             if (!sensorsByName.TryGetValue(name, out var sensorTemplate))
                 continue; // датчик не описан в шаблоне — пропускаем молча
 
-            if (!TryValidateSensorValue(value, sensorTemplate, out var error))
+            if (!TryValidateSensorValue(sv.Value, sensorTemplate, out var error))
             {
                 invalidSensors.Add(name);
                 _logger.LogWarning(
@@ -104,7 +121,7 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
                 continue;
             }
 
-            validSensors[name] = value;
+            validSensors[name] = sv;
         }
 
         // Mandatory sensors must survive type validation — if removed, the message is unusable
@@ -143,14 +160,11 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
 
         var typeValid = sensor.ParameterType switch
         {
-            "string"       => true,
-            "float"        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
-            "int"          => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-            "boolean"      => bool.TryParse(value, out _),
-            "cycleCounter" => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-            "cycleStart"   => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-            "cycleEnd"     => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-            _              => false
+            "string"  => true,
+            "float"   => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
+            "int"     => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+            "boolean" => bool.TryParse(value, out _),
+            _         => false
         };
 
         if (!typeValid)
@@ -175,27 +189,30 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
     /// Значения, изменившиеся в пределах порога, заменяются кешированным значением.
     /// Особые случаи: первое сообщение от ТПА, сообщение с нарушенным порядком (out-of-order)
     /// и первое сообщение после периода офлайн — пропускаются без фильтрации.
+    /// Зарезервированное имя <c>cycleCounter</c> и датчики с <c>Threshold == 0</c>
+    /// всегда пропускают новое значение без сравнения с кешем.
     /// После обработки кеш ТПА обновляется актуальными значениями.
     /// </remarks>
     /// <param name="context">Контекст обработки с данными устройства и шаблоном.</param>
     /// <param name="sensors">Датчики, прошедшие валидацию типов.</param>
     /// <returns>Итоговый словарь значений датчиков для передачи следующему обработчику.</returns>
-    private Dictionary<string, string> ApplyCovFilter(
+    private Dictionary<string, SignalValue> ApplyCovFilter(
         MqttProcessingContext context,
-        Dictionary<string, string> sensors)
+        Dictionary<string, SignalValue> sensors)
     {
         var immId = context.Device!.Id;
         var template = context.Template!;
         var messageAt = context.Data!.TimestampUtc;
 
         var entry = _immCache.GetEntry(immId);
+        var plainSensors = sensors.ToDictionary(kv => kv.Key, kv => kv.Value.Value);
 
         if (entry == null)
         {
             // First message from this IMM — populate cache, skip filtering
             _immCache.AddImm(immId, template.DeviceTimeoutSeconds);
-            _immCache.UpdateEntry(immId, messageAt, template.DeviceTimeoutSeconds, sensors);
-            return new Dictionary<string, string>(sensors);
+            _immCache.UpdateEntry(immId, messageAt, template.DeviceTimeoutSeconds, plainSensors);
+            return sensors;
         }
 
         if (entry.LastMessageAt > messageAt)
@@ -204,47 +221,48 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
             _logger.LogWarning(
                 "IMM {ImmId}: out-of-order message (msg={MessageAt:O}, cache={CacheAt:O}), COV skipped",
                 immId, messageAt, entry.LastMessageAt);
-            return new Dictionary<string, string>(sensors);
+            return sensors;
         }
 
         if (!entry.IsOnline)
         {
             // First message after offline — treat all values as changed, update cache
-            _immCache.UpdateEntry(immId, messageAt, template.DeviceTimeoutSeconds, sensors);
-            return new Dictionary<string, string>(sensors);
+            _immCache.UpdateEntry(immId, messageAt, template.DeviceTimeoutSeconds, plainSensors);
+            return sensors;
         }
 
         // Normal path: compare each sensor against its cached value
         var sensorsByName = template.Sensors.ToDictionary(s => s.ParameterName);
-        var outputSensors = new Dictionary<string, string>(sensors.Count);
+        var outputSensors = new Dictionary<string, SignalValue>(sensors.Count);
         // Start from existing cache so sensors absent in this message are preserved
         var newCacheValues = new Dictionary<string, string>(entry.SensorValues);
 
-        foreach (var (name, value) in sensors)
+        foreach (var (name, sv) in sensors)
         {
-            if (!sensorsByName.TryGetValue(name, out var sensorTemplate))
+            if (name != "cycleCounter" && !sensorsByName.TryGetValue(name, out _))
                 continue; // датчик не описан в шаблоне — игнорируем
 
-            if (sensorTemplate.Threshold == 0)
+            if (name == "cycleCounter" || sensorsByName[name].Threshold == 0)
             {
-                // Порог не задан — всегда пропускаем текущее значение
-                outputSensors[name] = value;
-                newCacheValues[name] = value;
+                // Зарезервированное имя или порог не задан — всегда пропускаем текущее значение
+                outputSensors[name] = sv;
+                newCacheValues[name] = sv.Value;
                 continue;
             }
 
+            var sensorTemplate = sensorsByName[name];
             if (entry.SensorValues.TryGetValue(name, out var cachedValue) &&
-                !HasChangedBeyondThreshold(value, cachedValue, sensorTemplate))
+                !HasChangedBeyondThreshold(sv.Value, cachedValue, sensorTemplate))
             {
                 // Change within threshold — substitute cached value (Variant B)
-                outputSensors[name] = cachedValue;
+                outputSensors[name] = new SignalValue(cachedValue, Error: false);
                 // newCacheValues[name] already holds cachedValue from entry.SensorValues
             }
             else
             {
                 // Significant change or first appearance — use new value, update cache
-                outputSensors[name] = value;
-                newCacheValues[name] = value;
+                outputSensors[name] = sv;
+                newCacheValues[name] = sv.Value;
             }
         }
 
@@ -271,14 +289,9 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
                 double.TryParse(cached, NumberStyles.Float, CultureInfo.InvariantCulture, out var cac))
                 return Math.Abs(cur - cac) > (double)sensor.Threshold;
         }
-        else if (sensor.ParameterType is "int" or "cycleCounter")
+        else if (sensor.ParameterType is "int")
         {
             if (int.TryParse(current, out var cur) && int.TryParse(cached, out var cac))
-                return Math.Abs(cur - cac) > (double)sensor.Threshold;
-        }
-        else if (sensor.ParameterType is "cycleStart" or "cycleEnd")
-        {
-            if (long.TryParse(current, out var cur) && long.TryParse(cached, out var cac))
                 return Math.Abs(cur - cac) > (double)sensor.Threshold;
         }
 
