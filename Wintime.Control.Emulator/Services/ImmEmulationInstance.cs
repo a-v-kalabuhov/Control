@@ -1,5 +1,6 @@
 namespace Wintime.Control.Emulator.Services;
 
+using System.Globalization;
 using Wintime.Control.Emulator.Models;
 
 /// <summary>
@@ -218,7 +219,11 @@ public class ImmEmulationInstance : IAsyncDisposable
         payload.Sensors["cycleCounter"] = new SignalValueDto { Value = _counter.ToString(), Error = false };
 
         foreach (var gen in _generators)
-            payload.Sensors[gen.Key] = new SignalValueDto { Value = gen.Value.GenerateValue(mode)?.ToString() ?? "", Error = false };
+            payload.Sensors[gen.Key] = new SignalValueDto
+            {
+                Value = Convert.ToString(gen.Value.GenerateValue(mode), CultureInfo.InvariantCulture) ?? "",
+                Error = false
+            };
 
         return payload;
     }
