@@ -1,6 +1,10 @@
 // Чистые хелперы для дашборда телеметрии BL-23 (без зависимостей от echarts/Vue).
 
-const NUMERIC_TYPES = new Set(['float', 'int', 'cycleCounter', 'injectionDuration', 'cyclePause'])
+// cycleStart/cycleEnd намеренно НЕ включены: это защёлкнутые unix-мс моменты (~1.7e12),
+// на общей числовой оси они задавили бы масштаб для float/int/cycleCounter. Строгая
+// ось "момент времени" — отдельная задача вне этого фикса; пока resolveAxisKind относит
+// их к 'state' по умолчанию (см. её fallback-ветку) — не идеально, но безопаснее.
+const NUMERIC_TYPES = new Set(['float', 'int', 'cycleCounter'])
 
 function numericValue(p) {
   if (p.num !== null && p.num !== undefined) return Number(p.num)
