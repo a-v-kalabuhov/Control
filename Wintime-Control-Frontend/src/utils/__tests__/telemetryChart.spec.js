@@ -97,16 +97,20 @@ describe('resolveAxisKind', () => {
     expect(resolveAxisKind('int')).toBe('numeric')
     expect(resolveAxisKind('cycleCounter')).toBe('numeric')
   })
-  // Находка 2: injectionDuration/cyclePause — защёлкнутые числовые длительности
-  // цикла литья и паузы; должны разбираться как numeric, а не проваливаться в state.
-  it('injectionDuration/cyclePause → numeric', () => {
-    expect(resolveAxisKind('injectionDuration')).toBe('numeric')
-    expect(resolveAxisKind('cyclePause')).toBe('numeric')
-  })
   it('boolean/string → state', () => {
     expect(resolveAxisKind('boolean')).toBe('state')
     expect(resolveAxisKind('string')).toBe('state')
     expect(resolveAxisKind('unknown')).toBe('state')
+  })
+  // ADR-0011: injectionDuration/cyclePause убраны из контракта коннектора целиком
+  // (заменены cycleStart/cycleEnd) — эти типы больше никогда не приходят. cycleStart/
+  // cycleEnd — тоже НЕ numeric: это защёлкнутые unix-мс моменты, а не сопоставимая
+  // с float/int величина; сознательно проваливаются в 'state' по умолчанию.
+  it('injectionDuration/cyclePause (удалены из контракта) и cycleStart/cycleEnd (unix-мс) → state', () => {
+    expect(resolveAxisKind('injectionDuration')).toBe('state')
+    expect(resolveAxisKind('cyclePause')).toBe('state')
+    expect(resolveAxisKind('cycleStart')).toBe('state')
+    expect(resolveAxisKind('cycleEnd')).toBe('state')
   })
 })
 

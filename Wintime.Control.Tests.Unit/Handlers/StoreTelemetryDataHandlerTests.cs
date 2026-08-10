@@ -85,39 +85,38 @@ public class StoreTelemetryDataHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// Находка 2: датчик типа <c>injectionDuration</c> (защёлкнутая длительность цикла
-    /// литья) должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>,
-    /// иначе числовая агрегация телеметрии его не видит.
+    /// Датчик типа <c>cycleStart</c> (защёлкнутый момент смыкания формы, unix-мс)
+    /// должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>.
     /// </summary>
     [Fact]
-    public async Task SaveAsync_InjectionDurationSensor_StoresValueNumeric()
+    public async Task SaveAsync_CycleStartSensor_StoresValueNumeric()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["inj"] = "12500" },
-            templateSensors: [PipelineTestFixtures.MakeSensor("inj", "injectionDuration")]);
+            sensors: new Dictionary<string, string> { ["cs"] = "1700000012345" },
+            templateSensors: [PipelineTestFixtures.MakeSensor("cs", "cycleStart")]);
 
         await CreateSut().SaveAsync(context);
 
         var row = await _dbContext.Telemetry.SingleAsync();
-        row.ValueNumeric.Should().Be(12500m);
+        row.ValueNumeric.Should().Be(1700000012345m);
         row.ValueText.Should().BeNull();
     }
 
     /// <summary>
-    /// Находка 2: датчик типа <c>cyclePause</c> (защёлкнутая длительность паузы)
+    /// Датчик типа <c>cycleEnd</c> (защёлкнутый момент раскрытия формы, unix-мс)
     /// должен сохраняться в <c>ValueNumeric</c> тем же путём, что <c>int</c>.
     /// </summary>
     [Fact]
-    public async Task SaveAsync_CyclePauseSensor_StoresValueNumeric()
+    public async Task SaveAsync_CycleEndSensor_StoresValueNumeric()
     {
         var context = BuildContext(
-            sensors: new Dictionary<string, string> { ["pause"] = "3400" },
-            templateSensors: [PipelineTestFixtures.MakeSensor("pause", "cyclePause")]);
+            sensors: new Dictionary<string, string> { ["ce"] = "1700000027700" },
+            templateSensors: [PipelineTestFixtures.MakeSensor("ce", "cycleEnd")]);
 
         await CreateSut().SaveAsync(context);
 
         var row = await _dbContext.Telemetry.SingleAsync();
-        row.ValueNumeric.Should().Be(3400m);
+        row.ValueNumeric.Should().Be(1700000027700m);
         row.ValueText.Should().BeNull();
     }
 
