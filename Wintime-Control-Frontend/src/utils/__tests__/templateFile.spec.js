@@ -108,6 +108,13 @@ describe('buildTemplateExport', () => {
     expect(() => buildTemplateExport({ ...fullTemplate, jsonConfig: '{oops' }, NOW))
       .toThrow('Шаблон содержит некорректную JSON-конфигурацию')
   })
+
+  it('бросает ошибку, если jsonConfig не объект', () => {
+    for (const jsonConfig of ['[]', '"str"', '42', 'null']) {
+      expect(() => buildTemplateExport({ ...fullTemplate, jsonConfig }, NOW))
+        .toThrow('Шаблон содержит некорректную JSON-конфигурацию')
+    }
+  })
 })
 
 describe('templateExportFileName', () => {
@@ -187,6 +194,11 @@ describe('parseTemplateImport', () => {
       .toThrow('Версия формата 2 не поддерживается')
     expect(() => parseTemplateImport(validFile({}, { formatVersion: 0 })))
       .toThrow('Версия формата 0 не поддерживается')
+  })
+
+  it('ошибка: не указана версия формата', () => {
+    expect(() => parseTemplateImport(validFile({}, { formatVersion: undefined })))
+      .toThrow('В файле не указана версия формата')
   })
 
   it('ошибка: нет наименования', () => {

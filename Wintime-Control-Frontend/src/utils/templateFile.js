@@ -21,6 +21,10 @@ export function buildTemplateExport(template, now = new Date()) {
     throw new Error('Шаблон содержит некорректную JSON-конфигурацию')
   }
 
+  if (!isPlainObject(jsonConfig)) {
+    throw new Error('Шаблон содержит некорректную JSON-конфигурацию')
+  }
+
   return {
     format: TEMPLATE_FILE_FORMAT,
     formatVersion: TEMPLATE_FILE_VERSION,
@@ -63,6 +67,10 @@ export function parseTemplateImport(text) {
   }
 
   const formatVersion = data.formatVersion
+  if (formatVersion === undefined) {
+    throw new Error('В файле не указана версия формата')
+  }
+  // Принимаем версии 1..TEMPLATE_FILE_VERSION: старые файлы должны импортироваться и после выхода новых версий формата.
   if (!Number.isInteger(formatVersion) || formatVersion < 1 || formatVersion > TEMPLATE_FILE_VERSION) {
     throw new Error(`Версия формата ${formatVersion} не поддерживается`)
   }

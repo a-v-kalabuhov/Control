@@ -205,7 +205,6 @@ const saveTemplate = async () => {
 
   saving.value = true
   try {
-
     if (editingTemplate.value) {
       await templatesApi.update(editingTemplate.value.id, data)
       ElMessage.success('Шаблон обновлён')
@@ -240,7 +239,7 @@ const exportTemplate = (template) => {
   document.body.appendChild(link)
   link.click()
   link.remove()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 const openImportDialog = () => {
