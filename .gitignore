@@ -87,3 +87,9 @@ deploy/pzp/package/certs/
 deploy/pzp/package/CAROOT/
 deploy/pzp/package/mkcert.exe
 deploy/pzp/package/.env
+
+# Smoke-test deploy — сборочные артефакты и секреты (не в git)
+deploy/smoke-test/
+deploy/smoke-test/dist/
+deploy/smoke-test/package/images/
+deploy/smoke-test/package/.env
