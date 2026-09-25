@@ -5,10 +5,20 @@
         <h2 class="text-2xl font-bold text-gray-800">Шаблоны оборудования</h2>
         <p class="text-gray-600 mt-1">Конфигурация датчиков и параметров для типов ТПА</p>
       </div>
-      <el-button type="primary" @click="showCreateModal">
-        <el-icon class="mr-1"><Plus /></el-icon>
-        Новый шаблон
-      </el-button>
+      <div class="flex gap-2">
+        <el-button @click="openImportDialog">Импорт</el-button>
+        <el-button type="primary" @click="showCreateModal">
+          <el-icon class="mr-1"><Plus /></el-icon>
+          Новый шаблон
+        </el-button>
+        <input
+          ref="importInput"
+          type="file"
+          accept=".json,application/json"
+          class="hidden"
+          @change="onImportFileSelected"
+        />
+      </div>
     </div>
 
     <!-- Таблица шаблонов -->
@@ -27,6 +37,7 @@
         <template #default="{ row }">
           <div class="flex flex-col gap-1">
             <el-button size="small" style="width: 130px; margin: 0" @click="editTemplate(row)">Редактировать</el-button>
+            <el-button size="small" style="width: 130px; margin: 0" @click="exportTemplate(row)">Экспорт</el-button>
             <el-button size="small" type="danger" style="width: 130px; margin: 0" @click="deleteTemplate(row)">Удалить</el-button>
           </div>
         </template>
@@ -101,12 +112,19 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { templatesApi } from '@/api/templates'
 import dayjs from 'dayjs'
+import {
+  buildTemplateExport,
+  templateExportFileName,
+  parseTemplateImport,
+  formToRequest
+} from '@/utils/templateFile'
 
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
 const editingTemplate = ref(null)
 const templates = ref([])
+const importInput = ref(null)
 
 const form = reactive({
   name: '',
@@ -177,26 +195,16 @@ const saveTemplate = async () => {
     return
   }
 
-  let jsonConfig
+  let data
   try {
-    jsonConfig = form.jsonConfigString ? JSON.parse(form.jsonConfigString) : {}
+    data = formToRequest(form)
   } catch (error) {
-    ElMessage.error('Неверный формат JSON-конфигурации')
+    ElMessage.error(error.message)
     return
   }
 
   saving.value = true
   try {
-    const data = {
-      name: form.name,
-      manufacturer: form.manufacturer,
-      model: form.model,
-      version: form.version,
-      author: form.author,
-      connectorType: form.connectorType || null,
-      jsonConfig
-    }
-
     if (editingTemplate.value) {
       await templatesApi.update(editingTemplate.value.id, data)
       ElMessage.success('Шаблон обновлён')
@@ -211,6 +219,47 @@ const saveTemplate = async () => {
     ElMessage.error('Ошибка сохранения шаблона')
   } finally {
     saving.value = false
+  }
+}
+
+const exportTemplate = (template) => {
+  let file
+  try {
+    file = buildTemplateExport(template)
+  } catch (error) {
+    ElMessage.error(error.message)
+    return
+  }
+
+  const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = templateExportFileName(template)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+const openImportDialog = () => {
+  importInput.value?.click()
+}
+
+const onImportFileSelected = async (event) => {
+  const input = event.target
+  const file = input.files?.[0]
+  if (!file) return
+
+  try {
+    const fields = parseTemplateImport(await file.text())
+    editingTemplate.value = null
+    Object.assign(form, fields)
+    dialogVisible.value = true
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    input.value = '' // чтобы повторный выбор того же файла снова вызвал change
   }
 }
 
