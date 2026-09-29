@@ -73,22 +73,21 @@ const parseShiftBounds = (shift, dateStr) => {
 const computeAxisBounds = () => {
   const dateStr = props.date || dayjs().format('YYYY-MM-DD')
 
-  if (!props.shifts.length) return { min: null, max: null }
+  const shift = props.shiftId ? props.shifts.find(s => s.id === props.shiftId) : null
 
-  let targetShifts = props.shifts
-
-  if (props.shiftId) {
-    const found = props.shifts.find(s => s.id === props.shiftId)
-    if (found) targetShifts = [found]
+  // Смена не выбрана — бэкенд отдаёт таймлайн за сутки, показываем всю ось суток
+  if (!shift) {
+    const dayStart = dayjs(dateStr).startOf('day')
+    return {
+      min: dayStart.valueOf(),
+      max: dayStart.add(1, 'day').valueOf()
+    }
   }
 
-  const parsed = targetShifts.map(s => parseShiftBounds(s, dateStr))
-  const minStart = parsed.reduce((a, b) => (a.start.valueOf() < b.start.valueOf() ? a : b)).start
-  const maxEnd   = parsed.reduce((a, b) => (a.end.valueOf() > b.end.valueOf() ? a : b)).end
-
+  const { start, end } = parseShiftBounds(shift, dateStr)
   return {
-    min: minStart.subtract(30, 'minute').valueOf(),
-    max: maxEnd.add(30, 'minute').valueOf()
+    min: start.subtract(30, 'minute').valueOf(),
+    max: end.add(30, 'minute').valueOf()
   }
 }
 
@@ -210,14 +209,27 @@ const initChart = () => {
           const height = api.size([0, 1])[1] * 0.6
           const type = api.value(3)
 
-          return {
-            type: 'rect',
-            shape: {
+          // custom-серия сама не обрезается по сетке: сегмент, вышедший за границы оси,
+          // рисовался бы поверх осей — клипуем прямоугольник вручную.
+          const shape = echarts.graphic.clipRectByRect(
+            {
               x: start[0],
               y: start[1] - height / 2,
               width: Math.max(end[0] - start[0], 1),
               height
             },
+            {
+              x: params.coordSys.x,
+              y: params.coordSys.y,
+              width: params.coordSys.width,
+              height: params.coordSys.height
+            }
+          )
+          if (!shape) return null
+
+          return {
+            type: 'rect',
+            shape,
             style: api.style({
               fill: colorMap[type] ?? colorMap.offline
             })
