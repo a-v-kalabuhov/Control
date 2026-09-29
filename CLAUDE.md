@@ -17,6 +17,8 @@ dotnet ef migrations add <Name> --project Wintime.Control.Infrastructure --start
 dotnet ef database update       --project Wintime.Control.Infrastructure --startup-project Wintime.Control.API
 
 docker-compose up   # PostgreSQL + Mosquitto + API
+
+.\build.ps1          # публикация образов; ПЕРЕД ней поднять номер в VERSION (SemVer)
 ```
 Frontend: `cd Wintime-Control-Frontend && npm run dev` — порт 3000, проксирует `/api` → `https://localhost:5001`.
 

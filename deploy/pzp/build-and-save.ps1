@@ -8,6 +8,9 @@ $ScriptDir   = $PSScriptRoot
 $ControlRoot = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path   # корень репо Control
 $ConnRoot    = (Resolve-Path (Join-Path $ScriptDir $ConnectorRepo)).Path
 
+$Version     = (Get-Content (Join-Path $ControlRoot "VERSION") -Raw).Trim()
+Write-Host "==> Version: $Version"
+
 Write-Host "==> 1/5 Сборка фронта API..."
 Push-Location (Join-Path $ControlRoot "Wintime-Control-Frontend")
 npm ci
