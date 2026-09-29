@@ -67,6 +67,14 @@
       width="600px"
     >
       <el-form :model="form" label-width="150px" :rules="rules" ref="formRef">
+        <el-form-item label="ID" v-if="editingImm">
+          <el-input :model-value="editingImm.id" readonly>
+            <template #append>
+              <el-button @click="copyImmId">Копировать</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+
         <el-form-item label="Наименование" prop="name" required>
           <el-input v-model="form.name" placeholder="ТПА-05" />
         </el-form-item>
@@ -137,6 +145,15 @@ const templates = ref([])
 const qrDialogVisible = ref(false)
 const qrData = ref('')
 const qrLabel = ref('')
+
+const copyImmId = async () => {
+  try {
+    await navigator.clipboard.writeText(editingImm.value.id)
+    ElMessage.success('ID скопирован')
+  } catch (error) {
+    ElMessage.error('Не удалось скопировать ID')
+  }
+}
 
 const showQr = async (imm) => {
   try {
