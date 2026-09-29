@@ -26,41 +26,31 @@
             <span>Дашборд</span>
           </el-menu-item>
 
-          <!-- Задания (для Manager, Admin) -->
-          <el-menu-item 
-            v-if="canAccess(['Admin', 'Manager'])" 
-            index="/tasks"
-          >
-            <el-icon><Document /></el-icon>
-            <span>Задания</span>
-          </el-menu-item>
-
-          <!-- Журнал простоев (для Manager, Admin) -->
-          <el-menu-item
+          <!-- Планирование: заказы и задания (для Manager, Admin) -->
+          <el-sub-menu
             v-if="canAccess(['Admin', 'Manager'])"
-            index="/downtimes"
+            index="planning"
           >
-            <el-icon><Timer /></el-icon>
-            <span>Журнал простоев</span>
-          </el-menu-item>
+            <template #title>
+              <el-icon><Calendar /></el-icon>
+              <span>Планирование</span>
+            </template>
+            <el-menu-item index="/orders">Заказы</el-menu-item>
+            <el-menu-item index="/tasks">Задания</el-menu-item>
+          </el-sub-menu>
 
-          <!-- Журнал работы без задания (для Manager, Admin) -->
-          <el-menu-item
+          <!-- Журналы: простои и работа без задания (для Manager, Admin) -->
+          <el-sub-menu
             v-if="canAccess(['Admin', 'Manager'])"
-            index="/unplanned-runs"
+            index="journals"
           >
-            <el-icon><Warning /></el-icon>
-            <span>Работа без задания</span>
-          </el-menu-item>
-
-          <!-- Заказы (для Manager, Admin) -->
-          <el-menu-item
-            v-if="canAccess(['Admin', 'Manager'])"
-            index="/orders"
-          >
-            <el-icon><List /></el-icon>
-            <span>Заказы</span>
-          </el-menu-item>
+            <template #title>
+              <el-icon><Notebook /></el-icon>
+              <span>Журналы</span>
+            </template>
+            <el-menu-item index="/downtimes">Журнал простоев</el-menu-item>
+            <el-menu-item index="/unplanned-runs">Работа без задания</el-menu-item>
+          </el-sub-menu>
 
           <!-- Отчёты (для Manager, Admin) -->
           <el-menu-item
