@@ -27,28 +27,21 @@ public class ReportService : IReportService
     {
         _logger.LogInformation("Generating daily report for {Date}, IMM: {ImmId}, Shift: {ShiftId}", date, immId, shiftId);
 
-        // Границы отчётного периода: по умолчанию — сутки
-        var periodStart = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
-        var periodEnd = periodStart.AddDays(1);
+        // Сутки/смена — в локальном времени завода (зона смен), по умолчанию — сутки
+        var shifts = await _context.Shifts.OrderBy(s => s.StartMinutes).ToListAsync(ct);
+        var shift = shiftId.HasValue ? shifts.FirstOrDefault(s => s.Id == shiftId.Value) : null;
+        var timeZoneId = shifts.FirstOrDefault()?.TimeZoneId ?? FactoryCalendar.DefaultTimeZoneId;
+        var period = DailyReportPeriod.Resolve(date, shift, timeZoneId);
 
-        // Если указана смена — сужаем диапазон по её расписанию
         int? shiftNumber = null;
         string? shiftStartTime = null;
         string? shiftEndTime = null;
-        if (shiftId.HasValue)
+        if (shift != null)
         {
-            var shift = await _context.Shifts.FirstOrDefaultAsync(s => s.Id == shiftId.Value, ct);
-            if (shift != null)
-            {
-                periodStart = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc).AddMinutes(shift.StartMinutes);
-                periodEnd = periodStart.AddMinutes(shift.DurationMinutes);
-
-                var allShiftIds = await _context.Shifts.OrderBy(s => s.StartMinutes).Select(s => s.Id).ToListAsync(ct);
-                shiftNumber = allShiftIds.IndexOf(shift.Id) + 1;
-                shiftStartTime = $"{shift.StartMinutes / 60 % 24:D2}:{shift.StartMinutes % 60:D2}";
-                var endMinutes = shift.StartMinutes + shift.DurationMinutes;
-                shiftEndTime = $"{endMinutes / 60 % 24:D2}:{endMinutes % 60:D2}";
-            }
+            shiftNumber = shifts.IndexOf(shift) + 1;
+            shiftStartTime = $"{shift.StartMinutes / 60 % 24:D2}:{shift.StartMinutes % 60:D2}";
+            var endMinutes = shift.StartMinutes + shift.DurationMinutes;
+            shiftEndTime = $"{endMinutes / 60 % 24:D2}:{endMinutes % 60:D2}";
         }
 
         var report = new DailyReportDto
@@ -72,7 +65,7 @@ public class ReportService : IReportService
 
         foreach (var imm in imms)
         {
-            var item = await GenerateDailyImmItemAsync(imm, periodStart, periodEnd, ct);
+            var item = await GenerateDailyImmItemAsync(imm, period, ct);
             if (item != null)
                 report.ImmData.Add(item);
         }
@@ -83,13 +76,16 @@ public class ReportService : IReportService
     /// <summary>
     /// Генерация данных по одному ТПА за период
     /// </summary>
-    private async Task<DailyReportImmItemDto?> GenerateDailyImmItemAsync(Imm imm, DateTime periodStart, DateTime periodEnd, CancellationToken ct)
+    private async Task<DailyReportImmItemDto?> GenerateDailyImmItemAsync(Imm imm, DailyReportPeriod period, CancellationToken ct)
     {
-        // История статусов ТПА за период (перекрывающиеся записи)
+        var periodStart = period.PeriodStart;
+        var periodEnd = period.PeriodEnd;
+
+        // История статусов ТПА за окно графика (оно шире периода агрегатов на поля смены)
         var statusHistory = await _context.ImmStatusHistory
             .Where(h => h.ImmId == imm.Id
-                && h.ChangedAt < periodEnd
-                && (h.EndedAt == null || h.EndedAt > periodStart))
+                && h.ChangedAt < period.TimelineEnd
+                && (h.EndedAt == null || h.EndedAt > period.TimelineStart))
             .OrderBy(h => h.ChangedAt)
             .ToListAsync(ct);
 
@@ -122,16 +118,26 @@ public class ReportService : IReportService
         // Незакрытый (текущий) статус тянется только до «сейчас», а не до конца окна —
         // иначе для сегодняшнего дня активный статус закрашивал бы будущее до конца суток.
         var now = DateTime.UtcNow;
-        var windowEnd = periodEnd < now ? periodEnd : now;
+        var timelineEnd = period.TimelineEnd < now ? period.TimelineEnd : now;
+        var aggregateEnd = periodEnd < now ? periodEnd : now;
 
         foreach (var entry in statusHistory)
         {
+            var entryEnd = entry.EndedAt ?? DateTime.MaxValue;
+            var type = MapStatusToType(entry.Status);
+
+            // Сегмент графика — в окне графика (смена ±30 мин)
+            var tlStart = entry.ChangedAt < period.TimelineStart ? period.TimelineStart : entry.ChangedAt;
+            var tlEnd   = entryEnd > timelineEnd ? timelineEnd : entryEnd;
+            if (tlEnd > tlStart)
+                timeline.Add(new TimelineItemDto { Start = tlStart, End = tlEnd, Type = type });
+
+            // Агрегаты — только в пределах периода (смены/суток)
             var start = entry.ChangedAt < periodStart ? periodStart : entry.ChangedAt;
-            var end   = (entry.EndedAt == null || entry.EndedAt > windowEnd) ? windowEnd : entry.EndedAt.Value;
+            var end   = entryEnd > aggregateEnd ? aggregateEnd : entryEnd;
             if (end <= start) continue;
 
             var duration = (int)(end - start).TotalSeconds;
-            var type = MapStatusToType(entry.Status);
 
             switch (type)
             {
@@ -141,8 +147,6 @@ public class ReportService : IReportService
                 case "idle":    downtimeSeconds += duration; break;
                 case "offline": offlineSeconds  += duration; break;
             }
-
-            timeline.Add(new TimelineItemDto { Start = start, End = end, Type = type });
         }
 
         // Подсчёт циклов и среднего времени цикла
@@ -215,6 +219,11 @@ public class ReportService : IReportService
         };
     }
 
+    // Зона завода — зона смен (у всех смен она общая, задаётся в справочнике смен)
+    private async Task<string> GetFactoryTimeZoneIdAsync(CancellationToken ct) =>
+        await _context.Shifts.OrderBy(s => s.StartMinutes).Select(s => (string?)s.TimeZoneId).FirstOrDefaultAsync(ct)
+            ?? FactoryCalendar.DefaultTimeZoneId;
+
     private static string MapStatusToType(string status) => ImmMode.Normalize(status) switch
     {
         ImmMode.Auto   => "work",
@@ -231,8 +240,10 @@ public class ReportService : IReportService
     {
         _logger.LogInformation("Generating equipment report from {From} to {To}", dateFrom, dateTo);
 
-        var dateFromUtc = DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc);
-        var periodEnd = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc).AddDays(1);
+        // Сутки — локальные сутки завода (зона смен), не UTC
+        var days = FactoryCalendar.Days(dateFrom, dateTo, await GetFactoryTimeZoneIdAsync(ct));
+        var dateFromUtc = days.Count > 0 ? days[0].StartUtc : DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc);
+        var periodEnd = days.Count > 0 ? days[^1].EndUtc : dateFromUtc;
 
         // Незакрытый (текущий) статус тянется только до «сейчас», а не до конца окна —
         // иначе для сегодняшнего дня активный статус закрашивал бы будущее до конца суток.
@@ -241,7 +252,7 @@ public class ReportService : IReportService
 
         var report = new EquipmentReportDto
         {
-            DateFrom = dateFromUtc,
+            DateFrom = DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc),
             DateTo = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc),
             ImmData = [],
             DailyBreakdown = []
@@ -257,10 +268,8 @@ public class ReportService : IReportService
 
         var imms = await immQuery.ToListAsync(ct);
 
-        // Словарь для накопления поднёвных данных по всем ТПА: ключ — дата (UTC, начало дня)
-        var dailyAccum = new Dictionary<DateTime, (int Work, int Setup, int Downtime)>();
-        for (var d = dateFromUtc; d < periodEnd; d = d.AddDays(1))
-            dailyAccum[d] = (0, 0, 0);
+        // Накопление поднёвных данных по всем ТПА: индекс — локальные сутки завода из days
+        var dailyAccum = new (int Work, int Setup, int Downtime)[days.Count];
 
         foreach (var imm in imms)
         {
@@ -289,14 +298,13 @@ public class ReportService : IReportService
 
                 var statusType = MapStatusToType(entry.Status);
 
-                // Разбиваем сегмент по границам суток: каждый срез идёт и в итоги ТПА, и в дневной агрегат
-                var cursor = segStart;
-                while (cursor < segEnd)
+                // Разбиваем сегмент по границам локальных суток: каждый срез идёт и в итоги ТПА, и в дневной агрегат
+                for (var i = 0; i < days.Count; i++)
                 {
-                    var dayStart = DateTime.SpecifyKind(cursor.Date, DateTimeKind.Utc);
-                    var dayEnd   = dayStart.AddDays(1);
-                    var sliceEnd = dayEnd < segEnd ? dayEnd : segEnd;
-                    var secs     = (int)(sliceEnd - cursor).TotalSeconds;
+                    var sliceStart = days[i].StartUtc > segStart ? days[i].StartUtc : segStart;
+                    var sliceEnd   = days[i].EndUtc < segEnd ? days[i].EndUtc : segEnd;
+                    if (sliceEnd <= sliceStart) continue;
+                    var secs = (int)(sliceEnd - sliceStart).TotalSeconds;
 
                     switch (statusType)
                     {
@@ -307,18 +315,14 @@ public class ReportService : IReportService
                         case "offline": offlineSeconds  += secs; break;
                     }
 
-                    if (dailyAccum.TryGetValue(dayStart, out var acc))
+                    var acc = dailyAccum[i];
+                    dailyAccum[i] = statusType switch
                     {
-                        dailyAccum[dayStart] = statusType switch
-                        {
-                            "work"            => (acc.Work + secs, acc.Setup, acc.Downtime),
-                            "setup"           => (acc.Work, acc.Setup + secs, acc.Downtime),
-                            "alarm" or "idle" => (acc.Work, acc.Setup, acc.Downtime + secs),
-                            _                 => acc
-                        };
-                    }
-
-                    cursor = sliceEnd;
+                        "work"            => (acc.Work + secs, acc.Setup, acc.Downtime),
+                        "setup"           => (acc.Work, acc.Setup + secs, acc.Downtime),
+                        "alarm" or "idle" => (acc.Work, acc.Setup, acc.Downtime + secs),
+                        _                 => acc
+                    };
                 }
             }
 
@@ -346,14 +350,13 @@ public class ReportService : IReportService
             });
         }
 
-        report.DailyBreakdown = dailyAccum
-            .OrderBy(kv => kv.Key)
-            .Select(kv => new EquipmentReportDailyItemDto
+        report.DailyBreakdown = days
+            .Select((day, i) => new EquipmentReportDailyItemDto
             {
-                Date = kv.Key,
-                TotalWorkSeconds = kv.Value.Work,
-                TotalSetupSeconds = kv.Value.Setup,
-                TotalDowntimeSeconds = kv.Value.Downtime
+                Date = DateTime.SpecifyKind(day.Date, DateTimeKind.Utc),
+                TotalWorkSeconds = dailyAccum[i].Work,
+                TotalSetupSeconds = dailyAccum[i].Setup,
+                TotalDowntimeSeconds = dailyAccum[i].Downtime
             })
             .ToList();
 
@@ -367,12 +370,14 @@ public class ReportService : IReportService
     {
         _logger.LogInformation("Generating assets report. Type: {Type}, From: {From}, To: {To}", reportType, dateFrom, dateTo);
 
-        var dateFromUtc = DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc);
-        var periodEnd = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc).AddDays(1);
+        // Сутки — локальные сутки завода (зона смен), не UTC
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(await GetFactoryTimeZoneIdAsync(ct));
+        var dateFromUtc = FactoryCalendar.DayStartUtc(dateFrom, tz);
+        var periodEnd = FactoryCalendar.DayStartUtc(dateTo.Date.AddDays(1), tz);
 
         var report = new AssetsReportDto
         {
-            DateFrom = dateFromUtc,
+            DateFrom = DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc),
             DateTo = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc),
             ReportType = reportType
         };
