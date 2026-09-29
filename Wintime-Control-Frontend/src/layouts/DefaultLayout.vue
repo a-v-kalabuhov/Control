@@ -6,8 +6,9 @@
       :class="sidebarCollapsed ? '-translate-x-full' : 'translate-x-0'"
     >
       <!-- Логотип -->
-      <div class="h-16 flex-shrink-0 flex items-center justify-center border-b border-gray-200">
-        <div class="text-xl font-bold text-primary-700">CONTROL</div>
+      <div class="h-16 flex-shrink-0 flex flex-col items-center justify-center border-b border-gray-200">
+        <div class="text-xl font-bold text-primary-700 leading-tight">CONTROL</div>
+        <div class="text-xs text-gray-400 leading-tight" :title="appVersion.tooltip">{{ appVersion.label }}</div>
       </div>
 
       <!-- Меню навигации -->
@@ -156,6 +157,7 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
 import dayjs from 'dayjs'
+import { appVersion } from '@/utils/buildInfo'
 
 const route = useRoute()
 const authStore = useAuthStore()
