@@ -41,3 +41,4 @@
 - [ADR-0007](0007-product-type-catalog.md) — Каталог изделий (`ProductType`) как общая номенклатурная основа
 - [ADR-0008](0008-cycle-pipeline-and-unplanned-run.md) — Конвейер обработки цикла + журнал «работы без задания» (UnplannedRun)
 - [ADR-0009](0009-orders-module.md) — Модуль учёта заказов (`Order`)
+- [ADR-0013](0013-unplanned-run-split-on-idle-gap.md) — Эпизод «работы без задания» разрывается простоем дольше порога
