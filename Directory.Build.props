@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Единый номер версии продукта; меняется вручную перед публикацией (см. CLAUDE.md) -->
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</Version>
+  </PropertyGroup>
+</Project>
