@@ -4,6 +4,12 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [vue()],
+  // Константы сборки из vite.config.js — чтобы тесты, импортирующие DefaultLayout/buildInfo, не падали
+  define: {
+    __APP_VERSION__: JSON.stringify('test'),
+    __BUILD_DATE__: JSON.stringify(''),
+    __GIT_COMMIT__: JSON.stringify(''),
+  },
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },
