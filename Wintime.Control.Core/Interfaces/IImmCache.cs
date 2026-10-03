@@ -1,4 +1,5 @@
 using Wintime.Control.Core.Cache;
+using Wintime.Control.Core.DTOs.Mqtt;
 
 namespace Wintime.Control.Core.Interfaces;
 
@@ -30,6 +31,13 @@ public interface IImmCache
     /// Если ТПА отсутствует в кеше — создаёт запись с указанным <paramref name="timeoutSeconds"/>.
     /// </summary>
     void UpdateEntry(Guid immId, DateTime messageAt, int timeoutSeconds, IReadOnlyDictionary<string, string> sensorValues);
+
+    /// <summary>
+    /// Запоминает последний завершённый цикл (блок <c>lastCycle</c> из MQTT).
+    /// Снапшот, закончившийся раньше уже сохранённого (out-of-order), игнорируется.
+    /// Если ТПА отсутствует в кеше — ничего не делает.
+    /// </summary>
+    void UpdateLastCycle(Guid immId, CompletedCycleSnapshot lastCycle);
 
     /// <summary>
     /// Возвращает снимок всех записей кеша на момент вызова.

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Wintime.Control.Core.Cache;
+using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Interfaces;
 
 namespace Wintime.Control.Infrastructure.Cache;
@@ -26,6 +27,18 @@ public sealed class MemoryImmCache : IImmCache
             immId,
             _ => new ImmCacheEntry(immId, messageAt, timeoutSeconds, sensorValues),
             (_, existing) => existing with { LastMessageAt = messageAt, SensorValues = sensorValues });
+
+    public void UpdateLastCycle(Guid immId, CompletedCycleSnapshot lastCycle)
+    {
+        while (_cache.TryGetValue(immId, out var existing))
+        {
+            if (existing.LastCycle is { } known && known.EndTime > lastCycle.EndTime)
+                return; // out-of-order — не затираем более свежий цикл
+
+            if (_cache.TryUpdate(immId, existing with { LastCycle = lastCycle }, existing))
+                return;
+        }
+    }
 
     public IReadOnlyList<ImmCacheEntry> GetAll()
         => _cache.Values.ToList();

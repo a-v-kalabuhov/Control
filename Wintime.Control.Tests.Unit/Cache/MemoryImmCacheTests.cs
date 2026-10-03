@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Infrastructure.Cache;
 
 namespace Wintime.Control.Tests.Unit.Cache;
@@ -319,5 +320,95 @@ public class MemoryImmCacheTests
 
         cache.GetAll().Should().HaveCount(1)
             .And.NotContain(e => e.ImmId == id1);
+    }
+
+    // =========================================================================
+    // UpdateLastCycle — последний завершённый цикл из MQTT (lastCycle, контракт v2)
+    // =========================================================================
+
+    private static CompletedCycleSnapshot Cycle(int number, DateTime start, double seconds)
+        => new(number, start, start.AddSeconds(seconds), null, null);
+
+    /// <summary>
+    /// После <c>UpdateLastCycle</c> запись хранит снапшот и его длительность в секундах —
+    /// её показывает карточка ТПА на дашборде.
+    /// </summary>
+    [Fact]
+    public void UpdateLastCycle_StoresSnapshotAndDuration()
+    {
+        var cache = new MemoryImmCache();
+        var id = Guid.NewGuid();
+        cache.AddImm(id, 60);
+        var cycle = Cycle(7, new DateTime(2026, 9, 30, 10, 0, 0, DateTimeKind.Utc), 32.4);
+
+        cache.UpdateLastCycle(id, cycle);
+
+        var entry = cache.GetEntry(id)!;
+        entry.LastCycle.Should().Be(cycle);
+        entry.LastCycleDurationSeconds.Should().BeApproximately(32.4, 1e-3);
+    }
+
+    /// <summary>
+    /// Новая запись не знает последнего цикла — длительность <c>null</c>, а не 0.
+    /// </summary>
+    [Fact]
+    public void AddImm_LastCycleIsNull()
+    {
+        var cache = new MemoryImmCache();
+        var id = Guid.NewGuid();
+
+        cache.AddImm(id, 60);
+
+        cache.GetEntry(id)!.LastCycle.Should().BeNull();
+        cache.GetEntry(id)!.LastCycleDurationSeconds.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Out-of-order: снапшот, закончившийся раньше уже сохранённого, не затирает его.
+    /// </summary>
+    [Fact]
+    public void UpdateLastCycle_OlderSnapshot_Ignored()
+    {
+        var cache = new MemoryImmCache();
+        var id = Guid.NewGuid();
+        cache.AddImm(id, 60);
+        var t0 = new DateTime(2026, 9, 30, 10, 0, 0, DateTimeKind.Utc);
+        var newer = Cycle(8, t0.AddSeconds(40), 30);
+        cache.UpdateLastCycle(id, newer);
+
+        cache.UpdateLastCycle(id, Cycle(7, t0, 35));
+
+        cache.GetEntry(id)!.LastCycle.Should().Be(newer);
+    }
+
+    /// <summary>
+    /// Обновление датчиков (<c>UpdateEntry</c>) не должно терять последний цикл.
+    /// </summary>
+    [Fact]
+    public void UpdateEntry_PreservesLastCycle()
+    {
+        var cache = new MemoryImmCache();
+        var id = Guid.NewGuid();
+        cache.AddImm(id, 60);
+        var cycle = Cycle(1, new DateTime(2026, 9, 30, 10, 0, 0, DateTimeKind.Utc), 20);
+        cache.UpdateLastCycle(id, cycle);
+
+        cache.UpdateEntry(id, DateTime.UtcNow, 60, new Dictionary<string, string> { ["t"] = "1" });
+
+        cache.GetEntry(id)!.LastCycle.Should().Be(cycle);
+    }
+
+    /// <summary>
+    /// Для незарегистрированного ТПА вызов безопасен и запись не создаётся.
+    /// </summary>
+    [Fact]
+    public void UpdateLastCycle_UnknownImm_DoesNothing()
+    {
+        var cache = new MemoryImmCache();
+        var id = Guid.NewGuid();
+
+        cache.UpdateLastCycle(id, Cycle(1, DateTime.UtcNow, 20));
+
+        cache.GetEntry(id).Should().BeNull();
     }
 }

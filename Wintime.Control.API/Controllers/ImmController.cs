@@ -109,7 +109,9 @@ public class ImmController : ControllerBase
                 {
                     TaskId = g.Key,
                     Count = g.Count(),
-                    AvgDuration = g.Average(c => (double)c.DurationSeconds)
+                    // Открытые циклы (EndTime = null, DurationSeconds = 0) в среднее не входят
+                    AvgDuration = g.Where(c => c.EndTime != null)
+                        .Average(c => (double?)c.DurationSeconds) ?? 0
                 })
                 .ToListAsync();
 
@@ -178,6 +180,7 @@ public class ImmController : ControllerBase
             var cacheEntry = _immCache.GetEntry(dto.Id);
             dto.Status = statusEntry?.Status ?? ImmStatus.Offline;
             dto.LastUpdate = MaxDateTime(statusEntry?.SinceUtc, cacheEntry?.LastMessageAt);
+            dto.LastCycleTime = ToCycleSeconds(cacheEntry?.LastCycleDurationSeconds);
 
             var rawForEff = statusEntry?.Status ?? ImmStatus.Offline;
             var taskForEff = Core.Enums.ActiveTaskStatusMap.From(
@@ -328,7 +331,7 @@ public class ImmController : ControllerBase
             EffectiveStatus = effective,
             CurrentTaskId = currentTask?.Id,
             CurrentMoldId = currentTask?.MoldId,
-            CurrentCycleTime = 0, // TODO: Вычислить из телеметрии
+            CurrentCycleTime = ToCycleSeconds(cacheEntry?.LastCycleDurationSeconds),
             LastUpdate = MaxDateTime(entry?.SinceUtc, cacheEntry?.LastMessageAt) ?? DateTime.MinValue
         });
     }
@@ -637,4 +640,7 @@ public class ImmController : ControllerBase
         if (b == null) return a;
         return a > b ? a : b;
     }
+
+    private static decimal? ToCycleSeconds(double? seconds)
+        => seconds is { } s ? Math.Round((decimal)s, 1) : null;
 }

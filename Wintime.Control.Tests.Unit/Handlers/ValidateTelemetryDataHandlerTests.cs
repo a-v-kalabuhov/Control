@@ -386,6 +386,41 @@ public class ValidateTelemetryDataHandlerTests
     }
 
     // =========================================================================
+    // Часть 3: последний завершённый цикл (lastCycle) → кеш для дашборда
+    // =========================================================================
+
+    [Fact]
+    public async Task ValidateAsync_MessageWithLastCycle_StoresItInCache()
+    {
+        var immId = Guid.NewGuid();
+        var template = PipelineTestFixtures.MakeTemplate([]);
+        var start = new DateTime(2026, 9, 30, 10, 0, 0, DateTimeKind.Utc);
+        var last = new CompletedCycleSnapshot(5, start, start.AddSeconds(31), null, null);
+        var message = PipelineTestFixtures.MakeMessage(immId, lastCycle: last);
+        var context = BuildContext(immId, message, template);
+        _immCache.GetEntry(immId).Returns((ImmCacheEntry?)null);
+
+        var (success, _) = await _sut.ValidateAsync(context);
+
+        success.Should().BeTrue();
+        _immCache.Received(1).UpdateLastCycle(immId, last);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_MessageWithoutLastCycle_DoesNotTouchLastCycle()
+    {
+        var immId = Guid.NewGuid();
+        var template = PipelineTestFixtures.MakeTemplate([]);
+        var message = PipelineTestFixtures.MakeMessage(immId);
+        var context = BuildContext(immId, message, template);
+        _immCache.GetEntry(immId).Returns((ImmCacheEntry?)null);
+
+        await _sut.ValidateAsync(context);
+
+        _immCache.DidNotReceiveWithAnyArgs().UpdateLastCycle(default, default!);
+    }
+
+    // =========================================================================
     // Вспомогательные методы
     // =========================================================================
 
