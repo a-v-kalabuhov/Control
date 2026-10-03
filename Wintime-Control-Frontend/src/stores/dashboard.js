@@ -142,7 +142,7 @@ export const useDashboardStore = defineStore('dashboard', {
           ...imm,
           rawStatus: imm.status,                       // сырой — про запас (BL-19)
           status: imm.effectiveStatus || 'Offline',    // на дашборде используем эффективный
-          currentCycleTime: imm.avgCycleTime || 0
+          currentCycleTime: imm.lastCycleTime ?? null   // последний завершённый цикл из MQTT
         }))
         this.lastUpdate = new Date()
         return { success: true }

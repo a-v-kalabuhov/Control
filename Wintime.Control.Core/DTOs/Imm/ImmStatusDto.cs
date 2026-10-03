@@ -7,6 +7,7 @@ public class ImmStatusDto
     public string EffectiveStatus { get; set; } = string.Empty;
     public Guid? CurrentTaskId { get; set; }
     public Guid? CurrentMoldId { get; set; }
-    public decimal CurrentCycleTime { get; set; }
+    /// <summary>Длительность последнего завершённого цикла, сек (из <c>lastCycle</c> MQTT); <c>null</c> — неизвестна.</summary>
+    public decimal? CurrentCycleTime { get; set; }
     public DateTime LastUpdate { get; set; }
 }

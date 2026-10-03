@@ -51,3 +51,23 @@ describe('dashboard store — эффективные состояния', () => 
     expect(store.filteredImms[0].id).toBe('4')
   })
 })
+
+describe('dashboard store — время цикла на карточке', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('currentCycleTime берётся из lastCycleTime (последний завершённый цикл MQTT), не из среднего', async () => {
+    const { immApi } = await import('@/api/imm')
+    immApi.getList = vi.fn().mockResolvedValue({
+      data: [
+        { id: '1', name: 'A', effectiveStatus: 'Production', avgCycleTime: 0, lastCycleTime: 31.4 },
+        { id: '2', name: 'B', effectiveStatus: 'NoTask', avgCycleTime: 0, lastCycleTime: null },
+      ]
+    })
+    const store = useDashboardStore()
+
+    await store.loadImms()
+
+    expect(store.imms[0].currentCycleTime).toBe(31.4)
+    expect(store.imms[1].currentCycleTime).toBeNull()
+  })
+})

@@ -22,5 +22,11 @@ public class ImmDto
     public int? ActualQuantity { get; set; }
     public int CycleCount { get; set; }
     public decimal AvgCycleTime { get; set; }
+
+    /// <summary>
+    /// Длительность последнего завершённого цикла, сек — из <c>lastCycle</c> MQTT-сообщения
+    /// (кеш <c>IImmCache</c>). <c>null</c> — с момента старта API цикл ещё не приходил.
+    /// </summary>
+    public decimal? LastCycleTime { get; set; }
     public DateTime? TaskStartedAt { get; set; }
 }

@@ -56,7 +56,7 @@
       </div>
       <div>
         <div class="text-gray-500 text-xs">Время цикла</div>
-        <div class="font-semibold text-gray-800">{{ cycleTime }} сек</div>
+        <div class="font-semibold text-gray-800">{{ cycleTime }}</div>
       </div>
       <div>
         <div class="text-gray-500 text-xs">Темп</div>
@@ -109,7 +109,11 @@ const progressStatus = computed(() => {
 const planQuantity = computed(() => props.imm.planQuantity || 0)
 const actualQuantity = computed(() => props.imm.actualQuantity || 0)
 const cycleCount = computed(() => props.imm.cycleCount || 0)
-const cycleTime = computed(() => props.imm.currentCycleTime?.toFixed(1) || '0.0')
+// Длительность последнего завершённого цикла (lastCycle из MQTT); null — цикла ещё не было
+const cycleTime = computed(() => {
+  const t = props.imm.currentCycleTime
+  return t == null ? '—' : `${Number(t).toFixed(1)} сек`
+})
 
 // Темп производства: шт/ч на основе фактических штук и времени с начала задания
 const ratePerHour = computed(() => {

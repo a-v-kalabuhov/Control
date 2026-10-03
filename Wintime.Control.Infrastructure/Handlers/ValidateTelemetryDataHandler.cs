@@ -65,6 +65,11 @@ public class ValidateTelemetryDataHandler : IValidateTelemetryDataHandler
         // Part 2: COV filtering — unchanged sensors are replaced with cached values (Variant B)
         var outputSensors = ApplyCovFilter(context, validSensors);
 
+        // Part 3: последний завершённый цикл — для карточки ТПА на дашборде.
+        // После COV-фильтра: запись кеша к этому моменту гарантированно создана.
+        if (context.Data!.LastCycle is { } lastCycle)
+            _immCache.UpdateLastCycle(context.Device!.Id, lastCycle);
+
         var newMessage = new MqttTelemetryMessage
         {
             TimestampUtc = context.Data!.TimestampUtc,

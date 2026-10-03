@@ -90,7 +90,11 @@
             {{ (row.downtimeSeconds / 3600).toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="avgCycleTime" label="Ср. цикл (сек)" width="100" align="center" />
+        <el-table-column label="Ср. цикл (сек)" width="100" align="center">
+          <template #default="{ row }">
+            {{ row.avgCycleTime?.toFixed(1) ?? '—' }}
+          </template>
+        </el-table-column>
         <el-table-column label="Эффективность" width="120">
           <template #default="{ row }">
             <el-tag :type="getEfficiencyType(row.efficiency)">
