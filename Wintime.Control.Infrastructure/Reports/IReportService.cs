@@ -1,4 +1,5 @@
 using Wintime.Control.Core.DTOs.Report;
+using Wintime.Control.Core.Enums;
 
 namespace Wintime.Control.Infrastructure.Reports;
 
@@ -21,7 +22,8 @@ public interface IReportService
     /// <param name="immIds"></param>
     /// <param name="ct"></param>
     /// <returns></returns>
-    Task<EquipmentReportDto> GetEquipmentReportAsync(DateTime dateFrom, DateTime dateTo, List<Guid>? immIds = null, CancellationToken ct = default);
+    Task<EquipmentReportDto> GetEquipmentReportAsync(DateTime dateFrom, DateTime dateTo, List<Guid>? immIds = null,
+        ArchiveFilter archive = ArchiveFilter.Exclude, CancellationToken ct = default);
     
     /// <summary>
     /// Отчёт "Активы цеха"
