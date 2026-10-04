@@ -97,54 +97,81 @@
       </div>
     </div>
 
-    <!-- Строки по ТПА -->
-    <div v-loading="loading" class="min-h-[120px]">
-      <EquipmentImmRow v-for="item in immData" :key="item.immId" :item="item" />
-      <el-empty v-if="!loading && immData.length === 0" description="Нет данных за период" />
-    </div>
+    <!-- Диаграммы и сводная таблица — на вкладках, чтобы фильтры и KPI оставались на виду -->
+    <el-tabs v-model="activeTab" data-test="report-tabs">
+      <el-tab-pane label="Диаграммы" name="charts" />
+      <el-tab-pane label="Сводная таблица" name="table" />
+    </el-tabs>
 
-    <!-- Итоговая таблица -->
-    <el-card v-if="immData.length > 0" class="mt-4">
-      <template #header>
-        <span class="font-semibold">
-          Итоги за период
-          <span v-if="reportData" class="text-gray-500 font-normal ml-2">
-            {{ dayjs(reportData.dateFrom).format('DD.MM.YYYY') }} — {{ dayjs(reportData.dateTo).format('DD.MM.YYYY') }}
-          </span>
-        </span>
+    <div v-loading="loading" class="min-h-[120px]">
+      <el-empty v-if="!loading && immData.length === 0" description="Нет данных за период" />
+
+      <!-- Строки по ТПА. v-if, а не скрытие: ECharts в скрытом контейнере инициализируется с нулевой шириной -->
+      <template v-else-if="activeTab === 'charts'">
+        <EquipmentImmRow
+          v-for="item in immData"
+          :key="item.immId"
+          :item="item"
+          :data-imm-id="item.immId"
+          class="scroll-mt-20"
+          :class="{ 'imm-highlight': highlightedImmId === item.immId }"
+        />
       </template>
-      <el-table :data="immData" stripe style="width: 100%" :summary-method="getSummaries" show-summary>
-        <el-table-column label="ТПА" min-width="150" fixed>
-          <template #default="{ row }">
-            {{ row.immName }}<span v-if="!row.isActive" class="text-gray-400"> (архив)</span>
-          </template>
-        </el-table-column>
-        <el-table-column
-          v-for="k in REPORT_STATUS_KEYS"
-          :key="k"
-          :label="`${REPORT_STATUS[k].label} (ч)`"
-          min-width="110"
-          align="right"
+
+      <!-- Итоговая таблица -->
+      <el-card v-else-if="immData.length > 0" data-test="summary-table">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <span class="font-semibold">
+              Итоги за период
+              <span v-if="reportData" class="text-gray-500 font-normal ml-2">
+                {{ dayjs(reportData.dateFrom).format('DD.MM.YYYY') }} — {{ dayjs(reportData.dateTo).format('DD.MM.YYYY') }}
+              </span>
+            </span>
+            <span class="text-sm text-gray-500">Нажмите на строку, чтобы открыть диаграмму ТПА</span>
+          </div>
+        </template>
+        <el-table
+          :data="immData"
+          stripe
+          style="width: 100%"
+          :summary-method="getSummaries"
+          show-summary
+          row-class-name="cursor-pointer"
+          @row-click="openImmChart"
         >
-          <template #default="{ row }">{{ toHours(row.seconds?.[k]) }}</template>
-        </el-table-column>
-        <el-table-column prop="totalCycles" label="Циклы" width="90" align="right" />
-        <el-table-column label="Ср. цикл (с)" width="110" align="right">
-          <template #default="{ row }">{{ row.avgCycleSeconds > 0 ? row.avgCycleSeconds.toFixed(1) : '—' }}</template>
-        </el-table-column>
-        <el-table-column label="Эффективность" width="130" align="right">
-          <template #default="{ row }">
-            <span :class="efficiencyClass(row.efficiency)">{{ formatEfficiency(row.efficiency) }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+          <el-table-column label="ТПА" min-width="150" fixed>
+            <template #default="{ row }">
+              {{ row.immName }}<span v-if="!row.isActive" class="text-gray-400"> (архив)</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            v-for="k in REPORT_STATUS_KEYS"
+            :key="k"
+            :label="`${REPORT_STATUS[k].label} (ч)`"
+            min-width="110"
+            align="right"
+          >
+            <template #default="{ row }">{{ toHours(row.seconds?.[k]) }}</template>
+          </el-table-column>
+          <el-table-column prop="totalCycles" label="Циклы" width="90" align="right" />
+          <el-table-column label="Ср. цикл (с)" width="110" align="right">
+            <template #default="{ row }">{{ row.avgCycleSeconds > 0 ? row.avgCycleSeconds.toFixed(1) : '—' }}</template>
+          </el-table-column>
+          <el-table-column label="Эффективность" width="130" align="right">
+            <template #default="{ row }">
+              <span :class="efficiencyClass(row.efficiency)">{{ formatEfficiency(row.efficiency) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+    </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
@@ -181,6 +208,24 @@ watch(archiveMode, () => {
 })
 
 const canLoad = computed(() => selectedImmIds.value.length > 0)
+
+// Вкладка не сбрасывается при повторном формировании отчёта.
+const activeTab = ref('charts')
+
+// Клик по строке таблицы: перейти на диаграммы и прокрутить к ТПА, ненадолго подсветив его карточку.
+const highlightedImmId = ref(null)
+let highlightTimer = null
+
+const openImmChart = async (row) => {
+  activeTab.value = 'charts'
+  await nextTick()
+  document.querySelector(`[data-imm-id="${row.immId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  highlightedImmId.value = row.immId
+  clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => { highlightedImmId.value = null }, 2000)
+}
+
+onUnmounted(() => clearTimeout(highlightTimer))
 
 const reportData = computed(() => reportsStore.equipmentReport)
 const immData = computed(() => reportData.value?.immData ?? [])
@@ -261,6 +306,12 @@ const getSummaries = ({ data }) => {
 }
 .report-filters :deep(.el-form-item) {
   @apply mb-0;
+}
+
+/* Карточка ТПА, к которой перешли из сводной таблицы */
+.imm-highlight {
+  box-shadow: 0 0 0 2px var(--el-color-primary);
+  transition: box-shadow 0.3s;
 }
 
 /* Показанный отчёт не соответствует текущим фильтрам */

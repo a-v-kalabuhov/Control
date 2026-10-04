@@ -21,8 +21,9 @@ const row = (id, name, isActive = true) => ({
   totalCycles: 10, avgCycleSeconds: 30, efficiency: 50, days: []
 })
 
-function mountView() {
+function mountView(options = {}) {
   return mount(EquipmentReportView, {
+    ...options,
     global: {
       plugins: [ElementPlus],
       stubs: { EquipmentImmRow: true, 'el-date-picker': true, 'el-select': true, 'el-option': true }
@@ -100,6 +101,46 @@ describe('EquipmentReportView', () => {
     await w.find('[data-test="load-report"]').trigger('click')
     await flushPromises()
     expect(w.find('[data-test="stale-hint"]').exists()).toBe(false)
+  })
+
+  it('вкладки: по умолчанию диаграммы; таблица — на своей вкладке, вкладка не сбрасывается при формировании', async () => {
+    immApi.getList.mockResolvedValue({ data: [{ id: '1', name: 'A', isActive: true }] })
+    const w = mountView()
+    await flushPromises()
+    expect(w.findAllComponents({ name: 'EquipmentImmRow' })).toHaveLength(2)
+    expect(w.find('[data-test="summary-table"]').exists()).toBe(false)
+
+    w.vm.activeTab = 'table'
+    await nextTick()
+    expect(w.findAllComponents({ name: 'EquipmentImmRow' })).toHaveLength(0)
+    expect(w.find('[data-test="summary-table"]').exists()).toBe(true)
+
+    await w.find('[data-test="load-report"]').trigger('click')
+    await flushPromises()
+    expect(w.vm.activeTab).toBe('table')
+    expect(w.find('[data-test="summary-table"]').exists()).toBe(true)
+  })
+
+  it('клик по строке таблицы открывает диаграммы и прокручивает к карточке этого ТПА', async () => {
+    immApi.getList.mockResolvedValue({ data: [{ id: '1', name: 'A', isActive: true }] })
+    const scrolled = []
+    Element.prototype.scrollIntoView = vi.fn(function () { scrolled.push(this.getAttribute('data-imm-id')) })
+    const w = mountView({ attachTo: document.body })
+    await flushPromises()
+
+    w.vm.activeTab = 'table'
+    await nextTick()
+    await flushPromises()
+    const rows = w.findAll('.el-table__body tr.el-table__row')
+    expect(rows).toHaveLength(2)
+    await rows[1].trigger('click')
+    await flushPromises()
+
+    expect(w.vm.activeTab).toBe('charts')
+    expect(scrolled).toEqual(['2'])
+    const highlighted = w.findAllComponents({ name: 'EquipmentImmRow' }).filter(c => c.classes('imm-highlight'))
+    expect(highlighted.map(c => c.attributes('data-imm-id'))).toEqual(['2'])
+    w.unmount()
   })
 
   it('KPI: взвешенная эффективность парка и две строки проблемных', async () => {
