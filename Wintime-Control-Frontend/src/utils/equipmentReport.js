@@ -58,7 +58,6 @@ const NO_DATA_DECAL = {
 export function buildDayChartOption(days) {
   return {
     legend: { show: false },
-    aria: { enabled: true, decal: { show: true } },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -79,7 +78,10 @@ export function buildDayChartOption(days) {
       stack: 'day',
       barMaxWidth: 40,
       data: days.map(d => +((d.seconds?.[k] ?? 0) / 3600).toFixed(2)),
-      itemStyle: { color: REPORT_STATUS[k].hex, decal: k === 'NoData' ? NO_DATA_DECAL : 'none' }
+      // decal серии — только объект: ECharts пишет в него dirty, строка 'none' роняет рендер.
+      itemStyle: k === 'NoData'
+        ? { color: REPORT_STATUS[k].hex, decal: NO_DATA_DECAL }
+        : { color: REPORT_STATUS[k].hex }
     }))
   }
 }

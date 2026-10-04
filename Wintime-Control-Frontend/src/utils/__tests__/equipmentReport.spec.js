@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import * as echarts from 'echarts'
 import {
   knownSeconds, fleetEfficiency, countBelow, sumSeconds,
   toHours, formatEfficiency, buildDayChartOption, selectedIdsParam
@@ -57,6 +58,19 @@ describe('equipmentReport utils', () => {
     const noData = opt.series.find(s => s.name === 'Нет данных')
     expect(noData.itemStyle.decal).toBeTypeOf('object')
     expect(opt.legend.show).toBe(false)
+  })
+
+  it('buildDayChartOption: ECharts принимает опцию (decal серии — только объект), штрихуется лишь NoData', () => {
+    const days = [{ date: '2026-10-01T00:00:00Z', seconds: secs({ Production: 20 * H, NoData: 4 * H }) }]
+    const opt = buildDayChartOption(days)
+    expect(opt.series.filter(s => s.itemStyle.decal != null).map(s => s.name)).toEqual(['Нет данных'])
+
+    const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: 400, height: 200 })
+    try {
+      expect(() => chart.setOption(opt)).not.toThrow()
+    } finally {
+      chart.dispose()
+    }
   })
 
   it('selectedIdsParam: выбраны все опции режима — undefined (бэкенд сам берёт все ТПА режима)', () => {
