@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
+import { nextTick } from 'vue'
+import dayjs from 'dayjs'
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('@/api/imm', () => ({ immApi: { getList: vi.fn() } }))
@@ -64,6 +66,40 @@ describe('EquipmentReportView', () => {
     const w = mountView()
     await flushPromises()
     expect(w.find('[data-test="archive-filter"]').exists()).toBe(true)
+  })
+
+  it('период по умолчанию — ровно 7 суток, включая сегодня', async () => {
+    immApi.getList.mockResolvedValue({ data: [{ id: '1', name: 'A', isActive: true }] })
+    mountView()
+    await flushPromises()
+
+    const params = reportsApi.getEquipment.mock.calls[0][0]
+    expect(params.dateFrom).toBe(dayjs().subtract(6, 'day').format('YYYY-MM-DD'))
+    expect(params.dateTo).toBe(dayjs().format('YYYY-MM-DD'))
+  })
+
+  it('после смены фильтров показывает пометку об устаревании до повторного формирования', async () => {
+    immApi.getList.mockResolvedValue({ data: [
+      { id: '1', name: 'A', isActive: true }, { id: '2', name: 'B', isActive: true }
+    ] })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-test="stale-hint"]').exists()).toBe(false)
+
+    w.vm.selectedImmIds = ['1']
+    await nextTick()
+    expect(w.find('[data-test="stale-hint"]').exists()).toBe(true)
+
+    // Вернули фильтр как был — отчёт снова актуален
+    w.vm.selectedImmIds = ['1', '2']
+    await nextTick()
+    expect(w.find('[data-test="stale-hint"]').exists()).toBe(false)
+
+    w.vm.selectedImmIds = ['1']
+    await nextTick()
+    await w.find('[data-test="load-report"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="stale-hint"]').exists()).toBe(false)
   })
 
   it('KPI: взвешенная эффективность парка и две строки проблемных', async () => {

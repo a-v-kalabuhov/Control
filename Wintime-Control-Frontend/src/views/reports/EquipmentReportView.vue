@@ -56,12 +56,24 @@
         </el-form-item>
         <el-form-item>
           <el-tooltip :disabled="canLoad" content="Выберите ТПА" placement="top">
-            <el-button type="primary" @click="loadReport" :disabled="!canLoad">Сформировать</el-button>
+            <el-button type="primary" @click="loadReport" :disabled="!canLoad" data-test="load-report">Сформировать</el-button>
           </el-tooltip>
         </el-form-item>
       </el-form>
     </el-card>
 
+    <!-- Отчёт сформирован с другими фильтрами -->
+    <el-alert
+      v-if="isStale"
+      data-test="stale-hint"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="mb-4"
+      title="Фильтры изменены — нажмите «Сформировать», чтобы обновить отчёт"
+    />
+
+    <div :class="{ 'stale-report': isStale }">
     <!-- Сводные показатели -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4" data-test="kpi">
       <div class="card">
@@ -139,6 +151,7 @@
         </el-table-column>
       </el-table>
     </el-card>
+    </div>
   </div>
 </template>
 
@@ -158,7 +171,8 @@ const reportsStore = useReportsStore()
 
 const loading = ref(false)
 const exporting = ref(false)
-const dateRange = ref([dayjs().subtract(7, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')])
+// Последние 7 суток включая сегодня
+const dateRange = ref([dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')])
 
 // Фильтры не запоминаются между открытиями отчёта.
 const allImms = ref([])
@@ -190,6 +204,15 @@ const requestParams = () => ({
   archive: archiveMode.value
 })
 
+// Фильтры, с которыми сформирован показанный отчёт: при расхождении отчёт помечается устаревшим.
+const filtersKey = () => JSON.stringify({
+  dateRange: dateRange.value,
+  archive: archiveMode.value,
+  immIds: [...selectedImmIds.value].sort()
+})
+const loadedFiltersKey = ref(null)
+const isStale = computed(() => loadedFiltersKey.value !== null && loadedFiltersKey.value !== filtersKey())
+
 onMounted(async () => {
   try {
     const { data } = await immApi.getList()
@@ -205,8 +228,10 @@ onMounted(async () => {
 const loadReport = async () => {
   if (!canLoad.value) return
   loading.value = true
+  const key = filtersKey()
   try {
-    await reportsStore.loadEquipmentReport(requestParams())
+    const { success } = await reportsStore.loadEquipmentReport(requestParams())
+    if (success) loadedFiltersKey.value = key
   } finally {
     loading.value = false
   }
@@ -240,6 +265,12 @@ const getSummaries = ({ data }) => {
 <style scoped>
 .card {
   @apply bg-white rounded-lg shadow-md p-4;
+}
+
+/* Показанный отчёт не соответствует текущим фильтрам */
+.stale-report {
+  opacity: 0.5;
+  transition: opacity 0.2s;
 }
 
 /* Штриховка «Нет данных» в легенде — как decal на диаграмме */
