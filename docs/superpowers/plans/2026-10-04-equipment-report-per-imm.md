@@ -464,8 +464,6 @@ public class EffectiveStatusHistoryServiceTests : IClassFixture<IntegrationTestF
 }
 ```
 
-> Если у `Event` есть другие обязательные поля (проверь `Wintime.Control.Core/Entities/Event.cs`), заполни их минимально допустимыми значениями — так же, как это делают существующие тесты, создающие `Event` (`grep -rn "new Event" Wintime.Control.Tests.Integration`).
-
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test Wintime.Control.Tests.Integration --filter "FullyQualifiedName~EffectiveStatusHistoryServiceTests"`
@@ -779,8 +777,6 @@ public class EquipmentReportTests : IClassFixture<IntegrationTestFactory>
     }
 }
 ```
-
-> `TaskStatus.Completed` — проверь имя члена в `Wintime.Control.Core/Enums/TaskStatus.cs`; если завершённое задание называется иначе, используй его (статус задания не участвует в расчёте — только `SetupStartedAt/StartedAt/CompletedAt`).
 
 - [ ] **Step 2: Run tests to verify they fail**
 
