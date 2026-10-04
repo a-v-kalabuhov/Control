@@ -17,7 +17,7 @@
 
     <!-- Фильтры -->
     <el-card class="mb-4">
-      <el-form :inline="true">
+      <el-form :inline="true" class="report-filters">
         <el-form-item label="Период">
           <el-date-picker
             v-model="dateRange"
@@ -95,18 +95,6 @@
         <p class="text-sm text-gray-500">Всего циклов</p>
         <p class="text-2xl font-bold text-gray-800">{{ reportsStore.totalCycles }}</p>
       </div>
-    </div>
-
-    <!-- Общая легенда -->
-    <div class="flex flex-wrap gap-4 mb-3 text-sm text-gray-600">
-      <span v-for="k in REPORT_STATUS_KEYS" :key="k" class="flex items-center gap-1.5">
-        <span
-          class="inline-block w-3 h-3 rounded-sm"
-          :class="{ 'no-data-swatch': k === 'NoData' }"
-          :style="{ background: REPORT_STATUS[k].hex }"
-        ></span>
-        {{ REPORT_STATUS[k].label }}
-      </span>
     </div>
 
     <!-- Строки по ТПА -->
@@ -267,14 +255,17 @@ const getSummaries = ({ data }) => {
   @apply bg-white rounded-lg shadow-md p-4;
 }
 
+/* Отступ под полями = отступу над ними (padding карточки); при переносе строк — row-gap */
+.report-filters {
+  @apply flex flex-wrap gap-y-3;
+}
+.report-filters :deep(.el-form-item) {
+  @apply mb-0;
+}
+
 /* Показанный отчёт не соответствует текущим фильтрам */
 .stale-report {
   opacity: 0.5;
   transition: opacity 0.2s;
-}
-
-/* Штриховка «Нет данных» в легенде — как decal на диаграмме */
-.no-data-swatch {
-  background-image: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.15) 0 1px, transparent 1px 4px);
 }
 </style>
