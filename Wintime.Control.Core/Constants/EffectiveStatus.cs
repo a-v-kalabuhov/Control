@@ -13,4 +13,5 @@ public static class EffectiveStatus
     public const string Unplanned  = "Unplanned";  // Работа без задания
     public const string NoTask     = "NoTask";     // Без задания
     public const string Offline    = "Offline";    // Нет связи
+    public const string NoData     = "NoData";     // Нет данных — только отчёты: нет ни одной записи статуса
 }
