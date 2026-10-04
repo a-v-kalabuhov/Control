@@ -459,7 +459,7 @@ public class ImmController : ControllerBase
             .Select(c => new TelemetryCycleDto { Start = c.StartTime, End = c.EndTime, IsSuccessful = c.IsSuccessful })
             .ToListAsync();
 
-        var inputs = (await _effectiveStatusHistory.GatherAsync(new[] { id }, fromUtc, toUtc, effectiveTo))[id];
+        var inputs = (await _effectiveStatusHistory.GatherAsync(new[] { id }, fromUtc, toUtc, effectiveTo, HttpContext.RequestAborted))[id];
         var statusSegments = EffectiveStatusTimeline.Build(inputs.Raw, inputs.Tasks, inputs.Downtimes, fromUtc, effectiveTo)
             .Select(s => new EffectiveStatusSegmentDto
             {
@@ -523,7 +523,7 @@ public class ImmController : ControllerBase
         var nowUtc = DateTime.UtcNow;
         var effectiveTo = toUtc < nowUtc ? toUtc : nowUtc;
 
-        var inputs = (await _effectiveStatusHistory.GatherAsync(new[] { id }, fromUtc, toUtc, effectiveTo))[id];
+        var inputs = (await _effectiveStatusHistory.GatherAsync(new[] { id }, fromUtc, toUtc, effectiveTo, HttpContext.RequestAborted))[id];
 
         var segments = EffectiveStatusTimeline.Build(inputs.Raw, inputs.Tasks, inputs.Downtimes, fromUtc, effectiveTo);
 

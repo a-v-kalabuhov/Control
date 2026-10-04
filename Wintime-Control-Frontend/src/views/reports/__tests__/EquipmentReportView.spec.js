@@ -35,7 +35,7 @@ describe('EquipmentReportView', () => {
     reportsApi.getEquipment.mockResolvedValue({ data: { immData: [row('1', 'A'), row('2', 'B')] } })
   })
 
-  it('по умолчанию запрашивает все неархивные ТПА и рисует строку на каждый ТПА', async () => {
+  it('по умолчанию запрашивает все неархивные ТПА (без immIds) и рисует строку на каждый ТПА', async () => {
     immApi.getList.mockResolvedValue({ data: [
       { id: '1', name: 'A', isActive: true },
       { id: '2', name: 'B', isActive: true },
@@ -45,7 +45,7 @@ describe('EquipmentReportView', () => {
     await flushPromises()
 
     const params = reportsApi.getEquipment.mock.calls[0][0]
-    expect(params.immIds).toEqual(['1', '2'])
+    expect(params.immIds).toBeUndefined()   // выбраны все — immIds не отправляется
     expect(params.archive).toBe('exclude')
     expect(w.findAllComponents({ name: 'EquipmentImmRow' })).toHaveLength(2)
   })

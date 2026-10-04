@@ -151,7 +151,7 @@ import { useReportsStore } from '@/stores/reports'
 import { immApi } from '@/api/imm'
 import EquipmentImmRow from '@/components/reports/EquipmentImmRow.vue'
 import { REPORT_STATUS, REPORT_STATUS_KEYS } from '@/constants/effectiveStatus'
-import { toHours, formatEfficiency, efficiencyClass, sumSeconds } from '@/utils/equipmentReport'
+import { toHours, formatEfficiency, efficiencyClass, sumSeconds, selectedIdsParam } from '@/utils/equipmentReport'
 
 const router = useRouter()
 const reportsStore = useReportsStore()
@@ -186,7 +186,7 @@ const immData = computed(() => reportData.value?.immData ?? [])
 const requestParams = () => ({
   dateFrom: dateRange.value[0],
   dateTo: dateRange.value[1],
-  immIds: selectedImmIds.value,
+  immIds: selectedIdsParam(selectedImmIds.value, immOptions.value),
   archive: archiveMode.value
 })
 

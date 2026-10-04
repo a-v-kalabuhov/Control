@@ -361,7 +361,7 @@ public class ReportService : IReportService
 
         if (report.ImmData.Count > 0)
         {
-            var totals = DailyStatusBreakdown.Empty();
+            var totals = DailyStatusBreakdown.Keys.ToDictionary(k => k, _ => 0L);   // long: N ТПА × сутки могут превысить int
             foreach (var item in report.ImmData)
                 foreach (var k in keys)
                     totals[k] += item.Seconds.GetValueOrDefault(k);

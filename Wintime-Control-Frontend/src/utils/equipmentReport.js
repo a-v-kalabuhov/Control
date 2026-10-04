@@ -27,6 +27,13 @@ export function countBelow(immData, threshold) {
   return immData.filter(i => i.efficiency != null && i.efficiency < threshold).length
 }
 
+// Список immIds для запроса: если выбраны все опции текущего режима архива — undefined
+// (бэкенд трактует отсутствие immIds как «все ТПА режима»), чтобы не раздувать URL.
+export function selectedIdsParam(selected, options) {
+  const chosen = new Set(selected)
+  return options.every(o => chosen.has(o.id)) ? undefined : selected
+}
+
 export function toHours(seconds) {
   return ((seconds ?? 0) / 3600).toFixed(1)
 }

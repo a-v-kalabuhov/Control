@@ -87,4 +87,31 @@ public class DailyStatusBreakdownTests
 
         DailyStatusBreakdown.Efficiency(s).Should().BeNull();
     }
+
+    [Fact]
+    public void Split_ContiguousSegmentsWithFractionalBoundaries_LeaveNoNoData()
+    {
+        var segments = new[]
+        {
+            new EffectiveSegment(EffectiveStatus.Offline,    H(0),                      H(5).AddMilliseconds(500)),
+            new EffectiveSegment(EffectiveStatus.Production, H(5).AddMilliseconds(500), H(12).AddMilliseconds(700)),
+            new EffectiveSegment(EffectiveStatus.Downtime,   H(12).AddMilliseconds(700), H(24)),
+        };
+
+        var result = DailyStatusBreakdown.Split(segments, new[] { Day(0, 24) });
+
+        result[0][EffectiveStatus.NoData].Should().Be(0);
+        result[0].Values.Sum().Should().Be(86400);
+    }
+
+    [Fact]
+    public void Efficiency_LongTotalsBeyondIntRange_DoNotOverflow()
+    {
+        var totals = DailyStatusBreakdown.Keys.ToDictionary(k => k, _ => 0L);
+        totals[EffectiveStatus.Production] = 3_000_000_000L;
+        totals[EffectiveStatus.NoTask]     = 3_000_000_000L;
+        totals[EffectiveStatus.Offline]    = 3_000_000_000L;
+
+        DailyStatusBreakdown.Efficiency(totals).Should().Be(50m);
+    }
 }

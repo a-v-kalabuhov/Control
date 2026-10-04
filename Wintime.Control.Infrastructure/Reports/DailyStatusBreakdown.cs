@@ -45,12 +45,14 @@ internal static class DailyStatusBreakdown
                 var end   = s.End   < day.EndUtc   ? s.End   : day.EndUtc;
                 if (end <= start) continue;
 
-                var d = (int)(end - start).TotalSeconds;
+                // Телескопически от начала суток: смежные срезы суммируются точно, доли секунды не теряются.
+                var d = (int)Math.Floor((end - day.StartUtc).TotalSeconds)
+                      - (int)Math.Floor((start - day.StartUtc).TotalSeconds);
                 secs[s.EffectiveStatus] += d;
                 covered += d;
             }
 
-            // Остаток (не покрыт таймлайном + усечение долей секунды) — «Нет данных».
+            // Остаток (не покрыт таймлайном) — «Нет данных».
             secs[EffectiveStatus.NoData] += (int)(day.EndUtc - day.StartUtc).TotalSeconds - covered;
             result.Add(secs);
         }
@@ -58,11 +60,20 @@ internal static class DailyStatusBreakdown
     }
 
     /// <summary>Работа / (всё время − Нет связи − Нет данных) × 100; нет известного времени → null.</summary>
-    internal static decimal? Efficiency(IReadOnlyDictionary<string, int> seconds)
+    internal static decimal? Efficiency(IReadOnlyDictionary<string, int> seconds) =>
+        EfficiencyCore(
+            seconds.Values.Sum(v => (long)v), seconds[EffectiveStatus.Production],
+            seconds[EffectiveStatus.Offline], seconds[EffectiveStatus.NoData]);
+
+    /// <summary>Перегрузка для сумм по парку (long): не переполняется при N ТПА × M суток.</summary>
+    internal static decimal? Efficiency(IReadOnlyDictionary<string, long> seconds) =>
+        EfficiencyCore(
+            seconds.Values.Sum(), seconds[EffectiveStatus.Production],
+            seconds[EffectiveStatus.Offline], seconds[EffectiveStatus.NoData]);
+
+    private static decimal? EfficiencyCore(long all, long production, long offline, long noData)
     {
-        var known = seconds.Values.Sum() - seconds[EffectiveStatus.Offline] - seconds[EffectiveStatus.NoData];
-        return known > 0
-            ? Math.Round((decimal)seconds[EffectiveStatus.Production] / known * 100, 2)
-            : null;
+        var known = all - offline - noData;
+        return known > 0 ? Math.Round((decimal)production / known * 100, 2) : null;
     }
 }

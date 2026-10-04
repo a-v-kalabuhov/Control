@@ -56,7 +56,7 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var report = await _reportService.GetEquipmentReportAsync(dateFrom, dateTo, immIds, archive);
+            var report = await _reportService.GetEquipmentReportAsync(dateFrom, dateTo, immIds, archive, HttpContext.RequestAborted);
             return Ok(report);
         }
         catch (ArgumentException ex)
@@ -102,7 +102,7 @@ public class ReportsController : ControllerBase
             object reportData = request.ReportType.ToLower() switch
             {
                 "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault(), request.ShiftId),
-                "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds, request.Archive),
+                "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds, request.Archive, HttpContext.RequestAborted),
                 "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.AssetSubType ?? "Molds"),
                 _ => throw new ArgumentException("Неизвестный тип отчёта")
             };
@@ -111,6 +111,10 @@ public class ReportsController : ControllerBase
 
             return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 $"Report_{request.ReportType}_{request.DateFrom:yyyyMMdd}.xlsx");
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "Некорректные параметры отчёта", message = ex.Message });
         }
         catch (Exception ex)
         {
@@ -130,7 +134,7 @@ public class ReportsController : ControllerBase
             object report = request.ReportType.ToLower() switch
             {
                 "daily" => await _reportService.GetDailyReportAsync(request.DateFrom, request.ImmIds?.FirstOrDefault(), request.ShiftId),
-                "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds, request.Archive),
+                "equipment" => await _reportService.GetEquipmentReportAsync(request.DateFrom, request.DateTo, request.ImmIds, request.Archive, HttpContext.RequestAborted),
                 "assets" => await _reportService.GetAssetsReportAsync(request.DateFrom, request.DateTo, request.AssetSubType ?? "Molds"),
                 _ => throw new ArgumentException("Неизвестный тип отчёта")
             };
@@ -144,6 +148,10 @@ public class ReportsController : ControllerBase
 
             return File(pdfBytes, "application/pdf", 
                 $"Report_{request.ReportType}_{request.DateFrom:yyyyMMdd}.pdf");
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "Некорректные параметры отчёта", message = ex.Message });
         }
         catch (Exception ex)
         {

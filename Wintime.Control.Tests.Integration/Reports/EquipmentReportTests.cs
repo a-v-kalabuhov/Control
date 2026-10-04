@@ -163,4 +163,43 @@ public class EquipmentReportTests : IClassFixture<IntegrationTestFactory>
         var total = ws.RowsUsed().Single(r => r.Cell(1).GetString() == "Итого:");
         total.Cell(11).GetValue<double>().Should().Be(100);   // Σ Работа / Σ известного = только working
     }
+
+    [Fact]
+    public async Task Excel_Export_DateFrom_After_DateTo_Returns_400()
+    {
+        var client = await ManagerClientAsync();
+
+        var resp = await client.PostAsJsonAsync("/api/reports/export/excel", new
+        {
+            reportType = "equipment",
+            dateFrom = Day.AddDays(1), dateTo = Day
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task CycleMetrics_CountOnlyClosedSuccessfulCyclesStartedInPeriod()
+    {
+        var immId = await SeedImmAsync(isActive: true, workingAllAround: false);
+        var noon = Day.AddHours(12);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            db.ImmCycles.AddRange(
+                new ImmCycle { ImmId = immId, StartTime = noon, EndTime = noon.AddSeconds(30), DurationSeconds = 30, IsSuccessful = true },
+                new ImmCycle { ImmId = immId, StartTime = noon.AddMinutes(1), EndTime = noon.AddMinutes(1).AddSeconds(40), DurationSeconds = 40, IsSuccessful = true },
+                new ImmCycle { ImmId = immId, StartTime = noon.AddMinutes(2), EndTime = null, DurationSeconds = 0, IsSuccessful = true },          // открытый
+                new ImmCycle { ImmId = immId, StartTime = noon.AddMinutes(3), EndTime = noon.AddMinutes(3).AddSeconds(99), DurationSeconds = 99, IsSuccessful = false },  // брак
+                new ImmCycle { ImmId = immId, StartTime = Day.AddDays(-5), EndTime = Day.AddDays(-5).AddSeconds(500), DurationSeconds = 500, IsSuccessful = true });      // вне периода
+            await db.SaveChangesAsync();
+        }
+        var client = await ManagerClientAsync();
+
+        var report = (await client.GetFromJsonAsync<EquipmentReportDto>(Url(Day, Day, new[] { immId })))!;
+
+        var item = report.ImmData.Should().ContainSingle().Subject;
+        item.TotalCycles.Should().Be(2);
+        item.AvgCycleSeconds.Should().Be(35m);
+    }
 }

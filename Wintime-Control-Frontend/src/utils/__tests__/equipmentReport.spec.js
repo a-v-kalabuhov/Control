@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   knownSeconds, fleetEfficiency, countBelow, sumSeconds,
-  toHours, formatEfficiency, buildDayChartOption
+  toHours, formatEfficiency, buildDayChartOption, selectedIdsParam
 } from '@/utils/equipmentReport'
 
 const H = 3600
@@ -57,5 +57,15 @@ describe('equipmentReport utils', () => {
     const noData = opt.series.find(s => s.name === 'Нет данных')
     expect(noData.itemStyle.decal).toBeTypeOf('object')
     expect(opt.legend.show).toBe(false)
+  })
+
+  it('selectedIdsParam: выбраны все опции режима — undefined (бэкенд сам берёт все ТПА режима)', () => {
+    const options = [{ id: '1' }, { id: '2' }]
+    expect(selectedIdsParam(['2', '1'], options)).toBeUndefined()
+  })
+
+  it('selectedIdsParam: частичный выбор отправляется как есть', () => {
+    const options = [{ id: '1' }, { id: '2' }]
+    expect(selectedIdsParam(['1'], options)).toEqual(['1'])
   })
 })
