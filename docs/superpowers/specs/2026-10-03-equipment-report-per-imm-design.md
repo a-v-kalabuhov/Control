@@ -94,7 +94,8 @@
 2. `EffectiveStatusTimeline.Build(raw, tasks, downtimes, from, to, bool gapAsNoData = false)`:
    под-интервал без покрывающего сырого сегмента при `false` → `Offline` (как сейчас, дашборд и
    телеметрия не меняются), при `true` → `NoData` без вызова `Resolve`.
-3. `DailyStatusBreakdown.Split(segments, days)` — новая чистая функция: режет сегменты по
+3. `DailyStatusBreakdown.Split(segments, days)` (`Infrastructure/Reports`, рядом с
+   `FactoryCalendar` — `FactoryDay` там `internal`) — новая чистая функция: режет сегменты по
    суткам завода (`FactoryCalendar.Days`) и возвращает по каждым суткам словарь
    `статус → секунды`. Непокрытые сегментами части суток (в т.ч. хвост после «сейчас»)
    дополняются `NoData`, поэтому сумма по суткам = фактическая длина суток
@@ -158,9 +159,12 @@ EquipmentReportDayDto
 
 ### Палитра
 
-`constants/effectiveStatus.js`: `NoData: { label: 'Нет данных', hex: '#e5e7eb', … }`.
+`constants/effectiveStatus.js`: новый экспорт `NO_DATA_STATUS` (`label: 'Нет данных'`,
+`hex: '#e5e7eb'`) и `REPORT_STATUS = { ...EFFECTIVE_STATUS, NoData }` / `REPORT_STATUS_KEYS`.
+`EFFECTIVE_STATUS` не меняется — его используют легенда `ImmDetailModal` и валидатор
+`ImmStatusBadge`, туда «Нет данных» попадать не должно.
 На диаграмме сегмент `NoData` дополнительно заштрихован (ECharts `decal`), чтобы не путать с
-«Нет связи» (`#9ca3af`). Добавление ключа не меняет дашборд: `NoData` в live-данных не приходит.
+«Нет связи» (`#9ca3af`).
 
 ### Фильтры (ничего не запоминается)
 
