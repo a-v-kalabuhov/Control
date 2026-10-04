@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS, getEffectiveStatusMeta } from '@/constants/effectiveStatus'
+import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS, getEffectiveStatusMeta, REPORT_STATUS, REPORT_STATUS_KEYS } from '@/constants/effectiveStatus'
 
 describe('EFFECTIVE_STATUS', () => {
   it('содержит ровно 6 состояний', () => {
@@ -23,5 +23,18 @@ describe('EFFECTIVE_STATUS', () => {
   it('getEffectiveStatusMeta откатывается на Offline для неизвестного ключа', () => {
     expect(getEffectiveStatusMeta('???')).toBe(EFFECTIVE_STATUS.Offline)
     expect(getEffectiveStatusMeta(null)).toBe(EFFECTIVE_STATUS.Offline)
+  })
+})
+
+describe('REPORT_STATUS', () => {
+  it('= 6 эффективных состояний + NoData, в порядке стека', () => {
+    expect(REPORT_STATUS_KEYS).toEqual(
+      ['Production', 'Setup', 'Downtime', 'Unplanned', 'NoTask', 'Offline', 'NoData']
+    )
+    expect(REPORT_STATUS.NoData.label).toBe('Нет данных')
+  })
+
+  it('не протекает в EFFECTIVE_STATUS (дашборд)', () => {
+    expect(EFFECTIVE_STATUS_KEYS).not.toContain('NoData')
   })
 })

@@ -170,6 +170,7 @@ else
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IRefreshTokenStore, MemoryRefreshTokenStore>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
+builder.Services.AddScoped<IEffectiveStatusHistoryService, EffectiveStatusHistoryService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IPdfReportService, PdfReportService>();

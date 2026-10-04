@@ -6,17 +6,22 @@ using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.Entities;
 using ClosedXML.Excel;
+using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Core.Policies;
 
 namespace Wintime.Control.Infrastructure.Reports;
 
 public class ReportService : IReportService
 {
     private readonly ControlDbContext _context;
+    private readonly IEffectiveStatusHistoryService _effectiveStatusHistory;
     private readonly ILogger<ReportService> _logger;
 
-    public ReportService(ControlDbContext context, ILogger<ReportService> logger)
+    public ReportService(ControlDbContext context, IEffectiveStatusHistoryService effectiveStatusHistory,
+        ILogger<ReportService> logger)
     {
         _context = context;
+        _effectiveStatusHistory = effectiveStatusHistory;
         _logger = logger;
     }
 
@@ -234,133 +239,149 @@ public class ReportService : IReportService
     };
 
     /// <summary>
-    /// Отчёт "Производительность оборудования"
+    /// Отчёт "Производительность оборудования": по каждому ТПА — секунды эффективного состояния
+    /// (+ «Нет данных») по локальным суткам завода.
     /// </summary>
-    public async Task<EquipmentReportDto> GetEquipmentReportAsync(DateTime dateFrom, DateTime dateTo, List<Guid>? immIds = null, CancellationToken ct = default)
+    public async Task<EquipmentReportDto> GetEquipmentReportAsync(DateTime dateFrom, DateTime dateTo,
+        List<Guid>? immIds = null, ArchiveFilter archive = ArchiveFilter.Exclude, CancellationToken ct = default)
     {
-        _logger.LogInformation("Generating equipment report from {From} to {To}", dateFrom, dateTo);
+        if (dateFrom.Date > dateTo.Date)
+            throw new ArgumentException("Дата начала периода позже даты окончания");
+
+        _logger.LogInformation("Generating equipment report from {From} to {To}, archive: {Archive}", dateFrom, dateTo, archive);
 
         // Сутки — локальные сутки завода (зона смен), не UTC
         var days = FactoryCalendar.Days(dateFrom, dateTo, await GetFactoryTimeZoneIdAsync(ct));
-        var dateFromUtc = days.Count > 0 ? days[0].StartUtc : DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc);
-        var periodEnd = days.Count > 0 ? days[^1].EndUtc : dateFromUtc;
+        var periodStart = days[0].StartUtc;
+        var periodEnd   = days[^1].EndUtc;
 
-        // Незакрытый (текущий) статус тянется только до «сейчас», а не до конца окна —
-        // иначе для сегодняшнего дня активный статус закрашивал бы будущее до конца суток.
+        // Таймлайн строится только до «сейчас»; остаток суток Split заполнит «Нет данных».
         var nowUtc = DateTime.UtcNow;
         var windowEnd = periodEnd < nowUtc ? periodEnd : nowUtc;
+
+        var immQuery = archive switch
+        {
+            ArchiveFilter.Include => _context.Imms.AsQueryable(),
+            ArchiveFilter.Only    => _context.Imms.Where(i => !i.IsActive),
+            _                     => _context.Imms.Where(i => i.IsActive)
+        };
+        if (immIds is { Count: > 0 })
+            immQuery = immQuery.Where(i => immIds.Contains(i.Id));
+
+        var imms = await immQuery.OrderBy(i => i.Name).ToListAsync(ct);
+        var ids = imms.Select(i => i.Id).ToList();
+
+        var inputs = await _effectiveStatusHistory.GatherAsync(ids, periodStart, periodEnd, windowEnd, ct);
+
+        // Только закрытые успешные циклы: открытые исключены из длительностей до закрытия.
+        var cycleDurations = (await _context.ImmCycles
+                .Where(c => ids.Contains(c.ImmId) && c.IsSuccessful && c.EndTime != null
+                    && c.StartTime >= periodStart && c.StartTime < periodEnd)
+                .Select(c => new { c.ImmId, c.DurationSeconds })
+                .ToListAsync(ct))
+            .ToLookup(c => c.ImmId, c => c.DurationSeconds);
 
         var report = new EquipmentReportDto
         {
             DateFrom = DateTime.SpecifyKind(dateFrom.Date, DateTimeKind.Utc),
-            DateTo = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc),
-            ImmData = [],
-            DailyBreakdown = []
+            DateTo   = DateTime.SpecifyKind(dateTo.Date, DateTimeKind.Utc),
         };
-
-        var immQuery = _context.Imms
-            .Include(i => i.Template)
-            .Where(i => i.IsActive)
-            .AsQueryable();
-
-        if (immIds != null && immIds.Count > 0)
-            immQuery = immQuery.Where(i => immIds.Contains(i.Id));
-
-        var imms = await immQuery.ToListAsync(ct);
-
-        // Накопление поднёвных данных по всем ТПА: индекс — локальные сутки завода из days
-        var dailyAccum = new (int Work, int Setup, int Downtime)[days.Count];
 
         foreach (var imm in imms)
         {
-            var statusHistory = await _context.ImmStatusHistory
-                .Where(h => h.ImmId == imm.Id
-                    && h.ChangedAt < periodEnd
-                    && (h.EndedAt == null || h.EndedAt > dateFromUtc))
-                .OrderBy(h => h.ChangedAt)
-                .ToListAsync(ct);
+            var inp = inputs[imm.Id];
+            var segments = EffectiveStatusTimeline.Build(
+                inp.Raw, inp.Tasks, inp.Downtimes, periodStart, windowEnd, gapAsNoData: true);
+            var perDay = DailyStatusBreakdown.Split(segments, days);
 
-            var cycles = await _context.ImmCycles
-                .Where(c => c.ImmId == imm.Id && c.IsSuccessful && c.EndTime != null
-                    && c.StartTime >= dateFromUtc && c.StartTime < periodEnd)
-                .ToListAsync(ct);
+            var total = DailyStatusBreakdown.Empty();
+            foreach (var day in perDay)
+                foreach (var (key, secs) in day)
+                    total[key] += secs;
 
-            var workTimeSeconds = 0;
-            var setupSeconds = 0;
-            var downtimeSeconds = 0;
-            var offlineSeconds = 0;
-
-            foreach (var entry in statusHistory)
-            {
-                var segStart = entry.ChangedAt < dateFromUtc ? dateFromUtc : entry.ChangedAt;
-                var segEnd   = (entry.EndedAt == null || entry.EndedAt > windowEnd) ? windowEnd : entry.EndedAt.Value;
-                if (segEnd <= segStart) continue;
-
-                var statusType = MapStatusToType(entry.Status);
-
-                // Разбиваем сегмент по границам локальных суток: каждый срез идёт и в итоги ТПА, и в дневной агрегат
-                for (var i = 0; i < days.Count; i++)
-                {
-                    var sliceStart = days[i].StartUtc > segStart ? days[i].StartUtc : segStart;
-                    var sliceEnd   = days[i].EndUtc < segEnd ? days[i].EndUtc : segEnd;
-                    if (sliceEnd <= sliceStart) continue;
-                    var secs = (int)(sliceEnd - sliceStart).TotalSeconds;
-
-                    switch (statusType)
-                    {
-                        case "work":    workTimeSeconds += secs; break;
-                        case "setup":   setupSeconds    += secs; break;
-                        case "alarm":
-                        case "idle":    downtimeSeconds += secs; break;
-                        case "offline": offlineSeconds  += secs; break;
-                    }
-
-                    var acc = dailyAccum[i];
-                    dailyAccum[i] = statusType switch
-                    {
-                        "work"            => (acc.Work + secs, acc.Setup, acc.Downtime),
-                        "setup"           => (acc.Work, acc.Setup + secs, acc.Downtime),
-                        "alarm" or "idle" => (acc.Work, acc.Setup, acc.Downtime + secs),
-                        _                 => acc
-                    };
-                }
-            }
-
-            var totalCycles = cycles.Count;
-            var avgCycleSeconds = totalCycles > 0
-                ? (decimal)cycles.Average(c => c.DurationSeconds)
-                : 0m;
-
-            var productiveBase = workTimeSeconds + setupSeconds + downtimeSeconds;
-            var efficiency = productiveBase > 0
-                ? (decimal)workTimeSeconds / productiveBase * 100
-                : 0;
+            var durations = cycleDurations[imm.Id].ToList();
 
             report.ImmData.Add(new EquipmentReportImmItemDto
             {
                 ImmId = imm.Id,
                 ImmName = imm.Name,
-                TotalWorkSeconds = workTimeSeconds,
-                TotalSetupSeconds = setupSeconds,
-                TotalDowntimeSeconds = downtimeSeconds,
-                TotalOfflineSeconds = offlineSeconds,
-                TotalCycles = totalCycles,
-                AvgCycleSeconds = avgCycleSeconds,
-                AvgEfficiency = efficiency
+                IsActive = imm.IsActive,
+                Seconds = total,
+                TotalCycles = durations.Count,
+                AvgCycleSeconds = durations.Count > 0 ? (decimal)durations.Average() : 0m,
+                Efficiency = DailyStatusBreakdown.Efficiency(total),
+                Days = days.Select((day, i) => new EquipmentReportDayDto
+                {
+                    Date = DateTime.SpecifyKind(day.Date, DateTimeKind.Utc),
+                    Seconds = perDay[i]
+                }).ToList()
             });
         }
 
-        report.DailyBreakdown = days
-            .Select((day, i) => new EquipmentReportDailyItemDto
-            {
-                Date = DateTime.SpecifyKind(day.Date, DateTimeKind.Utc),
-                TotalWorkSeconds = dailyAccum[i].Work,
-                TotalSetupSeconds = dailyAccum[i].Setup,
-                TotalDowntimeSeconds = dailyAccum[i].Downtime
-            })
-            .ToList();
-
         return report;
+    }
+
+    private static int WriteEquipmentSheet(IXLWorksheet worksheet, int row, EquipmentReportDto report)
+    {
+        worksheet.Cell(row, 1).Value = "Период:";
+        worksheet.Cell(row, 1).Style.Font.Bold = true;
+        worksheet.Cell(row, 2).Value = $"{report.DateFrom:dd.MM.yyyy} – {report.DateTo:dd.MM.yyyy}";
+        row++;
+
+        worksheet.Cell(row, 1).Value = "Сформирован:";
+        worksheet.Cell(row, 1).Style.Font.Bold = true;
+        worksheet.Cell(row, 2).Value = DateTime.Now.ToString("dd.MM.yyyy HH:mm");
+        row += 2;
+
+        var keys = DailyStatusBreakdown.Keys;
+        var headers = new List<string> { "ТПА" };
+        headers.AddRange(keys.Select(k => $"{DailyStatusBreakdown.Labels[k]} (ч)"));
+        headers.AddRange(["Циклы", "Ср. цикл (с)", "Эффективность %"]);
+        for (var i = 0; i < headers.Count; i++)
+        {
+            worksheet.Cell(row, i + 1).Value = headers[i];
+            worksheet.Cell(row, i + 1).Style.Font.Bold = true;
+        }
+        row++;
+
+        var cyclesCol = keys.Length + 2;
+        foreach (var item in report.ImmData)
+        {
+            worksheet.Cell(row, 1).Value = item.IsActive ? item.ImmName : $"{item.ImmName} (архив)";
+            for (var k = 0; k < keys.Length; k++)
+                worksheet.Cell(row, k + 2).Value = Math.Round(item.Seconds.GetValueOrDefault(keys[k]) / 3600m, 2);
+            worksheet.Cell(row, cyclesCol).Value = item.TotalCycles;
+            worksheet.Cell(row, cyclesCol + 1).Value = Math.Round(item.AvgCycleSeconds, 1);
+            if (item.Efficiency.HasValue)
+                worksheet.Cell(row, cyclesCol + 2).Value = Math.Round(item.Efficiency.Value, 2);
+            else
+                worksheet.Cell(row, cyclesCol + 2).Value = "—";
+            row++;
+        }
+
+        if (report.ImmData.Count > 0)
+        {
+            var totals = DailyStatusBreakdown.Keys.ToDictionary(k => k, _ => 0L);   // long: N ТПА × сутки могут превысить int
+            foreach (var item in report.ImmData)
+                foreach (var k in keys)
+                    totals[k] += item.Seconds.GetValueOrDefault(k);
+
+            worksheet.Cell(row, 1).Value = "Итого:";
+            for (var k = 0; k < keys.Length; k++)
+                worksheet.Cell(row, k + 2).Value = Math.Round(totals[keys[k]] / 3600m, 2);
+            worksheet.Cell(row, cyclesCol).Value = report.ImmData.Sum(i => i.TotalCycles);
+            worksheet.Cell(row, cyclesCol + 1).Value = "—";
+            var fleet = DailyStatusBreakdown.Efficiency(totals);   // взвешенная эффективность парка
+            if (fleet.HasValue)
+                worksheet.Cell(row, cyclesCol + 2).Value = Math.Round(fleet.Value, 2);
+            else
+                worksheet.Cell(row, cyclesCol + 2).Value = "—";
+            for (var c = 1; c <= headers.Count; c++)
+                worksheet.Cell(row, c).Style.Font.Bold = true;
+            row++;
+        }
+
+        return row;
     }
 
     /// <summary>
@@ -746,59 +767,7 @@ public class ReportService : IReportService
         }
         else if (data is EquipmentReportDto equipmentReport)
         {
-            worksheet.Cell(row, 1).Value = "Период:";
-            worksheet.Cell(row, 1).Style.Font.Bold = true;
-            worksheet.Cell(row, 2).Value = $"{equipmentReport.DateFrom:dd.MM.yyyy} – {equipmentReport.DateTo:dd.MM.yyyy}";
-            row++;
-
-            worksheet.Cell(row, 1).Value = "Сформирован:";
-            worksheet.Cell(row, 1).Style.Font.Bold = true;
-            worksheet.Cell(row, 2).Value = DateTime.Now.ToString("dd.MM.yyyy HH:mm");
-            row += 2;
-
-            var headers = new[] { "ТПА", "Работа (ч)", "Наладка (ч)", "Простой (ч)", "Офлайн (ч)", "Циклы", "Ср. цикл (с)", "Эффективность %" };
-            for (int i = 0; i < headers.Length; i++)
-            {
-                worksheet.Cell(row, i + 1).Value = headers[i];
-                worksheet.Cell(row, i + 1).Style.Font.Bold = true;
-            }
-            row++;
-
-            foreach (var item in equipmentReport.ImmData)
-            {
-                worksheet.Cell(row, 1).Value = item.ImmName;
-                worksheet.Cell(row, 2).Value = Math.Round(item.TotalWorkSeconds / 3600m, 2);
-                worksheet.Cell(row, 3).Value = Math.Round(item.TotalSetupSeconds / 3600m, 2);
-                worksheet.Cell(row, 4).Value = Math.Round(item.TotalDowntimeSeconds / 3600m, 2);
-                worksheet.Cell(row, 5).Value = Math.Round(item.TotalOfflineSeconds / 3600m, 2);
-                worksheet.Cell(row, 6).Value = item.TotalCycles;
-                worksheet.Cell(row, 7).Value = Math.Round(item.AvgCycleSeconds, 1);
-                worksheet.Cell(row, 8).Value = Math.Round(item.AvgEfficiency, 2);
-                row++;
-            }
-
-            // Строка "Итого"
-            var dataRows = equipmentReport.ImmData;
-            if (dataRows.Count > 0)
-            {
-                worksheet.Cell(row, 1).Value = "Итого:";
-                worksheet.Cell(row, 1).Style.Font.Bold = true;
-                worksheet.Cell(row, 2).Value = Math.Round(dataRows.Sum(i => i.TotalWorkSeconds) / 3600m, 2);
-                worksheet.Cell(row, 3).Value = Math.Round(dataRows.Sum(i => i.TotalSetupSeconds) / 3600m, 2);
-                worksheet.Cell(row, 4).Value = Math.Round(dataRows.Sum(i => i.TotalDowntimeSeconds) / 3600m, 2);
-                worksheet.Cell(row, 5).Value = Math.Round(dataRows.Sum(i => i.TotalOfflineSeconds) / 3600m, 2);
-                worksheet.Cell(row, 6).Value = "—";
-                var activeItems = dataRows.Where(i => i.AvgCycleSeconds > 0).ToList();
-                worksheet.Cell(row, 7).Value = activeItems.Count > 0
-                    ? Math.Round(activeItems.Average(i => i.AvgCycleSeconds), 1).ToString()
-                    : "—";
-                var effItems = dataRows.Where(i => i.AvgEfficiency > 0).ToList();
-                worksheet.Cell(row, 8).Value = effItems.Count > 0
-                    ? Math.Round(effItems.Average(i => i.AvgEfficiency), 2)
-                    : 0;
-                for (var c = 1; c <= 8; c++)
-                    worksheet.Cell(row, c).Style.Font.Bold = true;
-            }
+            row = WriteEquipmentSheet(worksheet, row, equipmentReport);
         }
         else if (data is AssetsReportDto assetsReport)
         {

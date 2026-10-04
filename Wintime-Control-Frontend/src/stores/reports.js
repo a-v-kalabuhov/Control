@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { reportsApi } from '@/api/reports'
 import { ElMessage } from 'element-plus'
+import { fleetEfficiency, countBelow } from '@/utils/equipmentReport'
 
 export const useReportsStore = defineStore('reports', {
   state: () => ({
@@ -19,24 +20,18 @@ export const useReportsStore = defineStore('reports', {
   }),
 
   getters: {
-    // Общая эффективность по отчёту оборудования
-    overallEfficiency: (state) => {
-      if (!state.equipmentReport?.immData?.length) return 0
-      const total = state.equipmentReport.immData.reduce((sum, item) => sum + item.avgEfficiency, 0)
-      return Math.round(total / state.equipmentReport.immData.length)
-    },
+    // Всего ТПА в отчёте оборудования
+    totalImms: (state) => state.equipmentReport?.immData?.length ?? 0,
 
-    // Всего ТПА в отчёте
-    totalImms: (state) => {
-      if (!state.equipmentReport?.immData) return 0
-      return state.equipmentReport.immData.length
-    },
+    // Взвешенная эффективность парка (null → «—»)
+    fleetEfficiency: (state) => fleetEfficiency(state.equipmentReport?.immData ?? []),
 
-    // ТПА с эффективностью ниже 70%
-    lowEfficiencyImms: (state) => {
-      if (!state.equipmentReport?.immData) return []
-      return state.equipmentReport.immData.filter(i => i.avgEfficiency < 70)
-    }
+    // Проблемные ТПА: эффективность < 70 % и < 50 % (без «—»)
+    problemBelow70: (state) => countBelow(state.equipmentReport?.immData ?? [], 70),
+    problemBelow50: (state) => countBelow(state.equipmentReport?.immData ?? [], 50),
+
+    totalCycles: (state) =>
+      (state.equipmentReport?.immData ?? []).reduce((sum, i) => sum + i.totalCycles, 0)
   },
 
   actions: {

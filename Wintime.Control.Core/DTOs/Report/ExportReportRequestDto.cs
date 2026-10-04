@@ -1,3 +1,5 @@
+using Wintime.Control.Core.Enums;
+
 namespace Wintime.Control.Core.DTOs.Report;
 
 public class ExportReportRequestDto
@@ -8,4 +10,5 @@ public class ExportReportRequestDto
     public DateTime DateTo { get; set; }
     public List<Guid>? ImmIds { get; set; }
     public Guid? ShiftId { get; set; }
+    public ArchiveFilter Archive { get; set; } = ArchiveFilter.Exclude; // для Equipment
 }

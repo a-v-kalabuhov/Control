@@ -16,11 +16,17 @@ public record EffectiveSegment(string EffectiveStatus, DateTime Start, DateTime 
 /// </summary>
 public static class EffectiveStatusTimeline
 {
+    /// <param name="gapAsNoData">
+    /// true — под-интервал без единого сырого сегмента = <see cref="EffectiveStatus.NoData"/>
+    /// (задание не учитывается: без телеметрии неизвестно, работал ли ТПА). false — как раньше,
+    /// дыра трактуется как Offline (дашборд, телеметрия).
+    /// </param>
     public static IReadOnlyList<EffectiveSegment> Build(
         IReadOnlyList<RawSegment> raw,
         IReadOnlyList<TaskInterval> tasks,
         IReadOnlyList<Interval> downtimes,
-        DateTime from, DateTime to)
+        DateTime from, DateTime to,
+        bool gapAsNoData = false)
     {
         if (to <= from) return System.Array.Empty<EffectiveSegment>();
 
@@ -41,13 +47,22 @@ public static class EffectiveStatusTimeline
             var end = bounds[i + 1];
             var mid = start + (end - start) / 2;
 
-            var rawMode = raw.FirstOrDefault(s => s.Start <= mid && mid < s.End)?.Status
-                          ?? ImmStatus.Offline;
-            var task = tasks.FirstOrDefault(t => t.Start <= mid && mid < t.End)?.Status
-                       ?? ActiveTaskStatus.None;
-            var hasDowntime = downtimes.Any(d => d.Start <= mid && mid < d.End);
+            var rawSeg = raw.FirstOrDefault(s => s.Start <= mid && mid < s.End);
 
-            var eff = ImmEffectiveStatus.Resolve(rawMode, task, hasDowntime, thresholdPassed: false);
+            string eff;
+            if (rawSeg == null && gapAsNoData)
+            {
+                eff = EffectiveStatus.NoData;
+            }
+            else
+            {
+                var rawMode = rawSeg?.Status ?? ImmStatus.Offline;
+                var task = tasks.FirstOrDefault(t => t.Start <= mid && mid < t.End)?.Status
+                           ?? ActiveTaskStatus.None;
+                var hasDowntime = downtimes.Any(d => d.Start <= mid && mid < d.End);
+
+                eff = ImmEffectiveStatus.Resolve(rawMode, task, hasDowntime, thresholdPassed: false);
+            }
 
             // 3. Слить со смежным сегментом, если состояние то же.
             if (segments.Count > 0 && segments[^1].EffectiveStatus == eff)

@@ -26,11 +26,13 @@ public class ImmController : ControllerBase
     private readonly DowntimeSettings _downtime;
     private readonly ITemplateCache _templateCache;
     private readonly TelemetryDashboardSettings _telemetryDashboard;
+    private readonly IEffectiveStatusHistoryService _effectiveStatusHistory;
     private readonly ILogger<ImmController> _logger;
 
     public ImmController(ControlDbContext context, IImmStatusCache statusCache, IImmCache immCache,
         IOptions<DowntimeSettings> downtime, ITemplateCache templateCache,
-        IOptions<TelemetryDashboardSettings> telemetryDashboard, ILogger<ImmController> logger)
+        IOptions<TelemetryDashboardSettings> telemetryDashboard,
+        IEffectiveStatusHistoryService effectiveStatusHistory, ILogger<ImmController> logger)
     {
         _context = context;
         _statusCache = statusCache;
@@ -38,6 +40,7 @@ public class ImmController : ControllerBase
         _downtime = downtime.Value;
         _templateCache = templateCache;
         _telemetryDashboard = telemetryDashboard.Value;
+        _effectiveStatusHistory = effectiveStatusHistory;
         _logger = logger;
     }
 
@@ -456,8 +459,8 @@ public class ImmController : ControllerBase
             .Select(c => new TelemetryCycleDto { Start = c.StartTime, End = c.EndTime, IsSuccessful = c.IsSuccessful })
             .ToListAsync();
 
-        var (raw, tasks, downtimes) = await GatherEffectiveStatusInputsAsync(id, fromUtc, toUtc, effectiveTo);
-        var statusSegments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo)
+        var inputs = (await _effectiveStatusHistory.GatherAsync(new[] { id }, fromUtc, toUtc, effectiveTo, HttpContext.RequestAborted))[id];
+        var statusSegments = EffectiveStatusTimeline.Build(inputs.Raw, inputs.Tasks, inputs.Downtimes, fromUtc, effectiveTo)
             .Select(s => new EffectiveStatusSegmentDto
             {
                 EffectiveStatus = s.EffectiveStatus, ChangedAt = s.Start, EndedAt = s.End
@@ -520,9 +523,9 @@ public class ImmController : ControllerBase
         var nowUtc = DateTime.UtcNow;
         var effectiveTo = toUtc < nowUtc ? toUtc : nowUtc;
 
-        var (raw, tasks, downtimes) = await GatherEffectiveStatusInputsAsync(id, fromUtc, toUtc, effectiveTo);
+        var inputs = (await _effectiveStatusHistory.GatherAsync(new[] { id }, fromUtc, toUtc, effectiveTo, HttpContext.RequestAborted))[id];
 
-        var segments = EffectiveStatusTimeline.Build(raw, tasks, downtimes, fromUtc, effectiveTo);
+        var segments = EffectiveStatusTimeline.Build(inputs.Raw, inputs.Tasks, inputs.Downtimes, fromUtc, effectiveTo);
 
         var dto = segments.Select(s => new EffectiveStatusSegmentDto
         {
@@ -532,52 +535,6 @@ public class ImmController : ControllerBase
         });
 
         return Ok(dto);
-    }
-
-    private async Task<(List<RawSegment> raw, List<TaskInterval> tasks, List<Interval> downtimes)>
-        GatherEffectiveStatusInputsAsync(Guid id, DateTime fromUtc, DateTime toUtc, DateTime effectiveTo)
-    {
-        DateTime ClampEnd(DateTime? end) => (end ?? effectiveTo) > effectiveTo ? effectiveTo : (end ?? effectiveTo);
-
-        var rawRows = await _context.ImmStatusHistory
-            .Where(h => h.ImmId == id && h.ChangedAt < toUtc && (h.EndedAt == null || h.EndedAt > fromUtc))
-            .OrderBy(h => h.ChangedAt)
-            .Select(h => new { h.Status, h.ChangedAt, h.EndedAt })
-            .ToListAsync();
-
-        var taskRows = await _context.ShiftTasks
-            .Where(t => t.ImmId == id && t.SetupStartedAt != null && t.SetupStartedAt < toUtc)
-            .Select(t => new { t.SetupStartedAt, t.StartedAt, t.CompletedAt, t.ClosedAt })
-            .ToListAsync();
-
-        var downtimeRows = await _context.Events
-            .Where(e => e.ImmId == id && e.EventType == Core.Enums.EventType.Downtime
-                        && e.StartTime < toUtc && (e.EndTime == null || e.EndTime > fromUtc))
-            .Select(e => new { e.StartTime, e.EndTime })
-            .ToListAsync();
-
-        var raw = rawRows
-            .Select(r => new RawSegment(r.Status, r.ChangedAt, ClampEnd(r.EndedAt)))
-            .ToList();
-
-        var tasks = new List<TaskInterval>();
-        foreach (var t in taskRows)
-        {
-            var setupStart = t.SetupStartedAt!.Value;
-            var setupEnd   = t.StartedAt ?? t.CompletedAt ?? t.ClosedAt ?? toUtc;
-            tasks.Add(new TaskInterval(Core.Enums.ActiveTaskStatus.Setup, setupStart, ClampEnd(setupEnd)));
-            if (t.StartedAt != null)
-            {
-                var workEnd = t.CompletedAt ?? t.ClosedAt ?? toUtc;
-                tasks.Add(new TaskInterval(Core.Enums.ActiveTaskStatus.InProgress, t.StartedAt.Value, ClampEnd(workEnd)));
-            }
-        }
-
-        var downtimes = downtimeRows
-            .Select(d => new Interval(d.StartTime, ClampEnd(d.EndTime)))
-            .ToList();
-
-        return (raw, tasks, downtimes);
     }
 
     /// <summary>

@@ -4,11 +4,11 @@
     <div class="mb-6 flex items-center justify-between">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Производительность оборудования</h2>
-        <p class="text-gray-600 mt-1">Сводный отчёт за период</p>
+        <p class="text-gray-600 mt-1">Эффективное состояние каждого ТПА по суткам</p>
       </div>
       <div class="flex gap-2">
         <el-button @click="goBack">Назад</el-button>
-        <el-button type="success" @click="exportExcel" :loading="exporting">
+        <el-button type="success" @click="exportExcel" :loading="exporting" :disabled="!canLoad">
           <el-icon class="mr-1"><Download /></el-icon>
           Excel
         </el-button>
@@ -17,7 +17,7 @@
 
     <!-- Фильтры -->
     <el-card class="mb-4">
-      <el-form :inline="true">
+      <el-form :inline="true" class="report-filters">
         <el-form-item label="Период">
           <el-date-picker
             v-model="dateRange"
@@ -29,160 +29,242 @@
             class="w-64"
           />
         </el-form-item>
+        <el-form-item v-if="hasArchived" label="Архивные ТПА" data-test="archive-filter">
+          <el-radio-group v-model="archiveMode">
+            <el-radio-button value="exclude">Нет</el-radio-button>
+            <el-radio-button value="include">Да</el-radio-button>
+            <el-radio-button value="only">Только</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="ТПА">
+          <el-select
+            v-model="selectedImmIds"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            filterable
+            placeholder="Выберите ТПА"
+            class="w-72"
+          >
+            <el-option
+              v-for="imm in immOptions"
+              :key="imm.id"
+              :label="imm.isActive ? imm.name : `${imm.name} (архив)`"
+              :value="imm.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadReport">Сформировать</el-button>
+          <el-tooltip :disabled="canLoad" content="Выберите ТПА" placement="top">
+            <el-button type="primary" @click="loadReport" :disabled="!canLoad" data-test="load-report">Сформировать</el-button>
+          </el-tooltip>
         </el-form-item>
       </el-form>
     </el-card>
 
+    <!-- Отчёт сформирован с другими фильтрами -->
+    <el-alert
+      v-if="isStale"
+      data-test="stale-hint"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="mb-4"
+      title="Фильтры изменены — нажмите «Сформировать», чтобы обновить отчёт"
+    />
+
+    <div :class="{ 'stale-report': isStale }">
     <!-- Сводные показатели -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4" data-test="kpi">
       <div class="card">
         <p class="text-sm text-gray-500">Всего ТПА</p>
         <p class="text-2xl font-bold text-gray-800">{{ reportsStore.totalImms }}</p>
       </div>
       <div class="card">
-        <p class="text-sm text-gray-500">Средняя эффективность</p>
-        <p class="text-2xl font-bold" :class="efficiencyColor">{{ reportsStore.overallEfficiency }}%</p>
+        <p class="text-sm text-gray-500">Эффективность парка</p>
+        <p class="text-2xl font-bold" :class="efficiencyClass(reportsStore.fleetEfficiency)">
+          {{ formatEfficiency(reportsStore.fleetEfficiency) }}
+        </p>
       </div>
       <div class="card">
         <p class="text-sm text-gray-500">Проблемные ТПА</p>
-        <p class="text-2xl font-bold text-red-600">{{ reportsStore.lowEfficiencyImms.length }}</p>
+        <p class="text-lg font-bold text-yellow-600">&lt; 70 %: {{ reportsStore.problemBelow70 }}</p>
+        <p class="text-lg font-bold text-red-600">&lt; 50 %: {{ reportsStore.problemBelow50 }}</p>
       </div>
       <div class="card">
         <p class="text-sm text-gray-500">Всего циклов</p>
-        <p class="text-2xl font-bold text-gray-800">{{ totalCycles }}</p>
+        <p class="text-2xl font-bold text-gray-800">{{ reportsStore.totalCycles }}</p>
       </div>
     </div>
 
-    <!-- Диаграмма -->
-    <el-card class="mb-4">
-      <template #header>
-        <span class="font-semibold">Загрузка ТПА по дням</span>
-      </template>
-      <BarChart :data="chartData" label-field="immName" />
-    </el-card>
+    <!-- Диаграммы и сводная таблица — на вкладках, чтобы фильтры и KPI оставались на виду -->
+    <el-tabs v-model="activeTab" data-test="report-tabs">
+      <el-tab-pane label="Диаграммы" name="charts" />
+      <el-tab-pane label="Сводная таблица" name="table" />
+    </el-tabs>
 
-    <!-- Таблица -->
-    <el-card v-loading="loading">
-      <template #header>
-        <span class="font-semibold">
-          Производительность оборудования
-          <span v-if="reportData" class="text-gray-500 font-normal ml-2">
-            {{ dayjs(reportData.dateFrom).format('DD.MM.YYYY') }} — {{ dayjs(reportData.dateTo).format('DD.MM.YYYY') }}
-          </span>
-        </span>
+    <div v-loading="loading" class="min-h-[120px]">
+      <el-empty v-if="!loading && immData.length === 0" description="Нет данных за период" />
+
+      <!-- Строки по ТПА. v-if, а не скрытие: ECharts в скрытом контейнере инициализируется с нулевой шириной -->
+      <template v-else-if="activeTab === 'charts'">
+        <EquipmentImmRow
+          v-for="item in immData"
+          :key="item.immId"
+          :item="item"
+          :data-imm-id="item.immId"
+          class="scroll-mt-20"
+          :class="{ 'imm-highlight': highlightedImmId === item.immId }"
+        />
       </template>
-      <el-table
-        :data="reportData?.immData || []" 
-        stripe 
-        style="width: 100%"
-        :summary-method="getSummaries"
-        show-summary
-      >
-        <el-table-column prop="immName" label="ТПА" width="150" fixed />
-        <el-table-column label="Работа (ч)" width="110">
-          <template #default="{ row }">
-            {{ (row.totalWorkSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Наладка (ч)" width="110">
-          <template #default="{ row }">
-            {{ (row.totalSetupSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Простой (ч)" width="110">
-          <template #default="{ row }">
-            {{ (row.totalDowntimeSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Офлайн (ч)" width="110">
-          <template #default="{ row }">
-            {{ (row.totalOfflineSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="totalCycles" label="Циклы" width="90" align="center" />
-        <el-table-column label="Ср. цикл (с)" width="110" align="center">
-          <template #default="{ row }">
-            {{ row.avgCycleSeconds.toFixed(1) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Эффективность" width="180">
-          <template #default="{ row }">
-            <div class="flex items-center gap-2">
-              <el-progress
-                class="flex-1"
-                :percentage="Math.round(row.avgEfficiency)"
-                :color="[
-                  { color: '#f56c6c', percentage: 50 },
-                  { color: '#e6a23c', percentage: 70 },
-                  { color: '#409eff', percentage: 85 },
-                  { color: '#67c23a', percentage: 100 },
-                ]"
-                :show-text="false"
-              />
-              <span class="text-sm w-10 text-right">{{ Math.round(row.avgEfficiency) }}%</span>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+
+      <!-- Итоговая таблица -->
+      <el-card v-else-if="immData.length > 0" data-test="summary-table">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <span class="font-semibold">
+              Итоги за период
+              <span v-if="reportData" class="text-gray-500 font-normal ml-2">
+                {{ dayjs(reportData.dateFrom).format('DD.MM.YYYY') }} — {{ dayjs(reportData.dateTo).format('DD.MM.YYYY') }}
+              </span>
+            </span>
+            <span class="text-sm text-gray-500">Нажмите на строку, чтобы открыть диаграмму ТПА</span>
+          </div>
+        </template>
+        <el-table
+          :data="immData"
+          stripe
+          style="width: 100%"
+          :summary-method="getSummaries"
+          show-summary
+          row-class-name="cursor-pointer"
+          @row-click="openImmChart"
+        >
+          <el-table-column label="ТПА" min-width="150" fixed>
+            <template #default="{ row }">
+              {{ row.immName }}<span v-if="!row.isActive" class="text-gray-400"> (архив)</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            v-for="k in REPORT_STATUS_KEYS"
+            :key="k"
+            :label="`${REPORT_STATUS[k].label} (ч)`"
+            min-width="110"
+            align="right"
+          >
+            <template #default="{ row }">{{ toHours(row.seconds?.[k]) }}</template>
+          </el-table-column>
+          <el-table-column prop="totalCycles" label="Циклы" width="90" align="right" />
+          <el-table-column label="Ср. цикл (с)" width="110" align="right">
+            <template #default="{ row }">{{ row.avgCycleSeconds > 0 ? row.avgCycleSeconds.toFixed(1) : '—' }}</template>
+          </el-table-column>
+          <el-table-column label="Эффективность" width="130" align="right">
+            <template #default="{ row }">
+              <span :class="efficiencyClass(row.efficiency)">{{ formatEfficiency(row.efficiency) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+    </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useReportsStore } from '@/stores/reports'
-import BarChart from '@/components/reports/BarChart.vue'
 import dayjs from 'dayjs'
+import { useReportsStore } from '@/stores/reports'
+import { immApi } from '@/api/imm'
+import EquipmentImmRow from '@/components/reports/EquipmentImmRow.vue'
+import { REPORT_STATUS, REPORT_STATUS_KEYS } from '@/constants/effectiveStatus'
+import { toHours, formatEfficiency, efficiencyClass, sumSeconds, selectedIdsParam } from '@/utils/equipmentReport'
 
 const router = useRouter()
 const reportsStore = useReportsStore()
 
 const loading = ref(false)
 const exporting = ref(false)
-const dateRange = ref([dayjs().subtract(7, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')])
-const reportData = ref(null)
+// Последние 7 суток включая сегодня
+const dateRange = ref([dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')])
 
-const totalCycles = computed(() => {
-  if (!reportData.value?.immData) return 0
-  return reportData.value.immData.reduce((sum, item) => sum + item.totalCycles, 0)
+// Фильтры не запоминаются между открытиями отчёта.
+const allImms = ref([])
+const archiveMode = ref('exclude')
+const selectedImmIds = ref([])
+
+const hasArchived = computed(() => allImms.value.some(i => !i.isActive))
+
+const immOptions = computed(() => {
+  if (archiveMode.value === 'only') return allImms.value.filter(i => !i.isActive)
+  if (archiveMode.value === 'include') return allImms.value
+  return allImms.value.filter(i => i.isActive)
 })
 
-const efficiencyColor = computed(() => {
-  const eff = reportsStore.overallEfficiency
-  if (eff >= 85) return 'text-green-600'
-  if (eff >= 70) return 'text-yellow-600'
-  return 'text-red-600'
+// Смена режима архива — выбор сбрасывается на «все ТПА режима».
+watch(archiveMode, () => {
+  selectedImmIds.value = immOptions.value.map(i => i.id)
 })
 
-const chartData = computed(() => {
-  if (!reportData.value?.dailyBreakdown) return []
-  return reportData.value.dailyBreakdown.map(d => ({
-    immName: dayjs(d.date).format('DD.MM'),
-    totalWorkSeconds: d.totalWorkSeconds,
-    totalSetupSeconds: d.totalSetupSeconds,
-    totalDowntimeSeconds: d.totalDowntimeSeconds
-  }))
+const canLoad = computed(() => selectedImmIds.value.length > 0)
+
+// Вкладка не сбрасывается при повторном формировании отчёта.
+const activeTab = ref('charts')
+
+// Клик по строке таблицы: перейти на диаграммы и прокрутить к ТПА, ненадолго подсветив его карточку.
+const highlightedImmId = ref(null)
+let highlightTimer = null
+
+const openImmChart = async (row) => {
+  activeTab.value = 'charts'
+  await nextTick()
+  document.querySelector(`[data-imm-id="${row.immId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  highlightedImmId.value = row.immId
+  clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => { highlightedImmId.value = null }, 2000)
+}
+
+onUnmounted(() => clearTimeout(highlightTimer))
+
+const reportData = computed(() => reportsStore.equipmentReport)
+const immData = computed(() => reportData.value?.immData ?? [])
+
+const requestParams = () => ({
+  dateFrom: dateRange.value[0],
+  dateTo: dateRange.value[1],
+  immIds: selectedIdsParam(selectedImmIds.value, immOptions.value),
+  archive: archiveMode.value
 })
+
+// Фильтры, с которыми сформирован показанный отчёт: при расхождении отчёт помечается устаревшим.
+const filtersKey = () => JSON.stringify({
+  dateRange: dateRange.value,
+  archive: archiveMode.value,
+  immIds: [...selectedImmIds.value].sort()
+})
+const loadedFiltersKey = ref(null)
+const isStale = computed(() => loadedFiltersKey.value !== null && loadedFiltersKey.value !== filtersKey())
 
 onMounted(async () => {
-  await loadReport()
+  try {
+    const { data } = await immApi.getList()
+    allImms.value = [...data].sort((a, b) => a.name.localeCompare(b.name))
+  } catch {
+    ElMessage.error('Ошибка загрузки списка ТПА')
+    return
+  }
+  selectedImmIds.value = immOptions.value.map(i => i.id)
+  if (canLoad.value) await loadReport()
 })
 
 const loadReport = async () => {
+  if (!canLoad.value) return
   loading.value = true
+  const key = filtersKey()
   try {
-    await reportsStore.loadEquipmentReport({
-      dateFrom: dateRange.value[0],
-      dateTo: dateRange.value[1]
-    })
-    reportData.value = reportsStore.equipmentReport
-  } catch (error) {
-    ElMessage.error('Ошибка формирования отчёта')
-    console.log('Ошибка')
+    const { success } = await reportsStore.loadEquipmentReport(requestParams())
+    if (success) loadedFiltersKey.value = key
   } finally {
     loading.value = false
   }
@@ -191,12 +273,7 @@ const loadReport = async () => {
 const exportExcel = async () => {
   exporting.value = true
   try {
-    await reportsStore.exportToExcel('equipment', {
-      dateFrom: dateRange.value[0],
-      dateTo: dateRange.value[1]
-    })
-  } catch (error) {
-    ElMessage.error('Ошибка экспорта')
+    await reportsStore.exportToExcel('equipment', requestParams())
   } finally {
     exporting.value = false
   }
@@ -206,50 +283,40 @@ const goBack = () => {
   router.push('/reports')
 }
 
-const getSummaries = (param) => {
-  const { columns, data } = param
-  const sums = []
-
-  columns.forEach((column, index) => {
-    if (index === 0) {
-      sums[index] = 'Итого:'
-      return
-    }
-
-    const label = column.label
-    if (['Работа (ч)', 'Наладка (ч)', 'Простой (ч)', 'Офлайн (ч)'].includes(label)) {
-      const fieldMap = {
-        'Работа (ч)': 'totalWorkSeconds',
-        'Наладка (ч)': 'totalSetupSeconds',
-        'Простой (ч)': 'totalDowntimeSeconds',
-        'Офлайн (ч)': 'totalOfflineSeconds'
-      }
-      const field = fieldMap[label]
-      const total = data.reduce((sum, row) => sum + (row[field] || 0), 0)
-      sums[index] = (total / 3600).toFixed(2)
-    } else if (label === 'Циклы') {
-      sums[index] = '—'
-    } else if (label === 'Ср. цикл (с)') {
-      const nonZero = data.filter(row => row.avgCycleSeconds > 0)
-      if (nonZero.length === 0) { sums[index] = '—'; return }
-      const avg = nonZero.reduce((sum, row) => sum + row.avgCycleSeconds, 0) / nonZero.length
-      sums[index] = avg.toFixed(1)
-    } else if (label === 'Эффективность') {
-      const nonZero = data.filter(row => row.avgEfficiency > 0)
-      if (nonZero.length === 0) { sums[index] = '—'; return }
-      const avg = nonZero.reduce((sum, row) => sum + row.avgEfficiency, 0) / nonZero.length
-      sums[index] = Math.round(avg) + '%'
-    } else {
-      sums[index] = ''
-    }
-  })
-
-  return sums
+const getSummaries = ({ data }) => {
+  const totals = sumSeconds(data)
+  return [
+    'Итого:',
+    ...REPORT_STATUS_KEYS.map(k => toHours(totals[k])),
+    data.reduce((sum, row) => sum + row.totalCycles, 0),
+    '—',
+    formatEfficiency(reportsStore.fleetEfficiency)
+  ]
 }
 </script>
 
 <style scoped>
 .card {
   @apply bg-white rounded-lg shadow-md p-4;
+}
+
+/* Отступ под полями = отступу над ними (padding карточки); при переносе строк — row-gap */
+.report-filters {
+  @apply flex flex-wrap gap-y-3;
+}
+.report-filters :deep(.el-form-item) {
+  @apply mb-0;
+}
+
+/* Карточка ТПА, к которой перешли из сводной таблицы */
+.imm-highlight {
+  box-shadow: 0 0 0 2px var(--el-color-primary);
+  transition: box-shadow 0.3s;
+}
+
+/* Показанный отчёт не соответствует текущим фильтрам */
+.stale-report {
+  opacity: 0.5;
+  transition: opacity 0.2s;
 }
 </style>

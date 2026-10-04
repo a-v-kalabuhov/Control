@@ -14,3 +14,13 @@ export const EFFECTIVE_STATUS_KEYS = Object.keys(EFFECTIVE_STATUS)
 export function getEffectiveStatusMeta(key) {
   return EFFECTIVE_STATUS[key] || EFFECTIVE_STATUS.Offline
 }
+
+// «Нет данных» — только для отчётов: время без единой записи статуса ТПА (и будущее).
+// В EFFECTIVE_STATUS не входит: live-дашборд такого состояния не знает.
+export const NO_DATA_STATUS = {
+  label: 'Нет данных', bg: 'bg-gray-50', text: 'text-gray-500', dot: 'bg-gray-200', border: 'border-gray-200', hex: '#e5e7eb'
+}
+
+// Категории столбца отчёта «Производительность оборудования»; порядок = порядок в стеке.
+export const REPORT_STATUS = { ...EFFECTIVE_STATUS, NoData: NO_DATA_STATUS }
+export const REPORT_STATUS_KEYS = Object.keys(REPORT_STATUS)

@@ -75,4 +75,48 @@ public class EffectiveStatusTimelineTests
         result.Should().ContainSingle();
         result[0].EffectiveStatus.Should().Be(EffectiveStatus.Offline);
     }
+
+    [Fact]
+    public void Build_GapAsNoData_GapIsNoData_EvenWithOpenTask()
+    {
+        // Сырой: auto 0–20, дыра 20–40, auto 40–60. Задание InProgress всё время.
+        var raw = new[]
+        {
+            new RawSegment(ImmStatus.Auto, M(0),  M(20)),
+            new RawSegment(ImmStatus.Auto, M(40), M(60)),
+        };
+        var tasks = new[] { new TaskInterval(ActiveTaskStatus.InProgress, M(0), M(60)) };
+
+        var result = EffectiveStatusTimeline.Build(
+            raw, tasks, System.Array.Empty<Interval>(), M(0), M(60), gapAsNoData: true);
+
+        result.Should().HaveCount(3);
+        result[0].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Production, M(0),  M(20)));
+        result[1].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.NoData,     M(20), M(40)));
+        result[2].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Production, M(40), M(60)));
+    }
+
+    [Fact]
+    public void Build_GapWithoutFlag_KeepsLegacyOfflineBehaviour()
+    {
+        // Без флага дыра в истории по-прежнему трактуется как Offline (дашборд не меняется).
+        var result = EffectiveStatusTimeline.Build(
+            System.Array.Empty<RawSegment>(), System.Array.Empty<TaskInterval>(),
+            System.Array.Empty<Interval>(), M(0), M(60));
+
+        result.Should().ContainSingle();
+        result[0].EffectiveStatus.Should().Be(EffectiveStatus.Offline);
+    }
+
+    [Fact]
+    public void Build_GapAsNoData_ExplicitOfflineStaysOffline()
+    {
+        var raw = new[] { new RawSegment(ImmStatus.Offline, M(0), M(60)) };
+
+        var result = EffectiveStatusTimeline.Build(
+            raw, System.Array.Empty<TaskInterval>(), System.Array.Empty<Interval>(), M(0), M(60), gapAsNoData: true);
+
+        result.Should().ContainSingle();
+        result[0].EffectiveStatus.Should().Be(EffectiveStatus.Offline);
+    }
 }
