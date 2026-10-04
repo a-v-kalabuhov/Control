@@ -8,7 +8,11 @@ export const reportsApi = {
 
   // Отчёт "Производительность оборудования"
   getEquipment(params) {
-    return apiClient.get('/reports/equipment', { params })
+    return apiClient.get('/reports/equipment', {
+      params,
+      // ASP.NET List<Guid> ждёт повтор параметра без индексов: immIds=a&immIds=b
+      paramsSerializer: { indexes: null },
+    })
   },
 
   // Отчёт "Активы цеха"
