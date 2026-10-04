@@ -326,7 +326,62 @@ public class ReportService : IReportService
         worksheet.Cell(row, 1).Value = "Период:";
         worksheet.Cell(row, 1).Style.Font.Bold = true;
         worksheet.Cell(row, 2).Value = $"{report.DateFrom:dd.MM.yyyy} – {report.DateTo:dd.MM.yyyy}";
-        return row + 1;
+        row++;
+
+        worksheet.Cell(row, 1).Value = "Сформирован:";
+        worksheet.Cell(row, 1).Style.Font.Bold = true;
+        worksheet.Cell(row, 2).Value = DateTime.Now.ToString("dd.MM.yyyy HH:mm");
+        row += 2;
+
+        var keys = DailyStatusBreakdown.Keys;
+        var headers = new List<string> { "ТПА" };
+        headers.AddRange(keys.Select(k => $"{DailyStatusBreakdown.Labels[k]} (ч)"));
+        headers.AddRange(["Циклы", "Ср. цикл (с)", "Эффективность %"]);
+        for (var i = 0; i < headers.Count; i++)
+        {
+            worksheet.Cell(row, i + 1).Value = headers[i];
+            worksheet.Cell(row, i + 1).Style.Font.Bold = true;
+        }
+        row++;
+
+        var cyclesCol = keys.Length + 2;
+        foreach (var item in report.ImmData)
+        {
+            worksheet.Cell(row, 1).Value = item.IsActive ? item.ImmName : $"{item.ImmName} (архив)";
+            for (var k = 0; k < keys.Length; k++)
+                worksheet.Cell(row, k + 2).Value = Math.Round(item.Seconds.GetValueOrDefault(keys[k]) / 3600m, 2);
+            worksheet.Cell(row, cyclesCol).Value = item.TotalCycles;
+            worksheet.Cell(row, cyclesCol + 1).Value = Math.Round(item.AvgCycleSeconds, 1);
+            if (item.Efficiency.HasValue)
+                worksheet.Cell(row, cyclesCol + 2).Value = Math.Round(item.Efficiency.Value, 2);
+            else
+                worksheet.Cell(row, cyclesCol + 2).Value = "—";
+            row++;
+        }
+
+        if (report.ImmData.Count > 0)
+        {
+            var totals = DailyStatusBreakdown.Empty();
+            foreach (var item in report.ImmData)
+                foreach (var k in keys)
+                    totals[k] += item.Seconds.GetValueOrDefault(k);
+
+            worksheet.Cell(row, 1).Value = "Итого:";
+            for (var k = 0; k < keys.Length; k++)
+                worksheet.Cell(row, k + 2).Value = Math.Round(totals[keys[k]] / 3600m, 2);
+            worksheet.Cell(row, cyclesCol).Value = report.ImmData.Sum(i => i.TotalCycles);
+            worksheet.Cell(row, cyclesCol + 1).Value = "—";
+            var fleet = DailyStatusBreakdown.Efficiency(totals);   // взвешенная эффективность парка
+            if (fleet.HasValue)
+                worksheet.Cell(row, cyclesCol + 2).Value = Math.Round(fleet.Value, 2);
+            else
+                worksheet.Cell(row, cyclesCol + 2).Value = "—";
+            for (var c = 1; c <= headers.Count; c++)
+                worksheet.Cell(row, c).Style.Font.Bold = true;
+            row++;
+        }
+
+        return row;
     }
 
     /// <summary>

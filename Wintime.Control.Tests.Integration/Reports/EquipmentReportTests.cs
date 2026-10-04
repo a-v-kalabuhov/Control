@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using ClosedXML.Excel;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.Constants;
@@ -128,5 +129,38 @@ public class EquipmentReportTests : IClassFixture<IntegrationTestFactory>
         var resp = await client.GetAsync(Url(Day.AddDays(1), Day, Array.Empty<Guid>()));
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Excel_Export_Has_Seven_Status_Columns_And_Total_Row()
+    {
+        var working  = await SeedImmAsync(isActive: true,  workingAllAround: true);
+        var archived = await SeedImmAsync(isActive: false, workingAllAround: false);
+        var client = await ManagerClientAsync();
+
+        var resp = await client.PostAsJsonAsync("/api/reports/export/excel", new
+        {
+            reportType = "equipment",
+            dateFrom = Day, dateTo = Day,
+            immIds = new[] { working, archived },
+            archive = "include"
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var wb = new XLWorkbook(await resp.Content.ReadAsStreamAsync());
+        var ws = wb.Worksheets.First();
+        var header = ws.RowsUsed().First(r => r.Cell(1).GetString() == "ТПА");
+
+        header.Cells(2, 8).Select(c => c.GetString()).Should().Equal(
+            "Работа (ч)", "Наладка (ч)", "Простой (ч)", "Работа без задания (ч)",
+            "Без задания (ч)", "Нет связи (ч)", "Нет данных (ч)");
+        header.Cell(9).GetString().Should().Be("Циклы");
+        header.Cell(10).GetString().Should().Be("Ср. цикл (с)");
+        header.Cell(11).GetString().Should().Be("Эффективность %");
+
+        var names = ws.RowsUsed().Select(r => r.Cell(1).GetString()).ToList();
+        names.Should().Contain(n => n.EndsWith("(архив)"));
+        var total = ws.RowsUsed().Single(r => r.Cell(1).GetString() == "Итого:");
+        total.Cell(11).GetValue<double>().Should().Be(100);   // Σ Работа / Σ известного = только working
     }
 }
