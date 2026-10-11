@@ -447,7 +447,7 @@ const handleSubmit = async () => {
         ElMessage.success('Задание обновлено')
       } else {
         await tasksApi.create(form)
-        ElMessage.success('Задание выдано')
+        ElMessage.success('Задание создано как черновик. Чтобы наладчик его увидел, нажмите «Выдать»')
       }
 
       visible.value = false
