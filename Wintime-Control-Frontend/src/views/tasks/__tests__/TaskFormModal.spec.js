@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import TaskFormModal from '../TaskFormModal.vue'
 
 vi.mock('@/api/imm', () => ({
@@ -335,5 +335,26 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
     expect(wrapper.vm.form.workMode).toBe('SemiAuto')
     expect(wrapper.vm.form.plannedFullCycleSeconds).toBe(90)
     expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(30)
+  })
+})
+
+describe('TaskFormModal — сообщение после сохранения', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('после создания сообщает о черновике, а не о выдаче', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalled()
+    expect(success).toHaveBeenCalledWith('Задание создано как черновик. Чтобы наладчик его увидел, нажмите «Выдать»')
   })
 })
