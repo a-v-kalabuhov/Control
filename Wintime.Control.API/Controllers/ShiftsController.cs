@@ -25,10 +25,10 @@ public class ShiftsController : ControllerBase
     }
 
     /// <summary>
-    /// Сохранить расписание смен (полная замена списка, только Admin)
+    /// Сохранить расписание смен (полная замена списка, Admin и Manager)
     /// </summary>
     [HttpPut]
-    [Authorize(Roles = Roles.Admin)]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<IEnumerable<ShiftDto>>> SaveShifts([FromBody] SaveShiftsRequestDto request)
     {
         if (request.Shifts is null || request.Shifts.Count == 0)

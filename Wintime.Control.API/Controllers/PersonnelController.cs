@@ -82,7 +82,7 @@ public class PersonnelController : ControllerBase
     /// Создать запись персонала
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = $"{Roles.Admin}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<PersonnelDto>> CreatePersonnel([FromBody] CreatePersonnelRequestDto request)
     {
         var user = new User
@@ -95,9 +95,12 @@ public class PersonnelController : ControllerBase
             IsActive = true
         };
 
-        // Парсинг роли
+        // Парсинг роли; роль Admin выдаёт только администратор
         if (!Enum.TryParse<Core.Enums.UserRole>(request.Role, out var role))
             return BadRequest("Неверная роль");
+
+        if (role == Core.Enums.UserRole.Admin && !User.IsInRole(Roles.Admin))
+            return Forbid();
 
         user.Role = role;
 
@@ -123,12 +126,18 @@ public class PersonnelController : ControllerBase
     /// Обновить данные персонала
     /// </summary>
     [HttpPut("{id}")]
-    [Authorize(Roles = $"{Roles.Admin}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> UpdatePersonnel(string id, [FromBody] UpdatePersonnelRequestDto request)
     {
         var user = await _userManager.FindByIdAsync(id);
         if (user == null)
             return NotFound();
+
+        // Руководитель управляет персоналом, но не администраторами: не может ни менять
+        // учётку админа, ни выдать роль Admin (иначе повысил бы себя или другого).
+        var callerIsAdmin = User.IsInRole(Roles.Admin);
+        if (!callerIsAdmin && user.Role == Core.Enums.UserRole.Admin)
+            return Forbid();
 
         if (request.FullName != null)
             user.FullName = request.FullName;
@@ -141,6 +150,8 @@ public class PersonnelController : ControllerBase
         {
             if (!Enum.TryParse<Core.Enums.UserRole>(request.Role, out var newRole))
                 return BadRequest("Неверная роль");
+            if (newRole == Core.Enums.UserRole.Admin && !callerIsAdmin)
+                return Forbid();
 
             user.Role = newRole;
         }
