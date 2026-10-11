@@ -69,6 +69,8 @@ describe('MobileTasksView — завершение задания с брако�
     const defectInput = wrapper.find('input[aria-label="Брак"], .complete-defect-input input')
     expect(defectInput.exists()).toBe(true)
     await defectInput.setValue(5)
+    // Факт (80) меньше плана (100) — без причины форма не отправится
+    await wrapper.find('.el-dialog textarea').setValue('Нет сырья')
     await flushPromises()
 
     const confirmButton = wrapper.findAll('button').find(b => b.text().trim() === 'Завершить' && b.element.closest('.el-dialog'))
@@ -98,14 +100,54 @@ describe('MobileTasksView — завершение задания с брако�
     expect(inputNumbers.length).toBe(2)
     const [actualQtyField, defectField] = inputNumbers
 
-    // Изначально форма заполнена planQuantity (100), а не task.actualQuantity (80) —
-    // max «Брака» должен смотреть на живое значение формы, а не на снапшот задания.
-    expect(defectField.props('max')).toBe(100)
+    // Изначально форма заполнена посчитанным выпуском (80); max «Брака» должен
+    // смотреть на живое значение формы, а не на снапшот задания.
+    expect(defectField.props('max')).toBe(80)
 
     await actualQtyField.find('input').setValue(50)
     await actualQtyField.find('input').trigger('change')
     await flushPromises()
 
     expect(defectField.props('max')).toBe(50)
+  })
+})
+
+describe('MobileTasksView — предзаполнение факта при завершении', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  async function openCompleteDialog() {
+    const wrapper = mount(MobileTasksView, {
+      global: {
+        plugins: [createPinia(), ElementPlus],
+        stubs: { QrScanner: true }
+      }
+    })
+    await flushPromises()
+    const completeButton = wrapper.findAll('button').find(b => b.text().includes('Завершить') && !b.text().includes('наладку'))
+    await completeButton.trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+
+  it('подставляет посчитанный системой выпуск, свежий с сервера, а не план', async () => {
+    mobileApi.getTaskById.mockResolvedValueOnce({ data: { ...task, actualQuantity: 90 } })
+
+    const wrapper = await openCompleteDialog()
+
+    expect(mobileApi.getTaskById).toHaveBeenCalledWith('t1')
+    const [actualQtyField] = wrapper.findAllComponents({ name: 'ElInputNumber' })
+    expect(actualQtyField.props('modelValue')).toBe(90)
+  })
+
+  it('если свежие данные не получены — подставляет выпуск из списка заданий', async () => {
+    mobileApi.getTaskById.mockRejectedValueOnce(new Error('network'))
+
+    const wrapper = await openCompleteDialog()
+
+    const [actualQtyField] = wrapper.findAllComponents({ name: 'ElInputNumber' })
+    expect(actualQtyField.props('modelValue')).toBe(80)
   })
 })
