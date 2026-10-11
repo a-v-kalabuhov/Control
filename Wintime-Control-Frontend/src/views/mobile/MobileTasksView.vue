@@ -313,10 +313,20 @@ const cancelSetup = async (task) => {
   }
 }
 
-const completeTask = (task) => {
+const completeTask = async (task) => {
+  // Факт по умолчанию — выпуск, посчитанный системой. Берём свежий с сервера:
+  // в списке заданий он мог устареть, пока ТПА продолжал работать.
+  let actualQuantity = task.actualQuantity ?? 0
+  try {
+    const { data } = await mobileApi.getTaskById(task.id)
+    actualQuantity = data.actualQuantity ?? actualQuantity
+  } catch {
+    // нет связи — остаётся значение из списка, наладчик проверит его в форме
+  }
+
   completingTask.value = task
   completeForm.value = {
-    actualQuantity: task.planQuantity,
+    actualQuantity,
     defectQuantity: 0,
     completionReason: ''
   }
