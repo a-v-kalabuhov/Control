@@ -6,7 +6,7 @@
         <h2 class="text-2xl font-bold text-gray-800">Расписание смен</h2>
         <p class="text-gray-600 mt-1">Шаблон рабочих смен цеха, повторяется ежедневно</p>
       </div>
-      <el-button v-if="isAdmin" type="primary" @click="openEditDialog">
+      <el-button v-if="canEdit" type="primary" @click="openEditDialog">
         <el-icon class="mr-1"><Edit /></el-icon>
         Редактировать
       </el-button>
@@ -162,7 +162,7 @@ import { shiftsApi } from '@/api/shifts'
 import { usePermissions } from '@/composables/usePermissions'
 
 const { canAccess } = usePermissions()
-const isAdmin = computed(() => canAccess(['Admin']))
+const canEdit = computed(() => canAccess(['Admin', 'Manager']))
 
 const TIMEZONES = [
   { value: 'Europe/Kaliningrad', label: 'Калининград (UTC+2)' },

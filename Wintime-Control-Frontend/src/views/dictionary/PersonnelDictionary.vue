@@ -65,8 +65,11 @@
       <el-table-column label="Действия" width="220" fixed="right">
         <template #default="{ row }">
           <div class="flex flex-col items-start gap-1">
-            <el-button size="small" style="width: 130px; margin: 0" @click="editPersonnel(row)">Редактировать</el-button>
-            <el-button size="small" type="danger" style="width: 130px; margin: 0" @click="deletePersonnel(row)">Деактивировать</el-button>
+            <!-- Учётку администратора меняет только администратор (сервер вернёт 403) -->
+            <template v-if="canManage(row)">
+              <el-button size="small" style="width: 130px; margin: 0" @click="editPersonnel(row)">Редактировать</el-button>
+              <el-button size="small" type="danger" style="width: 130px; margin: 0" @click="deletePersonnel(row)">Деактивировать</el-button>
+            </template>
           </div>
         </template>
       </el-table-column>
@@ -103,7 +106,7 @@
           <el-select v-model="form.role" placeholder="Выберите роль" class="w-full">
             <el-option label="Наладчик" value="Adjuster" />
             <el-option label="Менеджер" value="Manager" />
-            <el-option label="Администратор" value="Admin" />
+            <el-option v-if="isAdmin" label="Администратор" value="Admin" />
             <el-option label="Наблюдатель" value="Observer" />
           </el-select>
         </el-form-item>
@@ -125,7 +128,13 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { personnelApi } from '@/api/personnel'
+import { usePermissions } from '@/composables/usePermissions'
 import dayjs from 'dayjs'
+
+const { isAdmin: hasAdminRole } = usePermissions()
+const isAdmin = hasAdminRole()
+// Руководитель управляет персоналом, кроме администраторов
+const canManage = (person) => isAdmin || person.role !== 'Admin'
 
 const loading = ref(false)
 const saving = ref(false)
