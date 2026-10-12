@@ -180,6 +180,10 @@ public class TasksController : ControllerBase
         return Ok(task.ToDto(schedule));
     }
 
+    /// <summary>Наладчик существует, активен и имеет роль Adjuster (PZP-13).</summary>
+    private Task<bool> IsActiveAdjusterAsync(string personnelId) =>
+        _context.Users.AnyAsync(u => u.Id == personnelId && u.IsActive && u.Role == UserRole.Adjuster);
+
     /// <summary>
     /// Ищет заказ по Id и проверяет правило привязки (PZP-05: активен, тип изделия совпадает
     /// с типом ПФ задания). Общая последовательность для CreateTask и SetOrder (M4).
@@ -217,7 +221,7 @@ public class TasksController : ControllerBase
         {
             ImmId = request.ImmId,
             MoldId = request.MoldId,
-            PersonnelId = request.PersonnelId,
+            PersonnelId = string.IsNullOrWhiteSpace(request.PersonnelId) ? null : request.PersonnelId,
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
             Status = Core.Enums.TaskStatus.Draft
@@ -240,6 +244,9 @@ public class TasksController : ControllerBase
                 return error;
             task.OrderId = order!.Id;
         }
+
+        if (!string.IsNullOrWhiteSpace(request.PersonnelId) && !await IsActiveAdjusterAsync(request.PersonnelId))
+            return BadRequest("Укажите активного наладчика");
 
         _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
@@ -296,16 +303,43 @@ public class TasksController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>Назначить, переназначить или снять наладчика (PZP-13).</summary>
+    [HttpPut("{id:guid}/personnel")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<IActionResult> SetPersonnel(Guid id, [FromBody] SetTaskPersonnelRequestDto request)
+    {
+        var task = await _context.ShiftTasks.FindAsync(id);
+        if (task == null)
+            return NotFound();
+
+        if (!string.IsNullOrWhiteSpace(request.PersonnelId) && !await IsActiveAdjusterAsync(request.PersonnelId))
+            return BadRequest("Укажите активного наладчика");
+
+        task.AssignPersonnel(request.PersonnelId);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
     /// <summary>
     /// Выдать задание (перевести из черновика в статус Issued)
     /// </summary>
     [HttpPost("{id:guid}/issue")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
-    public async Task<IActionResult> IssueTask(Guid id)
+    public async Task<IActionResult> IssueTask(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)]
+        IssueTaskRequestDto? request)
     {
         var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
+
+        if (!string.IsNullOrWhiteSpace(request?.PersonnelId))
+        {
+            if (!await IsActiveAdjusterAsync(request.PersonnelId))
+                return BadRequest("Укажите активного наладчика");
+            task.AssignPersonnel(request.PersonnelId);
+        }
 
         task.Issue();
 

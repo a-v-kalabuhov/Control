@@ -112,4 +112,63 @@ public class ShiftTaskPlanningTests
 
         task.PlannedSetupStartTime.Should().BeNull();
     }
+
+    [Fact]
+    public void AssignPersonnel_Draft_AssignsAndClears()
+    {
+        var task = NewTask(EntityTaskStatus.Draft);
+
+        task.AssignPersonnel("adj-1");
+        task.PersonnelId.Should().Be("adj-1");
+
+        task.AssignPersonnel(null);
+        task.PersonnelId.Should().BeNull();
+    }
+
+    [Fact]
+    public void AssignPersonnel_Issued_Reassigns()
+    {
+        var task = NewTask(EntityTaskStatus.Issued);
+        task.PersonnelId = "adj-1";
+
+        task.AssignPersonnel("adj-2");
+
+        task.PersonnelId.Should().Be("adj-2");
+    }
+
+    [Fact]
+    public void AssignPersonnel_Issued_Clear_Throws()
+    {
+        var task = NewTask(EntityTaskStatus.Issued);
+        task.PersonnelId = "adj-1";
+
+        var act = () => task.AssignPersonnel(null);
+
+        act.Should().Throw<DomainException>().WithMessage("У выданного задания должен быть наладчик");
+    }
+
+    [Theory]
+    [InlineData(EntityTaskStatus.Setup)]
+    [InlineData(EntityTaskStatus.InProgress)]
+    [InlineData(EntityTaskStatus.Completed)]
+    [InlineData(EntityTaskStatus.Closed)]
+    public void AssignPersonnel_AfterSetupStarted_Throws(EntityTaskStatus status)
+    {
+        var task = NewTask(status);
+
+        var act = () => task.AssignPersonnel("adj-2");
+
+        act.Should().Throw<DomainException>().WithMessage("Наладчика можно изменить только до начала наладки");
+    }
+
+    [Fact]
+    public void Issue_WithoutPersonnel_Throws()
+    {
+        var task = NewTask(EntityTaskStatus.Draft);
+
+        var act = () => task.Issue();
+
+        act.Should().Throw<DomainException>().WithMessage("Назначьте наладчика");
+        task.Status.Should().Be(EntityTaskStatus.Draft);
+    }
 }

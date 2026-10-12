@@ -13,7 +13,7 @@ namespace Wintime.Control.Tests.Unit.Entities;
 public class ShiftTaskStateMachineTests
 {
     private static ShiftTask NewTask(EntityTaskStatus status, int plan = 100) =>
-        new() { Status = status, PlanQuantity = plan };
+        new() { Status = status, PlanQuantity = plan, PersonnelId = "adj-1" };
 
     // ── Успешные переходы ────────────────────────────────────────────────────
 

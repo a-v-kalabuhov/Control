@@ -26,6 +26,7 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
 
     // Идентификаторы тестовых данных, доступных во всех тестах
     public Guid TestImmId { get; } = Guid.NewGuid();
+    public string TestAdjusterId { get; private set; } = string.Empty;
     public Guid TestMoldId { get; } = Guid.NewGuid();
     public Guid TestProductTypeId { get; } = Guid.NewGuid();
     public Guid TestTemplateId { get; } = Guid.NewGuid();
@@ -84,6 +85,8 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
         await EnsureUserAsync(userManager, "test_observer", "Test Observer", "Observer123!", UserRole.Observer);
         await EnsureUserAsync(userManager, "test_inactive", "Inactive User", "Inactive123!", UserRole.Admin,
             isActive: false);
+
+        TestAdjusterId = (await userManager.FindByNameAsync("test_adjuster"))!.Id;
     }
 
     // JSON шаблона с датчиком temp (float) — используется pipeline-тестами

@@ -68,12 +68,36 @@ public class ShiftTask : BaseEntity
     // Побочные эффекты (перевод режима ТПА через эмулятор) остаются в контроллере.
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Выдать задание: Draft → Issued.</summary>
+    /// <summary>Выдать задание: Draft → Issued. Без наладчика выдать нельзя (PZP-13).</summary>
     public void Issue()
     {
-        EnsureStatus(TaskStatus.Draft, "Задание не является черновиком");
+        EnsureStatus(TaskStatus.Draft, "Задание не в статусе «Планируется»");
+        if (string.IsNullOrEmpty(PersonnelId))
+            throw new DomainException("Назначьте наладчика");
         Status = TaskStatus.Issued;
         IssuedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// PZP-13: назначить/снять наладчика. «Планируется» — можно снять; «Выдано» — только
+    /// переназначить (снять нельзя); после начала наладки — запрещено.
+    /// Существование и активность наладчика проверяет вызывающий.
+    /// </summary>
+    public void AssignPersonnel(string? personnelId)
+    {
+        var id = string.IsNullOrWhiteSpace(personnelId) ? null : personnelId;
+        switch (Status)
+        {
+            case TaskStatus.Draft:
+                break;
+            case TaskStatus.Issued when id is null:
+                throw new DomainException("У выданного задания должен быть наладчик");
+            case TaskStatus.Issued:
+                break;
+            default:
+                throw new DomainException("Наладчика можно изменить только до начала наладки");
+        }
+        PersonnelId = id;
     }
 
     /// <summary>Начать наладку: Issued → Setup.</summary>
