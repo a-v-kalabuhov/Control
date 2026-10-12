@@ -16,6 +16,9 @@ public class TaskDto
     public Enums.TaskStatus Status { get; set; }
     public DateOnly PlannedDate { get; set; }
     public TimeOnly? PlannedSetupStartTime { get; set; }
+
+    /// <summary>Эффективное плановое начало, UTC (PlannedTaskStart). Вычисляется, не хранится.</summary>
+    public DateTime PlannedStartAt { get; set; }
     public DateTime? IssuedAt { get; set; }
     public DateTime? SetupStartedAt { get; set; }
     public DateTime? MoldVerifiedAt { get; set; }

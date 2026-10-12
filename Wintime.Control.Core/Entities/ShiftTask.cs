@@ -157,6 +157,32 @@ public class ShiftTask : BaseEntity
     }
 
     /// <summary>
+    /// PZP-13: задать плановую дату и (необязательно) время начала наладки.
+    /// Менять можно до начала наладки (Draft/Issued). Проверяется только изменённое значение:
+    /// дата — не раньше сегодняшней, дата+время — не раньше «сейчас − 5 минут».
+    /// </summary>
+    /// <param name="nowLocal">Текущее время по часам завода (считает вызывающий).</param>
+    public void SetPlannedStart(DateOnly date, TimeOnly? time, DateTime nowLocal)
+    {
+        bool dateChanged = date != PlannedDate;
+        bool timeChanged = time != PlannedSetupStartTime;
+        if (!dateChanged && !timeChanged)
+            return;
+
+        if (Status is not (TaskStatus.Draft or TaskStatus.Issued))
+            throw new DomainException("Плановое начало можно изменить только до начала наладки");
+
+        if (dateChanged && date < DateOnly.FromDateTime(nowLocal))
+            throw new DomainException("Плановая дата не может быть в прошлом");
+
+        if (time is TimeOnly t && date.ToDateTime(t) < nowLocal.AddMinutes(-5))
+            throw new DomainException("Время начала наладки не может быть в прошлом");
+
+        PlannedDate = date;
+        PlannedSetupStartTime = time;
+    }
+
+    /// <summary>
     /// Задать рабочий режим и эталонные длительности цикла.
     /// </summary>
     /// <param name="requireFullCycle">

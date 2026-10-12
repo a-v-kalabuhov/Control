@@ -17,11 +17,13 @@ public class TasksController : ControllerBase
 {
     private readonly ControlDbContext _context;
     private readonly IEmulatorControlService _emulator;
+    private readonly IFactoryClock _factoryClock;
 
-    public TasksController(ControlDbContext context, IEmulatorControlService emulator)
+    public TasksController(ControlDbContext context, IEmulatorControlService emulator, IFactoryClock factoryClock)
     {
         _context = context;
         _emulator = emulator;
+        _factoryClock = factoryClock;
     }
 
     /// <summary>
@@ -59,7 +61,8 @@ public class TasksController : ControllerBase
 
         var tasks = await query.ToListAsync();
 
-        var dtos = tasks.Select(t => t.ToDto()).ToList();
+        var schedule = await _factoryClock.GetScheduleAsync();
+        var dtos = tasks.Select(t => t.ToDto(schedule)).ToList();
 
         return Ok(dtos);
     }
@@ -141,13 +144,14 @@ public class TasksController : ControllerBase
             .Take(archivePageSize)
             .ToListAsync();
 
+        var schedule = await _factoryClock.GetScheduleAsync();
         return Ok(new MyTasksDto
         {
-            CurrentShift = currentShift.Select(t => t.ToDto()).ToList(),
-            Unfinished = unfinished.Select(t => t.ToDto()).ToList(),
+            CurrentShift = currentShift.Select(t => t.ToDto(schedule)).ToList(),
+            Unfinished = unfinished.Select(t => t.ToDto(schedule)).ToList(),
             Archive = new PagedTasksDto
             {
-                Items = archiveItems.Select(t => t.ToDto()).ToList(),
+                Items = archiveItems.Select(t => t.ToDto(schedule)).ToList(),
                 Total = archiveTotal,
                 Page = archivePage,
                 PageSize = archivePageSize
@@ -172,7 +176,8 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        return Ok(task.ToDto());
+        var schedule = await _factoryClock.GetScheduleAsync();
+        return Ok(task.ToDto(schedule));
     }
 
     /// <summary>
@@ -215,10 +220,12 @@ public class TasksController : ControllerBase
             PersonnelId = request.PersonnelId,
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
-            Status = Core.Enums.TaskStatus.Draft,
-            PlannedDate = request.PlannedDate.Value,
-            PlannedSetupStartTime = request.PlannedSetupStartTime
+            Status = Core.Enums.TaskStatus.Draft
         };
+
+        var schedule = await _factoryClock.GetScheduleAsync();
+        task.SetPlannedStart(request.PlannedDate.Value, request.PlannedSetupStartTime,
+                             schedule.ToLocal(_factoryClock.UtcNow));
 
         task.SetCycleNorms(
             request.WorkMode,
@@ -237,7 +244,7 @@ public class TasksController : ControllerBase
         _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task.ToDto());
+        return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task.ToDto(schedule));
     }
 
     /// <summary>
@@ -255,12 +262,18 @@ public class TasksController : ControllerBase
             task.PlanQuantity = request.PlanQuantity.Value;
         if (request.Note != null)
             task.Note = request.Note;
-        if (request.PlannedDate.HasValue)
-            task.PlannedDate = request.PlannedDate.Value;
-        if (request.ClearPlannedSetupStartTime)
-            task.PlannedSetupStartTime = null;
-        else if (request.PlannedSetupStartTime.HasValue)
-            task.PlannedSetupStartTime = request.PlannedSetupStartTime.Value;
+        bool planTouched = request.PlannedDate.HasValue
+                        || request.PlannedSetupStartTime.HasValue
+                        || request.ClearPlannedSetupStartTime;
+        if (planTouched)
+        {
+            var schedule = await _factoryClock.GetScheduleAsync();
+            var date = request.PlannedDate ?? task.PlannedDate;
+            var time = request.ClearPlannedSetupStartTime
+                ? null
+                : request.PlannedSetupStartTime ?? task.PlannedSetupStartTime;
+            task.SetPlannedStart(date, time, schedule.ToLocal(_factoryClock.UtcNow));
+        }
         bool cycleFieldsTouched = request.WorkMode.HasValue
                                || request.PlannedFullCycleSeconds.HasValue
                                || request.PlannedInjectionCycleSeconds.HasValue;
