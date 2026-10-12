@@ -22,18 +22,18 @@
       element-loading-text="Загрузка заданий..."
       class="min-h-[120px]"
     >
-      <!-- ─── Текущая смена ─── -->
+      <!-- ─── В работе ─── -->
       <section class="mb-6">
         <h3 class="section-title">
-          Текущая смена
-          <span v-if="mobileStore.currentShiftTasks.length" class="section-count">
-            {{ mobileStore.currentShiftTasks.length }}
+          В работе
+          <span v-if="mobileStore.activeTasks.length" class="section-count">
+            {{ mobileStore.activeTasks.length }}
           </span>
         </h3>
 
-        <div v-if="mobileStore.currentShiftTasks.length" class="space-y-3">
+        <div v-if="mobileStore.activeTasks.length" class="space-y-3">
           <MobileTaskCard
-            v-for="task in mobileStore.currentShiftTasks"
+            v-for="task in mobileStore.activeTasks"
             :key="task.id"
             :task="task"
             @click="openTaskDetail(task)"
@@ -43,21 +43,21 @@
             @complete="completeTask(task)"
           />
         </div>
-        <el-empty v-else description="Нет заданий" :image-size="80" />
+        <el-empty v-else description="Нет заданий в работе" :image-size="80" />
       </section>
 
-      <!-- ─── Незавершённые (с прошедших смен) ─── -->
-      <section v-if="mobileStore.unfinishedTasks.length" class="mb-6">
-        <h3 class="section-title section-title--warning">
-          Незавершённые
-          <span class="section-count section-count--warning">
-            {{ mobileStore.unfinishedTasks.length }}
+      <!-- ─── Очередь (по плановому началу) ─── -->
+      <section class="mb-6">
+        <h3 class="section-title">
+          Очередь
+          <span v-if="mobileStore.queueTasks.length" class="section-count">
+            {{ mobileStore.queueTasks.length }}
           </span>
         </h3>
 
-        <div class="space-y-3">
+        <div v-if="mobileStore.queueTasks.length" class="space-y-3">
           <MobileTaskCard
-            v-for="task in mobileStore.unfinishedTasks"
+            v-for="task in mobileStore.queueTasks"
             :key="task.id"
             :task="task"
             @click="openTaskDetail(task)"
@@ -67,6 +67,7 @@
             @complete="completeTask(task)"
           />
         </div>
+        <el-empty v-else description="Очередь пуста" :image-size="80" />
       </section>
 
       <!-- ─── Архив заданий ─── -->
@@ -241,7 +242,6 @@ const searchInput = ref('')
 let searchTimer = null
 
 onMounted(async () => {
-  await mobileStore.loadShifts()
   await loadTasks()
   await mobileStore.loadDowntimeReasons()
 })
@@ -462,17 +462,9 @@ const handleScanError = (error) => {
   @apply flex items-center gap-2 text-base font-bold text-gray-700 mb-3;
 }
 
-.section-title--warning {
-  @apply text-orange-600;
-}
-
 .section-count {
   @apply inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2
          text-sm font-semibold rounded-full bg-gray-200 text-gray-600;
-}
-
-.section-count--warning {
-  @apply bg-orange-100 text-orange-600;
 }
 
 /* Крупнее для пальца на планшете */
