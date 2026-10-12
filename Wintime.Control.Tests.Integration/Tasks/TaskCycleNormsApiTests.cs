@@ -33,6 +33,7 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
         immId = _factory.TestImmId,
         moldId = _factory.TestMoldId,
         planQuantity = 100,
+        plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
         workMode,
         plannedFullCycleSeconds = full,
         plannedInjectionCycleSeconds = injection
@@ -73,6 +74,7 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
             immId = _factory.TestImmId,
             moldId = _factory.TestMoldId,
             planQuantity = 100,
+        plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             plannedFullCycleSeconds = 45
         });
 

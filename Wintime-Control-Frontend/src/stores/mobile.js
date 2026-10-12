@@ -1,21 +1,18 @@
 import { defineStore } from 'pinia'
 import { mobileApi } from '@/api/mobile'
-import { shiftsApi } from '@/api/shifts'
-import { computeShiftBoundary } from '@/constants/shift'
 import { ElMessage } from 'element-plus'
 
 export const useMobileStore = defineStore('mobile', {
   state: () => ({
     // Разделы заданий наладчика
-    currentShiftTasks: [],   // задания текущей (или ближайшей) смены, любой статус
-    unfinishedTasks: [],     // незавершённые задания прошедших смен
-    archiveTasks: [],        // завершённые/закрытые задания прошедших смен (страница)
+    activeTasks: [],         // в наладке и в работе
+    queueTasks: [],          // выданные, по плановому началу (порядок задаёт сервер)
+    archiveTasks: [],        // завершённые/закрытые задания (страница)
     archiveTotal: 0,
     archivePage: 1,
     archivePageSize: 20,
 
     search: '',
-    shiftSchedule: [],
 
     loading: false,
     selectedTask: null,
@@ -28,41 +25,29 @@ export const useMobileStore = defineStore('mobile', {
   getters: {
     // Плоский список всех загруженных заданий — для поиска по id (сканер и пр.)
     tasks: (state) => [
-      ...state.currentShiftTasks,
-      ...state.unfinishedTasks,
+      ...state.activeTasks,
+      ...state.queueTasks,
       ...state.archiveTasks
     ],
 
     // Задание в состоянии наладки (не более одного)
     setupTask: (state) =>
-      [...state.currentShiftTasks, ...state.unfinishedTasks].find(t => t.status === 'Setup') ?? null
+      state.activeTasks.find(t => t.status === 'Setup') ?? null
   },
 
   actions: {
-    // Загрузка расписания смен (для вычисления границы смены)
-    async loadShifts() {
-      try {
-        const res = await shiftsApi.getShifts()
-        this.shiftSchedule = res.data ?? []
-      } catch {
-        this.shiftSchedule = []
-      }
-    },
-
     // Загрузка моих заданий, разложенных по разделам
     async loadMyTasks() {
       this.loading = true
       try {
-        const boundary = computeShiftBoundary(this.shiftSchedule)
         const response = await mobileApi.getMyTasks({
-          boundary: boundary.toISOString(),
           search: this.search || undefined,
           archivePage: this.archivePage,
           archivePageSize: this.archivePageSize
         })
         const data = response.data ?? {}
-        this.currentShiftTasks = data.currentShift ?? []
-        this.unfinishedTasks = data.unfinished ?? []
+        this.activeTasks = data.active ?? []
+        this.queueTasks = data.queue ?? []
         this.archiveTasks = data.archive?.items ?? []
         this.archiveTotal = data.archive?.total ?? 0
         this.archivePage = data.archive?.page ?? this.archivePage

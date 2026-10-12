@@ -24,7 +24,7 @@ const props = defineProps({
 
 const statusConfig = {
   Draft: { 
-    label: 'Черновик', 
+    label: 'Планируется', 
     bg: 'bg-gray-100', 
     text: 'text-gray-700', 
     dot: 'bg-gray-500' 

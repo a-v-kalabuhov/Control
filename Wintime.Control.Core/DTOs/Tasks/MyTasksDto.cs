@@ -1,21 +1,14 @@
 namespace Wintime.Control.Core.DTOs.Tasks;
 
 /// <summary>
-/// Задания наладчика, разложенные по разделам для планшетного интерфейса.
+/// Задания наладчика по разделам планшета (PZP-13):
+/// <see cref="Active"/> — в наладке и в работе; <see cref="Queue"/> — выданные, по возрастанию
+/// планового начала; <see cref="Archive"/> — завершённые/закрытые, новые сверху, с пагинацией.
 /// </summary>
-/// <remarks>
-/// Принадлежность к смене определяется по <see cref="TaskDto.IssuedAt"/> относительно
-/// границы текущей смены (см. фронтенд <c>computeShiftBoundary</c>):
-/// <list type="bullet">
-///   <item><see cref="CurrentShift"/> — выдано в текущей (или ближайшей) смене, любой статус.</item>
-///   <item><see cref="Unfinished"/> — выдано в прошедших сменах, но ещё не завершено.</item>
-///   <item><see cref="Archive"/> — завершённые/закрытые задания прошедших смен (с пагинацией).</item>
-/// </list>
-/// </remarks>
 public class MyTasksDto
 {
-    public List<TaskDto> CurrentShift { get; set; } = new();
-    public List<TaskDto> Unfinished { get; set; } = new();
+    public List<TaskDto> Active { get; set; } = new();
+    public List<TaskDto> Queue { get; set; } = new();
     public PagedTasksDto Archive { get; set; } = new();
 }
 

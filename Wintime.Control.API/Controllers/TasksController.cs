@@ -17,11 +17,13 @@ public class TasksController : ControllerBase
 {
     private readonly ControlDbContext _context;
     private readonly IEmulatorControlService _emulator;
+    private readonly IFactoryClock _factoryClock;
 
-    public TasksController(ControlDbContext context, IEmulatorControlService emulator)
+    public TasksController(ControlDbContext context, IEmulatorControlService emulator, IFactoryClock factoryClock)
     {
         _context = context;
         _emulator = emulator;
+        _factoryClock = factoryClock;
     }
 
     /// <summary>
@@ -59,26 +61,21 @@ public class TasksController : ControllerBase
 
         var tasks = await query.ToListAsync();
 
-        var dtos = tasks.Select(t => t.ToDto()).ToList();
+        var schedule = await _factoryClock.GetScheduleAsync();
+        var dtos = tasks.Select(t => t.ToDto(schedule)).ToList();
 
         return Ok(dtos);
     }
 
     /// <summary>
-    /// Мои задания — для текущего наладчика (по JWT), разложенные по разделам планшетного интерфейса.
+    /// Мои задания — для текущего наладчика (по JWT): в работе, очередь по плановому началу, архив.
     /// </summary>
-    /// <param name="boundary">
-    /// Граница текущей смены (ISO 8601, UTC). Задания, выданные в этот момент и позже, относятся
-    /// к текущей смене; выданные раньше — к прошедшим. Фронтенд вычисляет границу из расписания смен.
-    /// Если не задана — используется текущий момент сервера.
-    /// </param>
     /// <param name="search">Фильтр по названию ТПА или пресс-формы (регистронезависимый).</param>
     /// <param name="archivePage">Номер страницы архива (с 1).</param>
     /// <param name="archivePageSize">Размер страницы архива.</param>
     [HttpGet("my")]
     [Authorize(Roles = $"{Roles.Adjuster},{Roles.Manager},{Roles.Admin}")]
     public async Task<ActionResult<MyTasksDto>> GetMyTasks(
-        [FromQuery] string? boundary = null,
         [FromQuery] string? search = null,
         [FromQuery] int archivePage = 1,
         [FromQuery] int archivePageSize = 20)
@@ -86,13 +83,6 @@ public class TasksController : ControllerBase
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
-
-        // Граница смены приходит как UTC ISO ('…Z'); парсим инстант, сохраняя Kind=Utc для Npgsql.
-        var boundaryUtc = DateTimeOffset.TryParse(
-            boundary, System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.RoundtripKind, out var parsed)
-            ? parsed.UtcDateTime
-            : DateTime.UtcNow;
 
         if (archivePage < 1) archivePage = 1;
         if (archivePageSize < 1) archivePageSize = 20;
@@ -112,42 +102,40 @@ public class TasksController : ControllerBase
                 EF.Functions.ILike(t.Mold.Name, pattern));
         }
 
-        // Текущая смена: выдано на границе смены и позже (любой статус).
-        // null IssuedAt быть не должно у не-черновиков, но на всякий случай относим к текущей смене,
-        // чтобы такое задание не потерялось ни в одном разделе.
-        var currentShift = await baseQuery
-            .Where(t => t.IssuedAt == null || t.IssuedAt >= boundaryUtc)
-            .OrderByDescending(t => t.IssuedAt)
-            .ToListAsync();
+        var schedule = await _factoryClock.GetScheduleAsync();
 
-        var pastQuery = baseQuery.Where(t => t.IssuedAt != null && t.IssuedAt < boundaryUtc);
-
-        // Незавершённые с прошедших смен — оставшаяся работа, оформляем по возрастанию давности.
-        var unfinished = await pastQuery
-            .Where(t => t.Status == Core.Enums.TaskStatus.Issued
-                     || t.Status == Core.Enums.TaskStatus.Setup
+        var active = await baseQuery
+            .Where(t => t.Status == Core.Enums.TaskStatus.Setup
                      || t.Status == Core.Enums.TaskStatus.InProgress)
-            .OrderBy(t => t.IssuedAt)
+            .OrderBy(t => t.SetupStartedAt)
             .ToListAsync();
 
-        // Архив — завершённые/закрытые задания прошедших смен, с пагинацией.
-        var archiveQuery = pastQuery.Where(t => t.Status == Core.Enums.TaskStatus.Completed
-                                             || t.Status == Core.Enums.TaskStatus.Closed);
+        // Плановое начало вычисляется (PlannedTaskStart), поэтому сортируем в памяти:
+        // выданных заданий у одного наладчика — единицы.
+        var queue = (await baseQuery
+                .Where(t => t.Status == Core.Enums.TaskStatus.Issued)
+                .ToListAsync())
+            .Select(t => t.ToDto(schedule))
+            .OrderBy(d => d.PlannedStartAt)
+            .ToList();
 
+        var archiveQuery = baseQuery.Where(t => t.Status == Core.Enums.TaskStatus.Completed
+                                             || t.Status == Core.Enums.TaskStatus.Closed);
         var archiveTotal = await archiveQuery.CountAsync();
         var archiveItems = await archiveQuery
-            .OrderByDescending(t => t.IssuedAt)
+            .OrderByDescending(t => t.CompletedAt ?? t.ClosedAt)
+            .ThenByDescending(t => t.Id)
             .Skip((archivePage - 1) * archivePageSize)
             .Take(archivePageSize)
             .ToListAsync();
 
         return Ok(new MyTasksDto
         {
-            CurrentShift = currentShift.Select(t => t.ToDto()).ToList(),
-            Unfinished = unfinished.Select(t => t.ToDto()).ToList(),
+            Active = active.Select(t => t.ToDto(schedule)).ToList(),
+            Queue = queue,
             Archive = new PagedTasksDto
             {
-                Items = archiveItems.Select(t => t.ToDto()).ToList(),
+                Items = archiveItems.Select(t => t.ToDto(schedule)).ToList(),
                 Total = archiveTotal,
                 Page = archivePage,
                 PageSize = archivePageSize
@@ -172,8 +160,13 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        return Ok(task.ToDto());
+        var schedule = await _factoryClock.GetScheduleAsync();
+        return Ok(task.ToDto(schedule));
     }
+
+    /// <summary>Наладчик существует, активен и имеет роль Adjuster (PZP-13).</summary>
+    private Task<bool> IsActiveAdjusterAsync(string personnelId) =>
+        _context.Users.AnyAsync(u => u.Id == personnelId && u.IsActive && u.Role == UserRole.Adjuster);
 
     /// <summary>
     /// Ищет заказ по Id и проверяет правило привязки (PZP-05: активен, тип изделия совпадает
@@ -199,6 +192,9 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<TaskDto>> CreateTask([FromBody] CreateTaskRequestDto request)
     {
+        if (request.PlannedDate is null)
+            return BadRequest("Укажите плановую дату");
+
         var mold = await _context.Molds.FindAsync(request.MoldId);
         if (mold == null || !mold.IsActive)
             return BadRequest("Указана неактивная или несуществующая пресс-форма.");
@@ -209,15 +205,15 @@ public class TasksController : ControllerBase
         {
             ImmId = request.ImmId,
             MoldId = request.MoldId,
-            PersonnelId = request.PersonnelId,
+            PersonnelId = string.IsNullOrWhiteSpace(request.PersonnelId) ? null : request.PersonnelId,
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
-            Status = Core.Enums.TaskStatus.Draft,
-            PlannedDate = request.PlannedDate.HasValue
-                ? DateTime.SpecifyKind(request.PlannedDate.Value, DateTimeKind.Utc)
-                : null,
-            IssuedAt = DateTime.UtcNow
+            Status = Core.Enums.TaskStatus.Draft
         };
+
+        var schedule = await _factoryClock.GetScheduleAsync();
+        task.SetPlannedStart(request.PlannedDate.Value, request.PlannedSetupStartTime,
+                             schedule.ToLocal(_factoryClock.UtcNow));
 
         task.SetCycleNorms(
             request.WorkMode,
@@ -233,10 +229,13 @@ public class TasksController : ControllerBase
             task.OrderId = order!.Id;
         }
 
+        if (!string.IsNullOrWhiteSpace(request.PersonnelId) && !await IsActiveAdjusterAsync(request.PersonnelId))
+            return BadRequest("Укажите активного наладчика");
+
         _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task.ToDto());
+        return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task.ToDto(schedule));
     }
 
     /// <summary>
@@ -254,14 +253,17 @@ public class TasksController : ControllerBase
             task.PlanQuantity = request.PlanQuantity.Value;
         if (request.Note != null)
             task.Note = request.Note;
-        if (request.PlannedDate.HasValue)
+        bool planTouched = request.PlannedDate.HasValue
+                        || request.PlannedSetupStartTime.HasValue
+                        || request.ClearPlannedSetupStartTime;
+        if (planTouched)
         {
-            if (task.Status != Core.Enums.TaskStatus.Draft)
-                return BadRequest("Плановую дату можно изменить только в черновике");
-            var today = DateTime.UtcNow.Date;
-            if (request.PlannedDate.Value.Date < today)
-                return BadRequest("Плановая дата не может быть в прошлом");
-            task.PlannedDate = DateTime.SpecifyKind(request.PlannedDate.Value, DateTimeKind.Utc);
+            var schedule = await _factoryClock.GetScheduleAsync();
+            var date = request.PlannedDate ?? task.PlannedDate;
+            var time = request.ClearPlannedSetupStartTime
+                ? null
+                : request.PlannedSetupStartTime ?? task.PlannedSetupStartTime;
+            task.SetPlannedStart(date, time, schedule.ToLocal(_factoryClock.UtcNow));
         }
         bool cycleFieldsTouched = request.WorkMode.HasValue
                                || request.PlannedFullCycleSeconds.HasValue
@@ -285,18 +287,44 @@ public class TasksController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>
-    /// Выдать задание (перевести из черновика в статус Issued)
-    /// </summary>
-    [HttpPost("{id:guid}/issue")]
+    /// <summary>Назначить, переназначить или снять наладчика (PZP-13).</summary>
+    [HttpPut("{id:guid}/personnel")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
-    public async Task<IActionResult> IssueTask(Guid id)
+    public async Task<IActionResult> SetPersonnel(Guid id, [FromBody] SetTaskPersonnelRequestDto request)
     {
         var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
             return NotFound();
 
-        task.Issue();
+        if (!string.IsNullOrWhiteSpace(request.PersonnelId) && !await IsActiveAdjusterAsync(request.PersonnelId))
+            return BadRequest("Укажите активного наладчика");
+
+        task.AssignPersonnel(request.PersonnelId);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Выдать задание («Планируется» → «Выдано»)
+    /// </summary>
+    [HttpPost("{id:guid}/issue")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<IActionResult> IssueTask(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)]
+        IssueTaskRequestDto? request)
+    {
+        var task = await _context.ShiftTasks.FindAsync(id);
+        if (task == null)
+            return NotFound();
+
+        // Статус проверяет сама сущность (Issue), поэтому для не-Draft сначала вернётся ошибка статуса.
+        if (task.Status == Core.Enums.TaskStatus.Draft
+            && !string.IsNullOrWhiteSpace(request?.PersonnelId)
+            && !await IsActiveAdjusterAsync(request.PersonnelId))
+            return BadRequest("Укажите активного наладчика");
+
+        task.Issue(request?.PersonnelId);
 
         await _context.SaveChangesAsync();
 

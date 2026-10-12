@@ -62,7 +62,7 @@
           class="w-full"
           filterable
           :clearable="false"
-          :disabled="!!lockedOrder || !selectedProductTypeId"
+          :disabled="isLimitedEdit || !!lockedOrder || !selectedProductTypeId"
         >
           <el-option
             v-for="order in orderOptions"
@@ -76,7 +76,8 @@
       <el-form-item label="Наладчик" prop="personnelId">
         <el-select 
           v-model="form.personnelId" 
-          placeholder="Выберите наладчика" 
+          placeholder="Не назначен"
+          :clearable="!isLimitedEdit"
           class="w-full"
           @focus="loadPersonnel"
           filterable
@@ -100,13 +101,14 @@
           v-model="form.planQuantity" 
           :min="1" 
           :max="1000000"
+          :disabled="isLimitedEdit"
           class="w-full"
           controls-position="right"
         />
       </el-form-item>
 
       <el-form-item label="Рабочий режим" prop="workMode">
-        <el-select v-model="form.workMode" class="w-full">
+        <el-select v-model="form.workMode" class="w-full" :disabled="isLimitedEdit">
           <el-option label="Автомат" value="Auto" />
           <el-option label="Полуавтомат" value="SemiAuto" />
         </el-select>
@@ -117,6 +119,7 @@
           v-model="form.plannedFullCycleSeconds"
           :min="1"
           :max="86400"
+          :disabled="isLimitedEdit"
           class="w-full"
           controls-position="right"
         />
@@ -127,6 +130,7 @@
           v-model="form.plannedInjectionCycleSeconds"
           :min="1"
           :max="86400"
+          :disabled="isLimitedEdit"
           class="w-full"
           controls-position="right"
         />
@@ -145,11 +149,24 @@
         />
       </el-form-item>
 
+      <el-form-item label="Время начала наладки" prop="plannedSetupStartTime">
+        <el-time-picker
+          v-model="form.plannedSetupStartTime"
+          placeholder="Не задано"
+          format="HH:mm"
+          value-format="HH:mm:ss"
+          clearable
+          class="w-full"
+        />
+        <div class="text-xs text-gray-500 mt-1">Необязательно. Пусто — задание начинается с начала смены</div>
+      </el-form-item>
+
       <el-form-item label="Примечание">
         <el-input
           v-model="form.note"
           type="textarea"
           :rows="3"
+          :disabled="isLimitedEdit"
           placeholder="Дополнительная информация"
         />
       </el-form-item>
@@ -228,9 +245,10 @@ const initialOrderId = ref(null)
 const form = reactive({
   immId: '',
   moldId: '',
-  personnelId: '',
+  personnelId: null,
   planQuantity: 1000,
   plannedDate: null,
+  plannedSetupStartTime: null,
   note: '',
   orderId: null,
   workMode: 'Auto',
@@ -239,6 +257,7 @@ const form = reactive({
 })
 
 const rules = {
+  plannedDate: [{ required: true, message: 'Укажите плановую дату', trigger: 'change' }],
   immId: [{ required: true, message: 'Выберите ТПА', trigger: 'change' }],
   moldId: [{ required: true, message: 'Выберите пресс-форму', trigger: 'change' }],
   planQuantity: [
@@ -282,6 +301,9 @@ const isFullCycleRequired = computed(() => {
   return !editingTask.value || (editingTask.value.plannedFullCycleSeconds ?? null) !== null
 })
 
+// PZP-13: в «Выдано» правятся только плановое начало и наладчик
+const isLimitedEdit = computed(() => editingTask.value?.status === 'Issued')
+
 const selectedMoldInfo = computed(() => {
   if (!form.moldId) return null
   return molds.value.find(m => m.id === form.moldId)
@@ -299,9 +321,10 @@ const resetForm = () => {
   Object.assign(form, {
     immId: '',
     moldId: '',
-    personnelId: '',
+    personnelId: null,
     planQuantity: 1000,
     plannedDate: null,
+    plannedSetupStartTime: null,
     note: '',
     orderId: props.lockedOrder?.id ?? null,
     workMode: 'Auto',
@@ -372,9 +395,10 @@ const populateForm = (task) => {
   Object.assign(form, {
     immId: task.immId,
     moldId: task.moldId,
-    personnelId: task.personnelId,
+    personnelId: task.personnelId ?? null,
     planQuantity: task.planQuantity,
-    plannedDate: task.plannedDate ? task.plannedDate.slice(0, 10) : null,
+    plannedDate: task.plannedDate,
+    plannedSetupStartTime: task.plannedSetupStartTime ?? null,
     note: task.note || '',
     orderId: task.orderId || null,
     workMode: task.workMode || 'Auto',
@@ -437,17 +461,22 @@ const handleSubmit = async () => {
     loading.value = true
     try {
       if (editingTask.value) {
-        // orderId не входит в тело update — заказ меняется только через
-        // ordersApi.setTaskOrder (единая точка привязки/смены заказа).
-        const { orderId, ...updatePayload } = form
+        // orderId и personnelId не входят в тело update — у них отдельные endpoints
+        // (ordersApi.setTaskOrder, tasksApi.setPersonnel).
+        const { orderId, personnelId, ...updatePayload } = form
+        updatePayload.clearPlannedSetupStartTime = !form.plannedSetupStartTime
+        // Наладчика меняем первым: его отказ не должен оставить частично сохранённое задание.
+        if ((personnelId || null) !== (editingTask.value.personnelId || null)) {
+          await tasksApi.setPersonnel(editingTask.value.id, personnelId || null)
+        }
         await tasksApi.update(editingTask.value.id, updatePayload)
         if (form.orderId && form.orderId !== initialOrderId.value) {
           await ordersApi.setTaskOrder(editingTask.value.id, form.orderId)
         }
         ElMessage.success('Задание обновлено')
       } else {
-        await tasksApi.create(form)
-        ElMessage.success('Задание создано как черновик. Чтобы наладчик его увидел, нажмите «Выдать»')
+        await tasksApi.create({ ...form, personnelId: form.personnelId || null })
+        ElMessage.success('Задание создано в статусе «Планируется». Чтобы наладчик его увидел, нажмите «Выдать»')
       }
 
       visible.value = false

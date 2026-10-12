@@ -40,7 +40,14 @@ public class ShiftTask : BaseEntity
 
     public DateTime? UpdatedAt { get; set; }
 
-    public DateTime? PlannedDate { get; set; }
+    /// <summary>Плановая дата выполнения — календарная дата завода (PZP-13). Обязательна.</summary>
+    public DateOnly PlannedDate { get; set; }
+
+    /// <summary>
+    /// Плановое время начала наладки по часам завода (PZP-13). Необязательно:
+    /// <c>null</c> — задание начинается с начала первой смены дня (см. PlannedTaskStart).
+    /// </summary>
+    public TimeOnly? PlannedSetupStartTime { get; set; }
     public DateTime? IssuedAt { get; set; }
     public DateTime? SetupStartedAt { get; set; }
     public DateTime? MoldVerifiedAt { get; set; }
@@ -61,12 +68,38 @@ public class ShiftTask : BaseEntity
     // Побочные эффекты (перевод режима ТПА через эмулятор) остаются в контроллере.
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Выдать задание: Draft → Issued.</summary>
-    public void Issue()
+    /// <summary>Выдать задание: Планируется (Draft) → Выдано (Issued); personnelId — назначить наладчика в той же операции. Без наладчика выдать нельзя (PZP-13).</summary>
+    public void Issue(string? personnelId = null)
     {
-        EnsureStatus(TaskStatus.Draft, "Задание не является черновиком");
+        EnsureStatus(TaskStatus.Draft, "Задание не в статусе «Планируется»");
+        if (!string.IsNullOrWhiteSpace(personnelId))
+            PersonnelId = personnelId;
+        if (string.IsNullOrEmpty(PersonnelId))
+            throw new DomainException("Назначьте наладчика");
         Status = TaskStatus.Issued;
         IssuedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// PZP-13: назначить/снять наладчика. «Планируется» — можно снять; «Выдано» — только
+    /// переназначить (снять нельзя); после начала наладки — запрещено.
+    /// Существование и активность наладчика проверяет вызывающий.
+    /// </summary>
+    public void AssignPersonnel(string? personnelId)
+    {
+        var id = string.IsNullOrWhiteSpace(personnelId) ? null : personnelId;
+        switch (Status)
+        {
+            case TaskStatus.Draft:
+                break;
+            case TaskStatus.Issued when id is null:
+                throw new DomainException("У выданного задания должен быть наладчик");
+            case TaskStatus.Issued:
+                break;
+            default:
+                throw new DomainException("Наладчика можно изменить только до начала наладки");
+        }
+        PersonnelId = id;
     }
 
     /// <summary>Начать наладку: Issued → Setup.</summary>
@@ -147,6 +180,32 @@ public class ShiftTask : BaseEntity
 
         Status = TaskStatus.Closed;
         ClosedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// PZP-13: задать плановую дату и (необязательно) время начала наладки.
+    /// Менять можно до начала наладки (Draft/Issued). Проверяется только изменённое значение:
+    /// дата — не раньше сегодняшней, дата+время — не раньше «сейчас − 5 минут».
+    /// </summary>
+    /// <param name="nowLocal">Текущее время по часам завода (считает вызывающий).</param>
+    public void SetPlannedStart(DateOnly date, TimeOnly? time, DateTime nowLocal)
+    {
+        bool dateChanged = date != PlannedDate;
+        bool timeChanged = time != PlannedSetupStartTime;
+        if (!dateChanged && !timeChanged)
+            return;
+
+        if (Status is not (TaskStatus.Draft or TaskStatus.Issued))
+            throw new DomainException("Плановое начало можно изменить только до начала наладки");
+
+        if (dateChanged && date < DateOnly.FromDateTime(nowLocal))
+            throw new DomainException("Плановая дата не может быть в прошлом");
+
+        if (time is TimeOnly t && date.ToDateTime(t) < nowLocal.AddMinutes(-5))
+            throw new DomainException("Время начала наладки не может быть в прошлом");
+
+        PlannedDate = date;
+        PlannedSetupStartTime = time;
     }
 
     /// <summary>

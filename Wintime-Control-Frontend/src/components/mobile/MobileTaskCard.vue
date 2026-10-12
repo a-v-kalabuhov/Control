@@ -22,6 +22,14 @@
       <div class="text-base text-gray-700">{{ task.moldName }}</div>
     </div>
 
+    <!-- Плановое начало (PZP-13) -->
+    <div v-if="task.status === 'Issued'" class="mb-3 flex items-center gap-2">
+      <span class="text-sm text-gray-500">Начало:</span>
+      <span class="text-base font-semibold text-gray-800">{{ formatPlannedStart(task) }}</span>
+      <el-tag v-if="isPlannedStartOverdue(task)" type="danger" size="small">опаздывает</el-tag>
+      <el-tag v-else-if="isPlannedStartToday(task)" type="warning" size="small">сегодня</el-tag>
+    </div>
+
     <!-- План / Факт -->
     <div class="mb-3 p-3 bg-gray-50 rounded-lg">
       <div class="flex justify-between items-center mb-2">
@@ -92,6 +100,7 @@
 <script setup>
 import { computed } from 'vue'
 import MobileStatusBadge from './MobileStatusBadge.vue'
+import { formatPlannedStart, isPlannedStartOverdue, isPlannedStartToday } from '@/utils/plannedStart'
 
 const props = defineProps({
   task: {

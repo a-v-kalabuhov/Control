@@ -1,4 +1,5 @@
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Policies;
 
 namespace Wintime.Control.Core.DTOs.Tasks;
 
@@ -8,7 +9,7 @@ public static class TaskMappingExtensions
     /// Маппинг сущности задания в DTO. Имена ТПА/ПФ/наладчика заполняются,
     /// только если соответствующие навигации загружены (Include).
     /// </summary>
-    public static TaskDto ToDto(this ShiftTask t) => new()
+    public static TaskDto ToDto(this ShiftTask t, FactorySchedule schedule) => new()
     {
         Id = t.Id,
         ImmId = t.ImmId,
@@ -23,6 +24,8 @@ public static class TaskMappingExtensions
         ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
         Status = t.Status,
         PlannedDate = t.PlannedDate,
+        PlannedSetupStartTime = t.PlannedSetupStartTime,
+        PlannedStartAt = schedule.PlannedStartUtc(t.PlannedDate, t.PlannedSetupStartTime),
         IssuedAt = t.IssuedAt,
         SetupStartedAt = t.SetupStartedAt,
         MoldVerifiedAt = t.MoldVerifiedAt,

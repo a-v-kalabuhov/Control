@@ -11,6 +11,9 @@
         <el-descriptions-item label="Статус">
           <TaskStatusBadge :status="task?.status" />
         </el-descriptions-item>
+        <el-descriptions-item label="Плановое начало">
+          {{ task ? formatPlannedStart(task) : '—' }}
+        </el-descriptions-item>
         <el-descriptions-item label="Выдано">
           {{ formatDate(task?.issuedAt) }}
         </el-descriptions-item>
@@ -93,19 +96,7 @@
           >
             Редактировать
           </el-button>
-          <el-popconfirm
-            v-if="canIssue"
-            title="Выдать задание в работу?"
-            confirm-button-text="Выдать"
-            cancel-button-text="Отмена"
-            confirm-button-type="warning"
-            width="240"
-            @confirm="$emit('issue', task)"
-          >
-            <template #reference>
-              <el-button type="warning">Выдать</el-button>
-            </template>
-          </el-popconfirm>
+          <el-button v-if="canIssue" type="warning" @click="$emit('issue', task)">Выдать</el-button>
           <el-button
             v-if="canComplete"
             type="success"
@@ -132,6 +123,7 @@ import { ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskProgress from '@/components/tasks/TaskProgress.vue'
+import { formatPlannedStart } from '@/utils/plannedStart'
 import dayjs from 'dayjs'
 
 const props = defineProps({
@@ -161,7 +153,7 @@ const visible = computed({
 
 const canEdit = computed(() => {
   if (!props.task) return false
-  return props.task.status === 'Draft' && authStore.isManager
+  return ['Draft', 'Issued'].includes(props.task.status) && authStore.isManager
 })
 
 const canIssue = computed(() => {

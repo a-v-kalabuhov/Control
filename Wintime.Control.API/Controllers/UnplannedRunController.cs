@@ -103,7 +103,7 @@ public class UnplannedRunController : ControllerBase
 
             DateTime? tStart = t.SetupStartedAt ?? t.StartedAt;
             DateTime? tEnd = t.ClosedAt ?? t.CompletedAt;
-            var taskDate = t.PlannedDate ?? t.IssuedAt ?? t.CreatedAt;
+            var taskDate = t.PlannedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
             bool overlaps = tStart.HasValue && tEnd.HasValue
                 && UnplannedRunAdjacency.Overlaps(tStart.Value, tEnd.Value, run.StartTime, episodeEnd);
@@ -132,7 +132,7 @@ public class UnplannedRunController : ControllerBase
 
         var candidates = eligible.Select(e =>
         {
-            var taskDate = e.Task.PlannedDate ?? e.Task.IssuedAt ?? e.Task.CreatedAt;
+            var taskDate = e.Task.PlannedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             return new TaskCandidateDto
             {
                 TaskId = e.Task.Id,
@@ -219,7 +219,7 @@ public class UnplannedRunController : ControllerBase
         DateTime? tStart = task.SetupStartedAt ?? task.StartedAt;
         DateTime? tEnd = task.ClosedAt ?? task.CompletedAt;
         DateTime? firstActivity = hasCycles ? cyc!.First : tStart;
-        var taskDate = task.PlannedDate ?? task.IssuedAt ?? task.CreatedAt;
+        var taskDate = task.PlannedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
         return IsTaskAdjacentToEpisode(
             tStart, tEnd, hasCycles, firstActivity, hasCycles ? cyc!.Last : null,

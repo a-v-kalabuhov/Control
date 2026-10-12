@@ -21,7 +21,8 @@ vi.mock('@/api/personnel', () => ({
 vi.mock('@/api/tasks', () => ({
   tasksApi: {
     create: vi.fn(() => Promise.resolve({ data: {} })),
-    update: vi.fn(() => Promise.resolve({ data: {} }))
+    update: vi.fn(() => Promise.resolve({ data: {} })),
+    setPersonnel: vi.fn(() => Promise.resolve({ data: {} }))
   }
 }))
 vi.mock('@/api/orders', () => ({
@@ -91,6 +92,7 @@ describe('TaskFormModal — заказ', () => {
     wrapper.vm.form.immId = 'imm-1'
     wrapper.vm.form.planQuantity = 10
     wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
     await flushPromises()
     wrapper.vm.form.orderId = 'order-1'
 
@@ -105,7 +107,7 @@ describe('TaskFormModal — заказ', () => {
   it('при редактировании — если orderId изменился, вызывает ordersApi.setTaskOrder', async () => {
     const task = {
       id: 'task-1', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
-      planQuantity: 10, plannedDate: null, note: '', orderId: null,
+      planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null, note: '', orderId: null,
       plannedFullCycleSeconds: 60
     }
     const wrapper = mountModal({ task })
@@ -122,7 +124,7 @@ describe('TaskFormModal — заказ', () => {
   it('в режиме редактирования сама открывает форму и без ручного loadMolds подгружает заказы по типу изделия задания', async () => {
     const task = {
       id: 'task-2', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
-      planQuantity: 10, plannedDate: null, note: '', orderId: null
+      planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null, note: '', orderId: null
     }
 
     // Никакого wrapper.vm.loadMolds() здесь — только открытие формы через prop `task`,
@@ -223,6 +225,7 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     wrapper.vm.form.moldId = 'mold-1'
     wrapper.vm.form.planQuantity = 10
     wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
     await flushPromises()
 
     await wrapper.vm.handleSubmit()
@@ -252,6 +255,7 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
     wrapper.vm.form.planQuantity = 10
     wrapper.vm.form.workMode = 'SemiAuto'
     wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
     wrapper.vm.form.plannedInjectionCycleSeconds = 25
     await flushPromises()
 
@@ -305,7 +309,7 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
   it('при редактировании legacy-задания (plannedFullCycleSeconds: null) сохраняет без заполнения эталона', async () => {
     const task = {
       id: 'task-legacy', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
-      planQuantity: 10, plannedDate: null, note: '', orderId: null,
+      planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null, note: '', orderId: null,
       plannedFullCycleSeconds: null
     }
     const wrapper = mountModal({ task })
@@ -325,7 +329,7 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
   it('при редактировании заполняет поля из задания', async () => {
     const task = {
       id: 'task-3', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
-      planQuantity: 10, plannedDate: null, note: '', orderId: null,
+      planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null, note: '', orderId: null,
       workMode: 'SemiAuto', plannedFullCycleSeconds: 90,
       plannedInjectionCycleSeconds: 30
     }
@@ -338,10 +342,107 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
   })
 })
 
+describe('TaskFormModal — плановое начало и наладчик (PZP-13)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const draft = {
+    id: 't1', status: 'Draft', immId: 'imm-1', moldId: 'mold-1', personnelId: null,
+    planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: '14:00:00',
+    note: '', orderId: null, workMode: 'Auto', plannedFullCycleSeconds: 30, plannedInjectionCycleSeconds: null
+  }
+
+  it('без плановой даты форма не отправляется', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    Object.assign(wrapper.vm.form, { immId: 'imm-1', moldId: 'mold-1', planQuantity: 5, plannedFullCycleSeconds: 30, plannedDate: null })
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.create).not.toHaveBeenCalled()
+  })
+
+  it('создание без времени и без наладчика проходит', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    Object.assign(wrapper.vm.form, { immId: 'imm-1', moldId: 'mold-1', planQuantity: 5, plannedFullCycleSeconds: 30, plannedDate: '2099-01-01' })
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.create).toHaveBeenCalledWith(expect.objectContaining({
+      plannedDate: '2099-01-01', plannedSetupStartTime: null, personnelId: null
+    }))
+  })
+
+  it('очистка времени при правке шлёт clearPlannedSetupStartTime', async () => {
+    const wrapper = mountModal({ task: draft })
+    await flushPromises()
+    wrapper.vm.form.plannedSetupStartTime = null
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.update).toHaveBeenCalledWith('t1', expect.objectContaining({ clearPlannedSetupStartTime: true }))
+  })
+
+  it('установка времени при правке шлёт время и clearPlannedSetupStartTime: false', async () => {
+    const wrapper = mountModal({ task: { ...draft, plannedSetupStartTime: null } })
+    await flushPromises()
+    wrapper.vm.form.plannedSetupStartTime = '14:00:00'
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.update).toHaveBeenCalledWith('t1', expect.objectContaining({
+      plannedSetupStartTime: '14:00:00', clearPlannedSetupStartTime: false
+    }))
+  })
+
+  it('смена наладчика при правке идёт через setPersonnel', async () => {
+    const wrapper = mountModal({ task: draft })
+    await flushPromises()
+    wrapper.vm.form.personnelId = 'adj-9'
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.setPersonnel).toHaveBeenCalledWith('t1', 'adj-9')
+    expect(tasksApi.update.mock.calls[0][1]).not.toHaveProperty('personnelId')
+  })
+
+  it('setPersonnel вызывается раньше update; при отказе update не вызывается', async () => {
+    tasksApi.setPersonnel.mockRejectedValueOnce({ response: { data: 'Укажите активного наладчика' } })
+    const wrapper = mountModal({ task: draft })
+    await flushPromises()
+    wrapper.vm.form.personnelId = 'adj-9'
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.setPersonnel).toHaveBeenCalled()
+    expect(tasksApi.update).not.toHaveBeenCalled()
+
+    const w2 = mountModal({ task: draft })
+    await flushPromises()
+    w2.vm.form.personnelId = 'adj-8'
+    await w2.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.setPersonnel.mock.invocationCallOrder.at(-1))
+      .toBeLessThan(tasksApi.update.mock.invocationCallOrder.at(-1))
+  })
+
+  it('в «Выдано» выбор наладчика нельзя очистить', async () => {
+    const issued = mountModal({ task: { ...draft, status: 'Issued', personnelId: 'adj-1' } })
+    await flushPromises()
+    const sel = (w) => w.findAllComponents({ name: 'ElSelect' }).find(s => s.props('placeholder') === 'Не назначен')
+    expect(sel(issued).props('clearable')).toBe(false)
+    const planned = mountModal({ task: draft })
+    await flushPromises()
+    expect(sel(planned).props('clearable')).toBe(true)
+  })
+
+  it('в «Выдано» заблокированы все поля, кроме даты, времени и наладчика', async () => {
+    const wrapper = mountModal({ task: { ...draft, status: 'Issued', personnelId: 'adj-1' } })
+    await flushPromises()
+    expect(wrapper.vm.isLimitedEdit).toBe(true)
+    const planInput = wrapper.findAllComponents({ name: 'ElInputNumber' })[0]
+    expect(planInput.props('disabled')).toBe(true)
+  })
+})
+
 describe('TaskFormModal — сообщение после сохранения', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('после создания сообщает о черновике, а не о выдаче', async () => {
+  it('после создания сообщает, что задание планируется, а не выдано', async () => {
     const success = vi.spyOn(ElMessage, 'success')
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()
@@ -349,12 +450,13 @@ describe('TaskFormModal — сообщение после сохранения',
     wrapper.vm.form.immId = 'imm-1'
     wrapper.vm.form.planQuantity = 10
     wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
     await flushPromises()
 
     await wrapper.vm.handleSubmit()
     await flushPromises()
 
     expect(tasksApi.create).toHaveBeenCalled()
-    expect(success).toHaveBeenCalledWith('Задание создано как черновик. Чтобы наладчик его увидел, нажмите «Выдать»')
+    expect(success).toHaveBeenCalledWith('Задание создано в статусе «Планируется». Чтобы наладчик его увидел, нажмите «Выдать»')
   })
 })

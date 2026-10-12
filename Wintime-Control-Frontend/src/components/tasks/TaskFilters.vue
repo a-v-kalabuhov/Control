@@ -20,7 +20,7 @@
           class="w-52"
         >
           <el-option-group label="Активные">
-            <el-option label="Черновик" value="Draft" />
+            <el-option label="Планируется" value="Draft" />
             <el-option label="Выдано" value="Issued" />
             <el-option label="Наладка" value="Setup" />
             <el-option label="В работе" value="InProgress" />

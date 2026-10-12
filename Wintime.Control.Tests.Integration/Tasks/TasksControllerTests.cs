@@ -290,6 +290,8 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         moldId = _factory.TestMoldId,
         planQuantity = 100,
         note = "Integration test task",
+        personnelId = _factory.TestAdjusterId,
+        plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
         plannedFullCycleSeconds = 30
     };
 
@@ -303,7 +305,7 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
 
     private static async Task IssueTaskAsync(HttpClient client, Guid taskId)
     {
-        var response = await client.PostAsync($"/api/tasks/{taskId}/issue", null);
+        var response = await client.PostAsJsonAsync($"/api/tasks/{taskId}/issue", new { });
         response.EnsureSuccessStatusCode();
     }
 }

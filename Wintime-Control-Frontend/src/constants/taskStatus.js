@@ -8,7 +8,7 @@ export const TASK_STATUS = {
 }
 
 export const TASK_STATUS_LABELS = {
-  [TASK_STATUS.DRAFT]: 'Черновик',
+  [TASK_STATUS.DRAFT]: 'Планируется',
   [TASK_STATUS.ISSUED]: 'Выдано',
   [TASK_STATUS.SETUP]: 'Наладка',
   [TASK_STATUS.IN_PROGRESS]: 'В работе',

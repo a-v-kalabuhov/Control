@@ -32,7 +32,7 @@
             <el-icon class="text-gray-600 text-xl"><Edit /></el-icon>
           </div>
           <div>
-            <p class="text-sm text-gray-500">Черновики</p>
+            <p class="text-sm text-gray-500">Планируются</p>
             <p class="text-2xl font-bold text-gray-800">{{ tasksStore.draftTasks.length }}</p>
           </div>
         </div>
@@ -169,6 +169,17 @@
           </template>
         </el-table-column>
 
+        <el-table-column prop="plannedStartAt" width="150">
+          <template #header>
+            <span class="col-header" @click="handleSort('plannedStartAt')">
+              Плановое начало <span class="sort-icon">{{ sortIcon('plannedStartAt') }}</span>
+            </span>
+          </template>
+          <template #default="{ row }">
+            {{ formatPlannedStart(row) }}
+          </template>
+        </el-table-column>
+
         <el-table-column prop="issuedAt" width="160">
           <template #header>
             <span class="col-header" @click="handleSort('issuedAt')">
@@ -188,25 +199,7 @@
             >
               Детали
             </el-button>
-            <el-popconfirm
-              v-if="canIssueTask(row)"
-              :title="`${row.immName} / ${row.moldName}`"
-              confirm-button-text="Выдать"
-              cancel-button-text="Отмена"
-              confirm-button-type="warning"
-              width="260"
-              @confirm="issueTask(row)"
-            >
-              <template #reference>
-                <el-button
-                  size="small"
-                  type="warning"
-                  @click.stop
-                >
-                  Выдать
-                </el-button>
-              </template>
-            </el-popconfirm>
+            <el-button v-if="canIssueTask(row)" size="small" type="warning" @click.stop="issueTask(row)">Выдать</el-button>
             <el-button
               v-if="canEditTask(row)"
               size="small"
@@ -235,6 +228,8 @@
       @complete="completeTask"
       @close="closeTask"
     />
+
+    <IssueTaskDialog v-model="issueDialogVisible" :task="issuingTask" />
   </div>
 </template>
 
@@ -246,12 +241,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
 import { immApi } from '@/api/imm'
 import { moldsApi } from '@/api/molds'
-import { personnelApi } from '@/api/personnel'
 import TaskFilters from '@/components/tasks/TaskFilters.vue'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskProgress from '@/components/tasks/TaskProgress.vue'
 import TaskFormModal from './TaskFormModal.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
+import IssueTaskDialog from './IssueTaskDialog.vue'
+import { formatPlannedStart } from '@/utils/plannedStart'
 import dayjs from 'dayjs'
 
 const tasksStore = useTasksStore()
@@ -461,17 +457,16 @@ const closeTask = async (task, closeReason) => {
   }
 }
 
+const issueDialogVisible = ref(false)
+const issuingTask = ref(null)
+
 const canIssueTask = (task) => {
   return task.status === 'Draft' && canCreate.value
 }
 
 const issueTask = async (task) => {
-  // Параллельно проверяем актуальность ТПА, пресс-формы и наладчика
-  const checks = [
-    immApi.getById(task.immId),
-    moldsApi.getById(task.moldId),
-    task.personnelId ? personnelApi.getById(task.personnelId) : Promise.resolve(null),
-  ]
+  // Параллельно проверяем актуальность ТПА и пресс-формы; наладчик выбирается в диалоге из активных
+  const checks = [immApi.getById(task.immId), moldsApi.getById(task.moldId)]
 
   let results
   try {
@@ -481,11 +476,10 @@ const issueTask = async (task) => {
     return
   }
 
-  const [immRes, moldRes, personnelRes] = results
+  const [immRes, moldRes] = results
   const inactive = []
   if (!immRes.data.isActive)        inactive.push(`ТПА «${task.immName}»`)
   if (!moldRes.data.isActive)       inactive.push(`пресс-форма «${task.moldName}»`)
-  if (personnelRes && !personnelRes.data.isActive) inactive.push(`наладчик «${task.personnelName}»`)
 
   if (inactive.length > 0) {
     ElMessage.warning(`Переведено в архив: ${inactive.join(', ')}. Отредактируйте задание перед выдачей.`)
@@ -494,12 +488,13 @@ const issueTask = async (task) => {
     return
   }
 
-  await tasksStore.issueTask(task.id)
   detailModalVisible.value = false
+  issuingTask.value = task
+  issueDialogVisible.value = true
 }
 
 const canEditTask = (task) => {
-  return task.status === 'Draft' && canCreate.value
+  return ['Draft', 'Issued'].includes(task.status) && canCreate.value
 }
 
 const formatDate = (date) => {

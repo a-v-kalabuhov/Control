@@ -20,8 +20,8 @@ const task = {
 vi.mock('@/api/mobile', () => ({
   mobileApi: {
     getMyTasks: vi.fn(() => Promise.resolve({ data: {
-      currentShift: [task],
-      unfinished: [],
+      active: [task],
+      queue: [],
       archive: { items: [], total: 0, page: 1, pageSize: 20 }
     } })),
     getDowntimeReasons: vi.fn(() => Promise.resolve({ data: [] })),
@@ -32,12 +32,6 @@ vi.mock('@/api/mobile', () => ({
     addQuantity: vi.fn(() => Promise.resolve({ data: {} })),
     closeTask: vi.fn(() => Promise.resolve({ data: {} })),
     getTaskById: vi.fn(() => Promise.resolve({ data: task }))
-  }
-}))
-
-vi.mock('@/api/shifts', () => ({
-  shiftsApi: {
-    getShifts: vi.fn(() => Promise.resolve({ data: [] }))
   }
 }))
 
@@ -149,5 +143,39 @@ describe('MobileTasksView — предзаполнение факта при з�
 
     const [actualQtyField] = wrapper.findAllComponents({ name: 'ElInputNumber' })
     expect(actualQtyField.props('modelValue')).toBe(80)
+  })
+})
+
+describe('MobileTasksView — очередь по плановому началу (PZP-13)', () => {
+  beforeEach(() => { vi.clearAllMocks(); setActivePinia(createPinia()) })
+
+  it('показывает разделы «В работе», «Очередь» и метки', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 15, 12, 0))
+    mobileApi.getMyTasks.mockResolvedValueOnce({ data: {
+      active: [task],
+      queue: [
+        { ...task, id: 'q1', status: 'Issued', immName: 'ТПА-2', plannedDate: '2026-10-15', plannedSetupStartTime: '08:00:00',
+          plannedStartAt: new Date(2026, 9, 15, 8, 0).toISOString() },
+        { ...task, id: 'q2', status: 'Issued', immName: 'ТПА-3', plannedDate: '2026-10-15', plannedSetupStartTime: '18:00:00',
+          plannedStartAt: new Date(2026, 9, 15, 18, 0).toISOString() }
+      ],
+      archive: { items: [], total: 0, page: 1, pageSize: 20 }
+    } })
+
+    const wrapper = mount(MobileTasksView, {
+      global: { plugins: [createPinia(), ElementPlus], stubs: { QrScanner: true } }
+    })
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('В работе')
+    expect(text).toContain('Очередь')
+    expect(text).toContain('15.10 08:00')
+    expect(text).toContain('опаздывает')
+    expect(text).toContain('сегодня')
+    expect(text).not.toContain('Текущая смена')
+    expect(mobileApi.getMyTasks).toHaveBeenCalledWith(expect.not.objectContaining({ boundary: expect.anything() }))
+    vi.useRealTimers()
   })
 })

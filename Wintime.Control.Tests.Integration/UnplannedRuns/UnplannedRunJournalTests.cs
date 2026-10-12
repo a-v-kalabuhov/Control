@@ -60,7 +60,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
             db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, StartTime = start, EndTime = start.AddSeconds(60), DurationSeconds = 60, IsSuccessful = true });
 
             // задание того же ТПА, начавшееся сразу после эпизода (Setup)
-            var adj = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, SetupStartedAt = start.AddMinutes(2) };
+            var adj = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2) };
             db.ShiftTasks.Add(adj);
             // задание ДРУГОГО ТПА — не должно попасть
             db.ShiftTasks.Add(new EntityTask { ImmId = otherImm, MoldId = _factory.TestMoldId, PlanQuantity = 50, Status = TaskStatus.Setup, SetupStartedAt = start.AddMinutes(2) });
@@ -100,7 +100,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
                 MoldId = _factory.TestMoldId,
                 PlanQuantity = 50,
                 Status = TaskStatus.Completed,
-                IssuedAt = start.AddHours(-4),
+                IssuedAt = start.AddHours(-4), PlannedDate = DateOnly.FromDateTime(start.AddHours(-4)),
                 SetupStartedAt = start.AddHours(-4),
                 StartedAt = start.AddHours(-4),
                 CompletedAt = start.AddHours(-3)
@@ -141,7 +141,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
                 MoldId = _factory.TestMoldId,
                 PlanQuantity = 10,
                 Status = TaskStatus.Completed,
-                IssuedAt = start.AddMinutes(-30),
+                IssuedAt = start.AddMinutes(-30), PlannedDate = DateOnly.FromDateTime(start.AddMinutes(-30)),
                 SetupStartedAt = start.AddMinutes(-30),
                 StartedAt = start.AddMinutes(-29)
             };
@@ -154,7 +154,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
                 MoldId = _factory.TestMoldId,
                 PlanQuantity = 20,
                 Status = TaskStatus.Setup,
-                IssuedAt = start,
+                IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start),
                 SetupStartedAt = episodeEnd.AddSeconds(30)
             };
             db.ShiftTasks.Add(afterTask);
@@ -166,7 +166,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
                 MoldId = _factory.TestMoldId,
                 PlanQuantity = 30,
                 Status = TaskStatus.Completed,
-                IssuedAt = start.AddMinutes(-5),
+                IssuedAt = start.AddMinutes(-5), PlannedDate = DateOnly.FromDateTime(start.AddMinutes(-5)),
                 SetupStartedAt = start.AddMinutes(-5),
                 StartedAt = start.AddMinutes(-5),
                 CompletedAt = episodeEnd.AddMinutes(5)
