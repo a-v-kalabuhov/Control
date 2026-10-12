@@ -488,6 +488,51 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.ToTable("Orders", (string)null);
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.PlanningDefaults", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReleaseBufferFixedMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReleaseBufferPercent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SetupMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedById")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedById");
+
+                    b.ToTable("PlanningDefaults", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PlanningDefaults_ReleaseBufferFixedMinutes", "\"ReleaseBufferFixedMinutes\" BETWEEN 0 AND 1440");
+
+                            t.HasCheckConstraint("CK_PlanningDefaults_ReleaseBufferPercent", "\"ReleaseBufferPercent\" BETWEEN 0 AND 100");
+
+                            t.HasCheckConstraint("CK_PlanningDefaults_SetupMinutes", "\"SetupMinutes\" BETWEEN 0 AND 1440");
+
+                            t.HasCheckConstraint("CK_PlanningDefaults_Singleton", "\"Id\" = 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            ReleaseBufferFixedMinutes = 0,
+                            ReleaseBufferPercent = 0,
+                            SetupMinutes = 0
+                        });
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ProductType", b =>
                 {
                     b.Property<Guid>("Id")
@@ -606,8 +651,17 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<int?>("PlannedInjectionCycleSeconds")
                         .HasColumnType("integer");
 
+                    b.Property<int>("PlannedSetupMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<TimeOnly?>("PlannedSetupStartTime")
                         .HasColumnType("time without time zone");
+
+                    b.Property<int>("ReleaseBufferFixedMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReleaseBufferPercent")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("SetupStartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -634,7 +688,14 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasIndex("PersonnelId");
 
-                    b.ToTable("ShiftTasks", (string)null);
+                    b.ToTable("ShiftTasks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShiftTasks_PlannedSetupMinutes", "\"PlannedSetupMinutes\" BETWEEN 0 AND 1440");
+
+                            t.HasCheckConstraint("CK_ShiftTasks_ReleaseBufferFixedMinutes", "\"ReleaseBufferFixedMinutes\" BETWEEN 0 AND 1440");
+
+                            t.HasCheckConstraint("CK_ShiftTasks_ReleaseBufferPercent", "\"ReleaseBufferPercent\" BETWEEN 0 AND 100");
+                        });
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Telemetry", b =>
@@ -985,6 +1046,14 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("ProductType");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.PlanningDefaults", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
