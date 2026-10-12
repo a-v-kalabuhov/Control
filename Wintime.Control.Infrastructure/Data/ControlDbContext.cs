@@ -26,6 +26,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<ProductType> ProductTypes { get; set; }
     public DbSet<UnplannedRun> UnplannedRuns { get; set; }
     public DbSet<Order> Orders { get; set; }
+    public DbSet<PlanningDefaults> PlanningDefaults { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -102,7 +103,13 @@ public class ControlDbContext : IdentityDbContext<User>
         // Настройка имен таблиц (опционально, чтобы были во множественном числе)
         builder.Entity<Imm>().ToTable("Imms");
         builder.Entity<Mold>().ToTable("Molds");
-        builder.Entity<Wintime.Control.Core.Entities.ShiftTask>().ToTable("ShiftTasks");
+        builder.Entity<Wintime.Control.Core.Entities.ShiftTask>().ToTable("ShiftTasks", t =>
+        {
+            // PZP-14: пределы норматива и буфера (дублируют PlanningNormLimits на уровне БД)
+            t.HasCheckConstraint("CK_ShiftTasks_PlannedSetupMinutes", "\"PlannedSetupMinutes\" BETWEEN 0 AND 1440");
+            t.HasCheckConstraint("CK_ShiftTasks_ReleaseBufferFixedMinutes", "\"ReleaseBufferFixedMinutes\" BETWEEN 0 AND 1440");
+            t.HasCheckConstraint("CK_ShiftTasks_ReleaseBufferPercent", "\"ReleaseBufferPercent\" BETWEEN 0 AND 100");
+        });
         builder.Entity<User>().ToTable("Users");
 
         // Конфигурация ImmCycle
@@ -151,6 +158,23 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.LastHeartbeatAt).HasColumnType("timestamp with time zone");
             entity.ToTable("AppHeartbeat");
+        });
+
+        // Умолчания планирования (PZP-14, ADR-0015): одна строка, Id = 1, создаётся миграцией
+        builder.Entity<PlanningDefaults>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.UpdatedAt).HasColumnType("timestamp with time zone");
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UpdatedById).OnDelete(DeleteBehavior.SetNull);
+            entity.ToTable("PlanningDefaults", t =>
+            {
+                t.HasCheckConstraint("CK_PlanningDefaults_Singleton", "\"Id\" = 1");
+                t.HasCheckConstraint("CK_PlanningDefaults_SetupMinutes", "\"SetupMinutes\" BETWEEN 0 AND 1440");
+                t.HasCheckConstraint("CK_PlanningDefaults_ReleaseBufferFixedMinutes", "\"ReleaseBufferFixedMinutes\" BETWEEN 0 AND 1440");
+                t.HasCheckConstraint("CK_PlanningDefaults_ReleaseBufferPercent", "\"ReleaseBufferPercent\" BETWEEN 0 AND 100");
+            });
+            entity.HasData(new PlanningDefaults { Id = 1 });
         });
 
         // Конфигурация UnplannedRun (PZP-04)

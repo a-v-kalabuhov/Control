@@ -493,8 +493,9 @@ const issueTask = async (task) => {
   issueDialogVisible.value = true
 }
 
+// PZP-14: в «Наладке»/«В работе» правится только буфер выпуска
 const canEditTask = (task) => {
-  return ['Draft', 'Issued'].includes(task.status) && canCreate.value
+  return ['Draft', 'Issued', 'Setup', 'InProgress'].includes(task.status) && canCreate.value
 }
 
 const formatDate = (date) => {

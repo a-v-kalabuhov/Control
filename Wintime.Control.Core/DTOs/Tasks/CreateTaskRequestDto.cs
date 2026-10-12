@@ -24,4 +24,13 @@ public class CreateTaskRequestDto
 
     /// <summary>Эталон цикла литья, секунды. Необязателен.</summary>
     public int? PlannedInjectionCycleSeconds { get; set; }
+
+    /// <summary>Норматив наладки, минуты (PZP-14). Не передан — из умолчаний.</summary>
+    public int? PlannedSetupMinutes { get; set; }
+
+    /// <summary>Буфер выпуска: фикс. часть, минуты. Не передан — из умолчаний.</summary>
+    public int? ReleaseBufferFixedMinutes { get; set; }
+
+    /// <summary>Буфер выпуска: % от плановой длительности выпуска. Не передан — из умолчаний.</summary>
+    public int? ReleaseBufferPercent { get; set; }
 }

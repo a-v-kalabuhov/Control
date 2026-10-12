@@ -128,15 +128,15 @@ const routes = [
         ]
       },
       {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('@/views/settings/SettingsView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'Настройки' }
+      },
+      {
         path: 'admin',
         name: 'Admin',
         children: [
-          {
-            path: 'settings',
-            name: 'AdminSettings',
-            component: () => import('@/views/admin/SettingsView.vue'),
-            meta: { roles: ['Admin'], title: 'Настройки' }
-          },
           {
             path: 'templates',
             name: 'AdminTemplates',

@@ -35,6 +35,16 @@ public class TaskDto
     public Enums.WorkMode WorkMode { get; set; }
     public int? PlannedFullCycleSeconds { get; set; }
     public int? PlannedInjectionCycleSeconds { get; set; }
+    // PZP-14: норматив наладки и буфер выпуска (снапшот) + расчётный план (не хранится)
+    public int PlannedSetupMinutes { get; set; }
+    public int ReleaseBufferFixedMinutes { get; set; }
+    public int ReleaseBufferPercent { get; set; }
+    /// <summary>Плановая длительность выпуска, с (TaskPlanCalculator); null — нет эталона/гнёзд.</summary>
+    public long? PlannedReleaseSeconds { get; set; }
+    /// <summary>Буфер выпуска, с; null — нет эталона/гнёзд.</summary>
+    public long? PlannedReleaseBufferSeconds { get; set; }
+    /// <summary>Плановое окончание (начало + наладка + выпуск + буфер), UTC; null — нет эталона/гнёзд.</summary>
+    public DateTime? PlannedEndAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

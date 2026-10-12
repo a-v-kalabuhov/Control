@@ -86,12 +86,17 @@
             <span>Смены</span>
           </el-menu-item>
 
+          <!-- Настройки приложения (PZP-14): умолчания планирования -->
+          <el-menu-item v-if="canAccess(['Admin', 'Manager'])" index="/settings">
+            <el-icon><Tools /></el-icon>
+            <span>Настройки</span>
+          </el-menu-item>
+
           <el-sub-menu v-if="canAccess(['Admin'])" index="admin">
             <template #title>
               <el-icon><Setting /></el-icon>
               <span>Администрирование</span>
             </template>
-            <el-menu-item index="/admin/settings">Настройки</el-menu-item>
             <el-menu-item index="/admin/templates">Шаблоны</el-menu-item>
           </el-sub-menu>      
         </el-menu>

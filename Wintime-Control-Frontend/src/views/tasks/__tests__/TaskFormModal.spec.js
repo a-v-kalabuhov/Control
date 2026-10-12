@@ -33,10 +33,18 @@ vi.mock('@/api/orders', () => ({
     setTaskOrder: vi.fn(() => Promise.resolve({ data: {} }))
   }
 }))
+vi.mock('@/api/settings', () => ({
+  settingsApi: {
+    getPlanningDefaults: vi.fn(() => Promise.resolve({ data: {
+      setupMinutes: 30, releaseBufferFixedMinutes: 10, releaseBufferPercent: 10, updatedAt: null
+    } }))
+  }
+}))
 
 import { moldsApi } from '@/api/molds'
 import { tasksApi } from '@/api/tasks'
 import { ordersApi } from '@/api/orders'
+import { settingsApi } from '@/api/settings'
 
 function mountModal(props = {}) {
   return mount(TaskFormModal, {
@@ -458,5 +466,102 @@ describe('TaskFormModal — сообщение после сохранения',
 
     expect(tasksApi.create).toHaveBeenCalled()
     expect(success).toHaveBeenCalledWith('Задание создано в статусе «Планируется». Чтобы наладчик его увидел, нажмите «Выдать»')
+  })
+})
+
+describe('TaskFormModal — норматив наладки и буфер выпуска (PZP-14)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('при создании предзаполняет поля умолчаниями', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    expect(settingsApi.getPlanningDefaults).toHaveBeenCalled()
+    expect(wrapper.vm.form.plannedSetupMinutes).toBe(30)
+    expect(wrapper.vm.form.releaseBufferFixedMinutes).toBe(10)
+    expect(wrapper.vm.form.releaseBufferPercent).toBe(10)
+  })
+
+  it('если умолчания не загрузились, поля нормативов остаются null (сервер применит свои)', async () => {
+    settingsApi.getPlanningDefaults.mockRejectedValueOnce(new Error('network'))
+    const wrapper = mountModal()
+    await flushPromises()
+
+    expect(wrapper.vm.form.plannedSetupMinutes).toBeNull()
+    expect(wrapper.vm.form.releaseBufferFixedMinutes).toBeNull()
+    expect(wrapper.vm.form.releaseBufferPercent).toBeNull()
+  })
+
+  it('при редактировании умолчания не запрашивает и берёт значения задания', async () => {
+    const wrapper = mountModal({ task: {
+      id: 't1', status: 'Draft', immId: 'imm-1', moldId: 'mold-1', planQuantity: 100,
+      plannedDate: '2026-10-20', plannedFullCycleSeconds: 60,
+      plannedSetupMinutes: 45, releaseBufferFixedMinutes: 5, releaseBufferPercent: 20
+    } })
+    await flushPromises()
+
+    expect(settingsApi.getPlanningDefaults).not.toHaveBeenCalled()
+    expect(wrapper.vm.form.plannedSetupMinutes).toBe(45)
+    expect(wrapper.vm.form.releaseBufferFixedMinutes).toBe(5)
+    expect(wrapper.vm.form.releaseBufferPercent).toBe(20)
+  })
+
+  it('показывает предпросмотр выпуска, буфера и итога', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'          // 4 гнезда
+    wrapper.vm.form.planQuantity = 100
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    await flushPromises()
+
+    const preview = wrapper.find('[data-test="plan-preview"]').text()
+    expect(preview).toContain('Выпуск ≈ 25 мин')
+    expect(preview).toContain('буфер ≈ 13 мин')
+    expect(preview).toContain('всего с наладкой ≈ 1 ч 8 мин')
+  })
+
+  it('в «В работе» доступен только буфер', async () => {
+    const wrapper = mountModal({ task: {
+      id: 't1', status: 'InProgress', immId: 'imm-1', moldId: 'mold-1', planQuantity: 100,
+      plannedDate: '2026-10-20', plannedFullCycleSeconds: 60,
+      plannedSetupMinutes: 45, releaseBufferFixedMinutes: 5, releaseBufferPercent: 20
+    } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="plan-quantity"]').classes()).toContain('is-disabled')
+    expect(wrapper.find('[data-test="setup-minutes"]').classes()).toContain('is-disabled')
+    expect(wrapper.find('[data-test="buffer-fixed-minutes"]').classes()).not.toContain('is-disabled')
+    expect(wrapper.find('[data-test="buffer-percent"]').classes()).not.toContain('is-disabled')
+  })
+
+  it('в «Выдано» доступны и норматив, и буфер', async () => {
+    const wrapper = mountModal({ task: {
+      id: 't1', status: 'Issued', immId: 'imm-1', moldId: 'mold-1', planQuantity: 100,
+      plannedDate: '2026-10-20', plannedFullCycleSeconds: 60, personnelId: 'p1',
+      plannedSetupMinutes: 45, releaseBufferFixedMinutes: 5, releaseBufferPercent: 20
+    } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="plan-quantity"]').classes()).toContain('is-disabled')
+    expect(wrapper.find('[data-test="setup-minutes"]').classes()).not.toContain('is-disabled')
+    expect(wrapper.find('[data-test="buffer-fixed-minutes"]').classes()).not.toContain('is-disabled')
+  })
+
+  it('при сохранении шлёт норматив и буфер', async () => {
+    const wrapper = mountModal({ task: {
+      id: 't1', status: 'InProgress', immId: 'imm-1', moldId: 'mold-1', planQuantity: 100,
+      plannedDate: '2026-10-20', plannedFullCycleSeconds: 60,
+      plannedSetupMinutes: 45, releaseBufferFixedMinutes: 5, releaseBufferPercent: 20
+    } })
+    await flushPromises()
+    wrapper.vm.form.releaseBufferFixedMinutes = 40
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.update).toHaveBeenCalledWith('t1', expect.objectContaining({
+      plannedSetupMinutes: 45, releaseBufferFixedMinutes: 40, releaseBufferPercent: 20
+    }))
   })
 })

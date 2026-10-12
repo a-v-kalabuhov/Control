@@ -1,3 +1,4 @@
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Exceptions;
 using TaskStatus = Wintime.Control.Core.Enums.TaskStatus;
@@ -48,6 +49,21 @@ public class ShiftTask : BaseEntity
     /// <c>null</c> — задание начинается с начала первой смены дня (см. PlannedTaskStart).
     /// </summary>
     public TimeOnly? PlannedSetupStartTime { get; set; }
+
+    /// <summary>
+    /// Норматив наладки, минуты (PZP-14). Снапшот умолчания <see cref="PlanningDefaults"/>
+    /// на момент создания; правится до начала наладки (дальше — мерка перерасхода, BL-12).
+    /// </summary>
+    public int PlannedSetupMinutes { get; set; }
+
+    /// <summary>Буфер выпуска: фиксированная часть, минуты (PZP-14).</summary>
+    public int ReleaseBufferFixedMinutes { get; set; }
+
+    /// <summary>
+    /// Буфер выпуска: процент от плановой длительности выпуска (без наладки), целое 0..100 (PZP-14).
+    /// Буфер не хранится готовым — см. <see cref="TaskPlanCalculator"/>.
+    /// </summary>
+    public int ReleaseBufferPercent { get; set; }
     public DateTime? IssuedAt { get; set; }
     public DateTime? SetupStartedAt { get; set; }
     public DateTime? MoldVerifiedAt { get; set; }
@@ -206,6 +222,39 @@ public class ShiftTask : BaseEntity
 
         PlannedDate = date;
         PlannedSetupStartTime = time;
+    }
+
+    /// <summary>
+    /// PZP-14: норматив наладки. Менять можно до начала наладки (Draft/Issued): после старта
+    /// норматив — мерка перерасхода и задним числом не подкручивается. Неизменённое значение — no-op.
+    /// </summary>
+    public void SetSetupNorm(int minutes)
+    {
+        PlanningNormLimits.EnsureSetupMinutes(minutes);
+        if (minutes == PlannedSetupMinutes)
+            return;
+
+        if (Status is not (TaskStatus.Draft or TaskStatus.Issued))
+            throw new DomainException("Норматив наладки можно изменить только до начала наладки");
+
+        PlannedSetupMinutes = minutes;
+    }
+
+    /// <summary>
+    /// PZP-14: буфер выпуска (фикс. часть + процент). Менять можно до завершения выпуска —
+    /// планировщик перепланирует хвост, если выпуск затягивается. Неизменённое значение — no-op.
+    /// </summary>
+    public void SetReleaseBuffer(int fixedMinutes, int percent)
+    {
+        PlanningNormLimits.EnsureBuffer(fixedMinutes, percent);
+        if (fixedMinutes == ReleaseBufferFixedMinutes && percent == ReleaseBufferPercent)
+            return;
+
+        if (Status is TaskStatus.Completed or TaskStatus.Closed)
+            throw new DomainException("Буфер выпуска можно изменить только до завершения выпуска");
+
+        ReleaseBufferFixedMinutes = fixedMinutes;
+        ReleaseBufferPercent = percent;
     }
 
     /// <summary>

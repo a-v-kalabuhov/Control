@@ -23,4 +23,13 @@ public class UpdateTaskRequestDto
 
     /// <summary>Эталон цикла литья, секунды; <c>null</c> — не менять.</summary>
     public int? PlannedInjectionCycleSeconds { get; set; }
+
+    /// <summary>Норматив наладки, минуты; <c>null</c> — не менять.</summary>
+    public int? PlannedSetupMinutes { get; set; }
+
+    /// <summary>Буфер выпуска: фикс. часть, минуты; <c>null</c> — не менять.</summary>
+    public int? ReleaseBufferFixedMinutes { get; set; }
+
+    /// <summary>Буфер выпуска: процент; <c>null</c> — не менять.</summary>
+    public int? ReleaseBufferPercent { get; set; }
 }

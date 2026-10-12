@@ -18,12 +18,15 @@ public class TasksController : ControllerBase
     private readonly ControlDbContext _context;
     private readonly IEmulatorControlService _emulator;
     private readonly IFactoryClock _factoryClock;
+    private readonly IPlanningDefaultsService _planningDefaults;
 
-    public TasksController(ControlDbContext context, IEmulatorControlService emulator, IFactoryClock factoryClock)
+    public TasksController(ControlDbContext context, IEmulatorControlService emulator, IFactoryClock factoryClock,
+                           IPlanningDefaultsService planningDefaults)
     {
         _context = context;
         _emulator = emulator;
         _factoryClock = factoryClock;
+        _planningDefaults = planningDefaults;
     }
 
     /// <summary>
@@ -221,6 +224,12 @@ public class TasksController : ControllerBase
             request.PlannedInjectionCycleSeconds,
             requireFullCycle: true);
 
+        // PZP-14: норматив и буфер — снапшот умолчаний; явно переданные значения важнее.
+        var defaults = await _planningDefaults.GetAsync();
+        task.SetSetupNorm(request.PlannedSetupMinutes ?? defaults.SetupMinutes);
+        task.SetReleaseBuffer(request.ReleaseBufferFixedMinutes ?? defaults.ReleaseBufferFixedMinutes,
+                              request.ReleaseBufferPercent ?? defaults.ReleaseBufferPercent);
+
         if (request.OrderId.HasValue)
         {
             var (order, error) = await ResolveOrderForBindingAsync(request.OrderId.Value, mold.ProductTypeId);
@@ -232,6 +241,7 @@ public class TasksController : ControllerBase
         if (!string.IsNullOrWhiteSpace(request.PersonnelId) && !await IsActiveAdjusterAsync(request.PersonnelId))
             return BadRequest("Укажите активного наладчика");
 
+        task.Mold = mold;
         _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
 
@@ -278,6 +288,14 @@ public class TasksController : ControllerBase
                 request.PlannedFullCycleSeconds ?? task.PlannedFullCycleSeconds,
                 request.PlannedInjectionCycleSeconds ?? task.PlannedInjectionCycleSeconds,
                 requireFullCycle: false);
+        }
+        if (request.PlannedSetupMinutes.HasValue)
+            task.SetSetupNorm(request.PlannedSetupMinutes.Value);
+        if (request.ReleaseBufferFixedMinutes.HasValue || request.ReleaseBufferPercent.HasValue)
+        {
+            // Не переданная часть буфера сохраняет текущее значение задания.
+            task.SetReleaseBuffer(request.ReleaseBufferFixedMinutes ?? task.ReleaseBufferFixedMinutes,
+                                  request.ReleaseBufferPercent ?? task.ReleaseBufferPercent);
         }
         await _context.SaveChangesAsync();
 

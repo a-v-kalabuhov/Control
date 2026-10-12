@@ -35,6 +35,18 @@
         <el-descriptions-item label="Цикл литья">
           {{ task?.plannedInjectionCycleSeconds ? `${task.plannedInjectionCycleSeconds} с` : '—' }}
         </el-descriptions-item>
+        <el-descriptions-item label="Норматив наладки">
+          {{ task ? formatDuration((task.plannedSetupMinutes ?? 0) * 60) : '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="Выпуск (расчёт)">
+          {{ formatDuration(task?.plannedReleaseSeconds) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="Буфер выпуска">
+          {{ bufferLabel }}
+        </el-descriptions-item>
+        <el-descriptions-item label="Плановое окончание">
+          {{ formatDate(task?.plannedEndAt) }}
+        </el-descriptions-item>
         <el-descriptions-item label="Начато">
           {{ formatDate(task?.startedAt) }}
         </el-descriptions-item>
@@ -125,6 +137,7 @@ import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskProgress from '@/components/tasks/TaskProgress.vue'
 import { formatPlannedStart } from '@/utils/plannedStart'
 import dayjs from 'dayjs'
+import { formatDuration } from '@/utils/taskPlan'
 
 const props = defineProps({
   modelValue: {
@@ -153,7 +166,8 @@ const visible = computed({
 
 const canEdit = computed(() => {
   if (!props.task) return false
-  return ['Draft', 'Issued'].includes(props.task.status) && authStore.isManager
+  // PZP-14: в «Наладке»/«В работе» форма открывается в режиме «только буфер»
+  return ['Draft', 'Issued', 'Setup', 'InProgress'].includes(props.task.status) && authStore.isManager
 })
 
 const canIssue = computed(() => {
@@ -174,6 +188,13 @@ const canClose = computed(() => {
 const workModeLabel = computed(() => {
   if (!props.task?.workMode) return '—'
   return props.task.workMode === 'SemiAuto' ? 'Полуавтомат' : 'Автомат'
+})
+
+// PZP-14: буфер с расшифровкой формулы «фикс. мин + % от выпуска»
+const bufferLabel = computed(() => {
+  const seconds = props.task?.plannedReleaseBufferSeconds
+  if (seconds === null || seconds === undefined) return '—'
+  return `${formatDuration(seconds)} (${props.task.releaseBufferFixedMinutes} мин + ${props.task.releaseBufferPercent} %)`
 })
 
 const formatDate = (date) => {
