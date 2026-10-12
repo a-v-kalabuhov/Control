@@ -380,6 +380,17 @@ describe('TaskFormModal — плановое начало и наладчик (P
     expect(tasksApi.update).toHaveBeenCalledWith('t1', expect.objectContaining({ clearPlannedSetupStartTime: true }))
   })
 
+  it('установка времени при правке шлёт время и clearPlannedSetupStartTime: false', async () => {
+    const wrapper = mountModal({ task: { ...draft, plannedSetupStartTime: null } })
+    await flushPromises()
+    wrapper.vm.form.plannedSetupStartTime = '14:00:00'
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.update).toHaveBeenCalledWith('t1', expect.objectContaining({
+      plannedSetupStartTime: '14:00:00', clearPlannedSetupStartTime: false
+    }))
+  })
+
   it('смена наладчика при правке идёт через setPersonnel', async () => {
     const wrapper = mountModal({ task: draft })
     await flushPromises()

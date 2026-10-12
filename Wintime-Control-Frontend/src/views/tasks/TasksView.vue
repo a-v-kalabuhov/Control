@@ -474,7 +474,7 @@ const closeTask = async (task, closeReason) => {
 }
 
 const canIssueTask = (task) => {
-  return ['Draft', 'Issued'].includes(task.status) && canCreate.value
+  return task.status === 'Draft' && canCreate.value
 }
 
 const issueTask = async (task) => {

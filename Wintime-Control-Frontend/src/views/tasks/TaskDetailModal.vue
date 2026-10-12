@@ -170,7 +170,7 @@ const canEdit = computed(() => {
 
 const canIssue = computed(() => {
   if (!props.task) return false
-  return ['Draft', 'Issued'].includes(props.task.status) && authStore.isManager
+  return props.task.status === 'Draft' && authStore.isManager
 })
 
 const canComplete = computed(() => {
