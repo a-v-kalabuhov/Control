@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import TaskFormModal from '../TaskFormModal.vue'
 
 vi.mock('@/api/imm', () => ({
@@ -436,5 +436,27 @@ describe('TaskFormModal — плановое начало и наладчик (P
     expect(wrapper.vm.isLimitedEdit).toBe(true)
     const planInput = wrapper.findAllComponents({ name: 'ElInputNumber' })[0]
     expect(planInput.props('disabled')).toBe(true)
+  })
+})
+
+describe('TaskFormModal — сообщение после сохранения', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('после создания сообщает, что задание планируется, а не выдано', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalled()
+    expect(success).toHaveBeenCalledWith('Задание создано в статусе «Планируется». Чтобы наладчик его увидел, нажмите «Выдать»')
   })
 })

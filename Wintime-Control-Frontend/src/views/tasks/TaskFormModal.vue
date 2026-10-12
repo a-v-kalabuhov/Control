@@ -476,7 +476,7 @@ const handleSubmit = async () => {
         ElMessage.success('Задание обновлено')
       } else {
         await tasksApi.create({ ...form, personnelId: form.personnelId || null })
-        ElMessage.success('Задание создано')
+        ElMessage.success('Задание создано в статусе «Планируется». Чтобы наладчик его увидел, нажмите «Выдать»')
       }
 
       visible.value = false
