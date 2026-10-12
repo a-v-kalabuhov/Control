@@ -250,9 +250,9 @@ public class TasksController : ControllerBase
             return NotFound();
 
         if (request.PlanQuantity.HasValue)
-            task.PlanQuantity = request.PlanQuantity.Value;
+            task.SetPlanQuantity(request.PlanQuantity.Value);
         if (request.Note != null)
-            task.Note = request.Note;
+            task.SetNote(request.Note);
         bool planTouched = request.PlannedDate.HasValue
                         || request.PlannedSetupStartTime.HasValue
                         || request.ClearPlannedSetupStartTime;
@@ -279,9 +279,6 @@ public class TasksController : ControllerBase
                 request.PlannedInjectionCycleSeconds ?? task.PlannedInjectionCycleSeconds,
                 requireFullCycle: false);
         }
-        if (request.Status.HasValue)
-            task.Status = request.Status.Value;
-
         await _context.SaveChangesAsync();
 
         return NoContent();

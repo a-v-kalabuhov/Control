@@ -14,7 +14,6 @@ public class UpdateTaskRequestDto
 
     /// <summary>Явно очистить время начала наладки (в PUT <c>null</c> означает «не менять»).</summary>
     public bool ClearPlannedSetupStartTime { get; set; }
-    public Enums.TaskStatus? Status { get; set; }
 
     /// <summary>Рабочий режим; <c>null</c> — не менять.</summary>
     public WorkMode? WorkMode { get; set; }
