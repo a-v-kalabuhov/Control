@@ -90,6 +90,28 @@ public class TaskPlanCalculatorTests
 
         plan.ReleaseSeconds.Should().Be(86_400_000_000L);
         plan.BufferSeconds.Should().Be(86_400_000_000L);
+        plan.PlannedEndAt.Should().Be(Start.AddSeconds(2 * 86_400_000_000L));
+    }
+
+    [Fact]
+    public void Calculate_EndBeyondDateTimeMax_EndIsNullButDurationsKnown()
+    {
+        var act = () => TaskPlanCalculator.Calculate(Start, 0, int.MaxValue, 1, 86_400, 0, 0);
+
+        var plan = act.Should().NotThrow().Subject;
+        plan.ReleaseSeconds.Should().Be(int.MaxValue * 86_400L);
+        plan.PlannedEndAt.Should().BeNull();
+    }
+
+    [Fact]
+    public void Calculate_ArithmeticOverflow_ReturnsNotComputable()
+    {
+        var act = () => TaskPlanCalculator.Calculate(Start, 0, int.MaxValue, 1, int.MaxValue, 0, 100);
+
+        var plan = act.Should().NotThrow().Subject;
+        plan.ReleaseSeconds.Should().BeNull();
+        plan.BufferSeconds.Should().BeNull();
+        plan.PlannedEndAt.Should().BeNull();
     }
 
     [Theory]

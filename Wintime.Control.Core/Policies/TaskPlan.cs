@@ -2,7 +2,8 @@ namespace Wintime.Control.Core.Policies;
 
 /// <summary>
 /// Плановые длительности задания (PZP-14), секунды. <c>null</c> — выпуск не посчитать
-/// (нет эталона полного цикла или гнёзд), тогда неизвестны и буфер, и окончание.
+/// (нет эталона полного цикла или гнёзд, либо значения вне вычислимого диапазона), тогда неизвестны и буфер, и окончание.
+/// Если длительности вычислимы, но окончание выходит за <see cref="DateTime.MaxValue"/>, <c>PlannedEndAt</c> = <c>null</c>.
 /// </summary>
 public sealed record TaskPlan(long SetupSeconds, long? ReleaseSeconds, long? BufferSeconds, DateTime? PlannedEndAt);
 
@@ -23,10 +24,24 @@ public static class TaskPlanCalculator
         if (fullCycleSeconds is not int cycle || cavities <= 0)
             return new TaskPlan(setupSeconds, null, null, null);
 
-        long shots = ((long)planQuantity + cavities - 1) / cavities;
-        long releaseSeconds = shots * cycle;
-        long bufferSeconds = bufferFixedMinutes * 60L + (releaseSeconds * bufferPercent + 99) / 100;
-        var end = plannedStartUtc.AddSeconds(setupSeconds + releaseSeconds + bufferSeconds);
+        long releaseSeconds, bufferSeconds, totalSeconds;
+        try
+        {
+            checked
+            {
+                long shots = ((long)planQuantity + cavities - 1) / cavities;
+                releaseSeconds = shots * cycle;
+                bufferSeconds = bufferFixedMinutes * 60L + (releaseSeconds * bufferPercent + 99) / 100;
+                totalSeconds = setupSeconds + releaseSeconds + bufferSeconds;
+            }
+        }
+        catch (OverflowException)
+        {
+            return new TaskPlan(setupSeconds, null, null, null);
+        }
+
+        long remainingSeconds = (DateTime.MaxValue - plannedStartUtc).Ticks / TimeSpan.TicksPerSecond;
+        DateTime? end = totalSeconds <= remainingSeconds ? plannedStartUtc.AddSeconds(totalSeconds) : null;
 
         return new TaskPlan(setupSeconds, releaseSeconds, bufferSeconds, end);
     }
