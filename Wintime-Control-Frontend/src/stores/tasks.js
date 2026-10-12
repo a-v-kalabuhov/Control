@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage } from 'element-plus'
+import { isPlannedStartOverdue } from '@/utils/plannedStart'
 
 export const useTasksStore = defineStore('tasks', {
   state: () => ({
@@ -29,20 +30,8 @@ export const useTasksStore = defineStore('tasks', {
     // Задания в черновиках
     draftTasks: (state) => state.tasks.filter(t => t.status === 'Draft'),
 
-    // Задания с просрочкой
-    overdueTasks: (state) => {
-      const now = new Date()
-      return state.tasks.filter(t => {
-        if (t.status === 'Completed' || t.status === 'Closed') return false
-        if (t.plannedDate) {
-          const endOfDay = new Date(t.plannedDate)
-          endOfDay.setHours(23, 59, 59, 999)
-          return now > endOfDay
-        }
-        if (!t.issuedAt) return false
-        return (now - new Date(t.issuedAt)) / (1000 * 60 * 60) > 12
-      })
-    },
+    // Просрочено: задание не начато, а плановое начало прошло (PZP-13)
+    overdueTasks: (state) => state.tasks.filter(t => isPlannedStartOverdue(t)),
 
     // Фильтрованный список
     filteredTasks: (state) => {
@@ -117,9 +106,9 @@ export const useTasksStore = defineStore('tasks', {
     },
 
     // Выдача задания (Draft → Issued)
-    async issueTask(id) {
+    async issueTask(id, personnelId) {
       try {
-        await tasksApi.issue(id)
+        await tasksApi.issue(id, personnelId)
         await this.loadTasks()
         ElMessage.success('Задание выдано в работу')
         return { success: true }

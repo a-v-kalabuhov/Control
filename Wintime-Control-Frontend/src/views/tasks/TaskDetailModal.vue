@@ -11,6 +11,9 @@
         <el-descriptions-item label="Статус">
           <TaskStatusBadge :status="task?.status" />
         </el-descriptions-item>
+        <el-descriptions-item label="Плановое начало">
+          {{ task ? formatPlannedStart(task) : '—' }}
+        </el-descriptions-item>
         <el-descriptions-item label="Выдано">
           {{ formatDate(task?.issuedAt) }}
         </el-descriptions-item>
@@ -132,6 +135,7 @@ import { ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskProgress from '@/components/tasks/TaskProgress.vue'
+import { formatPlannedStart } from '@/utils/plannedStart'
 import dayjs from 'dayjs'
 
 const props = defineProps({

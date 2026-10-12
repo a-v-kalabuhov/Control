@@ -37,8 +37,14 @@ export const tasksApi = {
   },
 
   // Выдать задание (Draft → Issued)
-  issue(id) {
-    return apiClient.post(`/tasks/${id}/issue`)
+  // Выдать задание (Draft → Issued); personnelId — назначить наладчика в той же операции
+  issue(id, personnelId) {
+    return apiClient.post(`/tasks/${id}/issue`, { personnelId: personnelId ?? null })
+  },
+
+  // Назначить/переназначить/снять наладчика (null — снять, только в «Планируется»)
+  setPersonnel(id, personnelId) {
+    return apiClient.put(`/tasks/${id}/personnel`, { personnelId: personnelId || null })
   },
 
   // Удалить задание (отмена)

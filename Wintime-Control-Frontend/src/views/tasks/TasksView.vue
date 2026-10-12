@@ -32,7 +32,7 @@
             <el-icon class="text-gray-600 text-xl"><Edit /></el-icon>
           </div>
           <div>
-            <p class="text-sm text-gray-500">Черновики</p>
+            <p class="text-sm text-gray-500">Планируются</p>
             <p class="text-2xl font-bold text-gray-800">{{ tasksStore.draftTasks.length }}</p>
           </div>
         </div>
@@ -169,6 +169,17 @@
           </template>
         </el-table-column>
 
+        <el-table-column prop="plannedStartAt" width="150">
+          <template #header>
+            <span class="col-header" @click="handleSort('plannedStartAt')">
+              Плановое начало <span class="sort-icon">{{ sortIcon('plannedStartAt') }}</span>
+            </span>
+          </template>
+          <template #default="{ row }">
+            {{ formatPlannedStart(row) }}
+          </template>
+        </el-table-column>
+
         <el-table-column prop="issuedAt" width="160">
           <template #header>
             <span class="col-header" @click="handleSort('issuedAt')">
@@ -252,6 +263,7 @@ import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskProgress from '@/components/tasks/TaskProgress.vue'
 import TaskFormModal from './TaskFormModal.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
+import { formatPlannedStart } from '@/utils/plannedStart'
 import dayjs from 'dayjs'
 
 const tasksStore = useTasksStore()
