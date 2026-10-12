@@ -68,20 +68,14 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
-    /// Мои задания — для текущего наладчика (по JWT), разложенные по разделам планшетного интерфейса.
+    /// Мои задания — для текущего наладчика (по JWT): в работе, очередь по плановому началу, архив.
     /// </summary>
-    /// <param name="boundary">
-    /// Граница текущей смены (ISO 8601, UTC). Задания, выданные в этот момент и позже, относятся
-    /// к текущей смене; выданные раньше — к прошедшим. Фронтенд вычисляет границу из расписания смен.
-    /// Если не задана — используется текущий момент сервера.
-    /// </param>
     /// <param name="search">Фильтр по названию ТПА или пресс-формы (регистронезависимый).</param>
     /// <param name="archivePage">Номер страницы архива (с 1).</param>
     /// <param name="archivePageSize">Размер страницы архива.</param>
     [HttpGet("my")]
     [Authorize(Roles = $"{Roles.Adjuster},{Roles.Manager},{Roles.Admin}")]
     public async Task<ActionResult<MyTasksDto>> GetMyTasks(
-        [FromQuery] string? boundary = null,
         [FromQuery] string? search = null,
         [FromQuery] int archivePage = 1,
         [FromQuery] int archivePageSize = 20)
@@ -89,13 +83,6 @@ public class TasksController : ControllerBase
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
-
-        // Граница смены приходит как UTC ISO ('…Z'); парсим инстант, сохраняя Kind=Utc для Npgsql.
-        var boundaryUtc = DateTimeOffset.TryParse(
-            boundary, System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.RoundtripKind, out var parsed)
-            ? parsed.UtcDateTime
-            : DateTime.UtcNow;
 
         if (archivePage < 1) archivePage = 1;
         if (archivePageSize < 1) archivePageSize = 20;
@@ -115,40 +102,36 @@ public class TasksController : ControllerBase
                 EF.Functions.ILike(t.Mold.Name, pattern));
         }
 
-        // Текущая смена: выдано на границе смены и позже (любой статус).
-        // null IssuedAt быть не должно у не-черновиков, но на всякий случай относим к текущей смене,
-        // чтобы такое задание не потерялось ни в одном разделе.
-        var currentShift = await baseQuery
-            .Where(t => t.IssuedAt == null || t.IssuedAt >= boundaryUtc)
-            .OrderByDescending(t => t.IssuedAt)
-            .ToListAsync();
+        var schedule = await _factoryClock.GetScheduleAsync();
 
-        var pastQuery = baseQuery.Where(t => t.IssuedAt != null && t.IssuedAt < boundaryUtc);
-
-        // Незавершённые с прошедших смен — оставшаяся работа, оформляем по возрастанию давности.
-        var unfinished = await pastQuery
-            .Where(t => t.Status == Core.Enums.TaskStatus.Issued
-                     || t.Status == Core.Enums.TaskStatus.Setup
+        var active = await baseQuery
+            .Where(t => t.Status == Core.Enums.TaskStatus.Setup
                      || t.Status == Core.Enums.TaskStatus.InProgress)
-            .OrderBy(t => t.IssuedAt)
+            .OrderBy(t => t.SetupStartedAt)
             .ToListAsync();
 
-        // Архив — завершённые/закрытые задания прошедших смен, с пагинацией.
-        var archiveQuery = pastQuery.Where(t => t.Status == Core.Enums.TaskStatus.Completed
-                                             || t.Status == Core.Enums.TaskStatus.Closed);
+        // Плановое начало вычисляется (PlannedTaskStart), поэтому сортируем в памяти:
+        // выданных заданий у одного наладчика — единицы.
+        var queue = (await baseQuery
+                .Where(t => t.Status == Core.Enums.TaskStatus.Issued)
+                .ToListAsync())
+            .Select(t => t.ToDto(schedule))
+            .OrderBy(d => d.PlannedStartAt)
+            .ToList();
 
+        var archiveQuery = baseQuery.Where(t => t.Status == Core.Enums.TaskStatus.Completed
+                                             || t.Status == Core.Enums.TaskStatus.Closed);
         var archiveTotal = await archiveQuery.CountAsync();
         var archiveItems = await archiveQuery
-            .OrderByDescending(t => t.IssuedAt)
+            .OrderByDescending(t => t.CompletedAt ?? t.ClosedAt)
             .Skip((archivePage - 1) * archivePageSize)
             .Take(archivePageSize)
             .ToListAsync();
 
-        var schedule = await _factoryClock.GetScheduleAsync();
         return Ok(new MyTasksDto
         {
-            CurrentShift = currentShift.Select(t => t.ToDto(schedule)).ToList(),
-            Unfinished = unfinished.Select(t => t.ToDto(schedule)).ToList(),
+            Active = active.Select(t => t.ToDto(schedule)).ToList(),
+            Queue = queue,
             Archive = new PagedTasksDto
             {
                 Items = archiveItems.Select(t => t.ToDto(schedule)).ToList(),
