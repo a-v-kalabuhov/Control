@@ -96,19 +96,7 @@
           >
             Редактировать
           </el-button>
-          <el-popconfirm
-            v-if="canIssue"
-            title="Выдать задание в работу?"
-            confirm-button-text="Выдать"
-            cancel-button-text="Отмена"
-            confirm-button-type="warning"
-            width="240"
-            @confirm="$emit('issue', task)"
-          >
-            <template #reference>
-              <el-button type="warning">Выдать</el-button>
-            </template>
-          </el-popconfirm>
+          <el-button v-if="canIssue" type="warning" @click="$emit('issue', task)">Выдать</el-button>
           <el-button
             v-if="canComplete"
             type="success"
