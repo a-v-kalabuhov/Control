@@ -24,7 +24,11 @@ public static class UnplannedRunAdjacency
         => taskLastCycleEnd <= episodeStart
         && (episodeStart - taskLastCycleEnd).TotalSeconds < ToleranceFactor * avgCycleSeconds;
 
-    /// <summary>Дата задания (без времени) совпадает с датой начала эпизода (UTC).</summary>
-    public static bool SameDate(DateTime taskDate, DateTime episodeStart)
-        => taskDate.Date == episodeStart.Date;
+    /// <summary>
+    /// Плановая дата задания совпадает с датой начала эпизода по часам завода (BL-38):
+    /// эпизод ночной смены после местной полуночи относится к новым суткам завода, а не к UTC-дате.
+    /// </summary>
+    public static bool SameDate(DateOnly plannedDate, DateTime episodeStartUtc, TimeZoneInfo factoryTz)
+        => plannedDate == DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(episodeStartUtc, DateTimeKind.Utc), factoryTz));
 }

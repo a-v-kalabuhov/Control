@@ -34,7 +34,23 @@ public class UnplannedRunAdjacencyTests
     public void AdjacentBefore_false_when_gap_at_or_above_threshold()
         => UnplannedRunAdjacency.AdjacentBefore(E0.AddSeconds(-90), E0, Avg).Should().BeFalse();
 
+    private static readonly TimeZoneInfo Moscow = TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow");
+
     [Fact]
-    public void SameDate_true_when_same_calendar_day_utc()
-        => UnplannedRunAdjacency.SameDate(new DateTime(2026, 7, 25, 23, 59, 0, DateTimeKind.Utc), E0).Should().BeTrue();
+    public void SameDate_true_when_planned_date_equals_factory_date_of_episode()
+        => UnplannedRunAdjacency.SameDate(new DateOnly(2026, 7, 25), E0, Moscow).Should().BeTrue();
+
+    [Fact]
+    public void SameDate_false_when_planned_date_differs()
+        => UnplannedRunAdjacency.SameDate(new DateOnly(2026, 7, 24), E0, Moscow).Should().BeFalse();
+
+    // BL-38: эпизод ночной смены 01:30 МСК 16.10 = 22:30 UTC 15.10 — дата завода 16.10, а не UTC-дата 15.10.
+    [Fact]
+    public void SameDate_uses_factory_date_for_night_episode()
+    {
+        var nightEpisode = new DateTime(2026, 10, 15, 22, 30, 0, DateTimeKind.Utc);
+
+        UnplannedRunAdjacency.SameDate(new DateOnly(2026, 10, 16), nightEpisode, Moscow).Should().BeTrue();
+        UnplannedRunAdjacency.SameDate(new DateOnly(2026, 10, 15), nightEpisode, Moscow).Should().BeFalse();
+    }
 }

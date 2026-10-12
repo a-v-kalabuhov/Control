@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.DTOs.UnplannedRun;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
+using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
@@ -192,5 +193,43 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
         candidates!.Select(c => c.TaskId).Should().Contain(new[] { overlapTaskId, afterTaskId, beforeTaskId });
         var recommended = candidates.Single(c => c.Recommended);
         recommended.TaskId.Should().Be(overlapTaskId);
+    }
+
+    // BL-38: эпизод ночной смены (22:30 UTC = 01:30 МСК следующих суток). Задание «задним числом»
+    // (без циклов) сопоставляется по дате завода, а не по UTC-дате начала эпизода.
+    [Fact]
+    public async Task Candidates_backdated_task_matched_by_factory_date_for_night_episode()
+    {
+        var immId = await _factory.CreateFreshImmAsync();
+        var start = new DateTime(2026, 10, 15, 22, 30, 0, DateTimeKind.Utc);
+        Guid runId, factoryDateTaskId;
+        DateOnly factoryDate;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var schedule = await scope.ServiceProvider.GetRequiredService<IFactoryClock>().GetScheduleAsync();
+            factoryDate = DateOnly.FromDateTime(schedule.ToLocal(start));
+            var utcDate = DateOnly.FromDateTime(start);
+            factoryDate.Should().NotBe(utcDate, "тест имеет смысл только для пояса завода восточнее UTC");
+
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var run = new UnplannedRun { ImmId = immId, StartTime = start, ClosedAt = start.AddMinutes(2) };
+            db.UnplannedRuns.Add(run);
+            db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, StartTime = start, EndTime = start.AddSeconds(60), DurationSeconds = 60, IsSuccessful = true });
+
+            var factoryDateTask = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 10, Status = TaskStatus.Issued, PlannedDate = factoryDate };
+            var utcDateTask = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 20, Status = TaskStatus.Issued, PlannedDate = utcDate };
+            db.ShiftTasks.AddRange(factoryDateTask, utcDateTask);
+            await db.SaveChangesAsync();
+            runId = run.Id;
+            factoryDateTaskId = factoryDateTask.Id;
+        }
+
+        var client = _factory.CreateClient();
+        var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
+        AuthHelper.SetBearerToken(client, token!);
+        var candidates = await client.GetFromJsonAsync<List<TaskCandidateDto>>($"/api/unplanned-runs/{runId}/candidates");
+
+        candidates!.Select(c => c.TaskId).Should().Equal(factoryDateTaskId);
+        candidates!.Single().Label.Should().Contain(factoryDate.ToString("dd.MM.yyyy"));
     }
 }

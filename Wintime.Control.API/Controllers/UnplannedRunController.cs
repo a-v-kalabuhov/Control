@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.DTOs.UnplannedRun;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
@@ -16,7 +17,13 @@ namespace Wintime.Control.API.Controllers;
 public class UnplannedRunController : ControllerBase
 {
     private readonly ControlDbContext _context;
-    public UnplannedRunController(ControlDbContext context) => _context = context;
+    private readonly IFactoryClock _factoryClock;
+
+    public UnplannedRunController(ControlDbContext context, IFactoryClock factoryClock)
+    {
+        _context = context;
+        _factoryClock = factoryClock;
+    }
 
     /// <summary>Журнал эпизодов «работы без задания» с деривированными агрегатами.</summary>
     [HttpGet]
@@ -79,6 +86,7 @@ public class UnplannedRunController : ControllerBase
         var agg = await ComputeAggregatesAsync(run.ImmId, run.StartTime, run.ClosedAt, run.AssignedTaskId);
         var episodeEnd = run.ClosedAt ?? agg.EndTime ?? run.StartTime;
         var avg = agg.AvgCycleDuration > 0 ? agg.AvgCycleDuration : 1; // защита от деления/нулевого порога
+        var factoryTz = (await _factoryClock.GetScheduleAsync()).TimeZone;
 
         // Все задания этого ТПА + агрегаты их циклов (первый/последний цикл, число)
         var tasks = await _context.ShiftTasks
@@ -103,7 +111,6 @@ public class UnplannedRunController : ControllerBase
 
             DateTime? tStart = t.SetupStartedAt ?? t.StartedAt;
             DateTime? tEnd = t.ClosedAt ?? t.CompletedAt;
-            var taskDate = t.PlannedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
             bool overlaps = tStart.HasValue && tEnd.HasValue
                 && UnplannedRunAdjacency.Overlaps(tStart.Value, tEnd.Value, run.StartTime, episodeEnd);
@@ -115,7 +122,7 @@ public class UnplannedRunController : ControllerBase
 
             bool isEligible = IsTaskAdjacentToEpisode(
                 tStart, tEnd, hasCycles, firstActivity, hasCycles ? cyc!.Last : null,
-                taskDate, run.StartTime, episodeEnd, avg);
+                t.PlannedDate, factoryTz, run.StartTime, episodeEnd, avg);
 
             if (!isEligible)
                 continue;
@@ -132,11 +139,10 @@ public class UnplannedRunController : ControllerBase
 
         var candidates = eligible.Select(e =>
         {
-            var taskDate = e.Task.PlannedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             return new TaskCandidateDto
             {
                 TaskId = e.Task.Id,
-                Label = $"{e.Task.Mold.Name} · план {e.Task.PlanQuantity} · {taskDate:dd.MM.yyyy}",
+                Label = $"{e.Task.Mold.Name} · план {e.Task.PlanQuantity} · {e.Task.PlannedDate:dd.MM.yyyy}",
                 PersonnelName = e.Task.Personnel?.FullName,
                 Recommended = e.Task.Id == recommendedId
             };
@@ -219,11 +225,11 @@ public class UnplannedRunController : ControllerBase
         DateTime? tStart = task.SetupStartedAt ?? task.StartedAt;
         DateTime? tEnd = task.ClosedAt ?? task.CompletedAt;
         DateTime? firstActivity = hasCycles ? cyc!.First : tStart;
-        var taskDate = task.PlannedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var factoryTz = (await _factoryClock.GetScheduleAsync()).TimeZone;
 
         return IsTaskAdjacentToEpisode(
             tStart, tEnd, hasCycles, firstActivity, hasCycles ? cyc!.Last : null,
-            taskDate, episodeStart, episodeEnd, avg);
+            task.PlannedDate, factoryTz, episodeStart, episodeEnd, avg);
     }
 
     /// <summary>
@@ -234,7 +240,7 @@ public class UnplannedRunController : ControllerBase
     private static bool IsTaskAdjacentToEpisode(
         DateTime? taskWorkStart, DateTime? taskWorkEnd,
         bool hasCycles, DateTime? firstActivity, DateTime? lastCycleEnd,
-        DateTime taskDate,
+        DateOnly plannedDate, TimeZoneInfo factoryTz,
         DateTime episodeStart, DateTime episodeEnd, double avgCycleSeconds)
     {
         bool overlaps = taskWorkStart.HasValue && taskWorkEnd.HasValue
@@ -243,7 +249,7 @@ public class UnplannedRunController : ControllerBase
             && UnplannedRunAdjacency.AdjacentAfter(firstActivity.Value, episodeEnd, avgCycleSeconds);
         bool before = hasCycles && lastCycleEnd.HasValue
             && UnplannedRunAdjacency.AdjacentBefore(lastCycleEnd.Value, episodeStart, avgCycleSeconds);
-        bool backdated = !hasCycles && UnplannedRunAdjacency.SameDate(taskDate, episodeStart);
+        bool backdated = !hasCycles && UnplannedRunAdjacency.SameDate(plannedDate, episodeStart, factoryTz);
 
         return overlaps || after || before || backdated;
     }
