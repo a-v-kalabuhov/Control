@@ -182,7 +182,7 @@
 
 ```csharp
 public sealed record TaskPlan(
-    TimeSpan Setup, TimeSpan? Release, TimeSpan? Buffer, DateTime? PlannedEndAt);
+    long SetupSeconds, long? ReleaseSeconds, long? BufferSeconds, DateTime? PlannedEndAt);
 
 public static class TaskPlanCalculator
 {
@@ -197,7 +197,7 @@ public static class TaskPlanCalculator
 - `Release = ⌈planQuantity / cavities⌉ × fullCycleSeconds` (целочисленное деление с округлением
   вверх). Если `fullCycleSeconds` равен `null` или `cavities ≤ 0` → `Release = Buffer =
   PlannedEndAt = null`.
-- `Buffer = bufferFixedMinutes + Release × bufferPercent / 100`, в секундах без округления.
+- `Buffer = bufferFixedMinutes + Release × bufferPercent / 100`, в целых секундах: процентная часть округляется вверх до секунды (так же считает фронт).
   Процент берётся только от `Release` — норматив наладки в базу процента не входит.
 - `PlannedEndAt = plannedStartUtc + Setup + Release + Buffer` (UTC).
 - Основа — плановое начало, а не факт. Остаток буфера и прогноз по факту относятся к PZP-07/BL-32.
@@ -218,8 +218,8 @@ public static class TaskPlanCalculator
   пришёл, меняется через `SetSetupNorm`. Буфер меняется через `SetReleaseBuffer`, если пришла
   хотя бы одна часть; недостающая часть берётся из задания.
 - **`TaskDto`** (+ `TaskMappingExtensions.ToDto`): `PlannedSetupMinutes`,
-  `ReleaseBufferFixedMinutes`, `ReleaseBufferPercent`, `PlannedReleaseSeconds` (`int?`),
-  `PlannedReleaseBufferSeconds` (`int?`), `PlannedEndAt` (`DateTime?`, UTC). Маппингу нужен
+  `ReleaseBufferFixedMinutes`, `ReleaseBufferPercent`, `PlannedReleaseSeconds` (`long?`),
+  `PlannedReleaseBufferSeconds` (`long?`; `long` — план до 10⁶ шт. × цикл до 86 400 с не влезает в `int`), `PlannedEndAt` (`DateTime?`, UTC). Маппингу нужен
   `Mold.Cavities`. Все запросы, которые отдают `TaskDto`, проверить на `Include(t => t.Mold)`
   и добавить, где его нет.
 
