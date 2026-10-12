@@ -216,7 +216,7 @@ BEGIN
       VALUES (v_task, v_imm, v_mold, v_adj, 0, 0, 0,
               CASE WHEN r_end < pg_temp.lt('2026-09-25 00:00') THEN 4 ELSE 3 END, 0,
               mold_ct[k], GREATEST(mold_ct[k] / 3, 1), 0,
-              date_trunc('day', cur), cur - interval '1 hour', cur, cur + interval '20 minutes', s_end, r_end,
+              (cur AT TIME ZONE 'Europe/Moscow')::date, cur - interval '1 hour', cur, cur + interval '20 minutes', s_end, r_end,
               CASE WHEN r_end < pg_temp.lt('2026-09-25 00:00') THEN r_end + interval '2 hours' END,
               cur - interval '1 day', r_end);
 
