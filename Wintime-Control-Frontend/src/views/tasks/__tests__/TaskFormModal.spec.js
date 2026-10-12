@@ -482,6 +482,16 @@ describe('TaskFormModal — норматив наладки и буфер вып
     expect(wrapper.vm.form.releaseBufferPercent).toBe(10)
   })
 
+  it('если умолчания не загрузились, поля нормативов остаются null (сервер применит свои)', async () => {
+    settingsApi.getPlanningDefaults.mockRejectedValueOnce(new Error('network'))
+    const wrapper = mountModal()
+    await flushPromises()
+
+    expect(wrapper.vm.form.plannedSetupMinutes).toBeNull()
+    expect(wrapper.vm.form.releaseBufferFixedMinutes).toBeNull()
+    expect(wrapper.vm.form.releaseBufferPercent).toBeNull()
+  })
+
   it('при редактировании умолчания не запрашивает и берёт значения задания', async () => {
     const wrapper = mountModal({ task: {
       id: 't1', status: 'Draft', immId: 'imm-1', moldId: 'mold-1', planQuantity: 100,

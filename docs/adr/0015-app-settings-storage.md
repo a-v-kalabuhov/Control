@@ -24,7 +24,7 @@
 - API — `/api/settings/<группа>`, права задаются на группу (умолчания планирования —
   `ManagerOrAdmin`).
 - Фейковые настройки удалены: `AdminController`, `SystemSettingsDto`,
-  `UpdateSystemSettingsRequestDto`, карточка MQTT (BL-31).
+  `UpdateSystemSettingsRequestDto`, `MqttTestRequestDto`, карточка MQTT (BL-31).
 
 ## Альтернативы
 

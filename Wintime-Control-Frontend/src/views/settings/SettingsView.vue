@@ -17,7 +17,7 @@
         <el-form-item label="Норматив наладки, мин">
           <el-input-number
             v-model="defaults.setupMinutes"
-            data-test="setup-minutes"
+            data-test="setup-minutes" :value-on-clear="0"
             :min="0" :max="1440" :step="5"
             controls-position="right"
           />
@@ -25,7 +25,7 @@
         <el-form-item label="Буфер выпуска: фиксированная часть, мин">
           <el-input-number
             v-model="defaults.releaseBufferFixedMinutes"
-            data-test="buffer-fixed-minutes"
+            data-test="buffer-fixed-minutes" :value-on-clear="0"
             :min="0" :max="1440" :step="5"
             controls-position="right"
           />
@@ -33,7 +33,7 @@
         <el-form-item label="Буфер выпуска: % от времени выпуска">
           <el-input-number
             v-model="defaults.releaseBufferPercent"
-            data-test="buffer-percent"
+            data-test="buffer-percent" :value-on-clear="0"
             :min="0" :max="100"
             controls-position="right"
           />

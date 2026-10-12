@@ -142,7 +142,7 @@
       <el-form-item label="Норматив наладки, мин" prop="plannedSetupMinutes">
         <el-input-number
           v-model="form.plannedSetupMinutes"
-          data-test="setup-minutes"
+          data-test="setup-minutes" :value-on-clear="0"
           :min="0" :max="1440" :step="5"
           :disabled="isBufferOnlyEdit"
           class="w-full"
@@ -153,7 +153,7 @@
       <el-form-item label="Буфер выпуска, мин" prop="releaseBufferFixedMinutes">
         <el-input-number
           v-model="form.releaseBufferFixedMinutes"
-          data-test="buffer-fixed-minutes"
+          data-test="buffer-fixed-minutes" :value-on-clear="0"
           :min="0" :max="1440" :step="5"
           class="w-full"
           controls-position="right"
@@ -163,7 +163,7 @@
       <el-form-item label="Буфер выпуска, % от выпуска" prop="releaseBufferPercent">
         <el-input-number
           v-model="form.releaseBufferPercent"
-          data-test="buffer-percent"
+          data-test="buffer-percent" :value-on-clear="0"
           :min="0" :max="100"
           class="w-full"
           controls-position="right"
@@ -376,6 +376,10 @@ const loadPlanningDefaults = async () => {
     form.releaseBufferFixedMinutes = data.releaseBufferFixedMinutes
     form.releaseBufferPercent = data.releaseBufferPercent
   } catch (error) {
+    // null → в запросе создания значения не заданы, сервер применит свои умолчания
+    form.plannedSetupMinutes = null
+    form.releaseBufferFixedMinutes = null
+    form.releaseBufferPercent = null
     ElMessage.error('Ошибка загрузки умолчаний планирования')
   }
 }
