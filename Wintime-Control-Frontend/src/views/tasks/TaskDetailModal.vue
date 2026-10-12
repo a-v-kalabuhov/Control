@@ -165,12 +165,12 @@ const visible = computed({
 
 const canEdit = computed(() => {
   if (!props.task) return false
-  return props.task.status === 'Draft' && authStore.isManager
+  return ['Draft', 'Issued'].includes(props.task.status) && authStore.isManager
 })
 
 const canIssue = computed(() => {
   if (!props.task) return false
-  return props.task.status === 'Draft' && authStore.isManager
+  return ['Draft', 'Issued'].includes(props.task.status) && authStore.isManager
 })
 
 const canComplete = computed(() => {

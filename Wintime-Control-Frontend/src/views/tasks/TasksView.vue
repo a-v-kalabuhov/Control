@@ -474,7 +474,7 @@ const closeTask = async (task, closeReason) => {
 }
 
 const canIssueTask = (task) => {
-  return task.status === 'Draft' && canCreate.value
+  return ['Draft', 'Issued'].includes(task.status) && canCreate.value
 }
 
 const issueTask = async (task) => {
@@ -511,7 +511,7 @@ const issueTask = async (task) => {
 }
 
 const canEditTask = (task) => {
-  return task.status === 'Draft' && canCreate.value
+  return ['Draft', 'Issued'].includes(task.status) && canCreate.value
 }
 
 const formatDate = (date) => {
