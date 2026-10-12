@@ -235,10 +235,54 @@ public class ShiftTask : BaseEntity
                 throw new DomainException("Эталон цикла литья не может превышать эталон полного цикла");
         }
 
+        if (workMode == WorkMode
+            && fullCycleSeconds == PlannedFullCycleSeconds
+            && injectionCycleSeconds == PlannedInjectionCycleSeconds)
+            return;
+
+        EnsureEditable();
+
         WorkMode = workMode;
         PlannedFullCycleSeconds = fullCycleSeconds;
         PlannedInjectionCycleSeconds = injectionCycleSeconds;
     }
+
+    /// <summary>
+    /// BL-39: изменить план (шт.). Только в «Планируется»; неизменённое значение — no-op в любом статусе.
+    /// План задания в работе увеличивается только через <see cref="AddPlannedQuantity"/> (PZP-08).
+    /// </summary>
+    public void SetPlanQuantity(int quantity)
+    {
+        if (quantity <= 0)
+            throw new DomainException("План должен быть больше нуля");
+        if (quantity == PlanQuantity)
+            return;
+
+        EnsureEditable();
+        PlanQuantity = quantity;
+    }
+
+    /// <summary>
+    /// BL-39: изменить примечание. Только в «Планируется»; неизменённое значение — no-op.
+    /// Пустая строка = нет примечания (форма подставляет '' вместо null).
+    /// </summary>
+    public void SetNote(string? note)
+    {
+        if (string.IsNullOrEmpty(note))
+            note = null;
+        if (note == Note || (note is null && string.IsNullOrEmpty(Note)))
+            return;
+
+        EnsureEditable();
+        Note = note;
+    }
+
+    /// <summary>
+    /// Параметры задания (план, примечание, режим, эталоны) меняются только в «Планируется»:
+    /// после выдачи наладчик работает по ним, после начала — они часть факта (BL-39).
+    /// </summary>
+    private void EnsureEditable() =>
+        EnsureStatus(TaskStatus.Draft, "Параметры задания можно изменить только в статусе «Планируется»");
 
     private void EnsureStatus(TaskStatus expected, string message)
     {

@@ -159,7 +159,7 @@ public class TaskPlannedStartApiTests : IClassFixture<IntegrationTestFactory>
         var id = await SeedTaskAsync(TaskStatus.Issued, past);
         var client = await ManagerClientAsync();
 
-        var resp = await client.PutAsJsonAsync($"/api/tasks/{id}", new { plannedDate = past, note = "правка" });
+        var resp = await client.PutAsJsonAsync($"/api/tasks/{id}", new { plannedDate = past, planQuantity = 10 });
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
