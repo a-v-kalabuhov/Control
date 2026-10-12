@@ -62,7 +62,7 @@
           class="w-full"
           filterable
           :clearable="false"
-          :disabled="isLimitedEdit || !!lockedOrder || !selectedProductTypeId"
+          :disabled="isRestricted || !!lockedOrder || !selectedProductTypeId"
         >
           <el-option
             v-for="order in orderOptions"
@@ -80,6 +80,7 @@
           :clearable="!isLimitedEdit"
           class="w-full"
           @focus="loadPersonnel"
+          :disabled="isBufferOnlyEdit"
           filterable
         >
           <el-option
@@ -99,16 +100,17 @@
       <el-form-item label="План (шт.)" prop="planQuantity">
         <el-input-number 
           v-model="form.planQuantity" 
+          data-test="plan-quantity"
           :min="1" 
           :max="1000000"
-          :disabled="isLimitedEdit"
+          :disabled="isRestricted"
           class="w-full"
           controls-position="right"
         />
       </el-form-item>
 
       <el-form-item label="Рабочий режим" prop="workMode">
-        <el-select v-model="form.workMode" class="w-full" :disabled="isLimitedEdit">
+        <el-select v-model="form.workMode" class="w-full" :disabled="isRestricted">
           <el-option label="Автомат" value="Auto" />
           <el-option label="Полуавтомат" value="SemiAuto" />
         </el-select>
@@ -119,7 +121,7 @@
           v-model="form.plannedFullCycleSeconds"
           :min="1"
           :max="86400"
-          :disabled="isLimitedEdit"
+          :disabled="isRestricted"
           class="w-full"
           controls-position="right"
         />
@@ -130,11 +132,43 @@
           v-model="form.plannedInjectionCycleSeconds"
           :min="1"
           :max="86400"
-          :disabled="isLimitedEdit"
+          :disabled="isRestricted"
           class="w-full"
           controls-position="right"
         />
         <div class="text-xs text-gray-500 mt-1">Необязательно — нужен для анализа стабильности</div>
+      </el-form-item>
+
+      <el-form-item label="Норматив наладки, мин" prop="plannedSetupMinutes">
+        <el-input-number
+          v-model="form.plannedSetupMinutes"
+          data-test="setup-minutes"
+          :min="0" :max="1440" :step="5"
+          :disabled="isBufferOnlyEdit"
+          class="w-full"
+          controls-position="right"
+        />
+      </el-form-item>
+
+      <el-form-item label="Буфер выпуска, мин" prop="releaseBufferFixedMinutes">
+        <el-input-number
+          v-model="form.releaseBufferFixedMinutes"
+          data-test="buffer-fixed-minutes"
+          :min="0" :max="1440" :step="5"
+          class="w-full"
+          controls-position="right"
+        />
+      </el-form-item>
+
+      <el-form-item label="Буфер выпуска, % от выпуска" prop="releaseBufferPercent">
+        <el-input-number
+          v-model="form.releaseBufferPercent"
+          data-test="buffer-percent"
+          :min="0" :max="100"
+          class="w-full"
+          controls-position="right"
+        />
+        <div class="text-xs text-gray-500 mt-1" data-test="plan-preview">{{ planPreview }}</div>
       </el-form-item>
 
       <el-form-item label="Плановая дата" prop="plannedDate">
@@ -145,6 +179,7 @@
           format="DD.MM.YYYY"
           value-format="YYYY-MM-DD"
           :disabled-date="isPastDate"
+          :disabled="isBufferOnlyEdit"
           class="w-full"
         />
       </el-form-item>
@@ -156,6 +191,7 @@
           format="HH:mm"
           value-format="HH:mm:ss"
           clearable
+          :disabled="isBufferOnlyEdit"
           class="w-full"
         />
         <div class="text-xs text-gray-500 mt-1">Необязательно. Пусто — задание начинается с начала смены</div>
@@ -166,7 +202,7 @@
           v-model="form.note"
           type="textarea"
           :rows="3"
-          :disabled="isLimitedEdit"
+          :disabled="isRestricted"
           placeholder="Дополнительная информация"
         />
       </el-form-item>
@@ -206,6 +242,8 @@ import { personnelApi } from '@/api/personnel'
 import { tasksApi } from '@/api/tasks'
 import { ordersApi } from '@/api/orders'
 import { apiErrorMessage } from '@/utils/apiError'
+import { settingsApi } from '@/api/settings'
+import { calcTaskPlan, formatDuration } from '@/utils/taskPlan'
 
 const props = defineProps({
   modelValue: {
@@ -253,7 +291,10 @@ const form = reactive({
   orderId: null,
   workMode: 'Auto',
   plannedFullCycleSeconds: null,
-  plannedInjectionCycleSeconds: null
+  plannedInjectionCycleSeconds: null,
+  plannedSetupMinutes: 0,
+  releaseBufferFixedMinutes: 0,
+  releaseBufferPercent: 0
 })
 
 const rules = {
@@ -301,13 +342,43 @@ const isFullCycleRequired = computed(() => {
   return !editingTask.value || (editingTask.value.plannedFullCycleSeconds ?? null) !== null
 })
 
-// PZP-13: в «Выдано» правятся только плановое начало и наладчик
+// PZP-13/14: в «Выдано» правятся плановое начало, наладчик, норматив наладки и буфер
 const isLimitedEdit = computed(() => editingTask.value?.status === 'Issued')
+// PZP-14: после начала наладки и до завершения выпуска правится только буфер выпуска
+const isBufferOnlyEdit = computed(() => ['Setup', 'InProgress'].includes(editingTask.value?.status))
+// Поля, закрытые и в «Выдано», и в режиме «только буфер»
+const isRestricted = computed(() => isLimitedEdit.value || isBufferOnlyEdit.value)
 
 const selectedMoldInfo = computed(() => {
   if (!form.moldId) return null
   return molds.value.find(m => m.id === form.moldId)
 })
+
+// PZP-14: живой предпросмотр плана (гнёзда — из выбранной ПФ)
+const planPreview = computed(() => {
+  const plan = calcTaskPlan({
+    planQuantity: form.planQuantity,
+    cavities: selectedMoldInfo.value?.cavities,
+    fullCycleSeconds: form.plannedFullCycleSeconds,
+    setupMinutes: form.plannedSetupMinutes,
+    bufferFixedMinutes: form.releaseBufferFixedMinutes,
+    bufferPercent: form.releaseBufferPercent
+  })
+  return `Выпуск ≈ ${formatDuration(plan.releaseSeconds)} · буфер ≈ ${formatDuration(plan.bufferSeconds)}`
+    + ` · всего с наладкой ≈ ${formatDuration(plan.totalSeconds)}`
+})
+
+// PZP-14: новое задание получает умолчания из настроек; менеджер может их поправить
+const loadPlanningDefaults = async () => {
+  try {
+    const { data } = await settingsApi.getPlanningDefaults()
+    form.plannedSetupMinutes = data.setupMinutes
+    form.releaseBufferFixedMinutes = data.releaseBufferFixedMinutes
+    form.releaseBufferPercent = data.releaseBufferPercent
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки умолчаний планирования')
+  }
+}
 
 const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productTypeId || null)
 
@@ -329,7 +400,10 @@ const resetForm = () => {
     orderId: props.lockedOrder?.id ?? null,
     workMode: 'Auto',
     plannedFullCycleSeconds: null,
-    plannedInjectionCycleSeconds: null
+    plannedInjectionCycleSeconds: null,
+    plannedSetupMinutes: 0,
+    releaseBufferFixedMinutes: 0,
+    releaseBufferPercent: 0
   })
   orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
   initialOrderId.value = null
@@ -403,7 +477,10 @@ const populateForm = (task) => {
     orderId: task.orderId || null,
     workMode: task.workMode || 'Auto',
     plannedFullCycleSeconds: task.plannedFullCycleSeconds ?? null,
-    plannedInjectionCycleSeconds: task.plannedInjectionCycleSeconds ?? null
+    plannedInjectionCycleSeconds: task.plannedInjectionCycleSeconds ?? null,
+    plannedSetupMinutes: task.plannedSetupMinutes ?? 0,
+    releaseBufferFixedMinutes: task.releaseBufferFixedMinutes ?? 0,
+    releaseBufferPercent: task.releaseBufferPercent ?? 0
   })
   initialOrderId.value = task.orderId || null
   // В режиме редактирования селект ПФ задизейблен и никогда не получает
@@ -419,6 +496,10 @@ watch(() => props.task, (newTask) => {
     editingTask.value = null
     resetForm()
   }
+}, { immediate: true })
+
+watch(() => props.modelValue && !props.task, (creating) => {
+  if (creating) loadPlanningDefaults()
 }, { immediate: true })
 
 // Перезаполняем при каждом открытии диалога, так как task может быть
