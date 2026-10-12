@@ -10,7 +10,11 @@ public class CreateTaskRequestDto
     public string? PersonnelId { get; set; }
     public int PlanQuantity { get; set; }
     public string? Note { get; set; }
-    public DateTime? PlannedDate { get; set; }
+    /// <summary>Плановая дата. Обязательна (null → 400).</summary>
+    public DateOnly? PlannedDate { get; set; }
+
+    /// <summary>Плановое время начала наладки по часам завода. Необязательно.</summary>
+    public TimeOnly? PlannedSetupStartTime { get; set; }
 
     /// <summary>Рабочий режим; не передан — «автомат».</summary>
     public WorkMode WorkMode { get; set; } = WorkMode.Auto;

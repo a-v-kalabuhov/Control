@@ -125,6 +125,7 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
             ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+            PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             OrderId = orderId, PlannedFullCycleSeconds = 30
         });
 
@@ -147,6 +148,7 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
             ImmId = _factory.TestImmId, MoldId = otherMoldId, PlanQuantity = 10,
+            PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             OrderId = orderId, PlannedFullCycleSeconds = 30
         });
 
@@ -161,6 +163,7 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
             ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+            PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             OrderId = Guid.NewGuid(), PlannedFullCycleSeconds = 30
         });
 

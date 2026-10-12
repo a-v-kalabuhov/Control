@@ -6,7 +6,14 @@ public class UpdateTaskRequestDto
 {
     public int? PlanQuantity { get; set; }
     public string? Note { get; set; }
-    public DateTime? PlannedDate { get; set; }
+    /// <summary>Плановая дата; <c>null</c> — не менять.</summary>
+    public DateOnly? PlannedDate { get; set; }
+
+    /// <summary>Плановое время начала наладки; <c>null</c> — не менять.</summary>
+    public TimeOnly? PlannedSetupStartTime { get; set; }
+
+    /// <summary>Явно очистить время начала наладки (в PUT <c>null</c> означает «не менять»).</summary>
+    public bool ClearPlannedSetupStartTime { get; set; }
     public Enums.TaskStatus? Status { get; set; }
 
     /// <summary>Рабочий режим; <c>null</c> — не менять.</summary>

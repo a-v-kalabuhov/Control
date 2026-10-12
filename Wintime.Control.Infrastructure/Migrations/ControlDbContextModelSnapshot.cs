@@ -597,14 +597,17 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<int>("PlanQuantity")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime?>("PlannedDate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<DateOnly>("PlannedDate")
+                        .HasColumnType("date");
 
                     b.Property<int?>("PlannedFullCycleSeconds")
                         .HasColumnType("integer");
 
                     b.Property<int?>("PlannedInjectionCycleSeconds")
                         .HasColumnType("integer");
+
+                    b.Property<TimeOnly?>("PlannedSetupStartTime")
+                        .HasColumnType("time without time zone");
 
                     b.Property<DateTime?>("SetupStartedAt")
                         .HasColumnType("timestamp with time zone");

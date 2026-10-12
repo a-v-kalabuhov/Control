@@ -290,6 +290,7 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         moldId = _factory.TestMoldId,
         planQuantity = 100,
         note = "Integration test task",
+        plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
         plannedFullCycleSeconds = 30
     };
 

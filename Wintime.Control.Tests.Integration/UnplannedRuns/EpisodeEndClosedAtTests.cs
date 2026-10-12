@@ -48,7 +48,7 @@ public class EpisodeEndClosedAtTests : IClassFixture<IntegrationTestFactory>
         var task = new EntityTask
         {
             ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 50,
-            Status = TaskStatus.Setup, IssuedAt = t0.AddDays(-3), SetupStartedAt = t0.AddSeconds(600)
+            Status = TaskStatus.Setup, IssuedAt = t0.AddDays(-3), PlannedDate = DateOnly.FromDateTime(t0.AddDays(-3)), SetupStartedAt = t0.AddSeconds(600)
         };
         db.ShiftTasks.Add(task);
         await db.SaveChangesAsync();

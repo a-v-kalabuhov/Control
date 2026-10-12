@@ -23,6 +23,7 @@ public static class TaskMappingExtensions
         ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,
         Status = t.Status,
         PlannedDate = t.PlannedDate,
+        PlannedSetupStartTime = t.PlannedSetupStartTime,
         IssuedAt = t.IssuedAt,
         SetupStartedAt = t.SetupStartedAt,
         MoldVerifiedAt = t.MoldVerifiedAt,

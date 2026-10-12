@@ -199,6 +199,9 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<TaskDto>> CreateTask([FromBody] CreateTaskRequestDto request)
     {
+        if (request.PlannedDate is null)
+            return BadRequest("Укажите плановую дату");
+
         var mold = await _context.Molds.FindAsync(request.MoldId);
         if (mold == null || !mold.IsActive)
             return BadRequest("Указана неактивная или несуществующая пресс-форма.");
@@ -213,10 +216,8 @@ public class TasksController : ControllerBase
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
             Status = Core.Enums.TaskStatus.Draft,
-            PlannedDate = request.PlannedDate.HasValue
-                ? DateTime.SpecifyKind(request.PlannedDate.Value, DateTimeKind.Utc)
-                : null,
-            IssuedAt = DateTime.UtcNow
+            PlannedDate = request.PlannedDate.Value,
+            PlannedSetupStartTime = request.PlannedSetupStartTime
         };
 
         task.SetCycleNorms(
@@ -255,14 +256,11 @@ public class TasksController : ControllerBase
         if (request.Note != null)
             task.Note = request.Note;
         if (request.PlannedDate.HasValue)
-        {
-            if (task.Status != Core.Enums.TaskStatus.Draft)
-                return BadRequest("Плановую дату можно изменить только в черновике");
-            var today = DateTime.UtcNow.Date;
-            if (request.PlannedDate.Value.Date < today)
-                return BadRequest("Плановая дата не может быть в прошлом");
-            task.PlannedDate = DateTime.SpecifyKind(request.PlannedDate.Value, DateTimeKind.Utc);
-        }
+            task.PlannedDate = request.PlannedDate.Value;
+        if (request.ClearPlannedSetupStartTime)
+            task.PlannedSetupStartTime = null;
+        else if (request.PlannedSetupStartTime.HasValue)
+            task.PlannedSetupStartTime = request.PlannedSetupStartTime.Value;
         bool cycleFieldsTouched = request.WorkMode.HasValue
                                || request.PlannedFullCycleSeconds.HasValue
                                || request.PlannedInjectionCycleSeconds.HasValue;

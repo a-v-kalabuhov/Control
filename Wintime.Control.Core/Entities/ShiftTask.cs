@@ -40,7 +40,14 @@ public class ShiftTask : BaseEntity
 
     public DateTime? UpdatedAt { get; set; }
 
-    public DateTime? PlannedDate { get; set; }
+    /// <summary>Плановая дата выполнения — календарная дата завода (PZP-13). Обязательна.</summary>
+    public DateOnly PlannedDate { get; set; }
+
+    /// <summary>
+    /// Плановое время начала наладки по часам завода (PZP-13). Необязательно:
+    /// <c>null</c> — задание начинается с начала первой смены дня (см. PlannedTaskStart).
+    /// </summary>
+    public TimeOnly? PlannedSetupStartTime { get; set; }
     public DateTime? IssuedAt { get; set; }
     public DateTime? SetupStartedAt { get; set; }
     public DateTime? MoldVerifiedAt { get; set; }
