@@ -284,7 +284,7 @@ Swagger UI доступен по адресу `/swagger` в режиме раз�
 | `DowntimeController` | `/api/downtime` | Downtime reasons |
 | `TemplatesController` | `/api/templates` | Equipment configuration templates |
 | `ReportsController` | `/api/reports` | PDF & Excel report generation |
-| `AdminController` | `/api/admin` | Admin-only operations |
+| `SettingsController` | `/api/settings` | App settings (planning defaults), Manager/Admin |
 
 All endpoints (except `/api/auth/login`) require a valid JWT Bearer token.
 
