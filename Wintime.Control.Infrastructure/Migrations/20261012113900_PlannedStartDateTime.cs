@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -15,6 +15,7 @@ namespace Wintime.Control.Infrastructure.Migrations
                 UPDATE "ShiftTasks"
                    SET "PlannedDate" = COALESCE("PlannedDate", "IssuedAt", "CreatedAt")
                  WHERE "PlannedDate" IS NULL;
+                UPDATE "ShiftTasks" SET "IssuedAt" = NULL WHERE "Status" = 0;
                 ALTER TABLE "ShiftTasks"
                   ALTER COLUMN "PlannedDate" TYPE date
                   USING ("PlannedDate" AT TIME ZONE 'Europe/Moscow')::date;

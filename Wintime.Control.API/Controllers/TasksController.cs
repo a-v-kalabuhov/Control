@@ -124,6 +124,7 @@ public class TasksController : ControllerBase
         var archiveTotal = await archiveQuery.CountAsync();
         var archiveItems = await archiveQuery
             .OrderByDescending(t => t.CompletedAt ?? t.ClosedAt)
+            .ThenByDescending(t => t.Id)
             .Skip((archivePage - 1) * archivePageSize)
             .Take(archivePageSize)
             .ToListAsync();
@@ -304,7 +305,7 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
-    /// Выдать задание (перевести из черновика в статус Issued)
+    /// Выдать задание («Планируется» → «Выдано»)
     /// </summary>
     [HttpPost("{id:guid}/issue")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
@@ -317,14 +318,13 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        if (!string.IsNullOrWhiteSpace(request?.PersonnelId))
-        {
-            if (!await IsActiveAdjusterAsync(request.PersonnelId))
-                return BadRequest("Укажите активного наладчика");
-            task.AssignPersonnel(request.PersonnelId);
-        }
+        // Статус проверяет сама сущность (Issue), поэтому для не-Draft сначала вернётся ошибка статуса.
+        if (task.Status == Core.Enums.TaskStatus.Draft
+            && !string.IsNullOrWhiteSpace(request?.PersonnelId)
+            && !await IsActiveAdjusterAsync(request.PersonnelId))
+            return BadRequest("Укажите активного наладчика");
 
-        task.Issue();
+        task.Issue(request?.PersonnelId);
 
         await _context.SaveChangesAsync();
 

@@ -171,4 +171,28 @@ public class ShiftTaskPlanningTests
         act.Should().Throw<DomainException>().WithMessage("Назначьте наладчика");
         task.Status.Should().Be(EntityTaskStatus.Draft);
     }
+
+    [Fact]
+    public void Issue_WithPersonnelId_AssignsAndIssues()
+    {
+        var task = NewTask(EntityTaskStatus.Draft);
+
+        task.Issue("adj-1");
+
+        task.PersonnelId.Should().Be("adj-1");
+        task.Status.Should().Be(EntityTaskStatus.Issued);
+        task.IssuedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Issue_FromSetupWithPersonnelId_ThrowsStatusMessage()
+    {
+        var task = NewTask(EntityTaskStatus.Setup);
+        var before = task.PersonnelId;
+
+        var act = () => task.Issue("adj-2");
+
+        act.Should().Throw<DomainException>().WithMessage("Задание не в статусе «Планируется»");
+        task.PersonnelId.Should().Be(before);
+    }
 }
