@@ -401,6 +401,35 @@ describe('TaskFormModal — плановое начало и наладчик (P
     expect(tasksApi.update.mock.calls[0][1]).not.toHaveProperty('personnelId')
   })
 
+  it('setPersonnel вызывается раньше update; при отказе update не вызывается', async () => {
+    tasksApi.setPersonnel.mockRejectedValueOnce({ response: { data: 'Укажите активного наладчика' } })
+    const wrapper = mountModal({ task: draft })
+    await flushPromises()
+    wrapper.vm.form.personnelId = 'adj-9'
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.setPersonnel).toHaveBeenCalled()
+    expect(tasksApi.update).not.toHaveBeenCalled()
+
+    const w2 = mountModal({ task: draft })
+    await flushPromises()
+    w2.vm.form.personnelId = 'adj-8'
+    await w2.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.setPersonnel.mock.invocationCallOrder.at(-1))
+      .toBeLessThan(tasksApi.update.mock.invocationCallOrder.at(-1))
+  })
+
+  it('в «Выдано» выбор наладчика нельзя очистить', async () => {
+    const issued = mountModal({ task: { ...draft, status: 'Issued', personnelId: 'adj-1' } })
+    await flushPromises()
+    const sel = (w) => w.findAllComponents({ name: 'ElSelect' }).find(s => s.props('placeholder') === 'Не назначен')
+    expect(sel(issued).props('clearable')).toBe(false)
+    const planned = mountModal({ task: draft })
+    await flushPromises()
+    expect(sel(planned).props('clearable')).toBe(true)
+  })
+
   it('в «Выдано» заблокированы все поля, кроме даты, времени и наладчика', async () => {
     const wrapper = mountModal({ task: { ...draft, status: 'Issued', personnelId: 'adj-1' } })
     await flushPromises()

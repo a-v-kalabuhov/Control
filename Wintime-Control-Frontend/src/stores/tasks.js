@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage } from 'element-plus'
+import { apiErrorMessage } from '@/utils/apiError'
 import { isPlannedStartOverdue } from '@/utils/plannedStart'
 
 export const useTasksStore = defineStore('tasks', {
@@ -27,7 +28,7 @@ export const useTasksStore = defineStore('tasks', {
     // Задания в работе
     inProgressTasks: (state) => state.tasks.filter(t => t.status === 'InProgress'),
 
-    // Задания в черновиках
+    // Задания в статусе «Планируется»
     draftTasks: (state) => state.tasks.filter(t => t.status === 'Draft'),
 
     // Просрочено: задание не начато, а плановое начало прошло (PZP-13)
@@ -105,7 +106,7 @@ export const useTasksStore = defineStore('tasks', {
       }
     },
 
-    // Выдача задания (Draft → Issued)
+    // Выдача задания («Планируется» → «Выдано»)
     async issueTask(id, personnelId) {
       try {
         await tasksApi.issue(id, personnelId)
@@ -113,7 +114,7 @@ export const useTasksStore = defineStore('tasks', {
         ElMessage.success('Задание выдано в работу')
         return { success: true }
       } catch (error) {
-        const message = error.response?.data?.message || 'Ошибка выдачи задания'
+        const message = apiErrorMessage(error, 'Ошибка выдачи задания')
         ElMessage.error(message)
         return { success: false, message }
       }

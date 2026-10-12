@@ -32,4 +32,11 @@ describe('tasks store', () => {
     await store.issueTask('t1', 'adj-1')
     expect(tasksApi.issue).toHaveBeenCalledWith('t1', 'adj-1')
   })
+
+  it('issueTask: строковое тело 400 попадает в message', async () => {
+    tasksApi.issue.mockRejectedValueOnce({ response: { data: 'Укажите активного наладчика' } })
+    const store = useTasksStore()
+    const result = await store.issueTask('t1', 'adj-1')
+    expect(result).toEqual({ success: false, message: 'Укажите активного наладчика' })
+  })
 })

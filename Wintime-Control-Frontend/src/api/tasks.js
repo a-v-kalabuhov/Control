@@ -36,8 +36,7 @@ export const tasksApi = {
     return apiClient.post(`/tasks/${id}/close`, data)
   },
 
-  // Выдать задание (Draft → Issued)
-  // Выдать задание (Draft → Issued); personnelId — назначить наладчика в той же операции
+  // Выдать задание («Планируется» → «Выдано»); personnelId — назначить наладчика в той же операции
   issue(id, personnelId) {
     return apiClient.post(`/tasks/${id}/issue`, { personnelId: personnelId ?? null })
   },

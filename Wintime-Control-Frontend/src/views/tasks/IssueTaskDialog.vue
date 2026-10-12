@@ -17,6 +17,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { personnelApi } from '@/api/personnel'
 import { useTasksStore } from '@/stores/tasks'
 
@@ -43,6 +44,7 @@ async function open() {
     const res = await personnelApi.getList({ isActive: true, role: 'Adjuster' })
     personnel.value = res.data ?? []
   } catch {
+    ElMessage.error('Не удалось загрузить список наладчиков')
     personnel.value = []
   }
   // Предзаполняем только активным наладчиком: архивного в списке нет.

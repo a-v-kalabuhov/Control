@@ -77,7 +77,7 @@
         <el-select 
           v-model="form.personnelId" 
           placeholder="Не назначен"
-          clearable
+          :clearable="!isLimitedEdit"
           class="w-full"
           @focus="loadPersonnel"
           filterable
@@ -465,10 +465,11 @@ const handleSubmit = async () => {
         // (ordersApi.setTaskOrder, tasksApi.setPersonnel).
         const { orderId, personnelId, ...updatePayload } = form
         updatePayload.clearPlannedSetupStartTime = !form.plannedSetupStartTime
-        await tasksApi.update(editingTask.value.id, updatePayload)
+        // Наладчика меняем первым: его отказ не должен оставить частично сохранённое задание.
         if ((personnelId || null) !== (editingTask.value.personnelId || null)) {
           await tasksApi.setPersonnel(editingTask.value.id, personnelId || null)
         }
+        await tasksApi.update(editingTask.value.id, updatePayload)
         if (form.orderId && form.orderId !== initialOrderId.value) {
           await ordersApi.setTaskOrder(editingTask.value.id, form.orderId)
         }
