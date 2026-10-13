@@ -68,7 +68,31 @@
 
       <el-form-item label="Выдано">
         <el-date-picker
-          v-model="dateRange"
+          v-model="issuedRange"
+          type="daterange"
+          range-separator="—"
+          start-placeholder="Начало"
+          end-placeholder="Окончание"
+          value-format="YYYY-MM-DD"
+          class="w-64"
+        />
+      </el-form-item>
+
+      <el-form-item label="Плановая дата">
+        <el-date-picker
+          v-model="plannedRange"
+          type="daterange"
+          range-separator="—"
+          start-placeholder="Начало"
+          end-placeholder="Окончание"
+          value-format="YYYY-MM-DD"
+          class="w-64"
+        />
+      </el-form-item>
+
+      <el-form-item label="В работе">
+        <el-date-picker
+          v-model="activeRange"
           type="daterange"
           range-separator="—"
           start-placeholder="Начало"
@@ -104,17 +128,20 @@ const localFilters = reactive({ ...props.filters })
 const imms = ref([])
 const personnel = ref([])
 
-const dateRange = ref(props.filters.dateFrom ? [props.filters.dateFrom, props.filters.dateTo] : [])
+// Три независимых диапазона (ARCH-03): выдача, плановая дата, работа на ТПА; объединяются через И.
+function rangeRef(fromKey, toKey) {
+  const range = ref(props.filters[fromKey] ? [props.filters[fromKey], props.filters[toKey]] : [])
+  watch(range, (r) => {
+    const set = r && r.length === 2
+    localFilters[fromKey] = set ? r[0] : null
+    localFilters[toKey] = set ? r[1] : null
+  })
+  return range
+}
 
-watch(dateRange, (newRange) => {
-  if (newRange && newRange.length === 2) {
-    localFilters.dateFrom = newRange[0]
-    localFilters.dateTo = newRange[1]
-  } else {
-    localFilters.dateFrom = null
-    localFilters.dateTo = null
-  }
-})
+const issuedRange = rangeRef('issuedFrom', 'issuedTo')
+const plannedRange = rangeRef('plannedFrom', 'plannedTo')
+const activeRange = rangeRef('activeFrom', 'activeTo')
 
 const loadImms = async () => {
   if (imms.value.length > 0) return
@@ -146,7 +173,9 @@ const resetFilters = () => {
     localFilters[key] = null
   })
   localFilters.search = ''
-  dateRange.value = []
+  issuedRange.value = []
+  plannedRange.value = []
+  activeRange.value = []
   emit('update:filters', { ...localFilters })
   emit('apply')
 }

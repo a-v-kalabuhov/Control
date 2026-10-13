@@ -3,6 +3,7 @@ import { tasksApi } from '@/api/tasks'
 import { ElMessage } from 'element-plus'
 import { apiErrorMessage } from '@/utils/apiError'
 import { isPlannedStartOverdue } from '@/utils/plannedStart'
+import { buildTaskListParams } from '@/utils/taskListParams'
 
 export const useTasksStore = defineStore('tasks', {
   state: () => ({
@@ -12,8 +13,12 @@ export const useTasksStore = defineStore('tasks', {
       status: null,
       immId: null,
       personnelId: null,
-      dateFrom: null,
-      dateTo: null,
+      issuedFrom: null,
+      issuedTo: null,
+      plannedFrom: null,
+      plannedTo: null,
+      activeFrom: null,
+      activeTo: null,
       search: ''
     },
     pagination: {
@@ -68,18 +73,7 @@ export const useTasksStore = defineStore('tasks', {
     async loadTasks() {
       this.loading = true
       try {
-        const params = {
-          ...this.filters,
-          dateFrom: this.filters.dateFrom ? new Date(this.filters.dateFrom).toISOString() : null,
-          dateTo: this.filters.dateTo ? (() => { const d = new Date(this.filters.dateTo); d.setUTCHours(23, 59, 59, 999); return d.toISOString() })() : null
-        }
-
-        // Очистка пустых параметров
-        Object.keys(params).forEach(key => {
-          if (params[key] === null || params[key] === undefined || params[key] === '') {
-            delete params[key]
-          }
-        })
+        const params = buildTaskListParams(this.filters)
 
         const response = await tasksApi.getList(params)
         this.tasks = response.data
@@ -201,8 +195,12 @@ export const useTasksStore = defineStore('tasks', {
         status: null,
         immId: null,
         personnelId: null,
-        dateFrom: null,
-        dateTo: null,
+        issuedFrom: null,
+        issuedTo: null,
+        plannedFrom: null,
+        plannedTo: null,
+        activeFrom: null,
+        activeTo: null,
         search: ''
       }
     },
