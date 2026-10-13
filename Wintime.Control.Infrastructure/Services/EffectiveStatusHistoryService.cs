@@ -27,9 +27,8 @@ public class EffectiveStatusHistoryService : IEffectiveStatusHistoryService
             .ToListAsync(ct);
 
         var taskRows = await _context.ShiftTasks
-            .Where(t => ids.Contains(t.ImmId) && t.SetupStartedAt != null && t.SetupStartedAt < toUtc
-                        // Нижняя граница: задание, закончившееся до окна, пересечься с ним не может.
-                        && ((t.CompletedAt == null && t.ClosedAt == null) || (t.CompletedAt ?? t.ClosedAt) > fromUtc))
+            .Where(t => ids.Contains(t.ImmId))
+            .Where(TaskActivityWindow.OverlapsPeriod(fromUtc, toUtc))
             .Select(t => new { t.ImmId, t.SetupStartedAt, t.StartedAt, t.CompletedAt, t.ClosedAt })
             .ToListAsync(ct);
 
