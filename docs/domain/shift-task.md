@@ -48,7 +48,7 @@ Planned → Issued → Setup → InProgress → Completed → Closed
 | `Setup` (без смены статуса) | `VerifyMold()` | Зафиксировать QR-верификацию ПФ |
 | `Setup → InProgress` | `CompleteSetup()` | Наладка завершена, пошёл серийный выпуск (`StartedAt`) |
 | `InProgress → Completed` | `Complete(qty, reason)` | Задание выполнено, зафиксирован факт |
-| любой `→ Closed` | `Close(reason)` | Ручное закрытие (отмена или досрочное завершение) |
+| любой `→ Closed` | `Close(reason)` | Закрыть задание вручную (досрочно или после завершения) |
 
 Каждый переход проверяет исходный статус и при нарушении кидает `DomainException` → HTTP 400
 (см. ADR-0003). Побочные эффекты (перевод режима ТПА) — в контроллере, не в сущности.

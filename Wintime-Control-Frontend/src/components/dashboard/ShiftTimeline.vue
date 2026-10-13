@@ -183,7 +183,7 @@ function taskTitle(task) {
   return [
     task.moldName || 'Задание',
     `${formatTime(start)} — ${formatTime(end)} (${durStr(end - start)})`,
-    task.startedAt ? `Наладка: ${formatTime(task.setupStartedAt)} — ${formatTime(task.startedAt)}` : 'Идёт наладка',
+    task.startedAt ? `Наладка: ${formatTime(task.setupStartedAt)} — ${formatTime(task.startedAt)}` : (task.closedAt || task.completedAt) ? 'Закрыто во время наладки' : 'Идёт наладка',
     `Факт: ${task.actualQuantity} / План: ${task.planQuantity} шт (${progress}%)`,
     task.personnelName ? `Наладчик: ${task.personnelName}` : null,
   ].filter(Boolean).join('\n')

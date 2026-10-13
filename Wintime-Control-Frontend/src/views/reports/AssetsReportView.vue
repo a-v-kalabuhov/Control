@@ -152,7 +152,7 @@
                 <div class="flex-1 pl-6" style="min-width: 200px">{{ imm.immName }}</div>
                 <div class="text-center" style="width: 150px">{{ imm.completedTasks }}</div>
                 <div class="text-center" style="width: 150px">{{ imm.completedSetups }}</div>
-                <div class="text-center" style="width: 170px">{{ imm.avgSetupTime ? (imm.avgSetupTime / 60).toFixed(1) : '—' }}</div>
+                <div class="text-center" style="width: 170px">{{ imm.completedSetups ? (imm.avgSetupTime / 60).toFixed(1) : '—' }}</div>
                 <div class="text-center" style="width: 160px">{{ imm.totalSetupSeconds ? (imm.totalSetupSeconds / 3600).toFixed(1) : '—' }}</div>
               </div>
             </div>
@@ -164,7 +164,7 @@
         <el-table-column prop="completedSetups" label="Выполнено наладок" width="150" align="center" />
         <el-table-column label="Ср. время наладки (мин)" width="170" align="center">
           <template #default="{ row }">
-            {{ (row.avgSetupTime / 60).toFixed(1) }}
+            {{ row.completedSetups ? (row.avgSetupTime / 60).toFixed(1) : '—' }}
           </template>
         </el-table-column>
         <el-table-column label="Общее время наладки (ч)" width="160" align="center">

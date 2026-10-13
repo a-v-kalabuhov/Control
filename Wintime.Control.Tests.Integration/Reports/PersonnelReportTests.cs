@@ -41,11 +41,11 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
         db.Molds.Add(mold);
         await db.SaveChangesAsync();
 
-        ShiftTask T(TaskStatus st, DateTime? setup, DateTime? started, DateTime? completed) => new()
+        ShiftTask T(TaskStatus st, DateTime? setup, DateTime? started, DateTime? completed, DateTime? closed = null) => new()
         {
             ImmId = immId, MoldId = mold.Id, PersonnelId = adjusterId, PlanQuantity = 10, Status = st,
             PlannedDate = DateOnly.FromDateTime(Day), IssuedAt = Day.AddDays(-2),
-            SetupStartedAt = setup, StartedAt = started, CompletedAt = completed
+            SetupStartedAt = setup, StartedAt = started, CompletedAt = completed, ClosedAt = closed
         };
 
         db.ShiftTasks.AddRange(
@@ -59,7 +59,11 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
             // Идёт наладка — не завершена, не считается
             T(TaskStatus.Setup, Day.AddHours(14), null, null),
             // Отменённая наладка (CancelSetup сбрасывает SetupStartedAt) — не считается
-            T(TaskStatus.Issued, null, null, null));
+            T(TaskStatus.Issued, null, null, null),
+            // Завершено сегодня, затем закрыто — считается (CompletedAt в периоде)
+            T(TaskStatus.Closed, Day.AddDays(-2).AddHours(10), Day.AddDays(-2).AddHours(11), Day.AddHours(14), Day.AddHours(15)),
+            // Закрыто досрочно из InProgress (CompletedAt = null) — не считается
+            T(TaskStatus.Closed, Day.AddDays(-2).AddHours(10), Day.AddDays(-2).AddHours(11), null, Day.AddHours(15)));
         await db.SaveChangesAsync();
     }
 
@@ -83,7 +87,7 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
         var report = await GetAsync("Personnel");
         var row = report.PersonnelData.Should().ContainSingle(p => p.PersonnelId == adjusterId).Subject;
 
-        row.CompletedTasks.Should().Be(1);
+        row.CompletedTasks.Should().Be(2);
         row.CompletedSetups.Should().Be(2);
         row.TotalSetupSeconds.Should().Be(24 * 3600 + 3600);
         row.AvgSetupTime.Should().Be((24 * 3600 + 3600) / 2m);
@@ -99,12 +103,12 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
         var report = await GetAsync("PersonnelByImm");
         var row = report.PersonnelByImmData.Should().ContainSingle(p => p.PersonnelId == adjusterId).Subject;
 
-        row.CompletedTasks.Should().Be(1);
+        row.CompletedTasks.Should().Be(2);
         row.CompletedSetups.Should().Be(2);
         row.TotalSetupSeconds.Should().Be(24 * 3600 + 3600);
         var imm = row.ImmBreakdown.Should().ContainSingle().Subject;
         imm.ImmId.Should().Be(immId);
         imm.CompletedSetups.Should().Be(2);
-        imm.CompletedTasks.Should().Be(1);
+        imm.CompletedTasks.Should().Be(2);
     }
 }

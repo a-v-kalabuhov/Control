@@ -4,7 +4,7 @@ public class AssetsPersonnelItemDto
 {
     public string PersonnelId { get; set; } = string.Empty;
     public string? FullName { get; set; }
-    /// <summary>Задания, завершённые (Completed) в периоде.</summary>
+    /// <summary>Задания, завершённые (Complete) в периоде — по CompletedAt, в т.ч. закрытые после завершения.</summary>
     public int CompletedTasks { get; set; }
     /// <summary>Наладки, завершённые в периоде (StartedAt ∈ период).</summary>
     public int CompletedSetups { get; set; }

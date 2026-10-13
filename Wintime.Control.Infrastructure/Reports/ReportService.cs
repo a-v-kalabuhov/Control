@@ -258,18 +258,17 @@ public class ReportService : IReportService
     private async Task<List<PersonnelTaskRow>> LoadPersonnelTaskRowsAsync(
         List<string> personnelIds, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
-        var completed = Wintime.Control.Core.Enums.TaskStatus.Completed;
         var rows = await _context.ShiftTasks
             .Where(t => t.PersonnelId != null && personnelIds.Contains(t.PersonnelId)
-                && ((t.Status == completed && t.CompletedAt >= fromUtc && t.CompletedAt < toUtc)
+                && ((t.CompletedAt != null && t.CompletedAt >= fromUtc && t.CompletedAt < toUtc)
                     || (t.SetupStartedAt != null && t.StartedAt >= fromUtc && t.StartedAt < toUtc)))
-            .Select(t => new { t.PersonnelId, t.ImmId, t.Status, t.CompletedAt, t.SetupStartedAt, t.StartedAt })
+            .Select(t => new { t.PersonnelId, t.ImmId, t.CompletedAt, t.SetupStartedAt, t.StartedAt })
             .ToListAsync(ct);
 
         return rows.Select(r => new PersonnelTaskRow(
             r.PersonnelId!,
             r.ImmId,
-            r.Status == completed && r.CompletedAt >= fromUtc && r.CompletedAt < toUtc,
+            r.CompletedAt != null && r.CompletedAt >= fromUtc && r.CompletedAt < toUtc,
             r.SetupStartedAt != null && r.StartedAt >= fromUtc && r.StartedAt < toUtc
                 ? Math.Max(0, (int)(r.StartedAt!.Value - r.SetupStartedAt.Value).TotalSeconds)
                 : null)).ToList();
