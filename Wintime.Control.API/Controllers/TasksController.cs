@@ -95,7 +95,7 @@ public class TasksController : ControllerBase
             .Include(t => t.Mold)
             .Include(t => t.Personnel)
             .Where(t => t.PersonnelId == userId)
-            .Where(t => t.Status != Core.Enums.TaskStatus.Draft);
+            .Where(t => t.Status != Core.Enums.TaskStatus.Planned);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -211,7 +211,7 @@ public class TasksController : ControllerBase
             PersonnelId = string.IsNullOrWhiteSpace(request.PersonnelId) ? null : request.PersonnelId,
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
-            Status = Core.Enums.TaskStatus.Draft
+            Status = Core.Enums.TaskStatus.Planned
         };
 
         var schedule = await _factoryClock.GetScheduleAsync();
@@ -333,8 +333,8 @@ public class TasksController : ControllerBase
         if (task == null)
             return NotFound();
 
-        // Статус проверяет сама сущность (Issue), поэтому для не-Draft сначала вернётся ошибка статуса.
-        if (task.Status == Core.Enums.TaskStatus.Draft
+        // Статус проверяет сама сущность (Issue), поэтому для не-Planned сначала вернётся ошибка статуса.
+        if (task.Status == Core.Enums.TaskStatus.Planned
             && !string.IsNullOrWhiteSpace(request?.PersonnelId)
             && !await IsActiveAdjusterAsync(request.PersonnelId))
             return BadRequest("Укажите активного наладчика");

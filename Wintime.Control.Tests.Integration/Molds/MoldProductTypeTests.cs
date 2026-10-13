@@ -88,7 +88,7 @@ public class MoldProductTypeTests : IClassFixture<IntegrationTestFactory>
             db.ShiftTasks.Add(new Core.Entities.ShiftTask
             {
                 ImmId = _factory.TestImmId, MoldId = mold.Id, PlanQuantity = 10,
-                Status = Core.Enums.TaskStatus.Draft, IssuedAt = DateTime.UtcNow
+                Status = Core.Enums.TaskStatus.Planned, IssuedAt = DateTime.UtcNow
             });
             await db.SaveChangesAsync();
             moldId = mold.Id;

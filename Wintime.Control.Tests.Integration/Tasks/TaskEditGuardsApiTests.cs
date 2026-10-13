@@ -51,13 +51,13 @@ public class TaskEditGuardsApiTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task UpdateTask_StatusInBody_IsIgnored()
     {
-        var id = await SeedTaskAsync(TaskStatus.Draft);
+        var id = await SeedTaskAsync(TaskStatus.Planned);
         var client = await ManagerClientAsync();
 
         var resp = await client.PutAsJsonAsync($"/api/tasks/{id}", new { status = "Issued" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
-        (await GetAsync(client, id)).GetProperty("status").GetString().Should().Be("Draft");
+        (await GetAsync(client, id)).GetProperty("status").GetString().Should().Be("Planned");
     }
 
     [Fact]

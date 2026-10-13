@@ -13,7 +13,7 @@ public class ShiftTask : BaseEntity
     public int PlanQuantity { get; set; }
     public int ActualQuantity { get; set; }
     public decimal ActualMaterialWeightGrams { get; set; }
-    public Wintime.Control.Core.Enums.TaskStatus Status { get; set; } = Wintime.Control.Core.Enums.TaskStatus.Draft;
+    public Wintime.Control.Core.Enums.TaskStatus Status { get; set; } = Wintime.Control.Core.Enums.TaskStatus.Planned;
     public string? Note { get; set; }
     public string? CloseReason { get; set; }
 
@@ -78,16 +78,16 @@ public class ShiftTask : BaseEntity
 
     // ─────────────────────────────────────────────────────────────────────────
     // Конечный автомат жизненного цикла задания:
-    //   Draft → Issued → Setup → InProgress → Completed → Closed
+    //   Planned → Issued → Setup → InProgress → Completed → Closed
     //                      └──── CancelSetup ────┘ (Setup → Issued)
     // Каждый переход проверяет исходный статус и кидает DomainException (→ HTTP 400).
     // Побочные эффекты (перевод режима ТПА через эмулятор) остаются в контроллере.
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Выдать задание: Планируется (Draft) → Выдано (Issued); personnelId — назначить наладчика в той же операции. Без наладчика выдать нельзя (PZP-13).</summary>
+    /// <summary>Выдать задание: Планируется (Planned) → Выдано (Issued); personnelId — назначить наладчика в той же операции. Без наладчика выдать нельзя (PZP-13).</summary>
     public void Issue(string? personnelId = null)
     {
-        EnsureStatus(TaskStatus.Draft, "Задание не в статусе «Планируется»");
+        EnsureStatus(TaskStatus.Planned, "Задание не в статусе «Планируется»");
         if (!string.IsNullOrWhiteSpace(personnelId))
             PersonnelId = personnelId;
         if (string.IsNullOrEmpty(PersonnelId))
@@ -106,7 +106,7 @@ public class ShiftTask : BaseEntity
         var id = string.IsNullOrWhiteSpace(personnelId) ? null : personnelId;
         switch (Status)
         {
-            case TaskStatus.Draft:
+            case TaskStatus.Planned:
                 break;
             case TaskStatus.Issued when id is null:
                 throw new DomainException("У выданного задания должен быть наладчик");
@@ -200,7 +200,7 @@ public class ShiftTask : BaseEntity
 
     /// <summary>
     /// PZP-13: задать плановую дату и (необязательно) время начала наладки.
-    /// Менять можно до начала наладки (Draft/Issued). Проверяется только изменённое значение:
+    /// Менять можно до начала наладки (Planned/Issued). Проверяется только изменённое значение:
     /// дата — не раньше сегодняшней, дата+время — не раньше «сейчас − 5 минут».
     /// </summary>
     /// <param name="nowLocal">Текущее время по часам завода (считает вызывающий).</param>
@@ -211,7 +211,7 @@ public class ShiftTask : BaseEntity
         if (!dateChanged && !timeChanged)
             return;
 
-        if (Status is not (TaskStatus.Draft or TaskStatus.Issued))
+        if (Status is not (TaskStatus.Planned or TaskStatus.Issued))
             throw new DomainException("Плановое начало можно изменить только до начала наладки");
 
         if (dateChanged && date < DateOnly.FromDateTime(nowLocal))
@@ -225,7 +225,7 @@ public class ShiftTask : BaseEntity
     }
 
     /// <summary>
-    /// PZP-14: норматив наладки. Менять можно до начала наладки (Draft/Issued): после старта
+    /// PZP-14: норматив наладки. Менять можно до начала наладки (Planned/Issued): после старта
     /// норматив — мерка перерасхода и задним числом не подкручивается. Неизменённое значение — no-op.
     /// </summary>
     public void SetSetupNorm(int minutes)
@@ -234,7 +234,7 @@ public class ShiftTask : BaseEntity
         if (minutes == PlannedSetupMinutes)
             return;
 
-        if (Status is not (TaskStatus.Draft or TaskStatus.Issued))
+        if (Status is not (TaskStatus.Planned or TaskStatus.Issued))
             throw new DomainException("Норматив наладки можно изменить только до начала наладки");
 
         PlannedSetupMinutes = minutes;
@@ -331,7 +331,7 @@ public class ShiftTask : BaseEntity
     /// после выдачи наладчик работает по ним, после начала — они часть факта (BL-39).
     /// </summary>
     private void EnsureEditable() =>
-        EnsureStatus(TaskStatus.Draft, "Параметры задания можно изменить только в статусе «Планируется»");
+        EnsureStatus(TaskStatus.Planned, "Параметры задания можно изменить только в статусе «Планируется»");
 
     private void EnsureStatus(TaskStatus expected, string message)
     {

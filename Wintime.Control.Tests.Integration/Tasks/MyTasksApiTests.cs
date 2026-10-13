@@ -43,7 +43,7 @@ public class MyTasksApiTests : IClassFixture<IntegrationTestFactory>
             ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 10, Status = status,
             PersonnelId = personnelId == "self" ? _factory.TestAdjusterId : personnelId,
             PlannedDate = date, PlannedSetupStartTime = time, PlannedFullCycleSeconds = 30,
-            IssuedAt = status == TaskStatus.Draft ? null : DateTime.UtcNow.AddDays(-20),
+            IssuedAt = status == TaskStatus.Planned ? null : DateTime.UtcNow.AddDays(-20),
             CompletedAt = completedAt
         };
         db.ShiftTasks.Add(task);
@@ -100,10 +100,10 @@ public class MyTasksApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task GetMyTasks_DraftHidden()
+    public async Task GetMyTasks_PlannedHidden()
     {
         var (imm, search) = await FreshImmAsync();
-        await SeedAsync(imm, TaskStatus.Draft, Tomorrow);
+        await SeedAsync(imm, TaskStatus.Planned, Tomorrow);
 
         var my = await GetMyAsync(search);
 

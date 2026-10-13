@@ -36,13 +36,13 @@
 ## Жизненный цикл (конечный автомат)
 
 ```
-Draft → Issued → Setup → InProgress → Completed → Closed
+Planned → Issued → Setup → InProgress → Completed → Closed
                    └──── CancelSetup ────┘ (Setup → Issued)
 ```
 
 | Переход | Метод | Смысл |
 |---|---|---|
-| `Draft → Issued` | `Issue()` | Менеджер выдал задание наладчику |
+| `Planned → Issued` | `Issue()` | Менеджер выдал задание наладчику |
 | `Issued → Setup` | `StartSetup()` | Наладчик начал наладку (ставит ПФ, настраивает) |
 | `Setup → Issued` | `CancelSetup()` | Отмена наладки — сбрасывает `SetupStartedAt`/`MoldVerifiedAt` |
 | `Setup` (без смены статуса) | `VerifyMold()` | Зафиксировать QR-верификацию ПФ |

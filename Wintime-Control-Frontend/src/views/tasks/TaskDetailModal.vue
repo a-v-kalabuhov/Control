@@ -167,12 +167,12 @@ const visible = computed({
 const canEdit = computed(() => {
   if (!props.task) return false
   // PZP-14: в «Наладке»/«В работе» форма открывается в режиме «только буфер»
-  return ['Draft', 'Issued', 'Setup', 'InProgress'].includes(props.task.status) && authStore.isManager
+  return ['Planned', 'Issued', 'Setup', 'InProgress'].includes(props.task.status) && authStore.isManager
 })
 
 const canIssue = computed(() => {
   if (!props.task) return false
-  return props.task.status === 'Draft' && authStore.isManager
+  return props.task.status === 'Planned' && authStore.isManager
 })
 
 const canComplete = computed(() => {

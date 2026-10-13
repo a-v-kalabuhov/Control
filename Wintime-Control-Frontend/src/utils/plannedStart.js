@@ -2,7 +2,7 @@
 // plannedDate ('YYYY-MM-DD') и plannedSetupStartTime ('HH:mm:ss') показываются как ввёл
 // менеджер — по часам завода. plannedStartAt (UTC, вычислен сервером) — для сравнения с «сейчас».
 
-const NOT_STARTED = new Set(['Draft', 'Issued'])
+const NOT_STARTED = new Set(['Planned', 'Issued'])
 
 export function formatPlannedStart(task) {
   if (!task?.plannedDate) return '—'

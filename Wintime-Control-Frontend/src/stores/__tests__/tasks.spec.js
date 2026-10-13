@@ -20,7 +20,7 @@ describe('tasks store', () => {
     const store = useTasksStore()
     store.tasks = [
       { id: 'a', status: 'Issued', plannedStartAt: '2026-10-15T11:00:00Z' },
-      { id: 'b', status: 'Draft', plannedStartAt: '2026-10-15T13:00:00Z' },
+      { id: 'b', status: 'Planned', plannedStartAt: '2026-10-15T13:00:00Z' },
       { id: 'c', status: 'InProgress', plannedStartAt: '2026-10-14T05:00:00Z' }
     ]
     expect(store.overdueTasks.map(t => t.id)).toEqual(['a'])

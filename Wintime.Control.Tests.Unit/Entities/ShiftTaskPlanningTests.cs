@@ -14,9 +14,9 @@ public class ShiftTaskPlanningTests
     private static ShiftTask NewTask(EntityTaskStatus status) => new() { Status = status, PlanQuantity = 10 };
 
     [Fact]
-    public void SetPlannedStart_Draft_SetsDateAndTime()
+    public void SetPlannedStart_Planned_SetsDateAndTime()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         task.SetPlannedStart(Today.AddDays(1), new TimeOnly(14, 0), Now);
 
@@ -62,7 +62,7 @@ public class ShiftTaskPlanningTests
     [Fact]
     public void SetPlannedStart_PastDate_Throws()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         var act = () => task.SetPlannedStart(Today.AddDays(-1), null, Now);
 
@@ -72,7 +72,7 @@ public class ShiftTaskPlanningTests
     [Fact]
     public void SetPlannedStart_TodayPastTime_Throws()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         var act = () => task.SetPlannedStart(Today, new TimeOnly(9, 0), Now);
 
@@ -82,7 +82,7 @@ public class ShiftTaskPlanningTests
     [Fact]
     public void SetPlannedStart_TodayTimeWithinTolerance_Allowed()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         task.SetPlannedStart(Today, new TimeOnly(9, 56), Now);
 
@@ -93,7 +93,7 @@ public class ShiftTaskPlanningTests
     public void SetPlannedStart_JustAfterMidnight_FutureTimeAllowed()
     {
         // Регрессия: допуск не должен «заворачиваться» через полночь.
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
         var now = new DateTime(2026, 10, 15, 0, 2, 0);
 
         task.SetPlannedStart(Today, new TimeOnly(8, 0), now);
@@ -114,9 +114,9 @@ public class ShiftTaskPlanningTests
     }
 
     [Fact]
-    public void AssignPersonnel_Draft_AssignsAndClears()
+    public void AssignPersonnel_Planned_AssignsAndClears()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         task.AssignPersonnel("adj-1");
         task.PersonnelId.Should().Be("adj-1");
@@ -164,18 +164,18 @@ public class ShiftTaskPlanningTests
     [Fact]
     public void Issue_WithoutPersonnel_Throws()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         var act = () => task.Issue();
 
         act.Should().Throw<DomainException>().WithMessage("Назначьте наладчика");
-        task.Status.Should().Be(EntityTaskStatus.Draft);
+        task.Status.Should().Be(EntityTaskStatus.Planned);
     }
 
     [Fact]
     public void Issue_WithPersonnelId_AssignsAndIssues()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         task.Issue("adj-1");
 

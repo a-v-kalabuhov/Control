@@ -53,14 +53,14 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
     }
 
     // =========================================================================
-    // Жизненный цикл задания: Draft → InProgress → Completed → Closed
+    // Жизненный цикл задания: Planned → InProgress → Completed → Closed
     // =========================================================================
 
     /// <summary>
-    /// Менеджер создаёт задание → статус Draft, код ответа 201.
+    /// Менеджер создаёт задание → статус Planned, код ответа 201.
     /// </summary>
     [Fact]
-    public async Task CreateTask_AsManager_Returns201WithDraftStatus()
+    public async Task CreateTask_AsManager_Returns201WithPlannedStatus()
     {
         var client = await CreateAuthenticatedClientAsync("test_manager", "Manager123!");
 
@@ -69,12 +69,12 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-        body.GetProperty("status").GetString().Should().Be("Draft");
+        body.GetProperty("status").GetString().Should().Be("Planned");
     }
 
     /// <summary>
     /// Наладчик запускает задание → статус InProgress, код ответа 200.
-    /// Полный цикл: Draft → Issue → Start (Setup) → CompleteSetup (InProgress).
+    /// Полный цикл: Planned → Issue → Start (Setup) → CompleteSetup (InProgress).
     /// </summary>
     [Fact]
     public async Task StartTask_AsAdjuster_Returns200AndInProgressStatus()
@@ -190,7 +190,7 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
 
     /// <summary>
     /// Наладчик завершает задание → статус Completed, код ответа 200.
-    /// Полный цикл: Draft → Issue → Start (Setup) → CompleteSetup (InProgress) → Complete.
+    /// Полный цикл: Planned → Issue → Start (Setup) → CompleteSetup (InProgress) → Complete.
     /// </summary>
     [Fact]
     public async Task CompleteTask_AsAdjuster_Returns200AndCompletedStatus()

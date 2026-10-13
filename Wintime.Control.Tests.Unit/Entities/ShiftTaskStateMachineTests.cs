@@ -8,7 +8,7 @@ namespace Wintime.Control.Tests.Unit.Entities;
 
 /// <summary>
 /// Тесты конечного автомата задания, перенесённого из контроллера в сущность:
-/// Draft → Issued → Setup → InProgress → Completed → Closed.
+/// Planned → Issued → Setup → InProgress → Completed → Closed.
 /// </summary>
 public class ShiftTaskStateMachineTests
 {
@@ -18,9 +18,9 @@ public class ShiftTaskStateMachineTests
     // ── Успешные переходы ────────────────────────────────────────────────────
 
     [Fact]
-    public void Issue_FromDraft_MovesToIssued()
+    public void Issue_FromPlanned_MovesToIssued()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         task.Issue();
 
@@ -145,7 +145,7 @@ public class ShiftTaskStateMachineTests
     }
 
     [Theory]
-    [InlineData(EntityTaskStatus.Draft)]
+    [InlineData(EntityTaskStatus.Planned)]
     [InlineData(EntityTaskStatus.Issued)]
     [InlineData(EntityTaskStatus.Setup)]
     [InlineData(EntityTaskStatus.Completed)]
@@ -181,7 +181,7 @@ public class ShiftTaskStateMachineTests
     [InlineData(EntityTaskStatus.InProgress)]
     [InlineData(EntityTaskStatus.Completed)]
     [InlineData(EntityTaskStatus.Closed)]
-    public void Issue_FromNonDraft_Throws(EntityTaskStatus status)
+    public void Issue_FromNonPlanned_Throws(EntityTaskStatus status)
     {
         var task = NewTask(status);
 
@@ -192,9 +192,9 @@ public class ShiftTaskStateMachineTests
     }
 
     [Fact]
-    public void StartSetup_FromDraft_Throws()
+    public void StartSetup_FromPlanned_Throws()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         var act = () => task.StartSetup();
 

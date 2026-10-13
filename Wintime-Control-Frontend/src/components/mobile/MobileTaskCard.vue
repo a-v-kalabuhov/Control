@@ -132,7 +132,7 @@ const progressColor = computed(() => {
 
 const statusBorderClass = computed(() => {
   const classes = {
-    Draft: 'border-l-4 border-gray-400',
+    Planned: 'border-l-4 border-gray-400',
     Issued: 'border-l-4 border-blue-500',
     Setup: 'border-l-4 border-orange-500',
     InProgress: 'border-l-4 border-yellow-500',

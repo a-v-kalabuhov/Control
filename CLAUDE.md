@@ -51,14 +51,14 @@ nullable — старые ПФ без типа). Правила (ADR-0007): со
 `ShiftTask.PlannedDate` (`DateOnly`, обязательна) + `PlannedSetupStartTime` (`TimeOnly?`, по часам
 завода). Эффективное начало — `PlannedTaskStart.Resolve` (без времени — начало первой смены),
 **не хранится**, в API — `TaskDto.PlannedStartAt`. Менять план и наладчика можно только в
-`Draft`/`Issued`. Выдать задание (`Issue`) без наладчика нельзя; в `Issued` наладчика можно
-переназначить, но не снять. В UI `Draft` подписан «Планируется». См. ADR-0014.
+`Planned`/`Issued`. Выдать задание (`Issue`) без наладчика нельзя; в `Issued` наладчика можно
+переназначить, но не снять. См. ADR-0014.
 
 **Норматив наладки и буфер выпуска** (PZP-14) — снапшот умолчаний `PlanningDefaults` в задании:
 `PlannedSetupMinutes`, `ReleaseBufferFixedMinutes` (минуты 0..1440), `ReleaseBufferPercent`
 (целое 0..100, % от плановой длительности **выпуска**, без наладки). Смена умолчаний задания не
-трогает. Норматив правится в `Draft`/`Issued`, буфер — до завершения выпуска
-(`Draft`…`InProgress`). План задания (выпуск `⌈План/Гнёзда⌉ × PlannedFullCycleSeconds`, буфер,
+трогает. Норматив правится в `Planned`/`Issued`, буфер — до завершения выпуска
+(`Planned`…`InProgress`). План задания (выпуск `⌈План/Гнёзда⌉ × PlannedFullCycleSeconds`, буфер,
 `TaskDto.PlannedEndAt`) считает `TaskPlanCalculator`, **не хранится**; гнёзда — текущие
 `Mold.Cavities` (это прогноз, не история). Настройки приложения — по ADR-0015.
 

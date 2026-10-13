@@ -17,7 +17,7 @@ describe('plannedStart', () => {
   it('isPlannedStartOverdue: выдано и плановое начало прошло', () => {
     const now = new Date('2026-10-15T12:00:00Z')
     expect(isPlannedStartOverdue({ status: 'Issued', plannedStartAt: '2026-10-15T11:00:00Z' }, now)).toBe(true)
-    expect(isPlannedStartOverdue({ status: 'Draft', plannedStartAt: '2026-10-15T11:00:00Z' }, now)).toBe(true)
+    expect(isPlannedStartOverdue({ status: 'Planned', plannedStartAt: '2026-10-15T11:00:00Z' }, now)).toBe(true)
   })
 
   it('isPlannedStartOverdue: в работе — не просрочено', () => {

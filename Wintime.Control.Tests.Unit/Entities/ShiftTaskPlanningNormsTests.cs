@@ -15,7 +15,7 @@ public class ShiftTaskPlanningNormsTests
     };
 
     [Theory]
-    [InlineData(EntityTaskStatus.Draft)]
+    [InlineData(EntityTaskStatus.Planned)]
     [InlineData(EntityTaskStatus.Issued)]
     public void SetSetupNorm_BeforeSetup_Changes(EntityTaskStatus status)
     {
@@ -54,7 +54,7 @@ public class ShiftTaskPlanningNormsTests
     [Fact]
     public void SetSetupNorm_OutOfRange_Throws_EvenIfStatusAllows()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         var act = () => task.SetSetupNorm(1441);
 
@@ -62,7 +62,7 @@ public class ShiftTaskPlanningNormsTests
     }
 
     [Theory]
-    [InlineData(EntityTaskStatus.Draft)]
+    [InlineData(EntityTaskStatus.Planned)]
     [InlineData(EntityTaskStatus.Issued)]
     [InlineData(EntityTaskStatus.Setup)]
     [InlineData(EntityTaskStatus.InProgress)]
@@ -101,7 +101,7 @@ public class ShiftTaskPlanningNormsTests
     [Fact]
     public void SetReleaseBuffer_PercentOutOfRange_Throws()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         var act = () => task.SetReleaseBuffer(10, 101);
 

@@ -57,9 +57,9 @@ public class TaskPersonnelApiTests : IClassFixture<IntegrationTestFactory>
         await c.GetFromJsonAsync<JsonElement>($"/api/tasks/{id}", JsonOptions);
 
     [Fact]
-    public async Task SetPersonnel_Draft_AssignsAndClears()
+    public async Task SetPersonnel_Planned_AssignsAndClears()
     {
-        var id = await SeedTaskAsync(TaskStatus.Draft, null);
+        var id = await SeedTaskAsync(TaskStatus.Planned, null);
         var client = await ManagerClientAsync();
 
         (await client.PutAsJsonAsync($"/api/tasks/{id}/personnel", new { personnelId = _factory.TestAdjusterId }))
@@ -111,7 +111,7 @@ public class TaskPersonnelApiTests : IClassFixture<IntegrationTestFactory>
     public async Task SetPersonnel_NotAdjuster_Returns400()
     {
         var manager = await CreateUserAsync(UserRole.Manager);
-        var id = await SeedTaskAsync(TaskStatus.Draft, null);
+        var id = await SeedTaskAsync(TaskStatus.Planned, null);
         var client = await ManagerClientAsync();
 
         var resp = await client.PutAsJsonAsync($"/api/tasks/{id}/personnel", new { personnelId = manager });
@@ -122,7 +122,7 @@ public class TaskPersonnelApiTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task IssueTask_WithPersonnelInBody_AssignsAndIssues()
     {
-        var id = await SeedTaskAsync(TaskStatus.Draft, null);
+        var id = await SeedTaskAsync(TaskStatus.Planned, null);
         var client = await ManagerClientAsync();
 
         var resp = await client.PostAsJsonAsync($"/api/tasks/{id}/issue", new { personnelId = _factory.TestAdjusterId });
@@ -136,7 +136,7 @@ public class TaskPersonnelApiTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task IssueTask_AlreadyAssigned_NoBody_Issues()
     {
-        var id = await SeedTaskAsync(TaskStatus.Draft, _factory.TestAdjusterId);
+        var id = await SeedTaskAsync(TaskStatus.Planned, _factory.TestAdjusterId);
         var client = await ManagerClientAsync();
 
         var resp = await client.PostAsJsonAsync($"/api/tasks/{id}/issue", new { });
@@ -147,12 +147,12 @@ public class TaskPersonnelApiTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task IssueTask_NoPersonnel_Returns400()
     {
-        var id = await SeedTaskAsync(TaskStatus.Draft, null);
+        var id = await SeedTaskAsync(TaskStatus.Planned, null);
         var client = await ManagerClientAsync();
 
         var resp = await client.PostAsJsonAsync($"/api/tasks/{id}/issue", new { });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await GetAsync(client, id)).GetProperty("status").GetString().Should().Be("Draft");
+        (await GetAsync(client, id)).GetProperty("status").GetString().Should().Be("Planned");
     }
 }

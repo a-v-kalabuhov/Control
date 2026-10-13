@@ -26,7 +26,7 @@ describe('TaskDetailModal — рабочий режим', () => {
   })
 
   it('workMode отсутствует в загруженном задании → прочерк', async () => {
-    const wrapper = mountModal({ id: 't1', status: 'Draft' })
+    const wrapper = mountModal({ id: 't1', status: 'Planned' })
     await flushPromises()
     const cells = wrapper.findAll('.el-descriptions__cell')
     const idx = cells.findIndex(c => c.text() === 'Рабочий режим')
@@ -34,7 +34,7 @@ describe('TaskDetailModal — рабочий режим', () => {
   })
 
   it('workMode: Auto → «Автомат»', async () => {
-    const wrapper = mountModal({ id: 't1', status: 'Draft', workMode: 'Auto' })
+    const wrapper = mountModal({ id: 't1', status: 'Planned', workMode: 'Auto' })
     await flushPromises()
     const cells = wrapper.findAll('.el-descriptions__cell')
     const idx = cells.findIndex(c => c.text() === 'Рабочий режим')
@@ -42,7 +42,7 @@ describe('TaskDetailModal — рабочий режим', () => {
   })
 
   it('workMode: SemiAuto → «Полуавтомат»', async () => {
-    const wrapper = mountModal({ id: 't1', status: 'Draft', workMode: 'SemiAuto' })
+    const wrapper = mountModal({ id: 't1', status: 'Planned', workMode: 'SemiAuto' })
     await flushPromises()
     const cells = wrapper.findAll('.el-descriptions__cell')
     const idx = cells.findIndex(c => c.text() === 'Рабочий режим')
@@ -75,7 +75,7 @@ describe('TaskDetailModal — план задания (PZP-14)', () => {
 
   it('без расчёта выпуска показывает прочерки, норматив — всегда', async () => {
     const wrapper = mountModal({
-      id: 't1', status: 'Draft',
+      id: 't1', status: 'Planned',
       plannedSetupMinutes: 45, releaseBufferFixedMinutes: 10, releaseBufferPercent: 10,
       plannedReleaseSeconds: null, plannedReleaseBufferSeconds: null, plannedEndAt: null
     })
