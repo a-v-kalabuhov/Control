@@ -5,6 +5,7 @@ using Wintime.Control.Core.DTOs.Tasks;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
 
@@ -30,7 +31,11 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
-    /// Список заданий (с фильтрацией)
+    /// Список заданий (с фильтрацией). Три диапазона дат объединяются через И (ARCH-03):
+    /// <c>issued*</c> — по моменту выдачи; <c>planned*</c> — по плановой дате (даты завода);
+    /// <c>active*</c> — окно активности задания пересекается с <c>[activeFrom, activeTo)</c>.
+    /// Без <c>status</c> выполненные и закрытые исключаются — кроме фильтра <c>active*</c>:
+    /// задание, завершённое в периоде, в нём было в работе.
     /// </summary>
     [HttpGet]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
@@ -38,8 +43,12 @@ public class TasksController : ControllerBase
         [FromQuery] Core.Enums.TaskStatus? status = null,
         [FromQuery] Guid? immId = null,
         [FromQuery] string? personnelId = null,
-        [FromQuery] DateTime? dateFrom = null,
-        [FromQuery] DateTime? dateTo = null)
+        [FromQuery] DateTime? issuedFrom = null,
+        [FromQuery] DateTime? issuedTo = null,
+        [FromQuery] DateOnly? plannedFrom = null,
+        [FromQuery] DateOnly? plannedTo = null,
+        [FromQuery] DateTime? activeFrom = null,
+        [FromQuery] DateTime? activeTo = null)
     {
         var query = _context.ShiftTasks
             .Include(t => t.Imm)
@@ -48,19 +57,40 @@ public class TasksController : ControllerBase
             .Include(t => t.Order)
             .AsQueryable();
 
+        bool activeFilter = activeFrom.HasValue || activeTo.HasValue;
+
         if (status.HasValue)
             query = query.Where(t => t.Status == status.Value);
-        else
+        else if (!activeFilter)
             query = query.Where(t => t.Status != Core.Enums.TaskStatus.Completed
                                   && t.Status != Core.Enums.TaskStatus.Closed);
         if (immId.HasValue)
             query = query.Where(t => t.ImmId == immId.Value);
         if (!string.IsNullOrEmpty(personnelId))
             query = query.Where(t => t.PersonnelId == personnelId);
-        if (dateFrom.HasValue)
-            query = query.Where(t => t.IssuedAt >= dateFrom.Value);
-        if (dateTo.HasValue)
-            query = query.Where(t => t.IssuedAt <= dateTo.Value);
+
+        if (issuedFrom.HasValue)
+        {
+            var from = DateTime.SpecifyKind(issuedFrom.Value, DateTimeKind.Utc);
+            query = query.Where(t => t.IssuedAt >= from);
+        }
+        if (issuedTo.HasValue)
+        {
+            var to = DateTime.SpecifyKind(issuedTo.Value, DateTimeKind.Utc);
+            query = query.Where(t => t.IssuedAt <= to);
+        }
+
+        if (plannedFrom.HasValue)
+            query = query.Where(t => t.PlannedDate >= plannedFrom.Value);
+        if (plannedTo.HasValue)
+            query = query.Where(t => t.PlannedDate <= plannedTo.Value);
+
+        if (activeFilter)
+        {
+            var from = activeFrom.HasValue ? DateTime.SpecifyKind(activeFrom.Value, DateTimeKind.Utc) : DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+            var to   = activeTo.HasValue   ? DateTime.SpecifyKind(activeTo.Value,   DateTimeKind.Utc) : DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
+            query = query.Where(TaskActivityWindow.OverlapsPeriod(from, to));
+        }
 
         var tasks = await query.ToListAsync();
 
