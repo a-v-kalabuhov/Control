@@ -33,6 +33,9 @@
             :status="progressStatus"
           />
         </el-descriptions-item>
+        <el-descriptions-item label="Норматив наладки">
+          {{ task ? formatDuration((task.plannedSetupMinutes ?? 0) * 60) : '—' }}
+        </el-descriptions-item>
         <el-descriptions-item label="Выдано">
           {{ formatDate(task?.issuedAt) }}
         </el-descriptions-item>
@@ -210,6 +213,7 @@ import { ElMessage } from 'element-plus'
 import { useMobileStore } from '@/stores/mobile'
 import { useAuthStore } from '@/stores/auth'
 import MobileStatusBadge from '@/components/mobile/MobileStatusBadge.vue'
+import { formatDuration } from '@/utils/taskPlan'
 import dayjs from 'dayjs'
 
 const props = defineProps({

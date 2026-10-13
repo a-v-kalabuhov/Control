@@ -30,6 +30,12 @@
       <el-tag v-else-if="isPlannedStartToday(task)" type="warning" size="small">сегодня</el-tag>
     </div>
 
+    <!-- Норматив наладки (BL-41) -->
+    <div v-if="task.status === 'Issued' || task.status === 'Setup'" class="mb-3 flex items-center gap-2">
+      <span class="text-sm text-gray-500">Наладка:</span>
+      <span class="text-base font-semibold text-gray-800">{{ formatDuration((task.plannedSetupMinutes ?? 0) * 60) }}</span>
+    </div>
+
     <!-- План / Факт -->
     <div class="mb-3 p-3 bg-gray-50 rounded-lg">
       <div class="flex justify-between items-center mb-2">
@@ -101,6 +107,7 @@
 import { computed } from 'vue'
 import MobileStatusBadge from './MobileStatusBadge.vue'
 import { formatPlannedStart, isPlannedStartOverdue, isPlannedStartToday } from '@/utils/plannedStart'
+import { formatDuration } from '@/utils/taskPlan'
 
 const props = defineProps({
   task: {
