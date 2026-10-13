@@ -31,7 +31,7 @@
 | `ActualMaterialWeightGrams` | Фактический расход материала |
 | `CloseReason` | Причина отклонения от плана / закрытия (см. правила ниже) |
 | `MoldVerifiedAt` | Метка успешной QR-верификации ПФ при наладке (без неё — предупреждение) |
-| метки `*At` | Время каждого перехода (`IssuedAt`, `SetupStartedAt`, `StartedAt`, …) — основа отчётов по времени наладки/работы |
+| метки `*At` | Время каждого перехода (`IssuedAt`, `SetupStartedAt`, `StartedAt`, …) — основа отчётов по времени наладки/работы и окна активности (см. ниже) |
 
 ## Жизненный цикл (конечный автомат)
 
@@ -48,7 +48,7 @@ Planned → Issued → Setup → InProgress → Completed → Closed
 | `Setup` (без смены статуса) | `VerifyMold()` | Зафиксировать QR-верификацию ПФ |
 | `Setup → InProgress` | `CompleteSetup()` | Наладка завершена, пошёл серийный выпуск (`StartedAt`) |
 | `InProgress → Completed` | `Complete(qty, reason)` | Задание выполнено, зафиксирован факт |
-| любой `→ Closed` | `Close(reason)` | Ручное закрытие (конец смены/дня) |
+| любой `→ Closed` | `Close(reason)` | Ручное закрытие (отмена или досрочное завершение) |
 
 Каждый переход проверяет исходный статус и при нарушении кидает `DomainException` → HTTP 400
 (см. ADR-0003). Побочные эффекты (перевод режима ТПА) — в контроллере, не в сущности.
@@ -64,8 +64,19 @@ Planned → Issued → Setup → InProgress → Completed → Closed
   InProgress → «Работа»). Рассинхрон статуса задания и режима ТПА = «работа без задания».
   → [`imm-status.md`](imm-status.md), ADR-0006.
 
+## Задание длиннее смены
+
+Задание — непрерывный прогон и может идти через несколько смен и суток; смена/сутки — только ось
+отчётности (проекция), а не единица задания (ADR-0016). **Окно активности** задания —
+`[SetupStartedAt, CompletedAt ?? ClosedAt ?? now)` (окно выпуска — от `StartedAt`); его определяет
+`TaskActivityWindow`. Задание относится к периоду отчёта по пересечению окна с периодом, а не по
+одной точке (`StartedAt`/`IssuedAt`). План за период — нормативный (`TaskPeriodPlan`), наладка
+относится к периоду своего завершения. Подробности и отвергнутые варианты — в
+[ADR-0016](../adr/0016-task-longer-than-shift.md).
+
 ## Связанные
 
 - ADR: [ADR-0002](../adr/0002-task-state-machine-in-entity.md) — КА в сущности;
-  [ADR-0003](../adr/0003-domain-exception-to-http-400.md) — DomainException → 400
+  [ADR-0003](../adr/0003-domain-exception-to-http-400.md) — DomainException → 400;
+  [ADR-0016](../adr/0016-task-longer-than-shift.md) — задание длиннее смены
 - Сущности: [`imm.md`](imm.md), [`mold.md`](mold.md), [`imm-cycle.md`](imm-cycle.md)
