@@ -33,7 +33,7 @@
           </div>
           <div>
             <p class="text-sm text-gray-500">Планируются</p>
-            <p class="text-2xl font-bold text-gray-800">{{ tasksStore.draftTasks.length }}</p>
+            <p class="text-2xl font-bold text-gray-800">{{ tasksStore.plannedTasks.length }}</p>
           </div>
         </div>
       </div>
@@ -187,7 +187,7 @@
             </span>
           </template>
           <template #default="{ row }">
-            {{ row.status === 'Draft' ? '—' : formatDate(row.issuedAt) }}
+            {{ row.status === 'Planned' ? '—' : formatDate(row.issuedAt) }}
           </template>
         </el-table-column>
 
@@ -461,7 +461,7 @@ const issueDialogVisible = ref(false)
 const issuingTask = ref(null)
 
 const canIssueTask = (task) => {
-  return task.status === 'Draft' && canCreate.value
+  return task.status === 'Planned' && canCreate.value
 }
 
 const issueTask = async (task) => {
@@ -495,7 +495,7 @@ const issueTask = async (task) => {
 
 // PZP-14: в «Наладке»/«В работе» правится только буфер выпуска
 const canEditTask = (task) => {
-  return ['Draft', 'Issued', 'Setup', 'InProgress'].includes(task.status) && canCreate.value
+  return ['Planned', 'Issued', 'Setup', 'InProgress'].includes(task.status) && canCreate.value
 }
 
 const formatDate = (date) => {

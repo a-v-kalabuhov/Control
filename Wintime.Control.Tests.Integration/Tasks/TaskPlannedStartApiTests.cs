@@ -131,7 +131,7 @@ public class TaskPlannedStartApiTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task UpdateTask_ClearTime_SetsNull()
     {
-        var id = await SeedTaskAsync(TaskStatus.Draft, Tomorrow, new TimeOnly(9, 0));
+        var id = await SeedTaskAsync(TaskStatus.Planned, Tomorrow, new TimeOnly(9, 0));
         var client = await ManagerClientAsync();
 
         var resp = await client.PutAsJsonAsync($"/api/tasks/{id}", new { clearPlannedSetupStartTime = true });

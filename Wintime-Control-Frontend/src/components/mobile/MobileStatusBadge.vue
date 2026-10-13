@@ -18,12 +18,12 @@ const props = defineProps({
   status: {
     type: String,
     required: true,
-    validator: (value) => ['Draft', 'Issued', 'Setup', 'InProgress', 'Completed', 'Closed'].includes(value)
+    validator: (value) => ['Planned', 'Issued', 'Setup', 'InProgress', 'Completed', 'Closed'].includes(value)
   }
 })
 
 const statusConfig = {
-  Draft: { 
+  Planned: { 
     label: 'Планируется', 
     bg: 'bg-gray-100', 
     text: 'text-gray-700', 
@@ -61,7 +61,7 @@ const statusConfig = {
   }
 }
 
-const config = computed(() => statusConfig[props.status] || statusConfig.Draft)
+const config = computed(() => statusConfig[props.status] || statusConfig.Planned)
 const statusClasses = computed(() => `${config.value.bg} ${config.value.text}`)
 const dotClasses = computed(() => config.value.dot)
 const label = computed(() => config.value.label)

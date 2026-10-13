@@ -3,7 +3,7 @@ namespace Wintime.Control.Core.Enums;
 /// <summary>
 /// Проекция <see cref="TaskStatus"/> на «активность» задания для конвейера телеметрии.
 /// Активным считается задание в статусе Setup (наладка) или InProgress (производство);
-/// всё остальное (нет задания, Draft/Issued/Completed/Closed) — None.
+/// всё остальное (нет задания, Planned/Issued/Completed/Closed) — None.
 /// </summary>
 public enum ActiveTaskStatus
 {

@@ -354,7 +354,7 @@ describe('TaskFormModal — плановое начало и наладчик (P
   beforeEach(() => vi.clearAllMocks())
 
   const draft = {
-    id: 't1', status: 'Draft', immId: 'imm-1', moldId: 'mold-1', personnelId: null,
+    id: 't1', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', personnelId: null,
     planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: '14:00:00',
     note: '', orderId: null, workMode: 'Auto', plannedFullCycleSeconds: 30, plannedInjectionCycleSeconds: null
   }
@@ -494,7 +494,7 @@ describe('TaskFormModal — норматив наладки и буфер вып
 
   it('при редактировании умолчания не запрашивает и берёт значения задания', async () => {
     const wrapper = mountModal({ task: {
-      id: 't1', status: 'Draft', immId: 'imm-1', moldId: 'mold-1', planQuantity: 100,
+      id: 't1', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', planQuantity: 100,
       plannedDate: '2026-10-20', plannedFullCycleSeconds: 60,
       plannedSetupMinutes: 45, releaseBufferFixedMinutes: 5, releaseBufferPercent: 20
     } })

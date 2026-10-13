@@ -29,7 +29,7 @@ export const useTasksStore = defineStore('tasks', {
     inProgressTasks: (state) => state.tasks.filter(t => t.status === 'InProgress'),
 
     // Задания в статусе «Планируется»
-    draftTasks: (state) => state.tasks.filter(t => t.status === 'Draft'),
+    plannedTasks: (state) => state.tasks.filter(t => t.status === 'Planned'),
 
     // Просрочено: задание не начато, а плановое начало прошло (PZP-13)
     overdueTasks: (state) => state.tasks.filter(t => isPlannedStartOverdue(t)),

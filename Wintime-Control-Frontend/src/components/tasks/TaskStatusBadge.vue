@@ -16,12 +16,12 @@ const props = defineProps({
   status: {
     type: String,
     required: true,
-    validator: (value) => ['Draft', 'Issued', 'Setup', 'InProgress', 'Completed', 'Closed'].includes(value)
+    validator: (value) => ['Planned', 'Issued', 'Setup', 'InProgress', 'Completed', 'Closed'].includes(value)
   }
 })
 
 const statusConfig = {
-  Draft: {
+  Planned: {
     label: 'Планируется',
     type: 'info',
     effect: 'plain'
@@ -53,7 +53,7 @@ const statusConfig = {
   }
 }
 
-const config = computed(() => statusConfig[props.status] || statusConfig.Draft)
+const config = computed(() => statusConfig[props.status] || statusConfig.Planned)
 const tagType = computed(() => config.value.type)
 const effect = computed(() => config.value.effect)
 const label = computed(() => config.value.label)

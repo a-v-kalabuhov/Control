@@ -25,7 +25,7 @@ public class ShiftTaskEditGuardsTests
         PlannedInjectionCycleSeconds = 20
     };
 
-    public static TheoryData<EntityTaskStatus> NotDraft => new()
+    public static TheoryData<EntityTaskStatus> NotPlanned => new()
     {
         EntityTaskStatus.Issued, EntityTaskStatus.Setup, EntityTaskStatus.InProgress,
         EntityTaskStatus.Completed, EntityTaskStatus.Closed
@@ -34,9 +34,9 @@ public class ShiftTaskEditGuardsTests
     // ── План ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void SetPlanQuantity_Draft_Changes()
+    public void SetPlanQuantity_Planned_Changes()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         task.SetPlanQuantity(150);
 
@@ -44,8 +44,8 @@ public class ShiftTaskEditGuardsTests
     }
 
     [Theory]
-    [MemberData(nameof(NotDraft))]
-    public void SetPlanQuantity_ChangedOutsideDraft_Throws(EntityTaskStatus status)
+    [MemberData(nameof(NotPlanned))]
+    public void SetPlanQuantity_ChangedOutsidePlanned_Throws(EntityTaskStatus status)
     {
         var task = NewTask(status);
 
@@ -56,7 +56,7 @@ public class ShiftTaskEditGuardsTests
     }
 
     [Theory]
-    [MemberData(nameof(NotDraft))]
+    [MemberData(nameof(NotPlanned))]
     public void SetPlanQuantity_Unchanged_NoOpInAnyStatus(EntityTaskStatus status)
     {
         var task = NewTask(status);
@@ -71,7 +71,7 @@ public class ShiftTaskEditGuardsTests
     [InlineData(-5)]
     public void SetPlanQuantity_NotPositive_Throws(int quantity)
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         var act = () => task.SetPlanQuantity(quantity);
 
@@ -81,9 +81,9 @@ public class ShiftTaskEditGuardsTests
     // ── Примечание ──────────────────────────────────────────────────────────
 
     [Fact]
-    public void SetNote_Draft_Changes()
+    public void SetNote_Planned_Changes()
     {
-        var task = NewTask(EntityTaskStatus.Draft);
+        var task = NewTask(EntityTaskStatus.Planned);
 
         task.SetNote("новое");
 
@@ -91,8 +91,8 @@ public class ShiftTaskEditGuardsTests
     }
 
     [Theory]
-    [MemberData(nameof(NotDraft))]
-    public void SetNote_ChangedOutsideDraft_Throws(EntityTaskStatus status)
+    [MemberData(nameof(NotPlanned))]
+    public void SetNote_ChangedOutsidePlanned_Throws(EntityTaskStatus status)
     {
         var task = NewTask(status);
 
@@ -102,7 +102,7 @@ public class ShiftTaskEditGuardsTests
     }
 
     [Fact]
-    public void SetNote_Unchanged_NoOpOutsideDraft()
+    public void SetNote_Unchanged_NoOpOutsidePlanned()
     {
         var task = NewTask(EntityTaskStatus.Issued);
 
@@ -112,7 +112,7 @@ public class ShiftTaskEditGuardsTests
     }
 
     [Fact]
-    public void SetNote_EmptyStringForMissingNote_NoOpOutsideDraft()
+    public void SetNote_EmptyStringForMissingNote_NoOpOutsidePlanned()
     {
         // Форма подставляет '' вместо отсутствующего примечания — это не изменение.
         var task = NewTask(EntityTaskStatus.Issued);
@@ -127,8 +127,8 @@ public class ShiftTaskEditGuardsTests
     // ── Режим и эталоны цикла ───────────────────────────────────────────────
 
     [Theory]
-    [MemberData(nameof(NotDraft))]
-    public void SetCycleNorms_ChangedOutsideDraft_Throws(EntityTaskStatus status)
+    [MemberData(nameof(NotPlanned))]
+    public void SetCycleNorms_ChangedOutsidePlanned_Throws(EntityTaskStatus status)
     {
         var task = NewTask(status);
 
@@ -139,8 +139,8 @@ public class ShiftTaskEditGuardsTests
     }
 
     [Theory]
-    [MemberData(nameof(NotDraft))]
-    public void SetCycleNorms_Unchanged_NoOpOutsideDraft(EntityTaskStatus status)
+    [MemberData(nameof(NotPlanned))]
+    public void SetCycleNorms_Unchanged_NoOpOutsidePlanned(EntityTaskStatus status)
     {
         var task = NewTask(status);
 

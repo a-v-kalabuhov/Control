@@ -147,7 +147,7 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
                 ImmId = _factory.TestImmId,
                 MoldId = _factory.TestMoldId,
                 PlanQuantity = 100,
-                Status = TaskStatus.Draft,
+                Status = TaskStatus.Planned,
                 PlannedFullCycleSeconds = null,
                 PlannedInjectionCycleSeconds = null
             };

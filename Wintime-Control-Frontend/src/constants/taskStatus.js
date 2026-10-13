@@ -1,5 +1,5 @@
 export const TASK_STATUS = {
-  DRAFT: 'Draft',
+  PLANNED: 'Planned',
   ISSUED: 'Issued',
   SETUP: 'Setup',
   IN_PROGRESS: 'InProgress',
@@ -8,7 +8,7 @@ export const TASK_STATUS = {
 }
 
 export const TASK_STATUS_LABELS = {
-  [TASK_STATUS.DRAFT]: 'Планируется',
+  [TASK_STATUS.PLANNED]: 'Планируется',
   [TASK_STATUS.ISSUED]: 'Выдано',
   [TASK_STATUS.SETUP]: 'Наладка',
   [TASK_STATUS.IN_PROGRESS]: 'В работе',
@@ -17,7 +17,7 @@ export const TASK_STATUS_LABELS = {
 }
 
 export const TASK_STATUS_COLORS = {
-  [TASK_STATUS.DRAFT]: 'gray',
+  [TASK_STATUS.PLANNED]: 'gray',
   [TASK_STATUS.ISSUED]: 'blue',
   [TASK_STATUS.SETUP]: 'orange',
   [TASK_STATUS.IN_PROGRESS]: 'yellow',
