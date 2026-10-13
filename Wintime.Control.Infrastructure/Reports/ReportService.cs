@@ -100,11 +100,20 @@ public class ReportService : IReportService
                 && c.StartTime >= periodStart && c.StartTime < periodEnd)
             .ToListAsync(ct);
 
-        // Активное задание за период
-        var task = await _context.ShiftTasks
+        // Задания, чьё окно активности пересекается с периодом (ARCH-03): задание может идти
+        // через несколько смен и суток, поэтому отбор — не по одной точке StartedAt.
+        var tasks = await _context.ShiftTasks
             .Include(t => t.Mold)
-            .FirstOrDefaultAsync(t => t.ImmId == imm.Id
-                && t.StartedAt >= periodStart && t.StartedAt < periodEnd, ct);
+            .Where(t => t.ImmId == imm.Id)
+            .Where(TaskActivityWindow.OverlapsPeriod(periodStart, periodEnd))
+            .OrderBy(t => t.SetupStartedAt)
+            .ToListAsync(ct);
+
+        // ПФ циклов периода — для расхода сырья по ПФ каждого цикла
+        var cycleMoldIds = cycles.Where(c => c.MoldId != null).Select(c => c.MoldId!.Value).Distinct().ToList();
+        var cycleMolds = await _context.Molds
+            .Where(m => cycleMoldIds.Contains(m.Id))
+            .ToDictionaryAsync(m => m.Id, ct);
 
         // События за период (для детализации простоев)
         var events = await _context.Events
@@ -160,11 +169,8 @@ public class ReportService : IReportService
             ? (decimal)cycles.Average(c => c.DurationSeconds)
             : 0m;
 
-        // Выработка считается по снапшоту гнёздности каждого цикла (ImmCycle.Cavities),
-        // а не по текущему Mold.Cavities — гнёзда могли заглушаться при ремонте.
-        // Fallback для старых записей (= 0) — текущее значение Mold.Cavities.
-        var moldCavitiesFallback = task?.Mold?.Cavities ?? 0;
-        var actualQuantity = cycles.Sum(c => c.Cavities > 0 ? c.Cavities : moldCavitiesFallback);
+        // Выработка — по снапшоту гнёздности каждого цикла (ImmCycle.Cavities), не по текущему Mold.Cavities.
+        var actualQuantity = cycles.Sum(c => c.Cavities);
 
         // Детализация простоев по причинам
         var downtimeDetails = new List<DowntimeDetailDto>();
@@ -185,18 +191,21 @@ public class ReportService : IReportService
             }
         }
 
-        // Расчёт расхода сырья
-        decimal rawMaterialKg = 0;
-        string? moldName = null;
-        if (task?.Mold != null)
-        {
-            moldName = task.Mold.Name;
-            // Вес деталей — по фактической выработке (снапшот гнёздности),
-            // вес литников — по одному на каждый цикл.
-            var partsGrams  = task.Mold.PartWeightGrams * actualQuantity;
-            var runnerGrams = task.Mold.RunnerWeightGrams * totalCycles;
-            rawMaterialKg = (partsGrams + runnerGrams) / 1000m;
-        }
+        // Расход сырья — по ПФ каждого цикла: деталь × гнёзда цикла + один литник на цикл.
+        // Циклы без ПФ (MoldId = null) сырьё не считают.
+        decimal rawGrams = 0;
+        foreach (var c in cycles)
+            if (c.MoldId is Guid moldId && cycleMolds.TryGetValue(moldId, out var cm))
+                rawGrams += cm.PartWeightGrams * c.Cavities + cm.RunnerWeightGrams;
+        var rawMaterialKg = rawGrams / 1000m;
+
+        var moldNames = tasks.Select(t => t.Mold?.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct().ToList();
+        string? moldName = moldNames.Count > 0 ? string.Join(", ", moldNames) : null;
+
+        // Нормативный план за период (ARCH-03): сумма по заданиям; для текущих суток — до «сейчас».
+        var planQuantity = tasks.Sum(t => TaskPeriodPlan.Calculate(
+            TaskActivityWindow.Release(t, now), t.PlanQuantity, t.Mold?.Cavities ?? 0,
+            t.PlannedFullCycleSeconds, periodStart, aggregateEnd));
 
         // Эффективность: полезная работа / (работа + наладка + простои)
         var productiveBase = workTimeSeconds + setupSeconds + downtimeSeconds;
@@ -209,7 +218,7 @@ public class ReportService : IReportService
             ImmId = imm.Id,
             ImmName = imm.Name,
             MoldName = moldName,
-            PlanQuantity = task?.PlanQuantity ?? 0,
+            PlanQuantity = planQuantity,
             ActualQuantity = actualQuantity,
             CycleCount = totalCycles,
             WorkTimeSeconds = workTimeSeconds,
