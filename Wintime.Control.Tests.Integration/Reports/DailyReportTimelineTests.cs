@@ -27,15 +27,22 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
     public async Task Daily_Report_Clamps_Open_Status_To_Now_Not_EndOfDay()
     {
         var now = DateTime.UtcNow;
-        var today = now.Date; // отчёт за сегодня → periodEnd = завтра 00:00 UTC (в будущем)
-        var statusChangedAt = now.AddHours(-2) < DateTime.SpecifyKind(today, DateTimeKind.Utc)
-            ? DateTime.SpecifyKind(today, DateTimeKind.Utc)
-            : now.AddHours(-2);
 
         Guid immId;
+        DateTime today, dayStartUtc, statusChangedAt;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+
+            // Отчёт строит сутки в поясе завода (зона смен, по умолчанию Europe/Moscow), а не в UTC:
+            // «сегодня» и его начало считаем так же, иначе около полуночи завода статус попадает в другие сутки.
+            var tzId = db.Shifts.OrderBy(s => s.StartMinutes).Select(s => s.TimeZoneId).FirstOrDefault()
+                       ?? "Europe/Moscow";
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+            today = TimeZoneInfo.ConvertTimeFromUtc(now, tz).Date; // отчёт за сегодня → periodEnd в будущем
+            dayStartUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(today, DateTimeKind.Unspecified), tz);
+            statusChangedAt = now.AddHours(-2) < dayStartUtc ? dayStartUtc : now.AddHours(-2);
+
             var imm = new Core.Entities.Imm
             {
                 Name = $"IMM-{Guid.NewGuid():N}", TemplateId = _factory.TestTemplateId, IsActive = true
@@ -77,8 +84,8 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
         var upperBound = DateTime.UtcNow.AddSeconds(5);
         item.Timeline.Should().OnlyContain(t => t.End <= upperBound);
 
-        // И конкретно — открытый статус не растянут до конца суток (periodEnd = завтра 00:00 UTC).
-        var endOfDayUtc = DateTime.SpecifyKind(today, DateTimeKind.Utc).AddDays(1);
+        // И конкретно — открытый статус не растянут до конца суток завода (periodEnd = начало завтрашних суток).
+        var endOfDayUtc = dayStartUtc.AddDays(1);
         item.Timeline.Max(t => t.End).Should().BeBefore(endOfDayUtc);
 
         // Отработанное время не должно быть раздуто проекцией в будущее.
