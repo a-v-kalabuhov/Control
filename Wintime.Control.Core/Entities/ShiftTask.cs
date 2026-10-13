@@ -188,7 +188,7 @@ public class ShiftTask : BaseEntity
         PlanQuantity += delta;
     }
 
-    /// <summary>Закрыть задание (ручное закрытие в конце дня): любой статус → Closed.</summary>
+    /// <summary>Закрыть задание вручную (досрочно или после завершения): любой статус → Closed.</summary>
     public void Close(string? closeReason)
     {
         if (closeReason != null)
