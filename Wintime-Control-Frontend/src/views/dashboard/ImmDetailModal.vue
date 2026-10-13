@@ -177,7 +177,7 @@ const loadData = async () => {
   try {
     const [historyRes, tasksRes] = await Promise.all([
       dashboardApi.getImmEffectiveStatusHistory(props.immId, { from: fromIso, to: toIso }),
-      tasksApi.getList({ immId: props.immId, dateFrom: fromIso, dateTo: toIso }),
+      tasksApi.getList({ immId: props.immId, activeFrom: fromIso, activeTo: toIso }),
     ])
     statusSegments.value = historyRes.data
     tasks.value          = tasksRes.data?.items ?? tasksRes.data ?? []

@@ -481,8 +481,6 @@ BEGIN
         sb := sa + man_s * INTERVAL '1 second';
         INSERT INTO "ImmStatusHistory" ("ImmId","Status","ChangedAt","EndedAt") VALUES (v_imm_id,'manual',sa, sb);
         INSERT INTO "Telemetry"        ("ImmId","Timestamp","ParameterName","ValueText") VALUES (v_imm_id, sa,'status','manual');
-        INSERT INTO "Events" ("Id","ImmId","EventType","StartTime","EndTime","PersonnelId","CreatedAt")
-          VALUES (gen_random_uuid(), v_imm_id, 2, sa, sb, v_adj, NOW());
         sa := sb;
 
         -- 3. Auto block 1

@@ -43,14 +43,14 @@
       <div class="flex-1 relative">
         <div class="task-bar">
           <div
-            v-for="task in tasks"
-            :key="task.id"
+            v-for="bar in taskBars"
+            :key="bar.task.id"
             class="task-block"
-            :style="taskStyle(task)"
-            :title="taskTitle(task)"
+            :style="taskStyle(bar)"
+            :title="taskTitle(bar.task)"
           >
-            <div class="task-name">{{ task.moldName || 'Задание' }}</div>
-            <div class="task-qty">{{ task.actualQuantity }}&thinsp;/&thinsp;{{ task.planQuantity }} шт</div>
+            <div class="task-name">{{ bar.task.moldName || 'Задание' }}</div>
+            <div class="task-qty">{{ bar.task.actualQuantity }}&thinsp;/&thinsp;{{ bar.task.planQuantity }} шт</div>
           </div>
         </div>
         <div class="now-line" :style="{ left: nowPct }"></div>
@@ -62,6 +62,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { getEffectiveStatusMeta } from '@/constants/effectiveStatus'
+import { taskBarLayout } from '@/utils/shiftTimeline'
 
 const props = defineProps({
   statusSegments: { type: Array, default: () => [] }, // EffectiveStatusSegmentDto[]
@@ -84,6 +85,11 @@ const nowClamped = computed(() => {
   if (now.value > props.shiftEnd)   return props.shiftEnd
   return now.value
 })
+
+// Бары заданий: только задания с окном активности, пересекающим смену.
+const taskBars = computed(() => props.tasks
+  .map((task, idx) => ({ task, idx, layout: taskBarLayout(task, props.shiftStart, props.shiftEnd, nowClamped.value) }))
+  .filter(b => b.layout))
 const nowPct     = computed(() => toPct(nowClamped.value))
 const nowLabel   = computed(() => formatTime(nowClamped.value))
 // Заштрихованный «хвост» смены, который ещё не наступил (от now до конца смены).
@@ -135,18 +141,14 @@ function segStyle(seg) {
   }
 }
 
-function taskStyle(task) {
-  const start = new Date(task.startedAt ?? task.issuedAt)
-  const end   = new Date(task.completedAt ?? task.closedAt ?? props.shiftEnd)
-  const clampedStart = start < props.shiftStart ? props.shiftStart : start
-  const clampedEnd   = end   > props.shiftEnd   ? props.shiftEnd   : end
-  const left  = ((clampedStart - props.shiftStart) / shiftDur.value * 100).toFixed(3)
-  const width = ((clampedEnd   - clampedStart)     / shiftDur.value * 100).toFixed(3)
-  const idx   = props.tasks.indexOf(task) % TASK_COLORS.length
+// Наладка — светлым оттенком цвета задания, выпуск — основным цветом.
+function taskStyle(bar) {
+  const color = TASK_COLORS[bar.idx % TASK_COLORS.length]
+  const sp = bar.layout.setupPct.toFixed(3)
   return {
-    left:       left + '%',
-    width:      Math.max(0, width) + '%',
-    background: TASK_COLORS[idx],
+    left:       bar.layout.leftPct.toFixed(3) + '%',
+    width:      bar.layout.widthPct.toFixed(3) + '%',
+    background: `linear-gradient(to right, ${color}80 0 ${sp}%, ${color} ${sp}% 100%)`,
   }
 }
 
@@ -175,12 +177,13 @@ function segTitle(seg) {
 }
 
 function taskTitle(task) {
-  const start = new Date(task.startedAt ?? task.issuedAt)
-  const end   = new Date(task.completedAt ?? task.closedAt ?? props.shiftEnd)
+  const start = new Date(task.setupStartedAt)
+  const end   = new Date(task.completedAt ?? task.closedAt ?? now.value)
   const progress = task.planQuantity ? Math.round(task.actualQuantity / task.planQuantity * 100) : 0
   return [
     task.moldName || 'Задание',
     `${formatTime(start)} — ${formatTime(end)} (${durStr(end - start)})`,
+    task.startedAt ? `Наладка: ${formatTime(task.setupStartedAt)} — ${formatTime(task.startedAt)}` : (task.closedAt || task.completedAt) ? 'Закрыто во время наладки' : 'Идёт наладка',
     `Факт: ${task.actualQuantity} / План: ${task.planQuantity} шт (${progress}%)`,
     task.personnelName ? `Наладчик: ${task.personnelName}` : null,
   ].filter(Boolean).join('\n')
