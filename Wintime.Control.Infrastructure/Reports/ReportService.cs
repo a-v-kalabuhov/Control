@@ -238,6 +238,43 @@ public class ReportService : IReportService
         await _context.Shifts.OrderBy(s => s.StartMinutes).Select(s => (string?)s.TimeZoneId).FirstOrDefaultAsync(ct)
             ?? FactoryCalendar.DefaultTimeZoneId;
 
+    // Строка задания наладчика для отчётов по персоналу (ARCH-03): задание завершено в периоде
+    // и/или наладка завершена в периоде (тогда — её длительность). Наладка относится к периоду
+    // своего завершения целиком; наладчик — PersonnelId задания (после начала наладки не меняется).
+    private sealed record PersonnelTaskRow(string PersonnelId, Guid ImmId, bool CompletedInPeriod, int? SetupSeconds);
+
+    private readonly record struct PersonnelStats(int CompletedTasks, int CompletedSetups, int TotalSetupSeconds, decimal AvgSetupSeconds)
+    {
+        public static PersonnelStats Of(IEnumerable<PersonnelTaskRow> rows)
+        {
+            var list = rows.ToList();
+            var setups = list.Where(r => r.SetupSeconds.HasValue).Select(r => r.SetupSeconds!.Value).ToList();
+            var total = setups.Sum();
+            return new PersonnelStats(list.Count(r => r.CompletedInPeriod), setups.Count, total,
+                setups.Count > 0 ? (decimal)total / setups.Count : 0m);
+        }
+    }
+
+    private async Task<List<PersonnelTaskRow>> LoadPersonnelTaskRowsAsync(
+        List<string> personnelIds, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    {
+        var completed = Wintime.Control.Core.Enums.TaskStatus.Completed;
+        var rows = await _context.ShiftTasks
+            .Where(t => t.PersonnelId != null && personnelIds.Contains(t.PersonnelId)
+                && ((t.Status == completed && t.CompletedAt >= fromUtc && t.CompletedAt < toUtc)
+                    || (t.SetupStartedAt != null && t.StartedAt >= fromUtc && t.StartedAt < toUtc)))
+            .Select(t => new { t.PersonnelId, t.ImmId, t.Status, t.CompletedAt, t.SetupStartedAt, t.StartedAt })
+            .ToListAsync(ct);
+
+        return rows.Select(r => new PersonnelTaskRow(
+            r.PersonnelId!,
+            r.ImmId,
+            r.Status == completed && r.CompletedAt >= fromUtc && r.CompletedAt < toUtc,
+            r.SetupStartedAt != null && r.StartedAt >= fromUtc && r.StartedAt < toUtc
+                ? Math.Max(0, (int)(r.StartedAt!.Value - r.SetupStartedAt.Value).TotalSeconds)
+                : null)).ToList();
+    }
+
     private static string MapStatusToType(string status) => ImmMode.Normalize(status) switch
     {
         ImmMode.Auto   => "work",
@@ -473,41 +510,21 @@ public class ReportService : IReportService
                 .Where(u => u.IsActive && u.Role == UserRole.Adjuster)
                 .ToListAsync(ct);
 
-            var shifts = await _context.Shifts.ToListAsync(ct);
+            var rows = await LoadPersonnelTaskRowsAsync(personnel.Select(p => p.Id).ToList(), dateFromUtc, periodEnd, ct);
 
-            report.PersonnelData = [];
-
-            foreach (var person in personnel)
+            report.PersonnelData = [.. personnel.Select(person =>
             {
-                var tasks = await _context.ShiftTasks
-                    .Where(t => t.PersonnelId == person.Id && t.StartedAt >= dateFromUtc && t.StartedAt < periodEnd && t.Status >= Wintime.Control.Core.Enums.TaskStatus.Completed)
-                    .ToListAsync(ct);
-
-                var completedTasks = tasks.Count;
-                var totalWorkSeconds = ShiftWorkCalculator.CalculateWorkSeconds(tasks.Select(t => t.StartedAt), shifts);
-
-                var setupEvents = await _context.Events
-                    .Where(e => e.PersonnelId == person.Id && e.EventType == EventType.Setup && e.StartTime >= dateFromUtc && e.StartTime < periodEnd)
-                    .ToListAsync(ct);
-
-                var avgSetupTime = setupEvents.Count > 0
-                    ? (decimal)setupEvents.Average(e => e.DurationSeconds)
-                    : 0;
-
-                var totalSetupSeconds = setupEvents.Sum(e => e.DurationSeconds);
-                var workedShifts = ShiftWorkCalculator.CountWorkedShifts(tasks.Select(t => t.StartedAt), shifts);
-
-                report.PersonnelData.Add(new AssetsPersonnelItemDto
+                var s = PersonnelStats.Of(rows.Where(r => r.PersonnelId == person.Id));
+                return new AssetsPersonnelItemDto
                 {
                     PersonnelId = person.Id,
                     FullName = person.FullName,
-                    CompletedTasks = completedTasks,
-                    TotalWorkSeconds = totalWorkSeconds,
-                    AvgSetupTime = avgSetupTime,
-                    TotalSetupSeconds = totalSetupSeconds,
-                    WorkedShifts = workedShifts
-                });
-            }
+                    CompletedTasks = s.CompletedTasks,
+                    CompletedSetups = s.CompletedSetups,
+                    AvgSetupTime = s.AvgSetupSeconds,
+                    TotalSetupSeconds = s.TotalSetupSeconds
+                };
+            })];
         }
 
         else if (reportType.Equals("MoldsByImm", StringComparison.OrdinalIgnoreCase))
@@ -601,98 +618,41 @@ public class ReportService : IReportService
                 .Where(u => u.IsActive && u.Role == UserRole.Adjuster)
                 .ToListAsync(ct);
 
-            var imms = await _context.Imms
-                .Where(i => i.IsActive)
-                .ToListAsync(ct);
+            var immNameLookup = await _context.Imms.ToDictionaryAsync(i => i.Id, i => i.Name, ct);
 
-            var immNameLookup = imms.ToDictionary(i => i.Id, i => i.Name);
-
-            var personnelIds = personnel.Select(p => p.Id).ToList();
-
-            // Задания за период, сгруппированные по (PersonnelId, ImmId)
-            var taskStats = await _context.ShiftTasks
-                .Where(t => personnelIds.Contains(t.PersonnelId!)
-                         && t.StartedAt >= dateFromUtc
-                         && t.StartedAt < periodEnd
-                         && t.Status >= Wintime.Control.Core.Enums.TaskStatus.Completed)
-                .Select(t => new
-                {
-                    t.PersonnelId,
-                    t.ImmId,
-                    t.StartedAt,
-                    t.CompletedAt
-                })
-                .ToListAsync(ct);
-
-            var setupEvents = await _context.Events
-                .Where(e => personnelIds.Contains(e.PersonnelId!)
-                         && e.EventType == EventType.Setup
-                         && e.StartTime >= dateFromUtc
-                         && e.StartTime < periodEnd)
-                .Select(e => new { e.PersonnelId, e.ImmId, e.DurationSeconds })
-                .ToListAsync(ct);
-
-            var setupByPerson = setupEvents
-                .GroupBy(e => e.PersonnelId!)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Average(e => (double)e.DurationSeconds));
-
-            var totalSetupByPerson = setupEvents
-                .GroupBy(e => e.PersonnelId!)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Sum(e => e.DurationSeconds));
-
-            var setupByPersonAndImm = setupEvents
-                .GroupBy(e => (e.PersonnelId!, e.ImmId))
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Average(e => (double)e.DurationSeconds));
-
-            var totalSetupByPersonAndImm = setupEvents
-                .GroupBy(e => (e.PersonnelId!, e.ImmId))
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Sum(e => e.DurationSeconds));
-
-            var shifts = await _context.Shifts.ToListAsync(ct);
+            var rows = await LoadPersonnelTaskRowsAsync(personnel.Select(p => p.Id).ToList(), dateFromUtc, periodEnd, ct);
 
             report.PersonnelByImmData = [.. personnel.Select(person =>
             {
-                var personTasks = taskStats.Where(t => t.PersonnelId == person.Id).ToList();
+                var personRows = rows.Where(r => r.PersonnelId == person.Id).ToList();
+                var total = PersonnelStats.Of(personRows);
 
-                var breakdown = personTasks
-                    .GroupBy(t => t.ImmId)
+                var breakdown = personRows
+                    .GroupBy(r => r.ImmId)
                     .Select(g =>
                     {
-                        setupByPersonAndImm.TryGetValue((person.Id, g.Key), out var avgSetupImm);
-                        totalSetupByPersonAndImm.TryGetValue((person.Id, g.Key), out var totalSetupImm);
+                        var s = PersonnelStats.Of(g);
                         return new AssetsPersonnelImmBreakdownDto
                         {
                             ImmId = g.Key,
                             ImmName = immNameLookup.GetValueOrDefault(g.Key, g.Key.ToString()),
-                            CompletedTasks = g.Count(),
-                            TotalWorkSeconds = ShiftWorkCalculator.CalculateWorkSeconds(g.Select(t => t.StartedAt), shifts),
-                            AvgSetupTime = (decimal)avgSetupImm,
-                            TotalSetupSeconds = totalSetupImm
+                            CompletedTasks = s.CompletedTasks,
+                            CompletedSetups = s.CompletedSetups,
+                            AvgSetupTime = s.AvgSetupSeconds,
+                            TotalSetupSeconds = s.TotalSetupSeconds
                         };
                     })
                     .OrderBy(r => r.ImmName)
                     .ToList();
 
-                setupByPerson.TryGetValue(person.Id, out var avgSetup);
-                totalSetupByPerson.TryGetValue(person.Id, out var totalSetup);
-
                 return new AssetsPersonnelByImmItemDto
                 {
                     PersonnelId = person.Id,
                     FullName = person.FullName,
-                    CompletedTasks = personTasks.Count,
-                    TotalWorkSeconds = ShiftWorkCalculator.CalculateWorkSeconds(personTasks.Select(t => t.StartedAt), shifts),
-                    WorkedShifts = ShiftWorkCalculator.CountWorkedShifts(personTasks.Select(t => t.StartedAt), shifts),
-                    AvgSetupTime = (decimal)avgSetup,
-                    TotalSetupSeconds = totalSetup,
+                    CompletedTasks = total.CompletedTasks,
+                    CompletedSetups = total.CompletedSetups,
+                    AvgSetupTime = total.AvgSetupSeconds,
+                    TotalSetupSeconds = total.TotalSetupSeconds,
                     ImmBreakdown = breakdown
                 };
             })];
@@ -823,7 +783,7 @@ public class ReportService : IReportService
                 worksheet.Cell(row, 1).Style.Font.FontSize = 12;
                 row++;
 
-                var personnelHeaders = new[] { "Сотрудник", "Выполнено задач", "Время работы (ч)", "Ср. время наладки (мин)" };
+                var personnelHeaders = new[] { "Сотрудник", "Выполнено задач", "Выполнено наладок", "Ср. время наладки (мин)", "Время наладки (ч)" };
                 for (int i = 0; i < personnelHeaders.Length; i++)
                 {
                     worksheet.Cell(row, i + 1).Value = personnelHeaders[i];
@@ -835,8 +795,9 @@ public class ReportService : IReportService
                 {
                     worksheet.Cell(row, 1).Value = item.FullName;
                     worksheet.Cell(row, 2).Value = item.CompletedTasks;
-                    worksheet.Cell(row, 3).Value = Math.Round(item.TotalWorkSeconds / 3600m, 2);
+                    worksheet.Cell(row, 3).Value = item.CompletedSetups;
                     worksheet.Cell(row, 4).Value = Math.Round(item.AvgSetupTime / 60m, 1);
+                    worksheet.Cell(row, 5).Value = Math.Round(item.TotalSetupSeconds / 3600m, 2);
                     row++;
                 }
             }
@@ -848,7 +809,7 @@ public class ReportService : IReportService
                 worksheet.Cell(row, 1).Style.Font.FontSize = 12;
                 row++;
 
-                var personnelByImmHeaders = new[] { "Наладчик / ТПА", "Выполнено задач", "Время работы (ч)", "Ср. время наладки (мин)" };
+                var personnelByImmHeaders = new[] { "Наладчик / ТПА", "Выполнено задач", "Выполнено наладок", "Ср. время наладки (мин)", "Время наладки (ч)" };
                 for (int i = 0; i < personnelByImmHeaders.Length; i++)
                 {
                     worksheet.Cell(row, i + 1).Value = personnelByImmHeaders[i];
@@ -861,15 +822,18 @@ public class ReportService : IReportService
                     worksheet.Cell(row, 1).Value = person.FullName;
                     worksheet.Cell(row, 1).Style.Font.Bold = true;
                     worksheet.Cell(row, 2).Value = person.CompletedTasks;
-                    worksheet.Cell(row, 3).Value = Math.Round(person.TotalWorkSeconds / 3600m, 2);
+                    worksheet.Cell(row, 3).Value = person.CompletedSetups;
                     worksheet.Cell(row, 4).Value = Math.Round(person.AvgSetupTime / 60m, 1);
+                    worksheet.Cell(row, 5).Value = Math.Round(person.TotalSetupSeconds / 3600m, 2);
                     row++;
 
                     foreach (var imm in person.ImmBreakdown)
                     {
                         worksheet.Cell(row, 1).Value = $"  {imm.ImmName}";
                         worksheet.Cell(row, 2).Value = imm.CompletedTasks;
-                        worksheet.Cell(row, 3).Value = Math.Round(imm.TotalWorkSeconds / 3600m, 2);
+                        worksheet.Cell(row, 3).Value = imm.CompletedSetups;
+                        worksheet.Cell(row, 4).Value = Math.Round(imm.AvgSetupTime / 60m, 1);
+                        worksheet.Cell(row, 5).Value = Math.Round(imm.TotalSetupSeconds / 3600m, 2);
                         row++;
                     }
                 }
