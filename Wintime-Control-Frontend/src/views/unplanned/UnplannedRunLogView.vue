@@ -2,7 +2,36 @@
   <div class="p-4">
     <h2 class="text-xl font-semibold mb-4">Журнал работы без задания</h2>
 
-    <el-table :data="runs" v-loading="loading" border>
+    <!-- Фильтры -->
+    <el-card class="mb-4">
+      <el-form :inline="true">
+        <el-form-item label="Период">
+          <el-date-picker
+            v-model="filters.dateRange"
+            type="daterange"
+            start-placeholder="С"
+            end-placeholder="По"
+            value-format="YYYY-MM-DD"
+            class="w-72"
+          />
+        </el-form-item>
+        <el-form-item label="ТПА">
+          <el-select v-model="filters.immId" placeholder="Все машины" clearable class="w-48">
+            <el-option
+              v-for="imm in imms"
+              :key="imm.id"
+              :label="imm.name"
+              :value="imm.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="load">Найти</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-table :data="runs" v-loading="loading" border empty-text="Эпизодов не найдено">
       <el-table-column label="ТПА" prop="immName" min-width="140" />
       <el-table-column label="Начало" min-width="160">
         <template #default="{ row }">{{ formatDt(row.startTime) }}</template>
@@ -45,12 +74,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import dayjs from 'dayjs'
 import { unplannedRunsApi } from '@/api/unplannedRuns'
+import { immApi } from '@/api/imm'
 import { formatRunStatus } from './unplannedRunFormat'
 
 const runs = ref([])
+const imms = ref([])
+const filters = reactive({
+  dateRange: [dayjs().format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')],
+  immId: null
+})
 const loading = ref(false)
 const assignVisible = ref(false)
 const candidates = ref([])
@@ -66,7 +102,14 @@ function formatDt(v) {
 async function load() {
   loading.value = true
   try {
-    const { data } = await unplannedRunsApi.getList({})
+    const params = {}
+    if (filters.dateRange?.length === 2) {
+      params.from = filters.dateRange[0]
+      params.to = filters.dateRange[1] + 'T23:59:59'
+    }
+    if (filters.immId) params.immId = filters.immId
+
+    const { data } = await unplannedRunsApi.getList(params)
     runs.value = data
   } catch (e) {
     ElMessage.error('Не удалось загрузить журнал')
@@ -99,5 +142,14 @@ async function confirmAssign() {
   }
 }
 
-onMounted(load)
+async function loadImms() {
+  try {
+    const { data } = await immApi.getList({ isActive: true })
+    imms.value = data
+  } catch (e) {
+    ElMessage.error('Ошибка загрузки ТПА')
+  }
+}
+
+onMounted(() => Promise.all([loadImms(), load()]))
 </script>
