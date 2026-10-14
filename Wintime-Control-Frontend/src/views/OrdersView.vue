@@ -34,7 +34,7 @@
       <el-table-column label="Дата" width="120">
         <template #default="{ row }">{{ formatDate(row.orderDate) }}</template>
       </el-table-column>
-      <el-table-column label="Срок" width="120">
+      <el-table-column label="Завершить до" width="130">
         <template #default="{ row }">{{ formatDate(row.dueDate) }}</template>
       </el-table-column>
       <el-table-column prop="productTypeArticle" label="Изделие" />
@@ -104,7 +104,7 @@
             class="w-full"
           />
         </el-form-item>
-        <el-form-item label="Срок" prop="dueDate" required>
+        <el-form-item label="Завершить до" prop="dueDate" required>
           <el-date-picker
             v-model="form.dueDate"
             type="date"
@@ -178,7 +178,7 @@ const form = reactive({
 
 const rules = {
   number: [{ required: true, message: 'Введите номер заказа', trigger: 'blur' }],
-  dueDate: [{ required: true, message: 'Укажите срок', trigger: 'change' }],
+  dueDate: [{ required: true, message: 'Укажите, до какой даты завершить заказ', trigger: 'change' }],
   productTypeId: [{ required: true, message: 'Выберите тип изделия', trigger: 'change' }],
   quantity: [{ required: true, message: 'Укажите количество', trigger: 'change' }]
 }
