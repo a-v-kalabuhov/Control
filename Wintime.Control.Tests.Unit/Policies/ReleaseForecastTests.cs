@@ -99,4 +99,26 @@ public class ReleaseForecastTests
         r.RatePerHour.Should().Be(1m);
         r.ForecastAt.Should().BeNull();
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-60)]
+    public void Calculate_NonPositiveFallbackPeriod_ReturnsNulls(int planned)
+    {
+        var r = ReleaseForecast.Calculate(Now, 100, 40, 2, closedCycles: 0,
+            avgDurationSeconds: 0, avgPauseMs: null, plannedFullCycleSeconds: planned);
+
+        r.RatePerHour.Should().BeNull();
+        r.ForecastAt.Should().BeNull();
+    }
+
+    [Fact]
+    public void Calculate_NaNAverage_ReturnsNullsWithoutThrowing()
+    {
+        var r = ReleaseForecast.Calculate(Now, 100, 40, 2, closedCycles: 5,
+            avgDurationSeconds: double.NaN, avgPauseMs: null, plannedFullCycleSeconds: 60);
+
+        r.RatePerHour.Should().BeNull();
+        r.ForecastAt.Should().BeNull();
+    }
 }

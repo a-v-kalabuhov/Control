@@ -26,10 +26,13 @@ public static class ReleaseForecast
             ? avgDurationSeconds + (avgPauseMs ?? 0) / 1000
             : plannedFullCycleSeconds;
 
-        if (cavities <= 0 || period is not double p || p <= 0)
+        if (cavities <= 0 || period is not double p || !double.IsFinite(p) || p <= 0)
             return new ReleaseForecastResult(null, null);
 
-        var rate = (decimal)(cavities * 3600 / p);
+        var rawRate = (double)cavities * 3600 / p;
+        if (!double.IsFinite(rawRate) || rawRate > (double)decimal.MaxValue)
+            return new ReleaseForecastResult(null, null);
+        var rate = (decimal)rawRate;
 
         var remaining = planQuantity - actualQuantity;
         if (remaining <= 0)
