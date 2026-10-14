@@ -243,7 +243,7 @@ function lastLoadedMs() {
 
 function startLive() {
   stopLive()
-  if (!immId.value) return
+  if (unmounted || !immId.value) return
   liveTick(true)
   pollTimer = setInterval(() => liveTick(false), livePollSec.value * 1000)
 }
@@ -341,10 +341,10 @@ async function switchImm(id) {
   lastNonEmptySelection = []
   if (!id) return
 
-  if (!(await ensureImmOption(id)) || immId.value !== id) return
+  if (!(await ensureImmOption(id)) || immId.value !== id || unmounted) return
   try {
     const { data } = await telemetryApi.getSignals(id)
-    if (immId.value !== id) return
+    if (immId.value !== id || unmounted) return
     availableSignals.value = data
     if (data.length) {
       selected.value = [data[0].parameterName] // по умолчанию первый сигнал
@@ -368,18 +368,26 @@ function dropInvalidImm() {
   }
 }
 
-onMounted(async () => {
-  dropInvalidImm()
-  await loadImmOptions()
-  await switchImm(immId.value) // режим по умолчанию — живые данные
-  // watch заводим после начальной загрузки, чтобы switchImm не отработал дважды
-  watch(() => route.query.imm, () => {
-    dropInvalidImm()
-  })
-  watch(immId, (id) => switchImm(id))
+// Наблюдатели заводим синхронно в setup (привязаны к компоненту и снимаются при unmount);
+// пока не загружен список ТПА (ready=false) они молчат, начальную обработку делает onMounted.
+let ready = false
+let unmounted = false
+watch(() => route.query.imm, () => {
+  if (ready && !unmounted) dropInvalidImm()
+})
+watch(immId, (id) => {
+  if (ready && !unmounted) switchImm(id)
 })
 
-onUnmounted(stopLive)
+onMounted(async () => {
+  await loadImmOptions()
+  if (unmounted) return
+  ready = true
+  if (route.query.imm !== undefined && !isImmId(route.query.imm)) dropInvalidImm()
+  else await switchImm(immId.value) // режим по умолчанию — живые данные
+})
+
+onUnmounted(() => { unmounted = true; stopLive() })
 </script>
 
 <style scoped>
