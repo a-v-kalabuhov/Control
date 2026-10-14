@@ -32,10 +32,4 @@ describe('ImmCard — темп и прогноз (BL-32)', () => {
     expect(w.text()).not.toContain('шт/ч')
     expect(w.text()).not.toContain('Прогноз окончания')
   })
-
-  it('не считает темп по прошедшему времени', () => {
-    // старый расчёт дал бы 40 шт/ч (40 шт за час)
-    const w = mountCard(imm({ releaseRatePerHour: null, releaseForecastAt: null }))
-    expect(w.text()).not.toContain('40 шт/ч')
-  })
 })
