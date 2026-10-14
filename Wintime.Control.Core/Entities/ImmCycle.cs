@@ -33,10 +33,10 @@ public class ImmCycle : BaseEntity
     public int? InjectionDurationMs { get; set; }
 
     /// <summary>
-    /// Длительность паузы ПЕРЕД этим циклом литья, миллисекунды:
-    /// предыдущее раскрытие↑ → смыкание↑.
-    /// Полный цикл = <see cref="InjectionDurationMs"/> + <see cref="PauseDurationMs"/>,
-    /// отдельно не хранится.
+    /// Пауза ПЕРЕД этим циклом литья, миллисекунды: раскрытие формы предыдущего цикла ТПА →
+    /// смыкание этого. Пишет Control при создании строки (<c>CyclePause</c>, ADR-0017);
+    /// <c>null</c> — пауза не нормальная работа (нет предыдущего цикла, наладка/простой/авария,
+    /// пауза ≥ порога простоя). Полный период цикла = <see cref="DurationSeconds"/> + пауза.
     /// </summary>
     public int? PauseDurationMs { get; set; }
 

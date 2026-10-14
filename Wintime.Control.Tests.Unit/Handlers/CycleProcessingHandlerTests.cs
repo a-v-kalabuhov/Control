@@ -1,15 +1,19 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
+using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Infrastructure.Handlers;
+using Wintime.Control.Shared.Settings;
 using Wintime.Control.Tests.Unit.Helpers;
 using EntityTask = Wintime.Control.Core.Entities.ShiftTask;
 using EntityTaskStatus = Wintime.Control.Core.Enums.TaskStatus;
+using ImmStatusHistory = Wintime.Control.Core.Entities.ImmStatusHistory;
 using Imm = Wintime.Control.Core.Entities.Imm;
 using Mold = Wintime.Control.Core.Entities.Mold;
 using SystemTask = System.Threading.Tasks.Task;
@@ -42,6 +46,151 @@ public class CycleProcessingHandlerTests
         }
     }
 
+    private static readonly IOptions<DowntimeSettings> Downtime =
+        Options.Create(new DowntimeSettings { IdleThresholdSeconds = 900 });
+
+    private static readonly DateTime T0 = new(2026, 10, 14, 10, 0, 0, DateTimeKind.Utc);
+
+    /// Полный цикл #1 [T0, T0+12s], затем открытие цикла #2 в момент start2.
+    private static async SystemTask RunTwoCyclesAsync(CycleProcessingHandler sut, Guid immId, DateTime start2)
+    {
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(1, T0, null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(1, T0, T0.AddSeconds(12), null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(2, start2, null, null)));
+    }
+
+    private static CycleProcessingHandler MakeSut(ControlDbContext db)
+        => new(db, new Wintime.Control.Infrastructure.Services.CycleTracker(), [],
+            NullLogger<CycleProcessingHandler>.Instance, Downtime);
+
+    [Fact]
+    public async SystemTask Opened_cycle_gets_pause_after_previous_cycle()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        db.ImmStatusHistory.Add(new ImmStatusHistory { ImmId = immId, Status = ImmStatus.Auto, ChangedAt = T0.AddMinutes(-1) });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await RunTwoCyclesAsync(sut, immId, start2: T0.AddSeconds(17));
+
+        var first = await db.ImmCycles.SingleAsync(c => c.CycleNumber == 1);
+        var second = await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2);
+        first.PauseDurationMs.Should().BeNull("предыдущего цикла нет");
+        second.PauseDurationMs.Should().Be(5000);
+    }
+
+    [Fact]
+    public async SystemTask Pause_is_null_when_imm_was_idle_between_cycles()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        db.ImmStatusHistory.AddRange(
+            new ImmStatusHistory { ImmId = immId, Status = ImmStatus.Auto, ChangedAt = T0.AddMinutes(-1), EndedAt = T0.AddSeconds(20) },
+            new ImmStatusHistory { ImmId = immId, Status = ImmStatus.Idle, ChangedAt = T0.AddSeconds(20), EndedAt = T0.AddSeconds(40) },
+            new ImmStatusHistory { ImmId = immId, Status = ImmStatus.Auto, ChangedAt = T0.AddSeconds(40) });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await RunTwoCyclesAsync(sut, immId, start2: T0.AddSeconds(60));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().BeNull();
+    }
+
+    [Fact]
+    public async SystemTask Pause_ignores_status_intervals_outside_the_pause()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        db.ImmStatusHistory.AddRange(
+            // наладка закончилась до конца цикла #1 — паузу не прерывает
+            new ImmStatusHistory { ImmId = immId, Status = ImmStatus.Manual, ChangedAt = T0.AddMinutes(-10), EndedAt = T0.AddSeconds(5) },
+            new ImmStatusHistory { ImmId = immId, Status = ImmStatus.Auto, ChangedAt = T0.AddSeconds(5) });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await RunTwoCyclesAsync(sut, immId, start2: T0.AddSeconds(17));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().Be(5000);
+    }
+
+    [Fact]
+    public async SystemTask Cycle_created_on_sudden_lastCycle_gets_pause()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(1, T0, null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(1, T0, T0.AddSeconds(12), null, null)));
+        // currentCycle #2 не видели — сразу lastCycle #2
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(2, T0.AddSeconds(15), T0.AddSeconds(27), null, null)));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().Be(3000);
+    }
+
+    [Fact]
+    public async SystemTask Pause_is_measured_from_just_closed_cycle_when_one_message_closes_and_opens()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(1, T0, null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(1, T0, T0.AddSeconds(12), null, null),
+            currentCycle: new CycleSnapshot(2, T0.AddSeconds(17), null, null)));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 1)).EndTime.Should().NotBeNull();
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().Be(5000);
+    }
+
+    [Fact]
+    public async SystemTask Pause_is_null_when_previous_cycle_is_still_open()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        // #1 закрыт, #2 открыт и не закрыт, #3 открыт: предыдущий (#2) ещё открыт → пауза null.
+        // Старое правило («последний закрытый цикл» = #1) дало бы 28000 мс от конца #1.
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(1, T0, null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(1, T0, T0.AddSeconds(12), null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(2, T0.AddSeconds(15), null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(3, T0.AddSeconds(40), null, null)));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).EndTime.Should().BeNull("цикл #2 не закрыт");
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 3)).PauseDurationMs.Should().BeNull("предыдущий цикл #2 ещё открыт");
+    }
+
+    [Fact]
+    public async SystemTask Pause_is_null_when_foreign_status_is_still_open()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        db.ImmStatusHistory.Add(new ImmStatusHistory { ImmId = immId, Status = ImmStatus.Idle, ChangedAt = T0.AddSeconds(14) });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await RunTwoCyclesAsync(sut, immId, start2: T0.AddSeconds(17));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().BeNull();
+    }
+
     private static MqttProcessingContext MakeContext(
         Guid immId, string mode,
         CycleSnapshot? currentCycle = null, CompletedCycleSnapshot? lastCycle = null)
@@ -63,7 +212,7 @@ public class CycleProcessingHandlerTests
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         var start = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
         var inj = start.AddMilliseconds(800);
@@ -87,7 +236,7 @@ public class CycleProcessingHandlerTests
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
         var spy = new SpyHandler();
-        var sut = new CycleProcessingHandler(db, tracker, [spy], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [spy], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         var start = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
         var inj = start.AddMilliseconds(800);
@@ -118,7 +267,7 @@ public class CycleProcessingHandlerTests
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
         var throwing = new ThrowingHandler();
         var spy = new SpyHandler();
-        var sut = new CycleProcessingHandler(db, tracker, [throwing, spy], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [throwing, spy], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         var start = DateTime.UtcNow;
         await sut.ProcessAsync(MakeContext(immId, "auto",
@@ -137,7 +286,7 @@ public class CycleProcessingHandlerTests
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         var start = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
         var end = start.AddSeconds(10);
@@ -161,7 +310,7 @@ public class CycleProcessingHandlerTests
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
         var spy = new SpyHandler();
-        var sut = new CycleProcessingHandler(db, tracker, [spy], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [spy], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         var start = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
         var end = start.AddSeconds(10);
@@ -182,7 +331,7 @@ public class CycleProcessingHandlerTests
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         var start1 = new DateTime(2026, 8, 9, 8, 0, 0, DateTimeKind.Utc);
         var start2 = new DateTime(2026, 8, 9, 14, 0, 0, DateTimeKind.Utc); // серия сбросилась, тот же Number=1
@@ -207,12 +356,12 @@ public class CycleProcessingHandlerTests
         var current = new CycleSnapshot(1, start, null, null);
 
         var trackerBeforeRestart = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sutBeforeRestart = new CycleProcessingHandler(db, trackerBeforeRestart, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sutBeforeRestart = new CycleProcessingHandler(db, trackerBeforeRestart, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
         await sutBeforeRestart.ProcessAsync(MakeContext(immId, "auto", currentCycle: current));
 
         // "Рестарт Control" — новый трекер без памяти, тот же коннектор повторяет currentCycle
         var trackerAfterRestart = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sutAfterRestart = new CycleProcessingHandler(db, trackerAfterRestart, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sutAfterRestart = new CycleProcessingHandler(db, trackerAfterRestart, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
         await sutAfterRestart.ProcessAsync(MakeContext(immId, "auto", currentCycle: current));
 
         (await db.ImmCycles.CountAsync()).Should().Be(1, "ЗА-проверка в БД предотвращает дубль после рестарта Control");
@@ -230,7 +379,7 @@ public class CycleProcessingHandlerTests
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         await sut.ProcessAsync(MakeContext(immId, "auto",
             currentCycle: new CycleSnapshot(1, DateTime.UtcNow, null, null)));
@@ -250,7 +399,7 @@ public class CycleProcessingHandlerTests
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         var start = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
         // Control не видела currentCycle (нет открытой строки) — сообщение пришло уже с lastCycle,
@@ -273,7 +422,7 @@ public class CycleProcessingHandlerTests
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         await sut.ProcessAsync(MakeContext(immId, "auto",
             currentCycle: new CycleSnapshot(1, DateTime.UtcNow, null, null)));
@@ -293,7 +442,7 @@ public class CycleProcessingHandlerTests
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
-        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance);
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
 
         var start = DateTime.UtcNow;
         await sut.ProcessAsync(MakeContext(immId, "auto",

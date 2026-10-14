@@ -29,4 +29,13 @@ public class ImmDto
     /// </summary>
     public decimal? LastCycleTime { get; set; }
     public DateTime? TaskStartedAt { get; set; }
+
+    /// <summary>
+    /// Темп выпуска, шт/ч, по среднему полному периоду цикла задания (<c>ReleaseForecast</c>,
+    /// ADR-0017). Только для задания в <c>InProgress</c>; иначе <c>null</c>.
+    /// </summary>
+    public decimal? ReleaseRatePerHour { get; set; }
+
+    /// <summary>Прогноз окончания выпуска (UTC) — без наладки и простоев. <c>null</c> — не посчитать.</summary>
+    public DateTime? ReleaseForecastAt { get; set; }
 }
