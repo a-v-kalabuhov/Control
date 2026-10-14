@@ -27,6 +27,12 @@
             <span>Дашборд</span>
           </el-menu-item>
 
+          <!-- Мониторинг телеметрии ТПА (для Manager, Admin) -->
+          <el-menu-item v-if="canAccess(['Admin', 'Manager'])" index="/monitoring">
+            <el-icon><TrendCharts /></el-icon>
+            <span>Мониторинг</span>
+          </el-menu-item>
+
           <!-- Планирование: заказы и задания (для Manager, Admin) -->
           <el-sub-menu
             v-if="canAccess(['Admin', 'Manager'])"
