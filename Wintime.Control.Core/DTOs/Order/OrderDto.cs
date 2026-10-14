@@ -6,7 +6,7 @@ public class OrderDto
 {
     public Guid Id { get; set; }
     public string Number { get; set; } = string.Empty;
-    public DateTime OrderDate { get; set; }
+    public DateTime? OrderDate { get; set; }
     public DateTime DueDate { get; set; }
     public Guid ProductTypeId { get; set; }
     public string? ProductTypeArticle { get; set; }

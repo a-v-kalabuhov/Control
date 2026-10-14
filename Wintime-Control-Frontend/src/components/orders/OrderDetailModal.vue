@@ -9,7 +9,7 @@
         >
           {{ getOrderStatusMeta(order?.status).label }}
         </span>
-        <span class="text-gray-500 text-sm">Срок: {{ formatDate(order?.dueDate) }}</span>
+        <span class="text-gray-500 text-sm">Завершить до: {{ formatDate(order?.dueDate) }}</span>
       </div>
 
       <el-descriptions :column="4" border class="mb-4">

@@ -10,7 +10,7 @@ namespace Wintime.Control.Core.Entities;
 public class Order : BaseEntity
 {
     public string Number { get; set; } = string.Empty;  // человекочитаемый, НЕ уникален (CRM/1С)
-    public DateTime OrderDate { get; set; }              // дата заказа (Utc)
+    public DateTime? OrderDate { get; set; }             // дата коммерческого заказа (Utc), необязательна
     public DateTime DueDate { get; set; }                // крайний срок (Utc)
     public Guid ProductTypeId { get; set; }              // изделие заказа
     public ProductType? ProductType { get; set; }
