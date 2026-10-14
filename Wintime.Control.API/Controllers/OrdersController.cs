@@ -131,7 +131,9 @@ public class OrdersController : ControllerBase
         var order = new Order
         {
             Number = request.Number.Trim(),
-            OrderDate = DateTime.SpecifyKind(request.OrderDate, DateTimeKind.Utc),
+            OrderDate = request.OrderDate.HasValue
+                ? DateTime.SpecifyKind(request.OrderDate.Value, DateTimeKind.Utc)
+                : null,
             DueDate = DateTime.SpecifyKind(request.DueDate, DateTimeKind.Utc),
             ProductTypeId = request.ProductTypeId,
             Quantity = request.Quantity,
@@ -164,7 +166,9 @@ public class OrdersController : ControllerBase
                 return BadRequest("Количество должно быть больше нуля.");
             order.Quantity = request.Quantity.Value;
         }
-        if (request.OrderDate.HasValue)
+        if (request.ClearOrderDate)
+            order.OrderDate = null;
+        else if (request.OrderDate.HasValue)
             order.OrderDate = DateTime.SpecifyKind(request.OrderDate.Value, DateTimeKind.Utc);
         if (request.DueDate.HasValue)
             order.DueDate = DateTime.SpecifyKind(request.DueDate.Value, DateTimeKind.Utc);

@@ -99,6 +99,43 @@ describe('OrdersView', () => {
     expect(ordersApi.create).not.toHaveBeenCalled()
   })
 
+  it('создание заказа без даты проходит и отправляет orderDate: null', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+
+    await wrapper.findAll('button').find(b => b.text().includes('Создать заказ')).trigger('click')
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="ORD-001"]').setValue('ORD-NODATE')
+    wrapper.vm.form.dueDate = '2026-08-01'
+    wrapper.vm.form.productTypeId = 'pt-1'
+    await flushPromises()
+
+    await wrapper.findAll('button').find(b => b.text() === 'Сохранить').trigger('click')
+    await flushPromises()
+
+    expect(ordersApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({ number: 'ORD-NODATE', orderDate: null })
+    )
+  })
+
+  it('очистка даты при редактировании шлёт clearOrderDate: true', async () => {
+    const wrapper = mountView([
+      { id: '6', number: 'ORD-6', quantity: 5, goodQuantity: 0, progressPercent: 0, status: 'Active',
+        dueDate: '2026-08-01T00:00:00Z', orderDate: '2026-07-01', productTypeId: 'pt-1' }
+    ])
+    await flushPromises()
+
+    await wrapper.findAll('button').find(b => b.text() === 'Редактировать').trigger('click')
+    await flushPromises()
+    wrapper.vm.form.orderDate = null
+    await wrapper.findAll('button').find(b => b.text() === 'Сохранить').trigger('click')
+    await flushPromises()
+
+    expect(ordersApi.update).toHaveBeenCalledWith('6',
+      expect.objectContaining({ orderDate: null, clearOrderDate: true }))
+  })
+
   it('создание заказа отправляет orderDate (а не date) в ordersApi.create', async () => {
     const wrapper = mountView([])
     await flushPromises()

@@ -93,11 +93,12 @@
         <el-form-item label="Номер" prop="number" required>
           <el-input v-model="form.number" placeholder="ORD-001" />
         </el-form-item>
-        <el-form-item label="Дата" prop="orderDate" required>
+        <el-form-item label="Дата" prop="orderDate">
           <el-date-picker
             v-model="form.orderDate"
             type="date"
-            placeholder="Выберите дату"
+            placeholder="Необязательно"
+            clearable
             format="DD.MM.YYYY"
             value-format="YYYY-MM-DD"
             class="w-full"
@@ -177,7 +178,6 @@ const form = reactive({
 
 const rules = {
   number: [{ required: true, message: 'Введите номер заказа', trigger: 'blur' }],
-  orderDate: [{ required: true, message: 'Укажите дату', trigger: 'change' }],
   dueDate: [{ required: true, message: 'Укажите срок', trigger: 'change' }],
   productTypeId: [{ required: true, message: 'Выберите тип изделия', trigger: 'change' }],
   quantity: [{ required: true, message: 'Укажите количество', trigger: 'change' }]
@@ -253,11 +253,14 @@ async function save() {
     if (!valid) return
     saving.value = true
     try {
+      // Пустая дата — null (а не ''), иначе бэкенд не разберёт DateTime?
+      const payload = { ...form, orderDate: form.orderDate || null }
       if (editingId.value) {
-        await ordersApi.update(editingId.value, form)
+        // null в orderDate для update значит «не менять» — очистку передаём явно
+        await ordersApi.update(editingId.value, { ...payload, clearOrderDate: !payload.orderDate })
         ElMessage.success('Заказ обновлён')
       } else {
-        await ordersApi.create(form)
+        await ordersApi.create(payload)
         ElMessage.success('Заказ создан')
       }
       dialogVisible.value = false

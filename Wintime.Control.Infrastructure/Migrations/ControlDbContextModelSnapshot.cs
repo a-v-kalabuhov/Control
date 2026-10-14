@@ -467,7 +467,7 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<DateTime>("OrderDate")
+                    b.Property<DateTime?>("OrderDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("ProductTypeId")
