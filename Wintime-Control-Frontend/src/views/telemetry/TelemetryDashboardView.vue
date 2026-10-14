@@ -104,6 +104,11 @@ import { telemetryApi } from '@/api/telemetry'
 import { immApi } from '@/api/imm'
 import { mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
 import { monitoringQueryWithImm, showBackToCard, isImmId } from '@/utils/monitoringNav'
+import { useAuthStore } from '@/stores/auth'
+import { jwtSubject } from '@/utils/jwt'
+import {
+  viewPrefsKey, browserStorage, readViewPrefs, writeViewPrefs, resolveSignalOrder,
+} from '@/utils/monitoringViewPrefs'
 
 const LIVE_PERIODS = [
   { min: 1,   label: '1 минута' },
@@ -122,7 +127,21 @@ const router = useRouter()
 // Источник истины по ТПА — query ?imm=<id> (спека 2026-10-14-monitoring-page-design).
 const immId = computed(() => (isImmId(route.query.imm) ? route.query.imm : null))
 const showBack = computed(() => showBackToCard(route.query))
-const immOptions = ref([]) // [{ id, name }] — действующие ТПА (+ архивный из query, если пришёл по ссылке)
+
+const authStore = useAuthStore()
+
+// Вид (датчики и их порядок) запоминается на пару (пользователь, шаблон ТПА).
+// После F5 профиль ещё не загружен (App.onMounted позже страницы) — берём sub из токена.
+function viewKey(id) {
+  const userId = authStore.user?.id ?? jwtSubject(authStore.accessToken)
+  const templateId = immOptions.value.find(i => i.id === id)?.templateId
+  return viewPrefsKey(userId, templateId)
+}
+
+function saveView() {
+  writeViewPrefs(browserStorage(), viewKey(immId.value), order.value)
+}
+const immOptions = ref([]) // [{ id, name, templateId }] — действующие ТПА (+ архивный из query, если пришёл по ссылке)
 
 const mode = ref('live')
 const livePeriodMin = ref(15)
@@ -269,6 +288,7 @@ function onSelectionChange(next) {
   if (!next || next.length === 0) return // ничего не меняем, кроме отката чекбокса
   lastNonEmptySelection = [...resolved]
   syncOrder()
+  saveView()
   if (mode.value === 'live') startLive()
   else if (historyFrom.value && historyTo.value) loadHistory()
 }
@@ -287,6 +307,7 @@ function move(idx, delta) {
   const arr = [...order.value]
   ;[arr[idx], arr[next]] = [arr[next], arr[idx]]
   order.value = arr
+  saveView()
 }
 
 // ── Выбор ТПА ──
@@ -302,7 +323,7 @@ async function loadImmOptions() {
   try {
     const { data } = await immApi.getList({ isActive: true })
     immOptions.value = data
-      .map(i => ({ id: i.id, name: i.name }))
+      .map(i => ({ id: i.id, name: i.name, templateId: i.templateId }))
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
   } catch {
     ElMessage.error('Не удалось загрузить список ТПА')
@@ -323,7 +344,7 @@ async function ensureImmOption(id) {
       notFound(id)
       return false
     }
-    if (!immOptions.value.some(i => i.id === id)) immOptions.value.push({ id: data.id, name: data.name })
+    if (!immOptions.value.some(i => i.id === id)) immOptions.value.push({ id: data.id, name: data.name, templateId: data.templateId })
     return true
   } catch (e) {
     if (e?.response?.status === 404) notFound(id)
@@ -346,11 +367,14 @@ async function switchImm(id) {
     const { data } = await telemetryApi.getSignals(id)
     if (immId.value !== id || unmounted) return
     availableSignals.value = data
-    if (data.length) {
-      selected.value = [data[0].parameterName] // по умолчанию первый сигнал
-      lastNonEmptySelection = [...selected.value]
-      syncOrder()
-    }
+    // сохранённый вид для шаблона этого ТПА; без него — первый сигнал
+    const initial = resolveSignalOrder(
+      data.map(s => s.parameterName),
+      readViewPrefs(browserStorage(), viewKey(id)),
+    )
+    selected.value = [...initial]
+    order.value = [...initial]
+    lastNonEmptySelection = [...initial]
   } catch {
     if (immId.value === id) ElMessage.error('Не удалось загрузить список сигналов')
     return
