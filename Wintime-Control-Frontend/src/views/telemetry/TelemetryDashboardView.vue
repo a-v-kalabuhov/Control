@@ -103,7 +103,7 @@ import SignalChart from '@/components/telemetry/SignalChart.vue'
 import { telemetryApi } from '@/api/telemetry'
 import { immApi } from '@/api/imm'
 import { mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
-import { monitoringQueryWithImm, showBackToCard } from '@/utils/monitoringNav'
+import { monitoringQueryWithImm, showBackToCard, isImmId } from '@/utils/monitoringNav'
 
 const LIVE_PERIODS = [
   { min: 1,   label: '1 минута' },
@@ -120,7 +120,7 @@ const route = useRoute()
 const router = useRouter()
 
 // Источник истины по ТПА — query ?imm=<id> (спека 2026-10-14-monitoring-page-design).
-const immId = computed(() => (typeof route.query.imm === 'string' && route.query.imm) || null)
+const immId = computed(() => (isImmId(route.query.imm) ? route.query.imm : null))
 const showBack = computed(() => showBackToCard(route.query))
 const immOptions = ref([]) // [{ id, name }] — действующие ТПА (+ архивный из query, если пришёл по ссылке)
 
@@ -258,7 +258,7 @@ function restartLive() {
 
 function onModeChange() {
   if (mode.value === 'live') startLive()
-  else { stopLive(); signalsData.value = [] }
+  else { stopLive(); clearData() }
 }
 
 function onSelectionChange(next) {
@@ -309,16 +309,25 @@ async function loadImmOptions() {
   }
 }
 
+function notFound(id) {
+  ElMessage.warning('ТПА не найден')
+  if (immId.value === id) onImmSelect(null)
+}
+
 // ТПА из query может отсутствовать в списке действующих (архивный — по ссылке). Подгружаем его отдельно.
 async function ensureImmOption(id) {
   if (immOptions.value.some(i => i.id === id)) return true
   try {
     const { data } = await immApi.getById(id)
+    if (!data?.id) { // SPA-fallback может вернуть 200 с HTML
+      notFound(id)
+      return false
+    }
     if (!immOptions.value.some(i => i.id === id)) immOptions.value.push({ id: data.id, name: data.name })
     return true
-  } catch {
-    ElMessage.warning('ТПА не найден')
-    if (immId.value === id) onImmSelect(null)
+  } catch (e) {
+    if (e?.response?.status === 404) notFound(id)
+    else ElMessage.error('Не удалось загрузить ТПА')
     return false
   }
 }
@@ -351,11 +360,23 @@ async function switchImm(id) {
   else if (historyFrom.value && historyTo.value) loadHistory()
 }
 
-watch(immId, (id) => switchImm(id))
+// В query есть imm, но это не id (мусор в URL) — предупреждаем и убираем его.
+function dropInvalidImm() {
+  if (route.query.imm !== undefined && !isImmId(route.query.imm)) {
+    ElMessage.warning('ТПА не найден')
+    router.replace({ query: monitoringQueryWithImm(route.query, null) })
+  }
+}
 
 onMounted(async () => {
+  dropInvalidImm()
   await loadImmOptions()
   await switchImm(immId.value) // режим по умолчанию — живые данные
+  // watch заводим после начальной загрузки, чтобы switchImm не отработал дважды
+  watch(() => route.query.imm, () => {
+    dropInvalidImm()
+  })
+  watch(immId, (id) => switchImm(id))
 })
 
 onUnmounted(stopLive)

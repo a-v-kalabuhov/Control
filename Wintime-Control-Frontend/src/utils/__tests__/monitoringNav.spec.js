@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { monitoringQueryWithImm, showBackToCard, dashboardQueryWithoutImm } from '@/utils/monitoringNav'
+import { monitoringQueryWithImm, showBackToCard, dashboardQueryWithoutImm, isImmId } from '@/utils/monitoringNav'
 
 describe('monitoringQueryWithImm', () => {
   it('ставит imm и сохраняет прочие ключи', () => {
@@ -44,5 +44,21 @@ describe('dashboardQueryWithoutImm', () => {
     const q = { imm: 'a' }
     dashboardQueryWithoutImm(q)
     expect(q).toEqual({ imm: 'a' })
+  })
+})
+
+describe('isImmId', () => {
+  it('true для GUID в нижнем и верхнем регистре', () => {
+    expect(isImmId('3f2504e0-4f89-11d3-9a0c-0305e82c3301')).toBe(true)
+    expect(isImmId('3F2504E0-4F89-11D3-9A0C-0305E82C3301')).toBe(true)
+  })
+
+  it('false для не-GUID', () => {
+    expect(isImmId('foo')).toBe(false)
+    expect(isImmId('')).toBe(false)
+    expect(isImmId(undefined)).toBe(false)
+    expect(isImmId(null)).toBe(false)
+    expect(isImmId(['3f2504e0-4f89-11d3-9a0c-0305e82c3301'])).toBe(false)
+    expect(isImmId('3f2504e0-4f89-11d3-9a0c-0305e82c3301x')).toBe(false)
   })
 })

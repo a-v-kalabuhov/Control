@@ -190,7 +190,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { dashboardQueryWithoutImm } from '@/utils/monitoringNav'
+import { dashboardQueryWithoutImm, isImmId } from '@/utils/monitoringNav'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
@@ -209,7 +209,11 @@ const router = useRouter()
 // /?imm=<id> — открыть карточку ТПА (возврат со страницы мониторинга по «Назад»).
 function openImmFromQuery() {
   const id = route.query.imm
-  if (typeof id !== 'string' || !id) return
+  if (id === undefined) return
+  if (!isImmId(id)) {
+    router.replace({ query: dashboardQueryWithoutImm(route.query) })
+    return
+  }
   selectedImmId.value = id
   detailModalVisible.value = true
 }

@@ -78,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { dashboardApi } from '@/api/dashboard'
 import { tasksApi } from '@/api/tasks'
@@ -194,6 +194,7 @@ const loadData = async () => {
 }
 
 let refreshTimer = null
+let unmounted = false
 
 const onOpen = async () => {
   try {
@@ -202,9 +203,14 @@ const onOpen = async () => {
   } catch {
     shiftSchedule.value = []
   }
+  if (unmounted || !visible.value) return // компонент снят/диалог закрыт, пока шёл await — таймер не заводим
   loadData()
+  clearInterval(refreshTimer)
   refreshTimer = setInterval(loadData, 60_000)
 }
+
+// immId сменился при открытой карточке (история браузера) — перезагружаем данные
+watch(() => props.immId, () => { if (visible.value) loadData() })
 
 const onClosed = () => {
   clearInterval(refreshTimer)
@@ -213,5 +219,5 @@ const onClosed = () => {
   tasks.value          = []
 }
 
-onUnmounted(() => clearInterval(refreshTimer))
+onUnmounted(() => { unmounted = true; clearInterval(refreshTimer) })
 </script>
