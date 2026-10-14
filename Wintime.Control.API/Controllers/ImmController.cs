@@ -113,18 +113,40 @@ public class ImmController : ControllerBase
                     TaskId = g.Key,
                     Count = g.Count(),
                     // Открытые циклы (EndTime = null, DurationSeconds = 0) в среднее не входят
+                    ClosedCount = g.Count(c => c.EndTime != null),
                     AvgDuration = g.Where(c => c.EndTime != null)
-                        .Average(c => (double?)c.DurationSeconds) ?? 0
+                        .Average(c => (double?)c.DurationSeconds) ?? 0,
+                    // null-паузы (наладка, простой, порог) AVG пропускает — ADR-0017
+                    AvgPauseMs = g.Where(c => c.EndTime != null)
+                        .Average(c => (double?)c.PauseDurationMs)
                 })
                 .ToListAsync();
 
+            // Входы прогноза выпуска (BL-32): только задания в работе
+            var forecastInputs = await _context.ShiftTasks
+                .Where(t => currentTaskIds.Contains(t.Id) && t.Status == Core.Enums.TaskStatus.InProgress)
+                .Select(t => new { t.Id, t.PlannedFullCycleSeconds, t.Mold.Cavities })
+                .ToDictionaryAsync(t => t.Id);
+
+            var now = DateTime.UtcNow;
             foreach (var dto in imms.Where(d => d.CurrentTaskId.HasValue))
             {
-                var stats = cycleStats.FirstOrDefault(s => s.TaskId == dto.CurrentTaskId!.Value);
+                var taskId = dto.CurrentTaskId!.Value;
+                var stats = cycleStats.FirstOrDefault(s => s.TaskId == taskId);
                 if (stats != null)
                 {
                     dto.CycleCount = stats.Count;
                     dto.AvgCycleTime = (decimal)stats.AvgDuration;
+                }
+
+                if (forecastInputs.TryGetValue(taskId, out var input))
+                {
+                    var forecast = ReleaseForecast.Calculate(now,
+                        dto.PlanQuantity ?? 0, dto.ActualQuantity ?? 0, input.Cavities,
+                        stats?.ClosedCount ?? 0, stats?.AvgDuration ?? 0, stats?.AvgPauseMs,
+                        input.PlannedFullCycleSeconds);
+                    dto.ReleaseRatePerHour = forecast.RatePerHour;
+                    dto.ReleaseForecastAt = forecast.ForecastAt;
                 }
             }
         }
