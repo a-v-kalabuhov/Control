@@ -189,6 +189,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { dashboardQueryWithoutImm, isImmId } from '@/utils/monitoringNav'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
@@ -200,6 +202,21 @@ const dashboardStore = useDashboardStore()
 
 const detailModalVisible = ref(false)
 const selectedImmId = ref(null)
+
+const route = useRoute()
+const router = useRouter()
+
+// /?imm=<id> — открыть карточку ТПА (возврат со страницы мониторинга по «Назад»).
+function openImmFromQuery() {
+  const id = route.query.imm
+  if (id === undefined) return
+  if (!isImmId(id)) {
+    router.replace({ query: dashboardQueryWithoutImm(route.query) })
+    return
+  }
+  selectedImmId.value = id
+  detailModalVisible.value = true
+}
 const searchQuery = ref('')
 const statusFilter = ref('')
 
@@ -275,6 +292,7 @@ async function loadShiftUtilization() {
 }
 
 onMounted(async () => {
+  openImmFromQuery()
   await Promise.all([dashboardStore.loadImms(), dashboardStore.loadShifts()])
   await loadShiftUtilization()
   dashboardStore.startAutoRefresh()
@@ -336,6 +354,16 @@ watch(searchQuery, (value) => {
 
 watch(statusFilter, (value) => {
   dashboardStore.setFilter('status', value)
+})
+
+watch(() => route.query.imm, openImmFromQuery)
+
+// Закрыли карточку — убираем imm из URL, чтобы F5 не открывал её снова.
+// Проверка route.name: уход на другую страницу (например, «Телеметрия» из карточки) не трогаем.
+watch(detailModalVisible, (visible) => {
+  if (!visible && route.name === 'Dashboard' && route.query.imm) {
+    router.replace({ query: dashboardQueryWithoutImm(route.query) })
+  }
 })
 </script>
 

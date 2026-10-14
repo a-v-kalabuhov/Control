@@ -1,0 +1,742 @@
+# Страница «Мониторинг» — план реализации
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Отдельная страница «Мониторинг» (пункт меню) с выбором ТПА в фильтре; переход из карточки ТПА подставляет ТПА и даёт кнопку «Назад», которая открывает карточку на дашборде.
+
+**Architecture:** Всё состояние навигации — в query URL: `/monitoring?imm=<id>&from=card`, дашборд открывает карточку по `/?imm=<id>`. Логика построения query — чистые функции в `src/utils/monitoringNav.js` (под Vitest). Страница телеметрии реагирует на `route.query.imm` через `watch`.
+
+**Tech Stack:** Vue 3 (`<script setup>`), vue-router 4, Element Plus, Pinia, Vitest.
+
+**Спека:** `docs/superpowers/specs/2026-10-14-monitoring-page-design.md`
+
+## Global Constraints
+
+- Только frontend (`Wintime-Control-Frontend`), backend не меняется.
+- Маршрут `monitoring`, name `Monitoring`, `meta: { roles: ['Admin', 'Manager'], title: 'Мониторинг' }`.
+- Маршрут `imm/:id/telemetry` (`ImmTelemetry`) удаляется.
+- Query-ключи: `imm` (id ТПА), `from` (значение `'card'`).
+- Список ТПА в поле — только действующие: `immApi.getList({ isActive: true })`.
+- Пункт меню и кнопка «Телеметрия» в карточке — только `Admin`/`Manager`.
+- Все команды — из каталога `Wintime-Control-Frontend`.
+
+---
+
+### Task 1: Чистые функции навигации `monitoringNav`
+
+**Files:**
+- Create: `Wintime-Control-Frontend/src/utils/monitoringNav.js`
+- Test: `Wintime-Control-Frontend/src/utils/__tests__/monitoringNav.spec.js`
+
+**Interfaces:**
+- Produces:
+  - `monitoringQueryWithImm(query: object, immId: string|null|undefined): object` — копия `query` с `imm = immId`; при пустом `immId` ключ `imm` удалён; прочие ключи сохранены.
+  - `showBackToCard(query: object): boolean` — `query.from === 'card' && !!query.imm`.
+  - `dashboardQueryWithoutImm(query: object): object` — копия `query` без ключа `imm`.
+
+- [ ] **Step 1: Написать падающий тест**
+
+`src/utils/__tests__/monitoringNav.spec.js`:
+
+```js
+import { describe, it, expect } from 'vitest'
+import { monitoringQueryWithImm, showBackToCard, dashboardQueryWithoutImm } from '@/utils/monitoringNav'
+
+describe('monitoringQueryWithImm', () => {
+  it('ставит imm и сохраняет прочие ключи', () => {
+    expect(monitoringQueryWithImm({ from: 'card', imm: 'a' }, 'b')).toEqual({ from: 'card', imm: 'b' })
+  })
+
+  it('удаляет imm при пустом значении', () => {
+    expect(monitoringQueryWithImm({ from: 'card', imm: 'a' }, '')).toEqual({ from: 'card' })
+    expect(monitoringQueryWithImm({ imm: 'a' }, null)).toEqual({})
+    expect(monitoringQueryWithImm({ imm: 'a' }, undefined)).toEqual({})
+  })
+
+  it('не мутирует исходный query', () => {
+    const q = { imm: 'a' }
+    monitoringQueryWithImm(q, 'b')
+    expect(q).toEqual({ imm: 'a' })
+  })
+})
+
+describe('showBackToCard', () => {
+  it('true при from=card и выбранном ТПА', () => {
+    expect(showBackToCard({ from: 'card', imm: 'a' })).toBe(true)
+  })
+
+  it('false без from=card', () => {
+    expect(showBackToCard({ imm: 'a' })).toBe(false)
+    expect(showBackToCard({ from: 'menu', imm: 'a' })).toBe(false)
+  })
+
+  it('false без ТПА', () => {
+    expect(showBackToCard({ from: 'card' })).toBe(false)
+    expect(showBackToCard({ from: 'card', imm: '' })).toBe(false)
+  })
+})
+
+describe('dashboardQueryWithoutImm', () => {
+  it('убирает imm и сохраняет прочие ключи', () => {
+    expect(dashboardQueryWithoutImm({ imm: 'a', x: '1' })).toEqual({ x: '1' })
+  })
+
+  it('не мутирует исходный query', () => {
+    const q = { imm: 'a' }
+    dashboardQueryWithoutImm(q)
+    expect(q).toEqual({ imm: 'a' })
+  })
+})
+```
+
+- [ ] **Step 2: Запустить тест — должен упасть**
+
+Run: `npx vitest run src/utils/__tests__/monitoringNav.spec.js`
+Expected: FAIL — `Failed to resolve import "@/utils/monitoringNav"`.
+
+- [ ] **Step 3: Реализация**
+
+`src/utils/monitoringNav.js`:
+
+```js
+// Навигация «карточка ТПА ↔ мониторинг» через query URL (спека 2026-10-14-monitoring-page-design).
+// /monitoring?imm=<id>&from=card — страница мониторинга; /?imm=<id> — дашборд с открытой карточкой.
+
+export function monitoringQueryWithImm(query, immId) {
+  const next = { ...query }
+  if (immId) next.imm = immId
+  else delete next.imm
+  return next
+}
+
+export function showBackToCard(query) {
+  return query.from === 'card' && !!query.imm
+}
+
+export function dashboardQueryWithoutImm(query) {
+  const next = { ...query }
+  delete next.imm
+  return next
+}
+```
+
+- [ ] **Step 4: Запустить тест — должен пройти**
+
+Run: `npx vitest run src/utils/__tests__/monitoringNav.spec.js`
+Expected: PASS, 8 тестов.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/utils/monitoringNav.js src/utils/__tests__/monitoringNav.spec.js
+git commit -m "feat(monitoring): query helpers for card <-> monitoring navigation"
+```
+
+---
+
+### Task 2: Страница мониторинга — маршрут, меню, поле «ТПА», кнопка «Назад»
+
+**Files:**
+- Modify: `Wintime-Control-Frontend/src/router/index.js:58-63` (маршрут `ImmTelemetry`)
+- Modify: `Wintime-Control-Frontend/src/layouts/DefaultLayout.vue:24-28` (после пункта «Дашборд»)
+- Modify: `Wintime-Control-Frontend/src/views/telemetry/TelemetryDashboardView.vue` (переписать template и script целиком, `<style>` не трогать)
+
+**Interfaces:**
+- Consumes: `monitoringQueryWithImm`, `showBackToCard` из Task 1; `immApi.getList(params)`, `immApi.getById(id)` из `@/api/imm`; `telemetryApi.getSignals(id)`, `telemetryApi.getDashboard(id, {...})` из `@/api/telemetry`.
+- Produces: маршрут с name `Monitoring`, принимающий query `imm`, `from`. Кнопка «Назад» делает `router.push({ name: 'Dashboard', query: { imm } })` — Task 3 обрабатывает этот query на дашборде.
+
+- [ ] **Step 1: Маршрут**
+
+В `src/router/index.js` заменить блок
+
+```js
+      {
+        path: 'imm/:id/telemetry',
+        name: 'ImmTelemetry',
+        component: () => import('@/views/telemetry/TelemetryDashboardView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'Телеметрия ТПА' }
+      },
+```
+
+на
+
+```js
+      {
+        // Мониторинг телеметрии; ТПА — в query: ?imm=<id>[&from=card]
+        path: 'monitoring',
+        name: 'Monitoring',
+        component: () => import('@/views/telemetry/TelemetryDashboardView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'Мониторинг' }
+      },
+```
+
+- [ ] **Step 2: Пункт меню**
+
+В `src/layouts/DefaultLayout.vue` сразу после закрывающего `</el-menu-item>` пункта «Дашборд» (строка 28) вставить:
+
+```html
+
+          <!-- Мониторинг телеметрии ТПА (для Manager, Admin) -->
+          <el-menu-item v-if="canAccess(['Admin', 'Manager'])" index="/monitoring">
+            <el-icon><TrendCharts /></el-icon>
+            <span>Мониторинг</span>
+          </el-menu-item>
+```
+
+Иконки Element Plus зарегистрированы глобально в `src/main.js`, импорт не нужен. `activeMenu` = `route.path` → пункт подсвечивается на `/monitoring`.
+
+- [ ] **Step 3: Template страницы**
+
+В `src/views/telemetry/TelemetryDashboardView.vue` заменить весь `<template>…</template>` на:
+
+```html
+<template>
+  <div class="p-4 space-y-4">
+    <!-- Фильтры -->
+    <div class="bg-white rounded-lg shadow-sm border p-4 space-y-3">
+      <div class="flex flex-wrap items-center gap-4">
+        <el-button v-if="showBack" size="small" @click="goBack">
+          <el-icon class="mr-1"><ArrowLeft /></el-icon>
+          Назад
+        </el-button>
+
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-600">ТПА:</span>
+          <el-select
+            :model-value="immId"
+            size="small" style="width: 220px"
+            placeholder="Выберите ТПА"
+            filterable clearable
+            @update:model-value="onImmSelect"
+          >
+            <el-option v-for="imm in immOptions" :key="imm.id" :label="imm.name" :value="imm.id" />
+          </el-select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-600">Режим:</span>
+          <el-select v-model="mode" size="small" style="width: 160px" @change="onModeChange">
+            <el-option label="История" value="history" />
+            <el-option label="Живые данные" value="live" />
+          </el-select>
+        </div>
+
+        <template v-if="mode === 'history'">
+          <el-date-picker
+            v-model="historyFrom" type="datetime" size="small"
+            placeholder="Начало" format="YYYY-MM-DD HH:mm:ss" value-format="YYYY-MM-DDTHH:mm:ss"
+          />
+          <el-date-picker
+            v-model="historyTo" type="datetime" size="small"
+            placeholder="Конец" format="YYYY-MM-DD HH:mm:ss" value-format="YYYY-MM-DDTHH:mm:ss"
+          />
+          <el-button size="small" type="primary" @click="loadHistory">Показать</el-button>
+        </template>
+
+        <template v-else>
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-600">Период:</span>
+            <el-select v-model="livePeriodMin" size="small" style="width: 140px" @change="restartLive">
+              <el-option v-for="p in LIVE_PERIODS" :key="p.min" :label="p.label" :value="p.min" />
+            </el-select>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-600">Обновление:</span>
+            <el-select v-model="livePollSec" size="small" style="width: 120px" @change="restartLive">
+              <el-option v-for="s in LIVE_POLL_OPTIONS" :key="s" :label="`${s} c`" :value="s" />
+            </el-select>
+          </div>
+        </template>
+      </div>
+
+      <!-- Сигналы -->
+      <div v-if="immId" class="flex flex-wrap items-center gap-3">
+        <span class="text-sm text-gray-600">Сигналы:</span>
+        <el-checkbox-group v-model="selected" @change="onSelectionChange">
+          <el-checkbox v-for="s in availableSignals" :key="s.parameterName" :value="s.parameterName">
+            {{ s.parameterName }}
+          </el-checkbox>
+        </el-checkbox-group>
+      </div>
+
+      <div v-if="immId && truncated" class="text-sm text-amber-600">
+        Показаны не все точки — сузьте период.
+      </div>
+    </div>
+
+    <el-empty v-if="!immId" description="Выберите ТПА" />
+
+    <!-- Столбик диаграмм -->
+    <div v-else-if="orderedSignals.length" class="space-y-3">
+      <div v-for="(sig, idx) in orderedSignals" :key="sig.parameterName" class="flex items-start gap-2">
+        <SignalChart
+          class="min-w-0 flex-1"
+          :signal="sig"
+          :cycles="cycles"
+          :segments="segments"
+          :window-start-ms="windowStartMs"
+          :window-end-ms="windowEndMs"
+        />
+        <div class="reorder-buttons flex w-8 shrink-0 flex-col items-center gap-1 pt-1.5">
+          <el-button size="small" text :disabled="idx === 0" @click="move(idx, -1)">▲</el-button>
+          <el-button size="small" text :disabled="idx === orderedSignals.length - 1" @click="move(idx, 1)">▼</el-button>
+        </div>
+      </div>
+    </div>
+    <el-empty v-else description="Выберите сигнал для отображения" />
+  </div>
+</template>
+```
+
+- [ ] **Step 4: Script страницы**
+
+Заменить весь `<script setup>…</script>` на:
+
+```html
+<script setup>
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import SignalChart from '@/components/telemetry/SignalChart.vue'
+import { telemetryApi } from '@/api/telemetry'
+import { immApi } from '@/api/imm'
+import { mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
+import { monitoringQueryWithImm, showBackToCard } from '@/utils/monitoringNav'
+
+const LIVE_PERIODS = [
+  { min: 1,   label: '1 минута' },
+  { min: 5,   label: '5 минут' },
+  { min: 15,  label: '15 минут' },
+  { min: 30,  label: '30 минут' },
+  { min: 60,  label: '1 час' },
+  { min: 120, label: '2 часа' },
+  { min: 240, label: '4 часа' },
+]
+const LIVE_POLL_OPTIONS = [2, 5, 10] // секунды между запросами; выбор пользователя
+
+const route = useRoute()
+const router = useRouter()
+
+// Источник истины по ТПА — query ?imm=<id> (спека 2026-10-14-monitoring-page-design).
+const immId = computed(() => (typeof route.query.imm === 'string' && route.query.imm) || null)
+const showBack = computed(() => showBackToCard(route.query))
+const immOptions = ref([]) // [{ id, name }] — действующие ТПА (+ архивный из query, если пришёл по ссылке)
+
+const mode = ref('live')
+const livePeriodMin = ref(15)
+const livePollSec = ref(10) // частота live-опроса, сек (дефолт 10)
+const historyFrom = ref(null)
+const historyTo = ref(null)
+
+const availableSignals = ref([]) // [{ parameterName, name, type }]
+const selected = ref([])
+const order = ref([])            // порядок parameterName в столбце
+
+const signalsData = ref([])      // [{ parameterName, type, points }]
+const cycles = ref([])
+const segments = ref([])
+const truncated = ref(false)
+
+const windowStartMs = ref(Date.now() - 15 * 60000)
+const windowEndMs = ref(Date.now())
+
+let pollTimer = null
+let lastNonEmptySelection = [] // последний непустой выбор сигналов — для отката при попытке снять последний
+
+const orderedSignals = computed(() => {
+  const byName = new Map(signalsData.value.map(s => [s.parameterName, s]))
+  return order.value.map(n => byName.get(n)).filter(Boolean)
+})
+
+function toIsoUtc(ms) {
+  return new Date(ms).toISOString()
+}
+
+function clearData() {
+  signalsData.value = []
+  cycles.value = []
+  segments.value = []
+  truncated.value = false
+}
+
+async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null } = {}) {
+  const reqImmId = immId.value
+  if (!reqImmId || selected.value.length === 0) {
+    clearData()
+    return
+  }
+  try {
+    const { data } = await telemetryApi.getDashboard(reqImmId, {
+      from: toIsoUtc(fromMs),
+      to: toIsoUtc(toMs),
+      parameters: selected.value,
+      pointsFrom: pointsFromMs ? toIsoUtc(pointsFromMs) : undefined,
+    })
+    if (reqImmId !== immId.value) return // ответ для прежнего ТПА — пользователь уже сменил выбор
+    truncated.value = data.truncated
+    cycles.value = data.cycles
+    segments.value = data.statusSegments
+
+    if (append) {
+      const byName = new Map(signalsData.value.map(s => [s.parameterName, s]))
+      signalsData.value = data.signals.map(s => {
+        const prev = byName.get(s.parameterName)
+        const points = prev
+          ? mergeLivePoints(prev.points, s.points, windowStartMs.value)
+          : s.points
+        return { ...s, points }
+      })
+    } else {
+      signalsData.value = data.signals
+    }
+  } catch (e) {
+    if (reqImmId !== immId.value) return
+    truncated.value = false
+    const status = e?.response?.status
+    if (status === 400) ElMessage.warning(e.response.data ?? 'Некорректный период')
+    else ElMessage.error('Не удалось загрузить телеметрию')
+  }
+}
+
+// ── История ──
+async function loadHistory() {
+  if (!immId.value) {
+    ElMessage.warning('Выберите ТПА')
+    return
+  }
+  if (!historyFrom.value || !historyTo.value) {
+    ElMessage.warning('Укажите начало и конец периода')
+    return
+  }
+  const fromMs = new Date(historyFrom.value).getTime()
+  const toMs = new Date(historyTo.value).getTime()
+  if (toMs - fromMs > 4 * 3600_000) {
+    ElMessage.warning('Период не может превышать 4 часа')
+    return
+  }
+  windowStartMs.value = fromMs
+  windowEndMs.value = toMs
+  await fetchWindow(fromMs, toMs)
+}
+
+// ── Live ──
+async function liveTick(initial = false) {
+  const now = Date.now()
+  windowEndMs.value = now
+  windowStartMs.value = now - livePeriodMin.value * 60000
+  // Окно всегда полное (from..now) — для циклов/статуса; точки телеметрии на приросте берём
+  // дельтой через pointsFrom (от последней полученной точки).
+  const pointsFromMs = initial ? null : Math.max(lastLoadedMs(), windowStartMs.value)
+  await fetchWindow(windowStartMs.value, now, { append: !initial, pointsFromMs })
+}
+
+function lastLoadedMs() {
+  let maxT = windowStartMs.value
+  for (const s of signalsData.value) {
+    const p = s.points[s.points.length - 1]
+    if (p) maxT = Math.max(maxT, new Date(p.t).getTime())
+  }
+  return maxT
+}
+
+function startLive() {
+  stopLive()
+  if (!immId.value) return
+  liveTick(true)
+  pollTimer = setInterval(() => liveTick(false), livePollSec.value * 1000)
+}
+
+function stopLive() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
+function restartLive() {
+  if (mode.value === 'live') startLive()
+}
+
+function onModeChange() {
+  if (mode.value === 'live') startLive()
+  else { stopLive(); signalsData.value = [] }
+}
+
+function onSelectionChange(next) {
+  // el-checkbox-group уже применил next к selected.value через v-model к моменту @change;
+  // enforceMinOneSignal — чистая функция, откатывает на прежний непустой выбор при попытке снять последний.
+  const resolved = enforceMinOneSignal(next, lastNonEmptySelection)
+  selected.value = resolved
+  if (!next || next.length === 0) return // ничего не меняем, кроме отката чекбокса
+  lastNonEmptySelection = [...resolved]
+  syncOrder()
+  if (mode.value === 'live') startLive()
+  else if (historyFrom.value && historyTo.value) loadHistory()
+}
+
+function syncOrder() {
+  // сохранить прежний порядок, добавить новые в конец, убрать снятые
+  order.value = [
+    ...order.value.filter(n => selected.value.includes(n)),
+    ...selected.value.filter(n => !order.value.includes(n)),
+  ]
+}
+
+function move(idx, delta) {
+  const next = idx + delta
+  if (next < 0 || next >= order.value.length) return
+  const arr = [...order.value]
+  ;[arr[idx], arr[next]] = [arr[next], arr[idx]]
+  order.value = arr
+}
+
+// ── Выбор ТПА ──
+function onImmSelect(id) {
+  router.replace({ query: monitoringQueryWithImm(route.query, id) })
+}
+
+function goBack() {
+  router.push({ name: 'Dashboard', query: { imm: immId.value } })
+}
+
+async function loadImmOptions() {
+  try {
+    const { data } = await immApi.getList({ isActive: true })
+    immOptions.value = data
+      .map(i => ({ id: i.id, name: i.name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  } catch {
+    ElMessage.error('Не удалось загрузить список ТПА')
+  }
+}
+
+// ТПА из query может отсутствовать в списке действующих (архивный — по ссылке). Подгружаем его отдельно.
+async function ensureImmOption(id) {
+  if (immOptions.value.some(i => i.id === id)) return true
+  try {
+    const { data } = await immApi.getById(id)
+    if (!immOptions.value.some(i => i.id === id)) immOptions.value.push({ id: data.id, name: data.name })
+    return true
+  } catch {
+    ElMessage.warning('ТПА не найден')
+    if (immId.value === id) onImmSelect(null)
+    return false
+  }
+}
+
+async function switchImm(id) {
+  stopLive()
+  clearData()
+  availableSignals.value = []
+  selected.value = []
+  order.value = []
+  lastNonEmptySelection = []
+  if (!id) return
+
+  if (!(await ensureImmOption(id)) || immId.value !== id) return
+  try {
+    const { data } = await telemetryApi.getSignals(id)
+    if (immId.value !== id) return
+    availableSignals.value = data
+    if (data.length) {
+      selected.value = [data[0].parameterName] // по умолчанию первый сигнал
+      lastNonEmptySelection = [...selected.value]
+      syncOrder()
+    }
+  } catch {
+    if (immId.value === id) ElMessage.error('Не удалось загрузить список сигналов')
+    return
+  }
+  // режим, период, частота опроса и даты истории сохраняются при смене ТПА
+  if (mode.value === 'live') startLive()
+  else if (historyFrom.value && historyTo.value) loadHistory()
+}
+
+watch(immId, (id) => switchImm(id))
+
+onMounted(async () => {
+  await loadImmOptions()
+  await switchImm(immId.value) // режим по умолчанию — живые данные
+})
+
+onUnmounted(stopLive)
+</script>
+```
+
+- [ ] **Step 5: Сборка и тесты**
+
+Run: `npm run build`
+Expected: сборка без ошибок.
+
+Run: `npm test`
+Expected: все тесты PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/router/index.js src/layouts/DefaultLayout.vue src/views/telemetry/TelemetryDashboardView.vue
+git commit -m "feat(monitoring): monitoring page with IMM selector and back-to-card button"
+```
+
+---
+
+### Task 3: Дашборд открывает карточку по `?imm=`, карточка ведёт на мониторинг
+
+**Files:**
+- Modify: `Wintime-Control-Frontend/src/views/dashboard/DashboardView.vue:191-202` (импорты, состояние), `:277-281` (`onMounted`), конец `<script setup>` (watch-и)
+- Modify: `Wintime-Control-Frontend/src/views/dashboard/ImmDetailModal.vue:70` (кнопка), `:81-109` (импорты, `goToTelemetry`)
+
+**Interfaces:**
+- Consumes: `dashboardQueryWithoutImm` из Task 1; маршрут `Monitoring` из Task 2; переход «Назад» → `{ name: 'Dashboard', query: { imm } }` из Task 2.
+- Produces: —
+
+- [ ] **Step 1: DashboardView — импорты и состояние**
+
+В `src/views/dashboard/DashboardView.vue` после строки
+
+```js
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+```
+
+добавить
+
+```js
+import { useRoute, useRouter } from 'vue-router'
+import { dashboardQueryWithoutImm } from '@/utils/monitoringNav'
+```
+
+После строки `const selectedImmId = ref(null)` добавить:
+
+```js
+
+const route = useRoute()
+const router = useRouter()
+
+// /?imm=<id> — открыть карточку ТПА (возврат со страницы мониторинга по «Назад»).
+function openImmFromQuery() {
+  const id = route.query.imm
+  if (typeof id !== 'string' || !id) return
+  selectedImmId.value = id
+  detailModalVisible.value = true
+}
+```
+
+- [ ] **Step 2: DashboardView — открытие при монтировании**
+
+Заменить
+
+```js
+onMounted(async () => {
+  await Promise.all([dashboardStore.loadImms(), dashboardStore.loadShifts()])
+```
+
+на
+
+```js
+onMounted(async () => {
+  openImmFromQuery()
+  await Promise.all([dashboardStore.loadImms(), dashboardStore.loadShifts()])
+```
+
+- [ ] **Step 3: DashboardView — watch-и**
+
+В конец `<script setup>` (после `watch(statusFilter, …)`) добавить:
+
+```js
+
+watch(() => route.query.imm, openImmFromQuery)
+
+// Закрыли карточку — убираем imm из URL, чтобы F5 не открывал её снова.
+// Проверка route.name: уход на другую страницу (например, «Телеметрия» из карточки) не трогаем.
+watch(detailModalVisible, (visible) => {
+  if (!visible && route.name === 'Dashboard' && route.query.imm) {
+    router.replace({ query: dashboardQueryWithoutImm(route.query) })
+  }
+})
+```
+
+- [ ] **Step 4: ImmDetailModal — переход на мониторинг и видимость кнопки**
+
+В `src/views/dashboard/ImmDetailModal.vue` заменить строку кнопки
+
+```html
+      <el-button type="primary" plain @click="goToTelemetry">Телеметрия</el-button>
+```
+
+на
+
+```html
+      <el-button v-if="canAccess(['Admin', 'Manager'])" type="primary" plain @click="goToTelemetry">Телеметрия</el-button>
+```
+
+После `import { useDashboardStore } from '@/stores/dashboard'` добавить:
+
+```js
+import { usePermissions } from '@/composables/usePermissions'
+```
+
+Заменить
+
+```js
+const router = useRouter()
+```
+
+на
+
+```js
+const router = useRouter()
+// Телеметрия доступна только Admin/Manager (API — ManagerOrAdmin), Observer кнопку не видит.
+const { canAccess } = usePermissions()
+```
+
+Заменить функцию `goToTelemetry` целиком на:
+
+```js
+function goToTelemetry() {
+  // Модалку не закрываем: она уходит вместе с дашбордом; закрытие сбросило бы ?imm на дашборде
+  // параллельно с переходом.
+  router.push({ name: 'Monitoring', query: { imm: props.immId, from: 'card' } })
+}
+```
+
+- [ ] **Step 5: Сборка и тесты**
+
+Run: `npm run build`
+Expected: сборка без ошибок.
+
+Run: `npm test`
+Expected: все тесты PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/views/dashboard/DashboardView.vue src/views/dashboard/ImmDetailModal.vue
+git commit -m "feat(monitoring): open IMM card from ?imm and link card to monitoring page"
+```
+
+---
+
+### Task 4: Ручная проверка сценариев
+
+**Files:** —
+
+- [ ] **Step 1: Запустить стенд**
+
+Из корня репозитория (каждое — в отдельном терминале):
+```powershell
+dotnet run --project Wintime.Control.API
+dotnet run --project Wintime.Control.Emulator
+cd Wintime-Control-Frontend; npm run dev
+```
+Открыть `http://localhost:3000`, войти как Manager или Admin.
+
+- [ ] **Step 2: Пройти сценарии спеки**
+
+1. Меню «Мониторинг» → поле «ТПА» пустое, «Выберите ТПА», в Network нет запросов `telemetry-dashboard`. Выбрать ТПА → графики live, URL `/monitoring?imm=<id>`, кнопки «Назад» нет.
+2. Дашборд → карточка ТПА → «Телеметрия» → URL `/monitoring?imm=<id>&from=card`, ТПА подставлен, видна «Назад».
+3. «Назад» → дашборд, открыта карточка этого ТПА. Закрыть карточку → URL `/`.
+4. Из карточки ТПА-1 → мониторинг → сменить на ТПА-2 → сигналы перезагрузились, режим/период сохранились → «Назад» → открыта карточка ТПА-2.
+5. F5 на мониторинге — ТПА и «Назад» на месте. F5 на дашборде после закрытия карточки — карточка не открывается.
+6. Очистить поле «ТПА» (крестик) → «Выберите ТПА», опрос остановлен, «Назад» скрыта.
+7. Войти как Observer → в меню нет «Мониторинг», в карточке нет кнопки «Телеметрия».
+
+- [ ] **Step 3: Зафиксировать результат**
+
+Если найдены дефекты — исправить, `npm test` + `npm run build`, commit `fix(monitoring): …`.

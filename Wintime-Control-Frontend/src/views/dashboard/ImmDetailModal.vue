@@ -67,7 +67,7 @@
     </div>
 
     <template #footer>
-      <el-button type="primary" plain @click="goToTelemetry">Телеметрия</el-button>
+      <el-button v-if="canAccess(['Admin', 'Manager'])" type="primary" plain @click="goToTelemetry">Телеметрия</el-button>
       <el-button @click="visible = false">Закрыть</el-button>
       <el-button type="primary" :loading="loading" @click="loadData">
         <el-icon class="mr-1"><Refresh /></el-icon>
@@ -78,13 +78,14 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { dashboardApi } from '@/api/dashboard'
 import { tasksApi } from '@/api/tasks'
 import { shiftsApi } from '@/api/shifts'
 import { ElMessage } from 'element-plus'
 import { useDashboardStore } from '@/stores/dashboard'
+import { usePermissions } from '@/composables/usePermissions'
 import { computeCurrentShift } from '@/constants/shift'
 import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveStatus'
 import ImmCard from '@/components/dashboard/ImmCard.vue'
@@ -97,6 +98,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const router = useRouter()
+// Телеметрия доступна только Admin/Manager (API — ManagerOrAdmin), Observer кнопку не видит.
+const { canAccess } = usePermissions()
 
 const visible = computed({
   get: () => props.modelValue,
@@ -104,8 +107,9 @@ const visible = computed({
 })
 
 function goToTelemetry() {
-  visible.value = false
-  router.push({ name: 'ImmTelemetry', params: { id: props.immId } })
+  // Модалку не закрываем: она уходит вместе с дашбордом; закрытие сбросило бы ?imm на дашборде
+  // параллельно с переходом.
+  router.push({ name: 'Monitoring', query: { imm: props.immId, from: 'card' } })
 }
 
 const dashboardStore = useDashboardStore()
@@ -190,6 +194,7 @@ const loadData = async () => {
 }
 
 let refreshTimer = null
+let unmounted = false
 
 const onOpen = async () => {
   try {
@@ -198,9 +203,14 @@ const onOpen = async () => {
   } catch {
     shiftSchedule.value = []
   }
+  if (unmounted || !visible.value) return // компонент снят/диалог закрыт, пока шёл await — таймер не заводим
   loadData()
+  clearInterval(refreshTimer)
   refreshTimer = setInterval(loadData, 60_000)
 }
+
+// immId сменился при открытой карточке (история браузера) — перезагружаем данные
+watch(() => props.immId, () => { if (visible.value) loadData() })
 
 const onClosed = () => {
   clearInterval(refreshTimer)
@@ -209,5 +219,5 @@ const onClosed = () => {
   tasks.value          = []
 }
 
-onUnmounted(() => clearInterval(refreshTimer))
+onUnmounted(() => { unmounted = true; clearInterval(refreshTimer) })
 </script>

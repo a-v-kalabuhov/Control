@@ -3,6 +3,24 @@
     <!-- Фильтры -->
     <div class="bg-white rounded-lg shadow-sm border p-4 space-y-3">
       <div class="flex flex-wrap items-center gap-4">
+        <el-button v-if="showBack" size="small" @click="goBack">
+          <el-icon class="mr-1"><ArrowLeft /></el-icon>
+          Назад
+        </el-button>
+
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-600">ТПА:</span>
+          <el-select
+            :model-value="immId"
+            size="small" style="width: 220px"
+            placeholder="Выберите ТПА"
+            filterable clearable
+            @update:model-value="onImmSelect"
+          >
+            <el-option v-for="imm in immOptions" :key="imm.id" :label="imm.name" :value="imm.id" />
+          </el-select>
+        </div>
+
         <div class="flex items-center gap-2">
           <span class="text-sm text-gray-600">Режим:</span>
           <el-select v-model="mode" size="small" style="width: 160px" @change="onModeChange">
@@ -40,7 +58,7 @@
       </div>
 
       <!-- Сигналы -->
-      <div class="flex flex-wrap items-center gap-3">
+      <div v-if="immId" class="flex flex-wrap items-center gap-3">
         <span class="text-sm text-gray-600">Сигналы:</span>
         <el-checkbox-group v-model="selected" @change="onSelectionChange">
           <el-checkbox v-for="s in availableSignals" :key="s.parameterName" :value="s.parameterName">
@@ -49,13 +67,15 @@
         </el-checkbox-group>
       </div>
 
-      <div v-if="truncated" class="text-sm text-amber-600">
+      <div v-if="immId && truncated" class="text-sm text-amber-600">
         Показаны не все точки — сузьте период.
       </div>
     </div>
 
+    <el-empty v-if="!immId" description="Выберите ТПА" />
+
     <!-- Столбик диаграмм -->
-    <div v-if="orderedSignals.length" class="space-y-3">
+    <div v-else-if="orderedSignals.length" class="space-y-3">
       <div v-for="(sig, idx) in orderedSignals" :key="sig.parameterName" class="flex items-start gap-2">
         <SignalChart
           class="min-w-0 flex-1"
@@ -76,12 +96,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import SignalChart from '@/components/telemetry/SignalChart.vue'
 import { telemetryApi } from '@/api/telemetry'
+import { immApi } from '@/api/imm'
 import { mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
+import { monitoringQueryWithImm, showBackToCard, isImmId } from '@/utils/monitoringNav'
+import { useAuthStore } from '@/stores/auth'
+import { jwtSubject } from '@/utils/jwt'
+import {
+  viewPrefsKey, browserStorage, readViewPrefs, writeViewPrefs, resolveSignalOrder,
+} from '@/utils/monitoringViewPrefs'
 
 const LIVE_PERIODS = [
   { min: 1,   label: '1 минута' },
@@ -95,7 +122,26 @@ const LIVE_PERIODS = [
 const LIVE_POLL_OPTIONS = [2, 5, 10] // секунды между запросами; выбор пользователя
 
 const route = useRoute()
-const immId = route.params.id
+const router = useRouter()
+
+// Источник истины по ТПА — query ?imm=<id> (спека 2026-10-14-monitoring-page-design).
+const immId = computed(() => (isImmId(route.query.imm) ? route.query.imm : null))
+const showBack = computed(() => showBackToCard(route.query))
+
+const immOptions = ref([]) // [{ id, name, templateId }] — действующие ТПА (+ архивный из query, если пришёл по ссылке)
+const authStore = useAuthStore()
+
+// Вид (датчики и их порядок) запоминается на пару (пользователь, шаблон ТПА).
+// После F5 профиль ещё не загружен (App.onMounted позже страницы) — берём sub из токена.
+function viewKey(id) {
+  const userId = authStore.user?.id ?? jwtSubject(authStore.accessToken)
+  const templateId = immOptions.value.find(i => i.id === id)?.templateId
+  return viewPrefsKey(userId, templateId)
+}
+
+function saveView() {
+  writeViewPrefs(browserStorage(), viewKey(immId.value), order.value)
+}
 
 const mode = ref('live')
 const livePeriodMin = ref(15)
@@ -127,21 +173,27 @@ function toIsoUtc(ms) {
   return new Date(ms).toISOString()
 }
 
+function clearData() {
+  signalsData.value = []
+  cycles.value = []
+  segments.value = []
+  truncated.value = false
+}
+
 async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null } = {}) {
-  if (selected.value.length === 0) {
-    signalsData.value = []
-    cycles.value = []
-    segments.value = []
-    truncated.value = false
+  const reqImmId = immId.value
+  if (!reqImmId || selected.value.length === 0) {
+    clearData()
     return
   }
   try {
-    const { data } = await telemetryApi.getDashboard(immId, {
+    const { data } = await telemetryApi.getDashboard(reqImmId, {
       from: toIsoUtc(fromMs),
       to: toIsoUtc(toMs),
       parameters: selected.value,
       pointsFrom: pointsFromMs ? toIsoUtc(pointsFromMs) : undefined,
     })
+    if (reqImmId !== immId.value) return // ответ для прежнего ТПА — пользователь уже сменил выбор
     truncated.value = data.truncated
     cycles.value = data.cycles
     segments.value = data.statusSegments
@@ -159,6 +211,7 @@ async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null }
       signalsData.value = data.signals
     }
   } catch (e) {
+    if (reqImmId !== immId.value) return
     truncated.value = false
     const status = e?.response?.status
     if (status === 400) ElMessage.warning(e.response.data ?? 'Некорректный период')
@@ -168,6 +221,10 @@ async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null }
 
 // ── История ──
 async function loadHistory() {
+  if (!immId.value) {
+    ElMessage.warning('Выберите ТПА')
+    return
+  }
   if (!historyFrom.value || !historyTo.value) {
     ElMessage.warning('Укажите начало и конец периода')
     return
@@ -205,6 +262,7 @@ function lastLoadedMs() {
 
 function startLive() {
   stopLive()
+  if (unmounted || !immId.value) return
   liveTick(true)
   pollTimer = setInterval(() => liveTick(false), livePollSec.value * 1000)
 }
@@ -219,7 +277,7 @@ function restartLive() {
 
 function onModeChange() {
   if (mode.value === 'live') startLive()
-  else { stopLive(); signalsData.value = [] }
+  else { stopLive(); clearData() }
 }
 
 function onSelectionChange(next) {
@@ -230,6 +288,7 @@ function onSelectionChange(next) {
   if (!next || next.length === 0) return // ничего не меняем, кроме отката чекбокса
   lastNonEmptySelection = [...resolved]
   syncOrder()
+  saveView()
   if (mode.value === 'live') startLive()
   else if (historyFrom.value && historyTo.value) loadHistory()
 }
@@ -248,24 +307,111 @@ function move(idx, delta) {
   const arr = [...order.value]
   ;[arr[idx], arr[next]] = [arr[next], arr[idx]]
   order.value = arr
+  saveView()
 }
 
-onMounted(async () => {
+// ── Выбор ТПА ──
+function onImmSelect(id) {
+  router.replace({ query: monitoringQueryWithImm(route.query, id) })
+}
+
+function goBack() {
+  router.push({ name: 'Dashboard', query: { imm: immId.value } })
+}
+
+async function loadImmOptions() {
   try {
-    const { data } = await telemetryApi.getSignals(immId)
-    availableSignals.value = data
-    if (data.length) {
-      selected.value = [data[0].parameterName] // по умолчанию первый сигнал
-      lastNonEmptySelection = [...selected.value]
-      syncOrder()
-    }
+    const { data } = await immApi.getList({ isActive: true })
+    immOptions.value = data
+      .map(i => ({ id: i.id, name: i.name, templateId: i.templateId }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
   } catch {
-    ElMessage.error('Не удалось загрузить список сигналов')
+    ElMessage.error('Не удалось загрузить список ТПА')
   }
-  startLive() // режим по умолчанию — живые данные
+}
+
+function notFound(id) {
+  ElMessage.warning('ТПА не найден')
+  if (immId.value === id) onImmSelect(null)
+}
+
+// ТПА из query может отсутствовать в списке действующих (архивный — по ссылке). Подгружаем его отдельно.
+async function ensureImmOption(id) {
+  if (immOptions.value.some(i => i.id === id)) return true
+  try {
+    const { data } = await immApi.getById(id)
+    if (!data?.id) { // SPA-fallback может вернуть 200 с HTML
+      notFound(id)
+      return false
+    }
+    if (!immOptions.value.some(i => i.id === id)) immOptions.value.push({ id: data.id, name: data.name, templateId: data.templateId })
+    return true
+  } catch (e) {
+    if (e?.response?.status === 404) notFound(id)
+    else ElMessage.error('Не удалось загрузить ТПА')
+    return false
+  }
+}
+
+async function switchImm(id) {
+  stopLive()
+  clearData()
+  availableSignals.value = []
+  selected.value = []
+  order.value = []
+  lastNonEmptySelection = []
+  if (!id) return
+
+  if (!(await ensureImmOption(id)) || immId.value !== id || unmounted) return
+  try {
+    const { data } = await telemetryApi.getSignals(id)
+    if (immId.value !== id || unmounted) return
+    availableSignals.value = data
+    // сохранённый вид для шаблона этого ТПА; без него — первый сигнал
+    const initial = resolveSignalOrder(
+      data.map(s => s.parameterName),
+      readViewPrefs(browserStorage(), viewKey(id)),
+    )
+    selected.value = [...initial]
+    order.value = [...initial]
+    lastNonEmptySelection = [...initial]
+  } catch {
+    if (immId.value === id) ElMessage.error('Не удалось загрузить список сигналов')
+    return
+  }
+  // режим, период, частота опроса и даты истории сохраняются при смене ТПА
+  if (mode.value === 'live') startLive()
+  else if (historyFrom.value && historyTo.value) loadHistory()
+}
+
+// В query есть imm, но это не id (мусор в URL) — предупреждаем и убираем его.
+function dropInvalidImm() {
+  if (route.query.imm !== undefined && !isImmId(route.query.imm)) {
+    ElMessage.warning('ТПА не найден')
+    router.replace({ query: monitoringQueryWithImm(route.query, null) })
+  }
+}
+
+// Наблюдатели заводим синхронно в setup (привязаны к компоненту и снимаются при unmount);
+// пока не загружен список ТПА (ready=false) они молчат, начальную обработку делает onMounted.
+let ready = false
+let unmounted = false
+watch(() => route.query.imm, () => {
+  if (ready && !unmounted) dropInvalidImm()
+})
+watch(immId, (id) => {
+  if (ready && !unmounted) switchImm(id)
 })
 
-onUnmounted(stopLive)
+onMounted(async () => {
+  await loadImmOptions()
+  if (unmounted) return
+  ready = true
+  if (route.query.imm !== undefined && !isImmId(route.query.imm)) dropInvalidImm()
+  else await switchImm(immId.value) // режим по умолчанию — живые данные
+})
+
+onUnmounted(() => { unmounted = true; stopLive() })
 </script>
 
 <style scoped>
