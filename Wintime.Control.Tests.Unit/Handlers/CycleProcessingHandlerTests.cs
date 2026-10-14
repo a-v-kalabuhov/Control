@@ -164,10 +164,16 @@ public class CycleProcessingHandlerTests
         await db.SaveChangesAsync();
         var sut = MakeSut(db);
 
+        // #1 закрыт, #2 открыт и не закрыт, #3 открыт: предыдущий (#2) ещё открыт → пауза null.
+        // Старое правило («последний закрытый цикл» = #1) дало бы 28000 мс от конца #1.
         await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(1, T0, null, null)));
-        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(2, T0.AddSeconds(17), null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(1, T0, T0.AddSeconds(12), null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(2, T0.AddSeconds(15), null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(3, T0.AddSeconds(40), null, null)));
 
-        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().BeNull();
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).EndTime.Should().BeNull("цикл #2 не закрыт");
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 3)).PauseDurationMs.Should().BeNull("предыдущий цикл #2 ещё открыт");
     }
 
     [Fact]
