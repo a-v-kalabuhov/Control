@@ -38,6 +38,7 @@
           class="w-full"
           @focus="loadMolds"
           :disabled="editingTask"
+          :no-data-text="moldNoDataText"
           filterable
         >
           <el-option
@@ -391,6 +392,14 @@ const availableMolds = computed(() =>
     ? molds.value.filter(m => m.productTypeId === props.lockedOrder.productTypeId)
     : molds.value
 )
+
+// Пустой список при заблокированном заказе — не сбой, а отсутствие ПФ его типа изделия;
+// без заказа остаётся стандартный текст Element Plus.
+const moldNoDataText = computed(() => {
+  if (!props.lockedOrder) return undefined
+  const article = props.lockedOrder.productTypeArticle
+  return `Нет активных пресс-форм для типа изделия ${article || 'заказа'}`
+})
 
 const resetForm = () => {
   Object.assign(form, {

@@ -190,6 +190,20 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-1'])
   })
 
+  it('при пустом списке ПФ объясняет, что нет форм с типом изделия заказа', async () => {
+    const wrapper = mountModal({ lockedOrder })
+    await flushPromises()
+
+    expect(wrapper.vm.moldNoDataText).toBe('Нет активных пресс-форм для типа изделия ART-X')
+  })
+
+  it('при пустом списке ПФ без артикула заказа не выводит пустое место', async () => {
+    const wrapper = mountModal({ lockedOrder: { ...lockedOrder, productTypeArticle: null } })
+    await flushPromises()
+
+    expect(wrapper.vm.moldNoDataText).toBe('Нет активных пресс-форм для типа изделия заказа')
+  })
+
   it('при выборе ПФ не сбрасывает orderId и не грузит заказы', async () => {
     const wrapper = mountModal({ lockedOrder })
     await flushPromises()
@@ -213,6 +227,8 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     await flushPromises()
 
     expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-1', 'mold-2'])
+    // без заказа — стандартный текст Element Plus
+    expect(wrapper.vm.moldNoDataText).toBeUndefined()
   })
 
   it('без пропа lockedOrder: поле «Заказ» активно после выбора ПФ', async () => {
