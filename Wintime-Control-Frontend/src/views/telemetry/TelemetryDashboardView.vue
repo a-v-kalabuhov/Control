@@ -128,6 +128,7 @@ const router = useRouter()
 const immId = computed(() => (isImmId(route.query.imm) ? route.query.imm : null))
 const showBack = computed(() => showBackToCard(route.query))
 
+const immOptions = ref([]) // [{ id, name, templateId }] — действующие ТПА (+ архивный из query, если пришёл по ссылке)
 const authStore = useAuthStore()
 
 // Вид (датчики и их порядок) запоминается на пару (пользователь, шаблон ТПА).
@@ -141,7 +142,6 @@ function viewKey(id) {
 function saveView() {
   writeViewPrefs(browserStorage(), viewKey(immId.value), order.value)
 }
-const immOptions = ref([]) // [{ id, name, templateId }] — действующие ТПА (+ архивный из query, если пришёл по ссылке)
 
 const mode = ref('live')
 const livePeriodMin = ref(15)
