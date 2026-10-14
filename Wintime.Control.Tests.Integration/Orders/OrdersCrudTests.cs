@@ -51,6 +51,48 @@ public class OrdersCrudTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Create_WithoutOrderDate_Returns201_WithNullDate()
+    {
+        var client = await ManagerClientAsync();
+        var body = ValidOrder();
+        body.OrderDate = null;
+        var resp = await client.PostAsJsonAsync("/api/orders", body);
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var dto = await resp.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+        dto!.OrderDate.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Update_ClearOrderDate_RemovesDate()
+    {
+        var client = await ManagerClientAsync();
+        var created = await (await client.PostAsJsonAsync("/api/orders", ValidOrder()))
+            .Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+
+        (await client.PutAsJsonAsync($"/api/orders/{created!.Id}",
+                new UpdateOrderRequestDto { ClearOrderDate = true }))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var reloaded = await (await client.GetAsync($"/api/orders/{created.Id}"))
+            .Content.ReadFromJsonAsync<OrderDetailsDto>(JsonOptions);
+        reloaded!.OrderDate.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Update_WithoutOrderDate_KeepsDate()
+    {
+        var client = await ManagerClientAsync();
+        var created = await (await client.PostAsJsonAsync("/api/orders", ValidOrder()))
+            .Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+
+        await client.PutAsJsonAsync($"/api/orders/{created!.Id}", new UpdateOrderRequestDto { Note = "x" });
+
+        var reloaded = await (await client.GetAsync($"/api/orders/{created.Id}"))
+            .Content.ReadFromJsonAsync<OrderDetailsDto>(JsonOptions);
+        reloaded!.OrderDate.Should().Be(DateTime.UtcNow.Date);
+    }
+
+    [Fact]
     public async Task Create_NonPositiveQuantity_Returns400()
     {
         var client = await ManagerClientAsync();
