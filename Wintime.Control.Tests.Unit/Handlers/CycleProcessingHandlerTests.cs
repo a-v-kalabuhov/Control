@@ -137,6 +137,54 @@ public class CycleProcessingHandlerTests
         (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().Be(3000);
     }
 
+    [Fact]
+    public async SystemTask Pause_is_measured_from_just_closed_cycle_when_one_message_closes_and_opens()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(1, T0, null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(1, T0, T0.AddSeconds(12), null, null),
+            currentCycle: new CycleSnapshot(2, T0.AddSeconds(17), null, null)));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 1)).EndTime.Should().NotBeNull();
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().Be(5000);
+    }
+
+    [Fact]
+    public async SystemTask Pause_is_null_when_previous_cycle_is_still_open()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(1, T0, null, null)));
+        await sut.ProcessAsync(MakeContext(immId, "auto", currentCycle: new CycleSnapshot(2, T0.AddSeconds(17), null, null)));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().BeNull();
+    }
+
+    [Fact]
+    public async SystemTask Pause_is_null_when_foreign_status_is_still_open()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        db.Imms.Add(new Imm { Id = immId, Name = "IMM", IsActive = true });
+        db.ImmStatusHistory.Add(new ImmStatusHistory { ImmId = immId, Status = ImmStatus.Idle, ChangedAt = T0.AddSeconds(14) });
+        await db.SaveChangesAsync();
+        var sut = MakeSut(db);
+
+        await RunTwoCyclesAsync(sut, immId, start2: T0.AddSeconds(17));
+
+        (await db.ImmCycles.SingleAsync(c => c.CycleNumber == 2)).PauseDurationMs.Should().BeNull();
+    }
+
     private static MqttProcessingContext MakeContext(
         Guid immId, string mode,
         CycleSnapshot? currentCycle = null, CompletedCycleSnapshot? lastCycle = null)

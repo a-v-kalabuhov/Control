@@ -63,44 +63,9 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
         var state = _tracker.Get(immId);
 
-        // 1. Открыть новую строку по currentCycle, если пара (Number, StartTime) новая.
-        // Открытие гейтится политикой (наладка/нет задания без auto не должны заводить новых
-        // циклов) — закрытие ниже НЕ гейтится: уже отслеживаемый открытый цикл обязан быть
-        // закрыт, даже если текущее сообщение пришло в Alarm/без активного задания.
-        if (shouldProcess && data.CurrentCycle is { } current &&
-            (state?.OpenCycleNumber != current.Number || state?.OpenCycleStartTime != current.StartTime))
-        {
-            var existing = await _db.ImmCycles.FirstOrDefaultAsync(
-                c => c.ImmId == immId && c.CycleNumber == current.Number && c.StartTime == current.StartTime, ct);
-
-            if (existing is null)
-            {
-                var cavities = activeTask?.Mold.Cavities ?? 0;
-                var pauseMs = await ResolvePauseAsync(immId, current.StartTime, ct);
-                var opened = new ImmCycle
-                {
-                    ImmId = immId,
-                    TaskId = activeTask?.Id,
-                    MoldId = activeTask?.MoldId,
-                    StartTime = current.StartTime,
-                    EndTime = null,
-                    CycleNumber = current.Number,
-                    InjectionStartTime = current.InjectionStartTime,
-                    Cavities = cavities,
-                    PauseDurationMs = pauseMs,
-                    IsSuccessful = true // временно — уточняется при закрытии
-                };
-                _db.ImmCycles.Add(opened);
-                await _db.SaveChangesAsync(ct);
-                existing = opened;
-                _logger.LogDebug("IMM {ImmId}: cycle {Number}/{StartTime:O} opened", immId, current.Number, current.StartTime);
-            }
-
-            state = new CycleState(current.Number, current.StartTime, existing.Id);
-            _tracker.Set(immId, state);
-        }
-
-        // 2-4. Закрыть строку по lastCycle (или создать+закрыть, если старт не видели)
+        // 1. Закрыть строку по lastCycle (или создать+закрыть, если старт не видели).
+        // Уже отслеживаемый открытый цикл обязан быть закрыт, даже если текущее сообщение
+        // пришло в Alarm/без активного задания.
         if (data.LastCycle is { } last)
         {
             ImmCycle? row = null;
@@ -178,6 +143,45 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             // else: row.EndTime уже заполнен — повторная публикация lastCycle, дедупликация
         }
 
+        // 2-4. Открыть новую строку по currentCycle, если пара (Number, StartTime) новая.
+        // Выполняется ПОСЛЕ закрытия по lastCycle: пауза нового цикла считается от конца только
+        // что закрытого (сообщение может нести lastCycle=N-1 и currentCycle=N одновременно).
+        // Открытие гейтится политикой (наладка/нет задания без auto не должны заводить новых
+        // циклов) — закрытие выше НЕ гейтится.
+        state = _tracker.Get(immId); // закрытие выше могло сбросить трекер
+        if (shouldProcess && data.CurrentCycle is { } current &&
+            (state?.OpenCycleNumber != current.Number || state?.OpenCycleStartTime != current.StartTime))
+        {
+            var existing = await _db.ImmCycles.FirstOrDefaultAsync(
+                c => c.ImmId == immId && c.CycleNumber == current.Number && c.StartTime == current.StartTime, ct);
+
+            if (existing is null)
+            {
+                var cavities = activeTask?.Mold.Cavities ?? 0;
+                var pauseMs = await ResolvePauseAsync(immId, current.StartTime, ct);
+                var opened = new ImmCycle
+                {
+                    ImmId = immId,
+                    TaskId = activeTask?.Id,
+                    MoldId = activeTask?.MoldId,
+                    StartTime = current.StartTime,
+                    EndTime = null,
+                    CycleNumber = current.Number,
+                    InjectionStartTime = current.InjectionStartTime,
+                    Cavities = cavities,
+                    PauseDurationMs = pauseMs,
+                    IsSuccessful = true // временно — уточняется при закрытии
+                };
+                _db.ImmCycles.Add(opened);
+                await _db.SaveChangesAsync(ct);
+                existing = opened;
+                _logger.LogDebug("IMM {ImmId}: cycle {Number}/{StartTime:O} opened", immId, current.Number, current.StartTime);
+            }
+
+            state = new CycleState(current.Number, current.StartTime, existing.Id);
+            _tracker.Set(immId, state);
+        }
+
         // Вне производственного состояния (наладка/нет задания без auto) трекер не должен
         // держать псевдо-открытый цикл — закрытие выше (если было) уже сбросило его точечно.
         if (!shouldProcess)
@@ -186,17 +190,22 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
     /// <summary>
     /// Пауза перед циклом, начинающимся в <paramref name="startUtc"/> (ADR-0017). Предыдущий —
-    /// последний закрытый цикл этого ТПА по <c>StartTime</c> (индекс <c>(ImmId, StartTime)</c>),
-    /// независимо от задания; «чужой» статус — интервал истории, пересекающий паузу.
+    /// последний по <c>StartTime</c> цикл этого ТПА (индекс <c>(ImmId, StartTime)</c>), независимо
+    /// от задания; если он ещё открыт — пауза неизвестна (<c>null</c>). «Чужой» статус — интервал
+    /// истории, пересекающий паузу.
     /// </summary>
     private async System.Threading.Tasks.Task<int?> ResolvePauseAsync(Guid immId, DateTime startUtc, CancellationToken ct)
     {
         var prevEnd = await _db.ImmCycles
-            .Where(c => c.ImmId == immId && c.StartTime < startUtc && c.EndTime != null)
+            .Where(c => c.ImmId == immId && c.StartTime < startUtc)
             .OrderByDescending(c => c.StartTime)
             .Select(c => c.EndTime)
             .FirstOrDefaultAsync(ct);
         if (prevEnd is not DateTime prev)
+            return null; // предыдущего цикла нет или он ещё открыт
+
+        // Дешёвая проверка без запроса истории статусов.
+        if (CyclePause.Resolve(prev, startUtc, false, _downtime.IdleThresholdSeconds) is null)
             return null;
 
         var foreignStatus = await _db.ImmStatusHistory.AnyAsync(h =>
@@ -205,6 +214,6 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             && h.ChangedAt < startUtc
             && (h.EndedAt == null || h.EndedAt > prev), ct);
 
-        return CyclePause.Resolve(prev, startUtc, foreignStatus, _downtime.IdleThresholdSeconds);
+        return foreignStatus ? null : CyclePause.Resolve(prev, startUtc, false, _downtime.IdleThresholdSeconds);
     }
 }
