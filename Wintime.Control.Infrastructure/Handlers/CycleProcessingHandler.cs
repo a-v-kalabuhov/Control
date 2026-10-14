@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.Entities;
 using EntityTaskStatus = Wintime.Control.Core.Enums.TaskStatus;
@@ -8,6 +9,7 @@ using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.DTOs.Mqtt;
 using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Shared.Settings;
 using SystemTask = System.Threading.Tasks.Task;
 
 namespace Wintime.Control.Infrastructure.Handlers;
@@ -23,17 +25,20 @@ public class CycleProcessingHandler : ICycleProcessingHandler
     private readonly ICycleTracker _tracker;
     private readonly IEnumerable<ICycleHandler> _handlers;
     private readonly ILogger<CycleProcessingHandler> _logger;
+    private readonly DowntimeSettings _downtime;
 
     public CycleProcessingHandler(
         ControlDbContext db,
         ICycleTracker tracker,
         IEnumerable<ICycleHandler> handlers,
-        ILogger<CycleProcessingHandler> logger)
+        ILogger<CycleProcessingHandler> logger,
+        IOptions<DowntimeSettings> downtime)
     {
         _db = db;
         _tracker = tracker;
         _handlers = handlers;
         _logger = logger;
+        _downtime = downtime.Value;
     }
 
     public async SystemTask ProcessAsync(MqttProcessingContext context, CancellationToken ct = default)
@@ -71,6 +76,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             if (existing is null)
             {
                 var cavities = activeTask?.Mold.Cavities ?? 0;
+                var pauseMs = await ResolvePauseAsync(immId, current.StartTime, ct);
                 var opened = new ImmCycle
                 {
                     ImmId = immId,
@@ -81,6 +87,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                     CycleNumber = current.Number,
                     InjectionStartTime = current.InjectionStartTime,
                     Cavities = cavities,
+                    PauseDurationMs = pauseMs,
                     IsSuccessful = true // временно — уточняется при закрытии
                 };
                 _db.ImmCycles.Add(opened);
@@ -117,15 +124,19 @@ public class CycleProcessingHandler : ICycleProcessingHandler
             else if (row is null || row.EndTime is null)
             {
                 var isNewRow = row is null;
-                row ??= new ImmCycle
+                if (row is null)
                 {
-                    ImmId = immId,
-                    TaskId = activeTask?.Id,
-                    MoldId = activeTask?.MoldId,
-                    StartTime = last.StartTime,
-                    CycleNumber = last.Number,
-                    Cavities = activeTask?.Mold.Cavities ?? 0
-                };
+                    row = new ImmCycle
+                    {
+                        ImmId = immId,
+                        TaskId = activeTask?.Id,
+                        MoldId = activeTask?.MoldId,
+                        StartTime = last.StartTime,
+                        CycleNumber = last.Number,
+                        Cavities = activeTask?.Mold.Cavities ?? 0,
+                        PauseDurationMs = await ResolvePauseAsync(immId, last.StartTime, ct)
+                    };
+                }
 
                 row.EndTime = last.EndTime;
                 row.InjectionStartTime ??= last.InjectionStartTime;
@@ -171,5 +182,29 @@ public class CycleProcessingHandler : ICycleProcessingHandler
         // держать псевдо-открытый цикл — закрытие выше (если было) уже сбросило его точечно.
         if (!shouldProcess)
             _tracker.Set(immId, new CycleState(null, null, null));
+    }
+
+    /// <summary>
+    /// Пауза перед циклом, начинающимся в <paramref name="startUtc"/> (ADR-0017). Предыдущий —
+    /// последний закрытый цикл этого ТПА по <c>StartTime</c> (индекс <c>(ImmId, StartTime)</c>),
+    /// независимо от задания; «чужой» статус — интервал истории, пересекающий паузу.
+    /// </summary>
+    private async System.Threading.Tasks.Task<int?> ResolvePauseAsync(Guid immId, DateTime startUtc, CancellationToken ct)
+    {
+        var prevEnd = await _db.ImmCycles
+            .Where(c => c.ImmId == immId && c.StartTime < startUtc && c.EndTime != null)
+            .OrderByDescending(c => c.StartTime)
+            .Select(c => c.EndTime)
+            .FirstOrDefaultAsync(ct);
+        if (prevEnd is not DateTime prev)
+            return null;
+
+        var foreignStatus = await _db.ImmStatusHistory.AnyAsync(h =>
+            h.ImmId == immId
+            && h.Status != ImmStatus.Auto && h.Status != ImmStatus.Offline // = !CyclePause.IsPauseStatus
+            && h.ChangedAt < startUtc
+            && (h.EndedAt == null || h.EndedAt > prev), ct);
+
+        return CyclePause.Resolve(prev, startUtc, foreignStatus, _downtime.IdleThresholdSeconds);
     }
 }
