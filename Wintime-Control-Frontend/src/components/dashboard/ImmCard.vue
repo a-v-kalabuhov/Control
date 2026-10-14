@@ -116,30 +116,16 @@ const cycleTime = computed(() => {
   return t == null ? '—' : `${Number(t).toFixed(1)} сек`
 })
 
-// Темп производства: шт/ч на основе фактических штук и времени с начала задания
-const ratePerHour = computed(() => {
-  const actual = props.imm.actualQuantity
-  const startedAt = props.imm.taskStartedAt
-  if (!props.imm.currentTaskId || !actual || !startedAt) return null
-  const elapsedHours = (Date.now() - new Date(startedAt).getTime()) / 3_600_000
-  if (elapsedHours < 0.01) return null
-  return actual / elapsedHours
-})
-
+// Темп и прогноз окончания выпуска считает бэкенд по среднему полному периоду цикла
+// (цикл + пауза), без наладки и простоев — ADR-0017
 const rateLabel = computed(() => {
-  if (!ratePerHour.value) return '—'
-  return `${Math.round(ratePerHour.value)} шт/ч`
+  const rate = props.imm.releaseRatePerHour
+  return rate ? `${Math.round(rate)} шт/ч` : '—'
 })
 
-// Прогноз окончания задания
 const etaLabel = computed(() => {
-  const rate = ratePerHour.value
-  const plan = props.imm.planQuantity
-  const actual = props.imm.actualQuantity
-  if (!rate || !plan || actual == null || actual >= plan) return null
-
-  const remainingHours = (plan - actual) / rate
-  return formatForecastMoment(new Date(Date.now() + remainingHours * 3_600_000))
+  const at = props.imm.releaseForecastAt
+  return at ? formatForecastMoment(new Date(at)) : null
 })
 
 const borderColor = computed(() => getEffectiveStatusMeta(props.imm.status).border)
