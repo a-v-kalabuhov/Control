@@ -63,6 +63,7 @@
           class="w-full"
           filterable
           :clearable="false"
+          :no-data-text="orderNoDataText"
           :disabled="isRestricted || !!lockedOrder || !selectedProductTypeId"
         >
           <el-option
@@ -399,6 +400,12 @@ const moldNoDataText = computed(() => {
   if (!props.lockedOrder) return undefined
   const article = props.lockedOrder.productTypeArticle
   return `Нет активных пресс-форм для типа изделия ${article || 'заказа'}`
+})
+
+// Заказы подбираются по типу изделия выбранной ПФ (селект без ПФ заблокирован).
+const orderNoDataText = computed(() => {
+  const article = selectedMoldInfo.value?.productTypeArticle
+  return `Нет активных заказов на изделие ${article || 'выбранной пресс-формы'}`
 })
 
 const resetForm = () => {

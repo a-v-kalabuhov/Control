@@ -10,7 +10,7 @@ vi.mock('@/api/imm', () => ({
 vi.mock('@/api/molds', () => ({
   moldsApi: {
     getList: vi.fn(() => Promise.resolve({ data: [
-      { id: 'mold-1', name: 'Форма 1', cavities: 4, isActive: true, productTypeId: 'pt-X' },
+      { id: 'mold-1', name: 'Форма 1', cavities: 4, isActive: true, productTypeId: 'pt-X', productTypeArticle: 'ART-X' },
       { id: 'mold-2', name: 'Форма 2', cavities: 2, isActive: true, productTypeId: 'pt-Y' }
     ] }))
   }
@@ -72,6 +72,32 @@ describe('TaskFormModal — заказ', () => {
     )
   })
 
+  it('при создании: пустой список заказов называет изделие выбранной ПФ', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие ART-X')
+  })
+
+  it('при редактировании: пустой список заказов называет изделие ПФ задания', async () => {
+    const task = { id: 'task-1', immId: 'imm-1', moldId: 'mold-1', planQuantity: 10, status: 'Planned' }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие ART-X')
+  })
+
+  it('пустой список заказов без артикула у ПФ — без пустого места в тексте', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-2'
+    await flushPromises()
+
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие выбранной пресс-формы')
+  })
+
   it('при смене ПФ сбрасывает orderId, если заказ больше не входит в список', async () => {
     ordersApi.getList
       .mockResolvedValueOnce({ data: [{ id: 'order-1', number: 'ORD-1' }] })
@@ -91,7 +117,7 @@ describe('TaskFormModal — заказ', () => {
 
   it('при создании задания передаёт orderId в tasksApi.create', async () => {
     moldsApi.getList.mockResolvedValueOnce({ data: [
-      { id: 'mold-1', name: 'Форма 1', cavities: 4, isActive: true, productTypeId: 'pt-X' }
+      { id: 'mold-1', name: 'Форма 1', cavities: 4, isActive: true, productTypeId: 'pt-X', productTypeArticle: 'ART-X' }
     ] })
 
     const wrapper = mountModal()
