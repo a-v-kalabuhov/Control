@@ -83,6 +83,7 @@ import { computed } from 'vue'
 import ImmStatusBadge from './ImmStatusBadge.vue'
 import { Clock } from '@element-plus/icons-vue'
 import { getEffectiveStatusMeta } from '@/constants/effectiveStatus'
+import { formatForecastMoment } from '@/utils/releaseForecast'
 
 const props = defineProps({
   imm: {
@@ -138,8 +139,7 @@ const etaLabel = computed(() => {
   if (!rate || !plan || actual == null || actual >= plan) return null
 
   const remainingHours = (plan - actual) / rate
-  const eta = new Date(Date.now() + remainingHours * 3_600_000)
-  return eta.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  return formatForecastMoment(new Date(Date.now() + remainingHours * 3_600_000))
 })
 
 const borderColor = computed(() => getEffectiveStatusMeta(props.imm.status).border)
