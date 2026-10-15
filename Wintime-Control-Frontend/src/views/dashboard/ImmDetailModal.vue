@@ -88,6 +88,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { usePermissions } from '@/composables/usePermissions'
 import { computeCurrentShift } from '@/constants/shift'
 import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveStatus'
+import { mergeTimelineTasks, plannedRangeForShift } from '@/utils/shiftTimeline'
 import ImmCard from '@/components/dashboard/ImmCard.vue'
 import ShiftTimeline from '@/components/dashboard/ShiftTimeline.vue'
 
@@ -178,13 +179,19 @@ const loadData = async () => {
   const fromIso = shift.value.start.toISOString()
   const toIso   = shift.value.end.toISOString()
 
+  // BL-40: кроме активных в смене — запланированные около смены (для ряда «План»),
+  // включая ещё не начатые. Точный отбор по plannedStartAt — в ShiftTimeline.
+  const { plannedFrom, plannedTo } = plannedRangeForShift(shift.value.start, shift.value.end)
+  const items = (res) => res.data?.items ?? res.data ?? []
+
   try {
-    const [historyRes, tasksRes] = await Promise.all([
+    const [historyRes, activeRes, plannedRes] = await Promise.all([
       dashboardApi.getImmEffectiveStatusHistory(props.immId, { from: fromIso, to: toIso }),
       tasksApi.getList({ immId: props.immId, activeFrom: fromIso, activeTo: toIso }),
+      tasksApi.getList({ immId: props.immId, plannedFrom, plannedTo }),
     ])
     statusSegments.value = historyRes.data
-    tasks.value          = tasksRes.data?.items ?? tasksRes.data ?? []
+    tasks.value          = mergeTimelineTasks(items(activeRes), items(plannedRes))
   } catch (error) {
     ElMessage.error('Ошибка загрузки данных смены')
     console.error(error)
