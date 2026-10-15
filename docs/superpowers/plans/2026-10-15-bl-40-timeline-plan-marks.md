@@ -654,8 +654,9 @@ const props = defineProps({
 const TASK_COLORS = ['#3b82f6', '#7c3aed', '#0891b2', '#059669', '#d97706']
 
 // Дорожки (BL-40): высота дорожки фиксирована, ряд растёт с числом дорожек.
-const TASK_LANE_H = 44
-const PLAN_LANE_H = 34
+const TASK_LANE_H = 42
+const PLAN_LANE_H = 32
+const ROW_BORDER = 2 // рамка ряда сверху и снизу
 const LANE_GAP = 4
 const TASK_PAD = 7
 const PLAN_PAD = 4
@@ -1001,7 +1002,7 @@ function taskTitle(task) {
 </style>
 ```
 
-Примечание: с одной дорожкой ряд «Задания» имеет высоту 7·2 + 44 = 58 px и бар 44 px — как раньше (было `height: 58px; top/bottom: 7px`).
+Примечание: с одной дорожкой ряд «Задания» имеет высоту 2 + 7·2 + 42 = 58 px и бар 42 px — как раньше (было `height: 58px; top/bottom: 7px`).
 
 - [ ] **Step 4: Запустить тесты компонента и утилит**
 
