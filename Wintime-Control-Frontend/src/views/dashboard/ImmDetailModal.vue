@@ -186,8 +186,8 @@ const loadData = async () => {
   const { plannedFrom, plannedTo } = plannedRangeForShift(shift.value.start, shift.value.end)
 
   try {
-    // Запросы заданий не фатальны: у Observer нет доступа к /api/tasks (403), а строка статусов
-    // должна показываться всё равно — упавший запрос даёт пустой список, без тоста.
+    // Запросы заданий не фатальны: строка статусов должна показываться, даже если список
+    // заданий не загрузился, — упавший запрос даёт пустой список, без тоста.
     const [historyRes, taskRes] = await Promise.all([
       dashboardApi.getImmEffectiveStatusHistory(props.immId, { from: fromIso, to: toIso }),
       Promise.allSettled([

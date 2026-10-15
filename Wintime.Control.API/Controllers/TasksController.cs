@@ -36,9 +36,10 @@ public class TasksController : ControllerBase
     /// <c>active*</c> — окно активности задания пересекается с <c>[activeFrom, activeTo)</c>.
     /// Без <c>status</c> выполненные и закрытые исключаются — кроме фильтра <c>active*</c>:
     /// задание, завершённое в периоде, в нём было в работе.
+    /// Observer — только чтение: список нужен хронологии карточки ТПА на дашборде (BL-40).
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<TaskDto>>> GetTaskList(
         [FromQuery] Core.Enums.TaskStatus? status = null,
         [FromQuery] Guid? immId = null,
