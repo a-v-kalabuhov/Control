@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { periodFor, stepAnchor, gridTicks, spanPct, periodLabel } from '../planningBoard'
+import {
+  periodFor, stepAnchor, gridTicks, spanPct, periodLabel,
+  boardSegments, pairLayout, rowLanes, boardMarks, planLabel, tooltipLines
+} from '../planningBoard'
 
 const d = (y, m, day, h = 0, min = 0) => new Date(y, m - 1, day, h, min)
 
@@ -85,5 +88,132 @@ describe('spanPct', () => {
 describe('periodLabel', () => {
   it('неделя — даты первого и последнего дня', () => {
     expect(periodLabel('week', d(2026, 10, 12), d(2026, 10, 19))).toBe('12.10.2026 — 18.10.2026')
+  })
+})
+
+const MIN = 60_000
+const T0 = new Date(2026, 9, 15, 10, 0).getTime()
+const at = (m) => new Date(T0 + m * MIN).toISOString()
+
+// План: наладка 10:00–10:30, выпуск до 11:30, буфер до 11:40.
+function boardItem({ task = {}, fact = {}, ...rest } = {}) {
+  return {
+    task: { id: 't1', status: 'Planned', moldName: 'ПФ-1', immName: 'ТПА-1', planQuantity: 100,
+            plannedSetupMinutes: 30, plannedReleaseBufferSeconds: 600, startedAt: null, ...task },
+    productArticle: 'ART-1',
+    plan: { setupStart: at(0), setupEnd: at(30), releaseEnd: at(90), bufferEnd: at(100) },
+    fact: { setupStart: null, setupEnd: null, releaseEnd: null, forecastEnd: null, ...fact },
+    bufferRemainingSeconds: null, overdueNotStartedSeconds: null, setupLagSeconds: null,
+    ...rest
+  }
+}
+const kinds = (segs) => segs.map(s => s.kind)
+
+describe('boardSegments', () => {
+  it('запланированное — три сегмента плана, факта нет', () => {
+    const s = boardSegments(boardItem(), new Date(T0 - 60 * MIN))
+    expect(kinds(s.plan)).toEqual(['setup', 'release', 'buffer'])
+    expect(s.fact).toEqual([])
+  })
+
+  it('нулевой норматив наладки — сегмент наладки не рисуется', () => {
+    const item = boardItem()
+    item.plan.setupEnd = item.plan.setupStart
+    expect(kinds(boardSegments(item, new Date(T0)).plan)).toEqual(['release', 'buffer'])
+  })
+
+  it('выпуск идёт, прогноз в буфере — факт до «сейчас», прогноз, остаток', () => {
+    const item = boardItem({
+      task: { status: 'InProgress', startedAt: at(32) },
+      fact: { setupStart: at(5), setupEnd: at(32), forecastEnd: at(95) },
+      bufferRemainingSeconds: 300
+    })
+    const s = boardSegments(item, new Date(T0 + 60 * MIN))
+    expect(kinds(s.fact)).toEqual(['setup', 'release', 'forecast', 'remaining'])
+    const rest = s.fact.at(-1)
+    expect([rest.start, rest.end]).toEqual([T0 + 95 * MIN, T0 + 100 * MIN])
+  })
+
+  it('прогноз за плановым окончанием — перерасход от P до прогноза', () => {
+    const item = boardItem({
+      task: { status: 'InProgress', startedAt: at(32) },
+      fact: { setupStart: at(5), setupEnd: at(32), forecastEnd: at(110) },
+      bufferRemainingSeconds: -600
+    })
+    const over = boardSegments(item, new Date(T0 + 60 * MIN)).fact.at(-1)
+    expect(over.kind).toBe('overrun')
+    expect([over.start, over.end]).toEqual([T0 + 100 * MIN, T0 + 110 * MIN])
+  })
+
+  it('выполнено — наладка, выпуск до завершения, остаток', () => {
+    const item = boardItem({
+      task: { status: 'Completed', startedAt: at(30) },
+      fact: { setupStart: at(0), setupEnd: at(30), releaseEnd: at(85) },
+      bufferRemainingSeconds: 900
+    })
+    expect(kinds(boardSegments(item, new Date(T0 + 200 * MIN)).fact)).toEqual(['setup', 'release', 'remaining'])
+  })
+
+  it('идёт наладка — факт наладки до «сейчас»', () => {
+    const item = boardItem({ task: { status: 'Setup' }, fact: { setupStart: at(10) } })
+    const s = boardSegments(item, new Date(T0 + 50 * MIN))
+    expect(s.fact).toEqual([{ kind: 'setup', start: T0 + 10 * MIN, end: T0 + 50 * MIN }])
+  })
+})
+
+describe('pairLayout', () => {
+  it('рамка пары — объединение сегментов, сегменты — в % рамки', () => {
+    const l = pairLayout(boardItem(), new Date(T0), new Date(T0 + 200 * MIN), new Date(T0 - MIN))
+    expect(l.box.leftPct).toBeCloseTo(0)
+    expect(l.box.widthPct).toBeCloseTo(50)
+    expect(l.plan.map(s => [s.kind, Math.round(s.leftPct), Math.round(s.widthPct)]))
+      .toEqual([['setup', 0, 30], ['release', 30, 60], ['buffer', 90, 10]])
+  })
+
+  it('пара вне окна — null', () => {
+    expect(pairLayout(boardItem(), new Date(T0 + 300 * MIN), new Date(T0 + 400 * MIN), new Date(T0))).toBeNull()
+  })
+})
+
+describe('rowLanes', () => {
+  it('пересекающиеся пары — разные дорожки, непересекающиеся — одна', () => {
+    const a = boardItem()
+    const b = boardItem({ task: { id: 't2' } })
+    b.plan = { setupStart: at(50), setupEnd: at(60), releaseEnd: at(120), bufferEnd: at(130) }
+    const c = boardItem({ task: { id: 't3' } })
+    c.plan = { setupStart: at(200), setupEnd: at(210), releaseEnd: at(220), bufferEnd: at(230) }
+    expect(rowLanes([a, b, c], new Date(T0))).toEqual([0, 1, 0])
+  })
+})
+
+describe('boardMarks', () => {
+  it('просрочка неначатого — на план-баре', () => {
+    expect(boardMarks(boardItem({ overdueNotStartedSeconds: 7800 })))
+      .toEqual([{ text: 'не начато, опоздание 2ч 10м', row: 'plan' }])
+  })
+
+  it('отставание наладки и перерасход — на факт-баре', () => {
+    expect(boardMarks(boardItem({ setupLagSeconds: 1500 })))
+      .toEqual([{ text: 'наладка отстала на 25м', row: 'fact' }])
+    expect(boardMarks(boardItem({ bufferRemainingSeconds: -2400 })))
+      .toEqual([{ text: 'перерасход 40м', row: 'fact' }])
+  })
+
+  it('меньше минуты — без меток', () => {
+    expect(boardMarks(boardItem({ overdueNotStartedSeconds: 30, setupLagSeconds: 59, bufferRemainingSeconds: -10 })))
+      .toEqual([])
+  })
+})
+
+describe('подписи', () => {
+  it('план-бар: артикул · ПФ · план', () => {
+    expect(planLabel(boardItem())).toBe('ART-1 · ПФ-1 · 100 шт')
+    expect(planLabel(boardItem({ productArticle: null }))).toBe('ПФ-1 · 100 шт')
+  })
+
+  it('тултип: статус, перерасход', () => {
+    const lines = tooltipLines(boardItem({ bufferRemainingSeconds: -2400 }))
+    expect(lines).toContain('Статус: Планируется')
+    expect(lines).toContain('Перерасход: 40м')
   })
 })

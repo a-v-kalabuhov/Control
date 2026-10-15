@@ -1,5 +1,6 @@
 // План-график цеха (PZP-07a): геометрия Гантта. Время — в поясе браузера.
-import { formatClock } from './shiftTimeline'
+import { formatClock, formatDuration, assignLanes } from './shiftTimeline'
+import { TASK_STATUS_LABELS } from '@/constants/taskStatus'
 
 export const SCALES = ['day', 'week', 'month']
 export const SCALE_LABELS = { day: 'Сутки', week: 'Неделя', month: 'Месяц' }
@@ -80,4 +81,117 @@ export function spanPct(start, end, from, to) {
   const e = Math.min(ms(end), t)
   if (!(e > s)) return null
   return { leftPct: pctOf(s, f, t - f), widthPct: (e - s) / (t - f) * 100 }
+}
+
+// Цвет пары баров — по статусу задания (оттенки Element Plus).
+export const GANTT_STATUS_COLORS = {
+  Planned: '#909399',
+  Issued: '#409eff',
+  Setup: '#e6a23c',
+  InProgress: '#67c23a',
+  Completed: '#529b2e',
+  Closed: '#a8abb2'
+}
+
+function seg(kind, start, end) {
+  const s = ms(start)
+  const e = ms(end)
+  return s != null && e != null && e > s ? { kind, start: s, end: e } : null
+}
+
+// Сегменты пары: план (наладка → выпуск → буфер) и факт (наладка → выпуск до «сейчас» →
+// прогноз → остаток буфера или перерасход). Нулевые сегменты отбрасываются.
+export function boardSegments(item, now) {
+  const n = now.getTime()
+  const { plan: p, fact: f, task } = item
+  const plan = [
+    seg('setup', p.setupStart, p.setupEnd),
+    seg('release', p.setupEnd, p.releaseEnd),
+    seg('buffer', p.releaseEnd, p.bufferEnd)
+  ].filter(Boolean)
+
+  const fact = []
+  if (f.setupStart) fact.push(seg('setup', f.setupStart, f.setupEnd ?? n))
+  if (task.startedAt) fact.push(seg('release', task.startedAt, f.releaseEnd ?? n))
+  if (f.forecastEnd) fact.push(seg('forecast', n, f.forecastEnd))
+  const r = item.bufferRemainingSeconds
+  if (r != null && p.bufferEnd) {
+    const releaseFinish = task.status === 'InProgress' ? (f.forecastEnd ?? n) : f.releaseEnd
+    fact.push(r > 0 ? seg('remaining', releaseFinish, p.bufferEnd) : seg('overrun', p.bufferEnd, releaseFinish))
+  }
+  return { plan, fact: fact.filter(Boolean) }
+}
+
+function pairInterval(item, now) {
+  const { plan, fact } = boardSegments(item, now)
+  const all = [...plan, ...fact]
+  const start0 = ms(item.plan.setupStart)
+  if (all.length === 0) return { start: start0, end: start0 }
+  return { start: Math.min(...all.map(s => s.start)), end: Math.max(...all.map(s => s.end)) }
+}
+
+// Рамка пары в % окна и сегменты в % рамки; пара вне окна — null.
+export function pairLayout(item, from, to, now) {
+  const { plan, fact } = boardSegments(item, now)
+  const { start, end } = pairInterval(item, now)
+  const box = spanPct(start, end, from, to)
+    ?? (start >= from.getTime() && start < to.getTime()
+      ? { leftPct: pctOf(start, from.getTime(), to.getTime() - from.getTime()), widthPct: 0 }
+      : null)
+  if (!box) return null
+  const inBox = (s) => {
+    const sp = spanPct(s.start, s.end, from, to)
+    if (!sp || box.widthPct === 0) return null
+    return { kind: s.kind, leftPct: (sp.leftPct - box.leftPct) / box.widthPct * 100, widthPct: sp.widthPct / box.widthPct * 100 }
+  }
+  return { box, plan: plan.map(inBox).filter(Boolean), fact: fact.map(inBox).filter(Boolean) }
+}
+
+
+// Дорожки пар в строке ТПА: пересекающиеся пары не накладываются друг на друга.
+export function rowLanes(items, now) {
+  return assignLanes(items.map(i => pairInterval(i, now)))
+}
+
+// Текстовые метки отклонений; меньше минуты не показываем.
+export function boardMarks(item) {
+  const marks = []
+  if (item.overdueNotStartedSeconds >= 60)
+    marks.push({ text: `не начато, опоздание ${formatDuration(item.overdueNotStartedSeconds * 1000)}`, row: 'plan' })
+  if (item.setupLagSeconds >= 60)
+    marks.push({ text: `наладка отстала на ${formatDuration(item.setupLagSeconds * 1000)}`, row: 'fact' })
+  if (item.bufferRemainingSeconds <= -60)
+    marks.push({ text: `перерасход ${formatDuration(-item.bufferRemainingSeconds * 1000)}`, row: 'fact' })
+  return marks
+}
+
+export function planLabel(item) {
+  return [item.productArticle, item.task.moldName, `${item.task.planQuantity} шт`].filter(Boolean).join(' · ')
+}
+
+const fmtStamp = (v) => {
+  const date = new Date(v)
+  return `${date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} ${formatClock(date)}`
+}
+
+// Строки нативного тултипа (title) пары.
+export function tooltipLines(item) {
+  const { task, plan, fact } = item
+  const lines = [
+    `${task.immName ?? ''} · ${planLabel(item)}`,
+    `Статус: ${TASK_STATUS_LABELS[task.status] ?? task.status}`,
+    `Наладчик: ${task.personnelName ?? '—'}`,
+    `План: ${fmtStamp(plan.setupStart)} — ${fmtStamp(plan.bufferEnd ?? plan.setupEnd)}`,
+    `Норматив наладки: ${formatDuration((task.plannedSetupMinutes ?? 0) * 60_000)}`
+  ]
+  if (task.plannedReleaseBufferSeconds != null)
+    lines.push(`Буфер выпуска: ${formatDuration(task.plannedReleaseBufferSeconds * 1000)}`)
+  if (fact.setupStart) lines.push(`Начало наладки: ${fmtStamp(fact.setupStart)}`)
+  if (task.startedAt) lines.push(`Начало выпуска: ${fmtStamp(task.startedAt)}`)
+  if (fact.releaseEnd) lines.push(`Окончание выпуска: ${fmtStamp(fact.releaseEnd)}`)
+  if (fact.forecastEnd) lines.push(`Прогноз окончания выпуска: ${fmtStamp(fact.forecastEnd)}`)
+  const r = item.bufferRemainingSeconds
+  if (r != null) lines.push(r >= 0 ? `Остаток буфера: ${formatDuration(r * 1000)}` : `Перерасход: ${formatDuration(-r * 1000)}`)
+  for (const m of boardMarks(item)) if (!m.text.startsWith('перерасход')) lines.push(m.text)
+  return lines
 }
