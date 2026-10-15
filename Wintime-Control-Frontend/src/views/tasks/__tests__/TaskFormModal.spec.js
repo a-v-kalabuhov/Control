@@ -723,3 +723,42 @@ describe('TaskFormModal — совместимость ПФ↔ТПА (PZP-16)', 
     expect(find(edit, 'Выберите пресс-форму').props('clearable')).toBe(false)
   })
 })
+
+describe('TaskFormModal — названия ТПА и наладчика при редактировании', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const task = {
+    id: 't1', status: 'Issued', immId: 'imm-1', immName: 'ТПА-4', moldId: 'mold-1',
+    personnelId: 'adj-1', personnelName: 'Иванов Женя',
+    planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null,
+    note: '', orderId: null, workMode: 'Auto', plannedFullCycleSeconds: 30, plannedInjectionCycleSeconds: null
+  }
+  // Подписи выбранных значений в селектах формы (а не их id)
+  const selectedLabels = (w) => w.findAll('.el-select__placeholder:not(.is-transparent)').map(e => e.text())
+
+  it('без фокуса на полях показывает название ТПА и ФИО наладчика, а не id', async () => {
+    const { personnelApi } = await import('@/api/personnel')
+    immApi.getList.mockResolvedValueOnce({ data: [
+      { id: 'imm-1', name: 'ТПА-4', manufacturer: 'Haitian', model: 'MA1600', isActive: true }
+    ] })
+    personnelApi.getList.mockResolvedValueOnce({ data: [{ id: 'adj-1', fullName: 'Иванов Женя' }] })
+
+    const w = mountModal({ task })
+    await flushPromises()
+
+    const labels = selectedLabels(w)
+    expect(labels).toContain('ТПА-4 (Haitian MA1600)')
+    expect(labels).toContain('Иванов Женя')
+    expect(labels.join(' ')).not.toMatch(/imm-1|adj-1/)
+  })
+
+  it('ТПА и наладчик в архиве (нет в списках активных) — название из задания', async () => {
+    const w = mountModal({ task })
+    await flushPromises()
+
+    const labels = selectedLabels(w)
+    expect(labels).toContain('ТПА-4')
+    expect(labels).toContain('Иванов Женя')
+    expect(labels.join(' ')).not.toMatch(/imm-1|adj-1/)
+  })
+})
