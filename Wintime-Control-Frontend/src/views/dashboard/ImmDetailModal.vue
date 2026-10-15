@@ -88,6 +88,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { usePermissions } from '@/composables/usePermissions'
 import { computeCurrentShift } from '@/constants/shift'
 import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveStatus'
+import { mergeTimelineTasks, plannedRangeForShift } from '@/utils/shiftTimeline'
 import ImmCard from '@/components/dashboard/ImmCard.vue'
 import ShiftTimeline from '@/components/dashboard/ShiftTimeline.vue'
 
@@ -170,6 +171,8 @@ const summary = computed(() => {
 })
 
 // --- Загрузка данных ---
+const items = (res) => res.data?.items ?? res.data ?? []
+
 const loadData = async () => {
   if (!props.immId) return
   loading.value = true
@@ -178,13 +181,23 @@ const loadData = async () => {
   const fromIso = shift.value.start.toISOString()
   const toIso   = shift.value.end.toISOString()
 
+  // BL-40: кроме активных в смене — запланированные около смены (для ряда «План»),
+  // включая ещё не начатые. Точный отбор по plannedStartAt — в ShiftTimeline.
+  const { plannedFrom, plannedTo } = plannedRangeForShift(shift.value.start, shift.value.end)
+
   try {
-    const [historyRes, tasksRes] = await Promise.all([
+    // Запросы заданий не фатальны: строка статусов должна показываться, даже если список
+    // заданий не загрузился, — упавший запрос даёт пустой список, без тоста.
+    const [historyRes, taskRes] = await Promise.all([
       dashboardApi.getImmEffectiveStatusHistory(props.immId, { from: fromIso, to: toIso }),
-      tasksApi.getList({ immId: props.immId, activeFrom: fromIso, activeTo: toIso }),
+      Promise.allSettled([
+        tasksApi.getList({ immId: props.immId, activeFrom: fromIso, activeTo: toIso }),
+        tasksApi.getList({ immId: props.immId, plannedFrom, plannedTo }),
+      ]),
     ])
+    const [active, planned] = taskRes.map(r => (r.status === 'fulfilled' ? items(r.value) : []))
     statusSegments.value = historyRes.data
-    tasks.value          = tasksRes.data?.items ?? tasksRes.data ?? []
+    tasks.value          = mergeTimelineTasks(active, planned)
   } catch (error) {
     ElMessage.error('Ошибка загрузки данных смены')
     console.error(error)

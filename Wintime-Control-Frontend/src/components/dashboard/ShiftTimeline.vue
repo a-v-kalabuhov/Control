@@ -30,10 +30,38 @@
             v-if="futureStyle"
             class="seg-future"
             :style="futureStyle"
-            :title="`Ещё не наступило\n${formatTime(nowClamped)} — ${formatTime(shiftEnd)}`"
+            :title="`Ещё не наступило\n${formatClock(nowClamped)} — ${formatClock(shiftEnd)}`"
           ></div>
         </div>
         <div class="now-line now-line--labeled" :style="{ left: nowPct }" :data-time="nowLabel"></div>
+      </div>
+    </div>
+
+    <!-- Строка: План наладки (BL-40) -->
+    <div class="flex items-center mb-2">
+      <div class="row-label">План</div>
+      <div class="flex-1 relative">
+        <div class="plan-bar" :style="{ height: planRowHeight + 'px' }">
+          <div
+            v-for="bar in planBars"
+            :key="'plan-' + bar.task.id"
+            class="plan-block"
+            :style="planStyle(bar)"
+            :title="planTitle(bar.task)"
+          >
+            <template v-if="!bar.layout.isMarker">
+              <div class="plan-name">{{ bar.task.moldName || 'Задание' }}</div>
+              <div class="plan-marks">
+                <span
+                  v-for="(m, i) in planMarks(bar.task)"
+                  :key="i"
+                  :class="'mark--' + m.tone"
+                >{{ i ? ' · ' : '' }}{{ m.text }}</span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div class="now-line" :style="{ left: nowPct }"></div>
       </div>
     </div>
 
@@ -41,7 +69,7 @@
     <div class="flex items-center">
       <div class="row-label">Задания</div>
       <div class="flex-1 relative">
-        <div class="task-bar">
+        <div class="task-bar" :style="{ height: taskRowHeight + 'px' }">
           <div
             v-for="bar in taskBars"
             :key="bar.task.id"
@@ -62,16 +90,29 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { getEffectiveStatusMeta } from '@/constants/effectiveStatus'
-import { taskBarLayout } from '@/utils/shiftTimeline'
+import {
+  taskBarLayout, planBarLayout, planMarks, planTooltipLines, assignLanes, formatDuration, formatClock
+} from '@/utils/shiftTimeline'
 
 const props = defineProps({
   statusSegments: { type: Array, default: () => [] }, // EffectiveStatusSegmentDto[]
-  tasks:          { type: Array, default: () => [] }, // TaskDto[]
+  tasks:          { type: Array, default: () => [] }, // TaskDto[]; индекс = цвет задания в обоих рядах
   shiftStart:     { type: Date, required: true },
   shiftEnd:       { type: Date, required: true },
 })
 
 const TASK_COLORS = ['#3b82f6', '#7c3aed', '#0891b2', '#059669', '#d97706']
+
+// Дорожки (BL-40): высота дорожки фиксирована, ряд растёт с числом дорожек.
+// Высоты дорожек — высота бара (border-box, рамка 1px внутри); ряд добавляет ещё 2px рамки.
+const TASK_LANE_H = 42
+const PLAN_LANE_H = 32
+const ROW_BORDER = 2 // рамка ряда сверху и снизу
+const LANE_GAP = 4
+const TASK_PAD = 7
+const PLAN_PAD = 4
+// Узкие бары/маркеры при раскладке считаем не уже этой доли смены — чтобы маркеры не слипались.
+const MIN_LANE_PCT = 0.5
 
 const shiftDur = computed(() => props.shiftEnd - props.shiftStart)
 
@@ -86,12 +127,37 @@ const nowClamped = computed(() => {
   return now.value
 })
 
+function taskColor(idx) {
+  return TASK_COLORS[idx % TASK_COLORS.length]
+}
+
+function withLanes(bars) {
+  const lanes = assignLanes(bars.map(b => ({
+    start: b.layout.leftPct,
+    end:   b.layout.leftPct + Math.max(b.layout.widthPct, MIN_LANE_PCT),
+  })))
+  return bars.map((b, i) => ({ ...b, lane: lanes[i] }))
+}
+
+function rowHeight(bars, laneH, pad) {
+  const n = bars.reduce((max, b) => Math.max(max, b.lane + 1), 1)
+  return ROW_BORDER + pad * 2 + n * laneH + (n - 1) * LANE_GAP
+}
+
 // Бары заданий: только задания с окном активности, пересекающим смену.
-const taskBars = computed(() => props.tasks
+const taskBars = computed(() => withLanes(props.tasks
   .map((task, idx) => ({ task, idx, layout: taskBarLayout(task, props.shiftStart, props.shiftEnd, nowClamped.value) }))
-  .filter(b => b.layout))
+  .filter(b => b.layout)))
+// Плановые бары: только задания, чьё плановое окно наладки пересекает смену.
+const planBars = computed(() => withLanes(props.tasks
+  .map((task, idx) => ({ task, idx, layout: planBarLayout(task, props.shiftStart, props.shiftEnd) }))
+  .filter(b => b.layout)))
+
+const taskRowHeight = computed(() => rowHeight(taskBars.value, TASK_LANE_H, TASK_PAD))
+const planRowHeight = computed(() => rowHeight(planBars.value, PLAN_LANE_H, PLAN_PAD))
+
 const nowPct     = computed(() => toPct(nowClamped.value))
-const nowLabel   = computed(() => formatTime(nowClamped.value))
+const nowLabel   = computed(() => formatClock(nowClamped.value))
 // Заштрихованный «хвост» смены, который ещё не наступил (от now до конца смены).
 // Позиционируется абсолютно, как и сегменты статусов.
 const futureStyle = computed(() => {
@@ -110,11 +176,11 @@ const timeTicks = computed(() => {
   t.setMinutes(0, 0, 0)
   if (t.getTime() < start) t = new Date(t.getTime() + hourMs)
   while (t.getTime() <= end) {
-    ticks.push({ label: formatTime(t), pct: toPct(t) })
+    ticks.push({ label: formatClock(t), pct: toPct(t) })
     t = new Date(t.getTime() + hourMs)
   }
   // Всегда добавляем начало смены если оно ровное
-  const startTick = { label: formatTime(props.shiftStart), pct: '0%' }
+  const startTick = { label: formatClock(props.shiftStart), pct: '0%' }
   if (!ticks.find(tk => tk.pct === '0%')) ticks.unshift(startTick)
   return ticks
 })
@@ -143,37 +209,47 @@ function segStyle(seg) {
 
 // Наладка — светлым оттенком цвета задания, выпуск — основным цветом.
 function taskStyle(bar) {
-  const color = TASK_COLORS[bar.idx % TASK_COLORS.length]
+  const color = taskColor(bar.idx)
   const sp = bar.layout.setupPct.toFixed(3)
   return {
     left:       bar.layout.leftPct.toFixed(3) + '%',
     width:      bar.layout.widthPct.toFixed(3) + '%',
+    top:        (TASK_PAD + bar.lane * (TASK_LANE_H + LANE_GAP)) + 'px',
+    height:     TASK_LANE_H + 'px',
     background: `linear-gradient(to right, ${color}80 0 ${sp}%, ${color} ${sp}% 100%)`,
   }
+}
+
+// План — контур цвета задания; обрезанный сменой край без скругления.
+function planStyle(bar) {
+  const color = taskColor(bar.idx)
+  const l = bar.layout
+  const style = {
+    left:        l.leftPct.toFixed(3) + '%',
+    width:       l.isMarker ? '4px' : l.widthPct.toFixed(3) + '%',
+    top:         (PLAN_PAD + bar.lane * (PLAN_LANE_H + LANE_GAP)) + 'px',
+    height:      PLAN_LANE_H + 'px',
+    borderColor: color,
+    background:  color + '1f',
+    color,
+  }
+  if (l.clippedLeft)  { style.borderTopLeftRadius = '0';  style.borderBottomLeftRadius = '0' }
+  if (l.clippedRight) { style.borderTopRightRadius = '0'; style.borderBottomRightRadius = '0' }
+  return style
 }
 
 function statusColor(seg) {
   return getEffectiveStatusMeta(seg).hex
 }
 
-function formatTime(date) {
-  const d = new Date(date)
-  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-}
-
-function durStr(ms) {
-  const totalMin = Math.round(ms / 60_000)
-  const h = Math.floor(totalMin / 60)
-  const m = totalMin % 60
-  if (h > 0 && m > 0) return `${h}ч ${m}м`
-  if (h > 0) return `${h}ч`
-  return `${m}м`
-}
-
 function segTitle(seg) {
   const start = new Date(seg.changedAt)
   const end   = seg.endedAt ? new Date(seg.endedAt) : now.value
-  return `${getEffectiveStatusMeta(seg.effectiveStatus).label}\n${formatTime(start)} — ${formatTime(end)}\n${durStr(end - start)}`
+  return `${getEffectiveStatusMeta(seg.effectiveStatus).label}\n${formatClock(start)} — ${formatClock(end)}\n${formatDuration(end - start)}`
+}
+
+function planTitle(task) {
+  return [task.moldName || 'Задание', ...planTooltipLines(task)].join('\n')
 }
 
 function taskTitle(task) {
@@ -182,8 +258,9 @@ function taskTitle(task) {
   const progress = task.planQuantity ? Math.round(task.actualQuantity / task.planQuantity * 100) : 0
   return [
     task.moldName || 'Задание',
-    `${formatTime(start)} — ${formatTime(end)} (${durStr(end - start)})`,
-    task.startedAt ? `Наладка: ${formatTime(task.setupStartedAt)} — ${formatTime(task.startedAt)}` : (task.closedAt || task.completedAt) ? 'Закрыто во время наладки' : 'Идёт наладка',
+    `${formatClock(start)} — ${formatClock(end)} (${formatDuration(end - start)})`,
+    task.startedAt ? `Наладка: ${formatClock(task.setupStartedAt)} — ${formatClock(task.startedAt)}` : (task.closedAt || task.completedAt) ? 'Закрыто во время наладки' : 'Идёт наладка',
+    ...planTooltipLines(task),
     `Факт: ${task.actualQuantity} / План: ${task.planQuantity} шт (${progress}%)`,
     task.personnelName ? `Наладчик: ${task.personnelName}` : null,
   ].filter(Boolean).join('\n')
@@ -263,9 +340,48 @@ function taskTitle(task) {
   cursor: default;
 }
 
+/* Полоса плана наладки */
+.plan-bar {
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px dashed #e5e7eb;
+  position: relative;
+  overflow: hidden;
+}
+
+.plan-block {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px dashed;
+  border-radius: 5px;
+  padding: 2px 6px;
+  overflow: hidden;
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.plan-name {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-marks {
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #374151;
+}
+.mark--late   { color: #dc2626; font-weight: 600; }
+.mark--muted  { color: #6b7280; }
+.mark--normal { color: #374151; }
+
 /* Полоса заданий */
 .task-bar {
-  height: 58px;
   background: #f3f4f6;
   border-radius: 6px;
   border: 1px solid #e5e7eb;
@@ -274,8 +390,7 @@ function taskTitle(task) {
 
 .task-block {
   position: absolute;
-  top: 7px;
-  bottom: 7px;
+  box-sizing: border-box;
   border-radius: 5px;
   padding: 3px 8px;
   overflow: hidden;

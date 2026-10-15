@@ -39,6 +39,20 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
     }
 
     /// <summary>
+    /// GET /api/tasks с токеном наблюдателя (Observer) — 200: список заданий нужен
+    /// хронологии карточки ТПА на дашборде, который Observer видит (BL-40).
+    /// </summary>
+    [Fact]
+    public async Task GetTasks_AsObserver_Returns200()
+    {
+        var client = await CreateAuthenticatedClientAsync("test_observer", "Observer123!");
+
+        var response = await client.GetAsync("/api/tasks");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>
     /// POST /api/tasks с токеном наблюдателя (Observer) должен вернуть 403 —
     /// создавать задания может только Менеджер или Администратор.
     /// </summary>
