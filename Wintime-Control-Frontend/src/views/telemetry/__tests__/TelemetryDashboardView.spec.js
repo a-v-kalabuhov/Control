@@ -70,6 +70,20 @@ describe('TelemetryDashboardView — сдвиг окна истории', () => 
     expect(w.vm.historyTo).toBe('2026-10-01T11:20:00')
   })
 
+  it('▶ клампит конец к «сейчас» с точностью до секунды и после этого неактивна', async () => {
+    const to = dayjs().subtract(10, 'minute')
+    const w = await mountHistory(to.subtract(1, 'hour').format(F), to.format(F))
+
+    await w.find('[data-test="shift-forward"]').trigger('click')
+    const nowAfterClick = dayjs().format(F)
+    await flushPromises()
+
+    const diff = Math.abs(new Date(w.vm.historyTo).getTime() - new Date(nowAfterClick).getTime())
+    expect(diff).toBeLessThanOrEqual(1000)
+    expect(new Date(w.vm.historyTo) - new Date(w.vm.historyFrom)).toBe(3600_000)
+    expect(w.find('[data-test="shift-forward"]').attributes('disabled')).toBeDefined()
+  })
+
   it('▶ неактивна, когда конец окна в «сейчас» или позже; ◀ при этом активна', async () => {
     const to = dayjs().add(10, 'minute')
     const w = await mountHistory(to.subtract(1, 'hour').format(F), to.format(F))

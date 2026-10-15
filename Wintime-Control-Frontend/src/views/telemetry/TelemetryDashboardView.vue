@@ -258,8 +258,10 @@ const PICKER_FORMAT = 'YYYY-MM-DDTHH:mm:ss' // = value-format полей пер�
 
 function shiftedWindow(direction) {
   if (!immId.value || !historyFrom.value || !historyTo.value) return null
+  // «Сейчас» с точностью до секунды: поля периода хранят время без миллисекунд
+  const nowMs = Math.floor(Date.now() / 1000) * 1000
   return shiftWindow(
-    new Date(historyFrom.value).getTime(), new Date(historyTo.value).getTime(), direction, Date.now())
+    new Date(historyFrom.value).getTime(), new Date(historyTo.value).getTime(), direction, nowMs)
 }
 
 const canShiftBack = computed(() => shiftedWindow(-1) !== null)
