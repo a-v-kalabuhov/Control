@@ -30,7 +30,7 @@ public class MoldsController : ControllerBase
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
     {
-        var query = _context.Molds.Include(m => m.ProductType).AsQueryable();
+        var query = _context.Molds.Include(m => m.ProductType).Include(m => m.CompatibleImms).AsQueryable();
 
         if (isActive.HasValue)
         {
@@ -52,31 +52,7 @@ public class MoldsController : ControllerBase
             .ToListAsync();
         var cycleMap = cycleCounts.ToDictionary(x => x.MoldId, x => x.Total);
 
-        var dtos = molds.Select(m =>
-        {
-            var totalCycles = cycleMap.GetValueOrDefault(m.Id);
-            return new MoldDto
-            {
-                Id = m.Id,
-                FormId = m.FormId,
-                Name = m.Name,
-                Cavities = m.Cavities,
-                PartWeightGrams = m.PartWeightGrams,
-                RunnerWeightGrams = m.RunnerWeightGrams,
-                MaxResourceCycles = m.MaxResourceCycles,
-                To1Cycles = m.To1Cycles,
-                To2Cycles = m.To2Cycles,
-                StorageLocationIndex = m.StorageLocationIndex,
-                DrawingPath = m.DrawingPath,
-                PhotoPath = m.PhotoPath,
-                TotalCycles = totalCycles,
-                RemainingResource = m.MaxResourceCycles - totalCycles,
-                ProductTypeId = m.ProductTypeId,
-                ProductTypeArticle = m.ProductType?.Article,
-                ProductTypeName = m.ProductType?.Name,
-                IsActive = m.IsActive
-            };
-        }).ToList();
+        var dtos = molds.Select(m => ToDto(m, cycleMap.GetValueOrDefault(m.Id))).ToList();
 
         return Ok(dtos);
     }
@@ -88,35 +64,13 @@ public class MoldsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
     public async Task<ActionResult<MoldDto>> GetMoldById(Guid id)
     {
-        var mold = await _context.Molds.Include(m => m.ProductType).FirstOrDefaultAsync(m => m.Id == id);
+        var mold = await _context.Molds.Include(m => m.ProductType).Include(m => m.CompatibleImms).FirstOrDefaultAsync(m => m.Id == id);
         if (mold == null)
             return NotFound();
 
         var totalCycles = await _context.ImmCycles
             .CountAsync(c => c.MoldId == id && c.IsSuccessful);
-        var dto = new MoldDto
-        {
-            Id = mold.Id,
-            FormId = mold.FormId,
-            Name = mold.Name,
-            Cavities = mold.Cavities,
-            PartWeightGrams = mold.PartWeightGrams,
-            RunnerWeightGrams = mold.RunnerWeightGrams,
-            MaxResourceCycles = mold.MaxResourceCycles,
-            To1Cycles = mold.To1Cycles,
-            To2Cycles = mold.To2Cycles,
-            StorageLocationIndex = mold.StorageLocationIndex,
-            DrawingPath = mold.DrawingPath,
-            PhotoPath = mold.PhotoPath,
-            TotalCycles = totalCycles,
-            RemainingResource = mold.MaxResourceCycles - totalCycles,
-            ProductTypeId = mold.ProductTypeId,
-            ProductTypeArticle = mold.ProductType?.Article,
-            ProductTypeName = mold.ProductType?.Name,
-            IsActive = mold.IsActive
-        };
-
-        return Ok(dto);
+        return Ok(ToDto(mold, totalCycles));
     }
 
     /// <summary>
@@ -139,6 +93,11 @@ public class MoldsController : ControllerBase
         if (productType == null || !productType.IsActive)
             return BadRequest("Указан несуществующий или архивный тип изделия.");
 
+        var (compatibleImms, immError) = await ResolveCompatibleImmsAsync(
+            request.CompatibleImmIds ?? new List<Guid>(), Array.Empty<Imm>());
+        if (immError != null)
+            return BadRequest(immError);
+
         var mold = new Mold
         {
             FormId = formId,
@@ -151,33 +110,14 @@ public class MoldsController : ControllerBase
             To2Cycles = request.To2Cycles,
             StorageLocationIndex = request.StorageLocationIndex,
             ProductTypeId = request.ProductTypeId,
+            CompatibleImms = compatibleImms!,
             IsActive = true
         };
 
         _context.Molds.Add(mold);
         await _context.SaveChangesAsync();
 
-        var dto = new MoldDto
-        {
-            Id = mold.Id,
-            FormId = mold.FormId,
-            Name = mold.Name,
-            Cavities = mold.Cavities,
-            PartWeightGrams = mold.PartWeightGrams,
-            RunnerWeightGrams = mold.RunnerWeightGrams,
-            MaxResourceCycles = mold.MaxResourceCycles,
-            To1Cycles = mold.To1Cycles,
-            To2Cycles = mold.To2Cycles,
-            StorageLocationIndex = mold.StorageLocationIndex,
-            DrawingPath = mold.DrawingPath,
-            PhotoPath = mold.PhotoPath,
-            TotalCycles = 0,
-            RemainingResource = mold.MaxResourceCycles,
-            ProductTypeId = mold.ProductTypeId,
-            ProductTypeArticle = productType.Article,
-            ProductTypeName = productType.Name,
-            IsActive = mold.IsActive
-        };
+        var dto = ToDto(mold, 0);
 
         return CreatedAtAction(nameof(GetMoldById), new { id = mold.Id }, dto);
     }
@@ -189,7 +129,7 @@ public class MoldsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> UpdateMold(Guid id, [FromBody] UpdateMoldRequestDto request)
     {
-        var mold = await _context.Molds.FindAsync(id);
+        var mold = await _context.Molds.Include(m => m.CompatibleImms).FirstOrDefaultAsync(m => m.Id == id);
         if (mold == null)
             return NotFound();
 
@@ -237,6 +177,18 @@ public class MoldsController : ControllerBase
             mold.ProductTypeId = request.ProductTypeId.Value;
         }
 
+        if (request.CompatibleImmIds != null)
+        {
+            var (compatibleImms, immError) = await ResolveCompatibleImmsAsync(
+                request.CompatibleImmIds, mold.CompatibleImms);
+            if (immError != null)
+                return BadRequest(immError);
+
+            mold.CompatibleImms.Clear();
+            foreach (var imm in compatibleImms!)
+                mold.CompatibleImms.Add(imm);
+        }
+
         await _context.SaveChangesAsync();
 
         return NoContent();
@@ -267,5 +219,51 @@ public class MoldsController : ControllerBase
         };
 
         return Ok(dto);
+    }
+
+    private static MoldDto ToDto(Mold m, int totalCycles) => new()
+    {
+        Id = m.Id,
+        FormId = m.FormId,
+        Name = m.Name,
+        Cavities = m.Cavities,
+        PartWeightGrams = m.PartWeightGrams,
+        RunnerWeightGrams = m.RunnerWeightGrams,
+        MaxResourceCycles = m.MaxResourceCycles,
+        To1Cycles = m.To1Cycles,
+        To2Cycles = m.To2Cycles,
+        StorageLocationIndex = m.StorageLocationIndex,
+        DrawingPath = m.DrawingPath,
+        PhotoPath = m.PhotoPath,
+        TotalCycles = totalCycles,
+        RemainingResource = m.MaxResourceCycles - totalCycles,
+        ProductTypeId = m.ProductTypeId,
+        ProductTypeArticle = m.ProductType?.Article,
+        ProductTypeName = m.ProductType?.Name,
+        CompatibleImms = m.CompatibleImms
+            .OrderBy(i => i.Name)
+            .Select(i => new MoldCompatibleImmDto { Id = i.Id, Name = i.Name, IsActive = i.IsActive })
+            .ToList(),
+        IsActive = m.IsActive
+    };
+
+    /// <summary>
+    /// Проверяет запрошенный список совместимых ТПА (PZP-16): все ID существуют; архивный ТПА
+    /// допустим, только если уже был в списке ПФ (как архивный тип изделия в ADR-0007).
+    /// Возвращает ТПА для присвоения либо текст ошибки 400.
+    /// </summary>
+    private async Task<(List<Imm>? Imms, string? Error)> ResolveCompatibleImmsAsync(
+        IEnumerable<Guid> requestedIds, IEnumerable<Imm> currentImms)
+    {
+        var ids = requestedIds.Distinct().ToList();
+        var imms = await _context.Imms.Where(i => ids.Contains(i.Id)).ToListAsync();
+        if (imms.Count != ids.Count)
+            return (null, "Указан несуществующий ТПА.");
+
+        var currentIds = currentImms.Select(i => i.Id).ToHashSet();
+        if (imms.Any(i => !i.IsActive && !currentIds.Contains(i.Id)))
+            return (null, "Нельзя добавить архивный ТПА в список совместимых.");
+
+        return (imms, null);
     }
 }

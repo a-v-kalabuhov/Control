@@ -19,5 +19,7 @@ public class MoldDto
     public Guid? ProductTypeId { get; set; }
     public string? ProductTypeArticle { get; set; }
     public string? ProductTypeName { get; set; }
+    // Совместимые ТПА (PZP-16), по имени. Пусто — ПФ подходит к любому ТПА.
+    public List<MoldCompatibleImmDto> CompatibleImms { get; set; } = new();
     public bool IsActive { get; set; }
 }

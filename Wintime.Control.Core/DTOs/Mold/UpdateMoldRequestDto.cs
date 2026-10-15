@@ -13,4 +13,6 @@ public class UpdateMoldRequestDto
     public string? StorageLocationIndex { get; set; }
     public bool? IsActive { get; set; }
     public Guid? ProductTypeId { get; set; }
+    // Совместимые ТПА (PZP-16). null — не менять; массив — полная замена ([] — очистка).
+    public List<Guid>? CompatibleImmIds { get; set; }
 }

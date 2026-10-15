@@ -154,6 +154,21 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("MoldCompatibleImms", b =>
+                {
+                    b.Property<Guid>("MoldId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ImmId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MoldId", "ImmId");
+
+                    b.HasIndex("ImmId");
+
+                    b.ToTable("MoldCompatibleImms");
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.AppHeartbeat", b =>
                 {
                     b.Property<int>("Id")
@@ -946,6 +961,21 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.HasOne("Wintime.Control.Core.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MoldCompatibleImms", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.Imm", null)
+                        .WithMany()
+                        .HasForeignKey("ImmId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.Mold", null)
+                        .WithMany()
+                        .HasForeignKey("MoldId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

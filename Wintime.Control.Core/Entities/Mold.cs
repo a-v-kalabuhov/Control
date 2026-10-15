@@ -25,6 +25,10 @@ public class Mold : BaseEntity
     public Guid? ProductTypeId { get; set; }
     public ProductType? ProductType { get; set; }
 
+    // Совместимые ТПА (PZP-16, ADR-0018). Пусто — совместимость не указана, ПФ подходит к любому ТПА.
+    // Архивный ТПА добавить нельзя, но ранее привязанный остаётся в списке.
+    public ICollection<Imm> CompatibleImms { get; set; } = new List<Imm>();
+
     // Calculated (not mapped directly, calculated via Usage)
     // public int TotalCycles { get; set; }
 
