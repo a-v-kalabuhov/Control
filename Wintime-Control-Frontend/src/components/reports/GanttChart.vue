@@ -1,8 +1,8 @@
 <template>
   <div>
     <div ref="chartRef" class="w-full h-96"></div>
-    <div class="flex gap-5 justify-center mt-3 text-sm text-gray-600">
-      <div v-for="item in legend" :key="item.type" class="flex items-center gap-1.5">
+    <div class="flex flex-wrap gap-5 justify-center mt-3 text-sm text-gray-600">
+      <div v-for="item in legend" :key="item.type" data-test="legend-item" class="flex items-center gap-1.5">
         <span class="inline-block w-4 h-4 rounded" :style="{ background: item.color }"></span>
         {{ item.label }}
       </div>
@@ -14,6 +14,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
 import dayjs from 'dayjs'
+import { REPORT_STATUS, REPORT_STATUS_KEYS } from '@/constants/effectiveStatus'
 
 const props = defineProps({
   data: {
@@ -37,27 +38,10 @@ const props = defineProps({
 const chartRef = ref(null)
 let chart = null
 
-const colorMap = {
-  work:    '#67c23a',
-  setup:   '#409eff',
-  alarm:   '#f56c6c',
-  idle:    '#e6a23c',
-  offline: '#909399'
-}
+// Цвета и подписи — общая палитра эффективных состояний (как карточка ТПА и «Производительность»).
+const statusMeta = (type) => REPORT_STATUS[type] ?? REPORT_STATUS.NoData
 
-const typeLabels = {
-  work:    'Работа',
-  setup:   'Наладка',
-  alarm:   'Авария',
-  idle:    'Простой',
-  offline: 'Нет связи'
-}
-
-const legend = Object.entries(colorMap).map(([type, color]) => ({
-  type,
-  color,
-  label: typeLabels[type]
-}))
+const legend = REPORT_STATUS_KEYS.map(type => ({ type, color: REPORT_STATUS[type].hex, label: REPORT_STATUS[type].label }))
 
 // Разбираем время смены (HH:mm) в timestamp для заданной даты.
 // Если endTime <= startTime — смена переходит через полночь, сдвигаем на +1 день.
@@ -175,7 +159,7 @@ const initChart = () => {
         const m = Math.floor((totalSec % 3600) / 60)
         const s = totalSec % 60
         const duration = [h && `${h} ч.`, m && `${m} мин.`, (!h && !m) || s ? `${s} сек.` : ''].filter(Boolean).join(' ')
-        return `${name}<br/>${typeLabels[type] ?? type}<br/>${dayjs(start).format('HH:mm:ss')} — ${dayjs(end).format('HH:mm:ss')} (${duration})`
+        return `${name}<br/>${statusMeta(type).label}<br/>${dayjs(start).format('HH:mm:ss')} — ${dayjs(end).format('HH:mm:ss')} (${duration})`
       }
     },
     grid: {
@@ -231,7 +215,7 @@ const initChart = () => {
             type: 'rect',
             shape,
             style: api.style({
-              fill: colorMap[type] ?? colorMap.offline
+              fill: statusMeta(type).hex
             })
           }
         },

@@ -75,26 +75,23 @@
         <el-table-column prop="planQuantity" label="План" width="80" align="center" />
         <el-table-column prop="actualQuantity" label="Факт" width="80" align="center" />
         <el-table-column prop="cycleCount" label="Смыкания" width="90" align="center" />
-        <el-table-column label="Работа (ч)" width="100">
+        <el-table-column
+          v-for="k in HOUR_KEYS"
+          :key="k"
+          :label="`${EFFECTIVE_STATUS[k].label} (ч)`"
+          width="110"
+          align="right"
+        >
           <template #default="{ row }">
-            {{ (row.workTimeSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Наладка (ч)" width="100">
-          <template #default="{ row }">
-            {{ (row.setupSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Простой (ч)" width="100">
-          <template #default="{ row }">
-            {{ (row.downtimeSeconds / 3600).toFixed(2) }}
+            {{ toHours(row.seconds?.[k]) }}
           </template>
         </el-table-column>
         <el-table-column label="Эффективность" width="120">
           <template #default="{ row }">
-            <el-tag :type="getEfficiencyType(row.efficiency)">
-              {{ row.efficiency.toFixed(1) }}%
+            <el-tag v-if="row.efficiency != null" :type="getEfficiencyType(row.efficiency)" data-test="efficiency">
+              {{ formatEfficiency(row.efficiency) }}
             </el-tag>
+            <span v-else data-test="efficiency">—</span>
           </template>
         </el-table-column>
         <el-table-column label="Расход сырья (кг)" width="130">
@@ -126,6 +123,11 @@ import { immApi } from '@/api/imm'
 import { shiftsApi } from '@/api/shifts'
 import GanttChart from '@/components/reports/GanttChart.vue'
 import dayjs from 'dayjs'
+import { toHours, formatEfficiency } from '@/utils/equipmentReport'
+import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveStatus'
+
+// Колонки часов — эффективные состояния (как в «Производительности»), «Нет данных» не показываем.
+const HOUR_KEYS = EFFECTIVE_STATUS_KEYS
 
 const router = useRouter()
 const reportsStore = useReportsStore()

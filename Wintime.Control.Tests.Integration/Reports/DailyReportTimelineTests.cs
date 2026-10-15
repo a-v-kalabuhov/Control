@@ -93,6 +93,6 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
 
         // Отработанное время не должно быть раздуто проекцией в будущее.
         var maxExpectedWork = (int)(DateTime.UtcNow - statusChangedAt).TotalSeconds + 5;
-        item.WorkTimeSeconds.Should().BeLessThanOrEqualTo(maxExpectedWork);
+        item.Seconds[EffectiveStatus.Production].Should().BeLessThanOrEqualTo(maxExpectedWork);
     }
 }

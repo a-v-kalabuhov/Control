@@ -60,7 +60,7 @@ public class PdfReportService : IPdfReportService
                             table.Cell().Element(CellStyle).Text(item.MoldName ?? "—");
                             table.Cell().Element(CellStyle).Text(item.PlanQuantity.ToString());
                             table.Cell().Element(CellStyle).Text(item.ActualQuantity.ToString());
-                            table.Cell().Element(CellStyle).Text($"{item.Efficiency:F1}%");
+                            table.Cell().Element(CellStyle).Text(item.Efficiency is { } e ? $"{e:F1}%" : "—");
 
                             static IContainer CellStyle(IContainer container) => 
                                 container.PaddingBottom(3);
