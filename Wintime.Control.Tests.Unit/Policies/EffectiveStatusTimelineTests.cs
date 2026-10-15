@@ -77,6 +77,27 @@ public class EffectiveStatusTimelineTests
     }
 
     [Fact]
+    public void Build_OfflineDuringTaskWithoutDowntimeEvent_IsOffline()
+    {
+        // Сбой сервера (ПЗП, 14→15.10): связь пропала при задании InProgress, API лежал —
+        // воркер не завёл Event простоя. Период без данных не должен стать «Работой».
+        var raw = new[]
+        {
+            new RawSegment(ImmStatus.Auto,    M(0),  M(10)),
+            new RawSegment(ImmStatus.Offline, M(10), M(50)),
+            new RawSegment(ImmStatus.Auto,    M(50), M(60)),
+        };
+        var tasks = new[] { new TaskInterval(ActiveTaskStatus.InProgress, M(0), M(60)) };
+
+        var result = EffectiveStatusTimeline.Build(raw, tasks, System.Array.Empty<Interval>(), M(0), M(60));
+
+        result.Should().HaveCount(3);
+        result[0].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Production, M(0),  M(10)));
+        result[1].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Offline,    M(10), M(50)));
+        result[2].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Production, M(50), M(60)));
+    }
+
+    [Fact]
     public void Build_GapAsNoData_GapIsNoData_EvenWithOpenTask()
     {
         // Сырой: auto 0–20, дыра 20–40, auto 40–60. Задание InProgress всё время.
