@@ -239,8 +239,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useTasksStore } from '@/stores/tasks'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
-import { immApi } from '@/api/imm'
-import { moldsApi } from '@/api/molds'
+import { archivedTaskRefs } from '@/utils/taskIssueCheck'
 import TaskFilters from '@/components/tasks/TaskFilters.vue'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskProgress from '@/components/tasks/TaskProgress.vue'
@@ -465,21 +464,14 @@ const canIssueTask = (task) => {
 }
 
 const issueTask = async (task) => {
-  // Параллельно проверяем актуальность ТПА и пресс-формы; наладчик выбирается в диалоге из активных
-  const checks = [immApi.getById(task.immId), moldsApi.getById(task.moldId)]
-
-  let results
+  // Наладчик выбирается в диалоге из активных; здесь — актуальность ТПА и пресс-формы
+  let inactive
   try {
-    results = await Promise.all(checks)
+    inactive = await archivedTaskRefs(task)
   } catch {
     ElMessage.error('Не удалось проверить актуальность данных задания')
     return
   }
-
-  const [immRes, moldRes] = results
-  const inactive = []
-  if (!immRes.data.isActive)        inactive.push(`ТПА «${task.immName}»`)
-  if (!moldRes.data.isActive)       inactive.push(`пресс-форма «${task.moldName}»`)
 
   if (inactive.length > 0) {
     ElMessage.warning(`Переведено в архив: ${inactive.join(', ')}. Отредактируйте задание перед выдачей.`)
