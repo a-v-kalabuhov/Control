@@ -139,3 +139,26 @@ describe('TaskDetailModal — вкладки', () => {
     expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)
   })
 })
+
+describe('TaskDetailModal — только чтение', () => {
+  it('readonly: нет кнопок действий и поля причины закрытия, вкладки на месте', async () => {
+    setActivePinia(createPinia())
+    const { useAuthStore } = await import('@/stores/auth')
+    useAuthStore().userRole = 'Manager'   // у менеджера без readonly были бы «Редактировать», «Закрыть задание» и поле причины
+    const wrapper = mount(TaskDetailModal, {
+      props: { modelValue: true, task: { id: 't1', status: 'InProgress', planQuantity: 10, actualQuantity: 1 }, readonly: true },
+      global: { plugins: [ElementPlus], stubs: { TaskResultsTab: true } },
+      attachTo: document.body
+    })
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button').map(b => b.text())
+    for (const label of ['Редактировать', 'Выдать', 'Завершить', 'Закрыть задание']) {
+      expect(buttons).not.toContain(label)
+    }
+    expect(buttons).toContain('Назад')
+    expect(wrapper.find('textarea').exists()).toBe(false)
+    expect(wrapper.findAll('.el-tabs__item').map(t => t.text())).toEqual(['Данные задания', 'Результаты выполнения'])
+    wrapper.unmount()
+  })
+})
