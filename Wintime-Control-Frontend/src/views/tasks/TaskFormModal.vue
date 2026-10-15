@@ -22,7 +22,7 @@
           :disabled="editingTask"
         >
           <el-option
-            v-for="imm in imms"
+            v-for="imm in availableImms"
             :key="imm.id"
             :label="`${imm.name} (${imm.manufacturer} ${imm.model})`"
             :value="imm.id"
@@ -245,6 +245,7 @@ import { tasksApi } from '@/api/tasks'
 import { ordersApi } from '@/api/orders'
 import { apiErrorMessage } from '@/utils/apiError'
 import { settingsApi } from '@/api/settings'
+import { isMoldCompatibleWithImm } from '@/utils/moldCompatibility'
 import { calcTaskPlan, formatDuration } from '@/utils/taskPlan'
 
 const props = defineProps({
@@ -388,18 +389,36 @@ const loadPlanningDefaults = async () => {
 
 const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productTypeId || null)
 
-const availableMolds = computed(() =>
-  props.lockedOrder
+// PZP-16: при создании выбор ПФ и ТПА фильтруется по совместимости (пустой список ПФ — любой ТПА).
+// При редактировании ТПА и ПФ заблокированы — фильтр не применяем, иначе ПФ «несовместимого»
+// задания выпала бы из опций и селект показал бы сырой ID.
+const filterByCompatibility = computed(() => !editingTask.value)
+
+const availableMolds = computed(() => {
+  let list = props.lockedOrder
     ? molds.value.filter(m => m.productTypeId === props.lockedOrder.productTypeId)
     : molds.value
-)
+  if (filterByCompatibility.value && form.immId) {
+    list = list.filter(m => isMoldCompatibleWithImm(m, form.immId))
+  }
+  return list
+})
 
-// Пустой список при заблокированном заказе — не сбой, а отсутствие ПФ его типа изделия;
-// без заказа остаётся стандартный текст Element Plus.
+const availableImms = computed(() => {
+  if (!filterByCompatibility.value || !selectedMoldInfo.value) return imms.value
+  return imms.value.filter(imm => isMoldCompatibleWithImm(selectedMoldInfo.value, imm.id))
+})
+
+// Пустой список ПФ — не сбой: нет форм типа изделия заказа и/или совместимых с ТПА;
+// без обоих условий остаётся стандартный текст Element Plus.
 const moldNoDataText = computed(() => {
-  if (!props.lockedOrder) return undefined
-  const article = props.lockedOrder.productTypeArticle
-  return `Нет активных пресс-форм для типа изделия ${article || 'заказа'}`
+  const byImm = filterByCompatibility.value && !!form.immId
+  if (props.lockedOrder) {
+    if (byImm) return 'Нет пресс-форм этого типа изделия, совместимых с этим ТПА'
+    const article = props.lockedOrder.productTypeArticle
+    return `Нет активных пресс-форм для типа изделия ${article || 'заказа'}`
+  }
+  return byImm ? 'Нет пресс-форм, совместимых с этим ТПА' : undefined
 })
 
 // Заказы подбираются по типу изделия выбранной ПФ (селект без ПФ заблокирован).
