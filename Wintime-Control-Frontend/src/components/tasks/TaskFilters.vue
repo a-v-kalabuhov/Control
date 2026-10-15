@@ -111,7 +111,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { immApi } from '@/api/imm'
 import { personnelApi } from '@/api/personnel'
 
@@ -162,6 +162,13 @@ const loadPersonnel = async () => {
     console.error('Ошибка загрузки персонала:', error)
   }
 }
+
+// Фильтры живут в сторе и переживают уход со страницы: если ТПА/наладчик уже выбраны,
+// списки нужны сразу — иначе селект до фокуса покажет id вместо названия.
+onMounted(() => {
+  if (localFilters.immId) loadImms()
+  if (localFilters.personnelId) loadPersonnel()
+})
 
 const applyFilters = () => {
   emit('update:filters', { ...localFilters })

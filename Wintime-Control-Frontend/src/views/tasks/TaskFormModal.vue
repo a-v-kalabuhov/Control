@@ -23,9 +23,9 @@
           :clearable="!editingTask"
         >
           <el-option
-            v-for="imm in availableImms"
+            v-for="imm in immOptions"
             :key="imm.id"
-            :label="`${imm.name} (${imm.manufacturer} ${imm.model})`"
+            :label="immLabel(imm)"
             :value="imm.id"
             :disabled="!imm.isActive"
           />
@@ -88,10 +88,11 @@
           filterable
         >
           <el-option
-            v-for="person in personnel"
+            v-for="person in personnelOptions"
             :key="person.id"
             :label="person.fullName"
             :value="person.id"
+            :disabled="person.notInList"
           >
             <div class="flex justify-between items-center">
               <span>{{ person.fullName }}</span>
@@ -411,6 +412,25 @@ const availableImms = computed(() => {
   return imms.value.filter(imm => isMoldCompatibleWithImm(selectedMoldInfo.value, imm.id))
 })
 
+// Текущее значение задания, которого нет в списке (архивный ТПА/наладчик или список ещё грузится),
+// показываем по названию из задания — иначе el-select выводит голый id.
+const immOptions = computed(() => {
+  const task = editingTask.value
+  if (!task?.immId || availableImms.value.some(i => i.id === task.immId)) return availableImms.value
+  return [...availableImms.value, { id: task.immId, name: task.immName || task.immId, isActive: false }]
+})
+
+const personnelOptions = computed(() => {
+  const task = editingTask.value
+  if (!task?.personnelId || personnel.value.some(p => p.id === task.personnelId)) return personnel.value
+  return [...personnel.value, { id: task.personnelId, fullName: task.personnelName || task.personnelId, notInList: true }]
+})
+
+const immLabel = (imm) => {
+  const model = [imm.manufacturer, imm.model].filter(Boolean).join(' ')
+  return model ? `${imm.name} (${model})` : imm.name
+}
+
 // Пустой список ПФ — не сбой: нет форм типа изделия заказа и/или совместимых с ТПА;
 // без обоих условий остаётся стандартный текст Element Plus.
 const moldNoDataText = computed(() => {
@@ -528,6 +548,9 @@ const populateForm = (task) => {
   // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
   // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
   loadMolds()
+  // То же для ТПА (селект задизейблен) и наладчика: без списков селекты показывают id.
+  loadImms()
+  loadPersonnel()
 }
 
 watch(() => props.task, (newTask) => {
@@ -554,7 +577,8 @@ watch(() => props.modelValue, (isVisible) => {
   }
 })
 
-const loadImms = async () => {
+// function, а не стрелка: populateForm вызывает её из watch(immediate) раньше этой строки
+async function loadImms() {
   if (imms.value.length > 0) return
   try {
     const response = await immApi.getList({ isActive: true })
@@ -564,7 +588,7 @@ const loadImms = async () => {
   }
 }
 
-const loadPersonnel = async () => {
+async function loadPersonnel() {
   if (personnel.value.length > 0) return
   try {
     const response = await personnelApi.getList({ isActive: true, role: 'Adjuster' })
