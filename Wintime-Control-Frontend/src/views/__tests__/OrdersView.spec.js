@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import OrdersView from '../OrdersView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 vi.mock('@/api/orders', () => ({
   ordersApi: {
@@ -24,7 +26,9 @@ vi.mock('@/api/productTypes', () => ({
 
 import { ordersApi } from '@/api/orders'
 
-function mountView(orders) {
+function mountView(orders, role = 'Manager') {
+  setActivePinia(createPinia())
+  useAuthStore().userRole = role
   ordersApi.getList.mockResolvedValueOnce({ data: orders })
   return mount(OrdersView, {
     global: {
@@ -36,6 +40,33 @@ function mountView(orders) {
 
 describe('OrdersView', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('Observer видит заказы, но не кнопки изменения', async () => {
+    const wrapper = mountView([
+      { id: '1', number: 'ORD-1', productTypeArticle: 'A', quantity: 100,
+        goodQuantity: 40, progressPercent: 40, status: 'Active', dueDate: '2026-08-01T00:00:00Z' }
+    ], 'Observer')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('ORD-1')
+    // проверяем именно кнопки: «Завершить до» — подпись фильтра, не действие
+    const buttons = wrapper.findAll('button').map(b => b.text())
+    expect(buttons).toContain('Открыть')
+    for (const label of ['Создать заказ', 'Редактировать', 'Завершить', 'Отменить', 'Возобновить']) {
+      expect(buttons).not.toContain(label)
+    }
+  })
+
+  it('Manager видит кнопки изменения', async () => {
+    const wrapper = mountView([
+      { id: '1', number: 'ORD-1', productTypeArticle: 'A', quantity: 100,
+        goodQuantity: 40, progressPercent: 40, status: 'Active', dueDate: '2026-08-01T00:00:00Z' }
+    ])
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Создать заказ')
+    expect(wrapper.text()).toContain('Редактировать')
+  })
 
   it('загружает и показывает список заказов с прогрессом', async () => {
     const wrapper = mount(OrdersView, {

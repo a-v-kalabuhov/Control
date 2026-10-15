@@ -33,9 +33,9 @@
             <span>Мониторинг</span>
           </el-menu-item>
 
-          <!-- Планирование: заказы и задания (для Manager, Admin) -->
+          <!-- Планирование: заказы, задания, план-график (Manager, Admin; Observer — только чтение) -->
           <el-sub-menu
-            v-if="canAccess(['Admin', 'Manager'])"
+            v-if="canAccess(['Admin', 'Manager', 'Observer'])"
             index="planning"
           >
             <template #title>

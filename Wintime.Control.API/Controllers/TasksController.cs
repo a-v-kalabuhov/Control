@@ -181,7 +181,7 @@ public class TasksController : ControllerBase
     /// Получить детали задания
     /// </summary>
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<TaskDto>> GetTaskById(Guid id)
     {
         var task = await _context.ShiftTasks

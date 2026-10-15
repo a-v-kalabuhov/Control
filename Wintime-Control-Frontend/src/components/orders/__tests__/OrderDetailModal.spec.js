@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import OrderDetailModal from '../OrderDetailModal.vue'
 import TaskFormModal from '@/views/tasks/TaskFormModal.vue'
+import { useAuthStore } from '@/stores/auth'
 
 vi.mock('@/api/orders', () => ({
   ordersApi: {
@@ -34,7 +36,9 @@ vi.mock('@/api/molds', () => ({
 
 import { ordersApi } from '@/api/orders'
 
-function mountModal() {
+function mountModal(role = 'Manager') {
+  setActivePinia(createPinia())
+  useAuthStore().userRole = role
   return mount(OrderDetailModal, {
     props: { modelValue: true, orderId: '1' },
     global: {
@@ -124,5 +128,15 @@ describe('OrderDetailModal', () => {
 
     expect(ordersApi.getById).toHaveBeenCalledTimes(2)
     expect(wrapper.emitted('updated')).toBeTruthy()
+  })
+
+  it('Observer не видит создание, привязку и отвязку заданий', async () => {
+    const wrapper = mountModal('Observer')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('ТПА-1')
+    expect(findButton(wrapper, 'Создать задание')).toBeUndefined()
+    expect(findButton(wrapper, 'Привязать существующее')).toBeUndefined()
+    expect(findButton(wrapper, 'Отвязать')).toBeUndefined()
   })
 })
