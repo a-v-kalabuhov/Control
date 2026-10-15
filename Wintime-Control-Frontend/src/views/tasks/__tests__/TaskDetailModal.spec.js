@@ -162,3 +162,29 @@ describe('TaskDetailModal — только чтение', () => {
     wrapper.unmount()
   })
 })
+
+describe('TaskDetailModal — заказ', () => {
+  const cellText = (wrapper, label) => {
+    const cells = wrapper.findAll('.el-descriptions__cell')
+    const idx = cells.findIndex(c => c.text() === label)
+    return idx >= 0 ? cells[idx + 1].text() : undefined
+  }
+
+  it('показывает номер и дату заказа', async () => {
+    const wrapper = mountModal({ id: 't1', status: 'Planned', orderId: 'o1', orderNumber: 'ORD-77', orderDate: '2026-10-01T00:00:00Z' })
+    await flushPromises()
+
+    expect(cellText(wrapper, 'Заказ')).toBe(`ORD-77 от ${dayjs('2026-10-01T00:00:00Z').format('DD.MM.YYYY')}`)
+  })
+
+  it('заказ без даты — только номер; без заказа — прочерк', async () => {
+    const noDate = mountModal({ id: 't1', status: 'Planned', orderId: 'o1', orderNumber: 'ORD-78', orderDate: null })
+    await flushPromises()
+    expect(cellText(noDate, 'Заказ')).toBe('ORD-78')
+    noDate.unmount()
+
+    const none = mountModal({ id: 't2', status: 'Planned', orderId: null, orderNumber: null })
+    await flushPromises()
+    expect(cellText(none, 'Заказ')).toBe('—')
+  })
+})

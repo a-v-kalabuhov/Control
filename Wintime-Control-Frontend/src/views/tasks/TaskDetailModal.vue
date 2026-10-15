@@ -29,6 +29,9 @@
             <el-descriptions-item label="Наладчик">
               {{ task?.personnelName || '—' }}
             </el-descriptions-item>
+            <el-descriptions-item label="Заказ">
+              {{ orderLabel }}
+            </el-descriptions-item>
             <el-descriptions-item label="Рабочий режим">
               {{ workModeLabel }}
             </el-descriptions-item>
@@ -223,6 +226,13 @@ const bufferLabel = computed(() => {
   const seconds = props.task?.plannedReleaseBufferSeconds
   if (seconds === null || seconds === undefined) return '—'
   return `${formatDuration(seconds)} (${props.task.releaseBufferFixedMinutes} мин + ${props.task.releaseBufferPercent} %)`
+})
+
+// «ORD-77 от 01.10.2026»; дата у заказа необязательна
+const orderLabel = computed(() => {
+  if (!props.task?.orderNumber) return '—'
+  const date = props.task.orderDate ? ` от ${dayjs(props.task.orderDate).format('DD.MM.YYYY')}` : ''
+  return `${props.task.orderNumber}${date}`
 })
 
 const formatDate = (date) => {

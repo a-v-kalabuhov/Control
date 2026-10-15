@@ -44,6 +44,7 @@ public static class TaskMappingExtensions
             Note = t.Note,
             OrderId = t.OrderId,
             OrderNumber = t.Order?.Number,
+            OrderDate = t.Order?.OrderDate,
             DefectQuantity = t.DefectQuantity,
             WorkMode = t.WorkMode,
             PlannedFullCycleSeconds = t.PlannedFullCycleSeconds,
