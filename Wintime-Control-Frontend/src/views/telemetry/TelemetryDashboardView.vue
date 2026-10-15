@@ -172,7 +172,7 @@ const windowStartMs = ref(Date.now() - 15 * 60000)
 const windowEndMs = ref(Date.now())
 
 let pollTimer = null
-let liveInFlight = false // live-запрос в полёте: следующий тик пропускается, иначе его seq обесценит ответ
+let liveInFlight = null // маркер live-запроса в полёте: следующий тик пропускается, иначе его seq обесценит ответ
 let requestSeq = 0 // номер последнего запроса окна: применяется только ответ на последний
 let lastNonEmptySelection = [] // последний непустой выбор сигналов — для отката при попытке снять последний
 
@@ -280,7 +280,8 @@ function shift(direction) {
 async function liveTick(initial = false) {
   // медленный ответ иначе отбрасывался бы каждым следующим тиком (requestSeq) — график замирал
   if (liveInFlight) return
-  liveInFlight = true
+  const token = {}
+  liveInFlight = token
   try {
     const now = Date.now()
     windowEndMs.value = now
@@ -290,7 +291,8 @@ async function liveTick(initial = false) {
     const pointsFromMs = initial ? null : Math.max(lastLoadedMs(), windowStartMs.value)
     await fetchWindow(windowStartMs.value, now, { append: !initial, pointsFromMs })
   } finally {
-    liveInFlight = false
+    // отменённый stopLive запрос не снимает маркер уже нового live-тика
+    if (liveInFlight === token) liveInFlight = null
   }
 }
 
@@ -313,7 +315,7 @@ function startLive() {
 function stopLive() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   requestSeq++ // ответ live-запроса в полёте больше не нужен (смена режима/ТПА) — не применять
-  liveInFlight = false // иначе стартовый тик нового live пропустится из-за отменённого запроса
+  liveInFlight = null // иначе стартовый тик нового live пропустится из-за отменённого запроса
 }
 
 function restartLive() {
