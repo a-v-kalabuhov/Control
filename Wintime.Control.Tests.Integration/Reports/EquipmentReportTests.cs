@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using ClosedXML.Excel;
 using FluentAssertions;
@@ -155,13 +155,13 @@ public class EquipmentReportTests : IClassFixture<IntegrationTestFactory>
             "Работа (ч)", "Наладка (ч)", "Простой (ч)", "Работа без задания (ч)",
             "Без задания (ч)", "Нет связи (ч)", "Нет данных (ч)");
         header.Cell(9).GetString().Should().Be("Циклы");
-        header.Cell(10).GetString().Should().Be("Ср. цикл (с)");
-        header.Cell(11).GetString().Should().Be("Эффективность %");
+        header.Cell(10).GetString().Should().Be("Эффективность %");   // «Ср. цикл» убран: средний по разным изделиям бессмыслен
+        header.Cell(11).IsEmpty().Should().BeTrue();
 
         var names = ws.RowsUsed().Select(r => r.Cell(1).GetString()).ToList();
         names.Should().Contain(n => n.EndsWith("(архив)"));
         var total = ws.RowsUsed().Single(r => r.Cell(1).GetString() == "Итого:");
-        total.Cell(11).GetValue<double>().Should().Be(100);   // Σ Работа / Σ известного = только working
+        total.Cell(10).GetValue<double>().Should().Be(100);   // Σ Работа / Σ известного = только working
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class EquipmentReportTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task CycleMetrics_CountOnlyClosedSuccessfulCyclesStartedInPeriod()
+    public async Task TotalCycles_CountsOnlyClosedSuccessfulCyclesStartedInPeriod()
     {
         var immId = await SeedImmAsync(isActive: true, workingAllAround: false);
         var noon = Day.AddHours(12);
@@ -200,6 +200,5 @@ public class EquipmentReportTests : IClassFixture<IntegrationTestFactory>
 
         var item = report.ImmData.Should().ContainSingle().Subject;
         item.TotalCycles.Should().Be(2);
-        item.AvgCycleSeconds.Should().Be(35m);
     }
 }

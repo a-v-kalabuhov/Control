@@ -10,7 +10,6 @@ public class EquipmentReportImmItemDto
     public Dictionary<string, int> Seconds { get; set; } = new();
 
     public int TotalCycles { get; set; }
-    public decimal AvgCycleSeconds { get; set; }
 
     /// <summary>Работа / известное время × 100; null — известного времени нет.</summary>
     public decimal? Efficiency { get; set; }
