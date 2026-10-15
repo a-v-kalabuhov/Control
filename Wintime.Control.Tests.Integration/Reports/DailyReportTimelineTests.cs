@@ -75,6 +75,9 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
         var resp = await client.GetAsync(url);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
+        // Средний цикл в отчёте не отдаётся: он смотрится по заданию (вкладка «Результаты выполнения»).
+        (await resp.Content.ReadAsStringAsync()).Should().NotContainEquivalentOf("avgCycleTime");
+
         var report = await resp.Content.ReadFromJsonAsync<DailyReportDto>();
         report.Should().NotBeNull();
         var item = report!.ImmData.Should().ContainSingle().Subject;

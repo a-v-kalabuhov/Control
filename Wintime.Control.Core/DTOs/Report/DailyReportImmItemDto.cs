@@ -12,7 +12,6 @@ public class DailyReportImmItemDto
     public int SetupSeconds { get; set; }
     public int DowntimeSeconds { get; set; }
     public int OfflineSeconds { get; set; }
-    public decimal AvgCycleTime { get; set; }
     public decimal Efficiency { get; set; }
     public decimal RawMaterialKg { get; set; }
     public List<DowntimeDetailDto> DowntimeDetails { get; set; } = new();

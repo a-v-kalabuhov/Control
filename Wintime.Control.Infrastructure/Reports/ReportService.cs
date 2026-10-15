@@ -163,11 +163,8 @@ public class ReportService : IReportService
             }
         }
 
-        // Подсчёт циклов и среднего времени цикла
+        // Средний цикл не считаем — он смотрится по заданию (вкладка «Результаты выполнения»).
         var totalCycles = cycles.Count;
-        var avgCycleTime = cycles.Count > 0
-            ? (decimal)cycles.Average(c => c.DurationSeconds)
-            : 0m;
 
         // Выработка — по снапшоту гнёздности каждого цикла (ImmCycle.Cavities), не по текущему Mold.Cavities.
         var actualQuantity = cycles.Sum(c => c.Cavities);
@@ -225,7 +222,6 @@ public class ReportService : IReportService
             SetupSeconds = setupSeconds,
             DowntimeSeconds = downtimeSeconds,
             OfflineSeconds = offlineSeconds,
-            AvgCycleTime = avgCycleTime,
             Efficiency = efficiency,
             RawMaterialKg = rawMaterialKg,
             DowntimeDetails = downtimeDetails,
@@ -318,13 +314,14 @@ public class ReportService : IReportService
 
         var inputs = await _effectiveStatusHistory.GatherAsync(ids, periodStart, periodEnd, windowEnd, ct);
 
-        // Только закрытые успешные циклы: открытые исключены из длительностей до закрытия.
-        var cycleDurations = (await _context.ImmCycles
-                .Where(c => ids.Contains(c.ImmId) && c.IsSuccessful && c.EndTime != null
-                    && c.StartTime >= periodStart && c.StartTime < periodEnd)
-                .Select(c => new { c.ImmId, c.DurationSeconds })
-                .ToListAsync(ct))
-            .ToLookup(c => c.ImmId, c => c.DurationSeconds);
+        // Только закрытые успешные циклы. Средний цикл здесь не считаем: за период ТПА мог делать
+        // разные изделия, и средний по ним ничего не значит — цикл показывается по заданию.
+        var cycleCounts = await _context.ImmCycles
+            .Where(c => ids.Contains(c.ImmId) && c.IsSuccessful && c.EndTime != null
+                && c.StartTime >= periodStart && c.StartTime < periodEnd)
+            .GroupBy(c => c.ImmId)
+            .Select(g => new { ImmId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ImmId, x => x.Count, ct);
 
         var report = new EquipmentReportDto
         {
@@ -344,16 +341,13 @@ public class ReportService : IReportService
                 foreach (var (key, secs) in day)
                     total[key] += secs;
 
-            var durations = cycleDurations[imm.Id].ToList();
-
             report.ImmData.Add(new EquipmentReportImmItemDto
             {
                 ImmId = imm.Id,
                 ImmName = imm.Name,
                 IsActive = imm.IsActive,
                 Seconds = total,
-                TotalCycles = durations.Count,
-                AvgCycleSeconds = durations.Count > 0 ? (decimal)durations.Average() : 0m,
+                TotalCycles = cycleCounts.GetValueOrDefault(imm.Id),
                 Efficiency = DailyStatusBreakdown.Efficiency(total),
                 Days = days.Select((day, i) => new EquipmentReportDayDto
                 {
@@ -381,7 +375,7 @@ public class ReportService : IReportService
         var keys = DailyStatusBreakdown.Keys;
         var headers = new List<string> { "ТПА" };
         headers.AddRange(keys.Select(k => $"{DailyStatusBreakdown.Labels[k]} (ч)"));
-        headers.AddRange(["Циклы", "Ср. цикл (с)", "Эффективность %"]);
+        headers.AddRange(["Циклы", "Эффективность %"]);
         for (var i = 0; i < headers.Count; i++)
         {
             worksheet.Cell(row, i + 1).Value = headers[i];
@@ -396,11 +390,10 @@ public class ReportService : IReportService
             for (var k = 0; k < keys.Length; k++)
                 worksheet.Cell(row, k + 2).Value = Math.Round(item.Seconds.GetValueOrDefault(keys[k]) / 3600m, 2);
             worksheet.Cell(row, cyclesCol).Value = item.TotalCycles;
-            worksheet.Cell(row, cyclesCol + 1).Value = Math.Round(item.AvgCycleSeconds, 1);
             if (item.Efficiency.HasValue)
-                worksheet.Cell(row, cyclesCol + 2).Value = Math.Round(item.Efficiency.Value, 2);
+                worksheet.Cell(row, cyclesCol + 1).Value = Math.Round(item.Efficiency.Value, 2);
             else
-                worksheet.Cell(row, cyclesCol + 2).Value = "—";
+                worksheet.Cell(row, cyclesCol + 1).Value = "—";
             row++;
         }
 
@@ -415,12 +408,11 @@ public class ReportService : IReportService
             for (var k = 0; k < keys.Length; k++)
                 worksheet.Cell(row, k + 2).Value = Math.Round(totals[keys[k]] / 3600m, 2);
             worksheet.Cell(row, cyclesCol).Value = report.ImmData.Sum(i => i.TotalCycles);
-            worksheet.Cell(row, cyclesCol + 1).Value = "—";
             var fleet = DailyStatusBreakdown.Efficiency(totals);   // взвешенная эффективность парка
             if (fleet.HasValue)
-                worksheet.Cell(row, cyclesCol + 2).Value = Math.Round(fleet.Value, 2);
+                worksheet.Cell(row, cyclesCol + 1).Value = Math.Round(fleet.Value, 2);
             else
-                worksheet.Cell(row, cyclesCol + 2).Value = "—";
+                worksheet.Cell(row, cyclesCol + 1).Value = "—";
             for (var c = 1; c <= headers.Count; c++)
                 worksheet.Cell(row, c).Style.Font.Bold = true;
             row++;

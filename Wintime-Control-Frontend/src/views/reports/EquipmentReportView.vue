@@ -155,9 +155,6 @@
             <template #default="{ row }">{{ toHours(row.seconds?.[k]) }}</template>
           </el-table-column>
           <el-table-column prop="totalCycles" label="Циклы" width="90" align="right" />
-          <el-table-column label="Ср. цикл (с)" width="110" align="right">
-            <template #default="{ row }">{{ row.avgCycleSeconds > 0 ? row.avgCycleSeconds.toFixed(1) : '—' }}</template>
-          </el-table-column>
           <el-table-column label="Эффективность" width="130" align="right">
             <template #default="{ row }">
               <span :class="efficiencyClass(row.efficiency)">{{ formatEfficiency(row.efficiency) }}</span>
