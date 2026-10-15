@@ -43,8 +43,15 @@ describe('DailyReportView — эффективные состояния', () => 
     expect(labels).toEqual(expect.arrayContaining([
       'Работа (ч)', 'Наладка (ч)', 'Простой (ч)', 'Работа без задания (ч)', 'Без задания (ч)', 'Нет связи (ч)'
     ]))
-    expect(w.text()).toContain('3.00')   // Работа
-    expect(w.text()).toContain('2.00')   // Без задания / Нет связи
+    expect(w.text()).toContain('3.0')   // Работа
+    expect(w.text()).toContain('2.0')   // Без задания / Нет связи
+    expect(w.text()).toContain('3.00.51.00.02.02.0')   // порядок колонок, один знак после запятой
+  })
+
+  it('эффективность форматируется как в отчёте оборудования', async () => {
+    const w = await mountWithReport([item()])
+
+    expect(w.find('[data-test="efficiency"]').text()).toBe('46%')
   })
 
   it('эффективность null → «—»', async () => {

@@ -121,3 +121,64 @@ public class DailyReportEffectiveStatusTests : IClassFixture<IntegrationTestFact
             "Эффективность %", "Сырьё (кг)");
     }
 }
+
+/// <summary>
+/// Отчёт по конкретной смене. Отдельный класс (= свой контейнер БД): тест заводит смену,
+/// а смены влияют на сутки завода в остальных тестах.
+/// </summary>
+[Collection("Integration")]
+public class DailyReportShiftEffectiveStatusTests : IClassFixture<IntegrationTestFactory>
+{
+    private readonly IntegrationTestFactory _factory;
+    public DailyReportShiftEffectiveStatusTests(IntegrationTestFactory factory) => _factory = factory;
+
+    private static readonly DateTime Date = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(-12), DateTimeKind.Unspecified);
+
+    [Fact]
+    public async Task ShiftPeriod_AggregatesCoverShift_AndTimelineHasThirtyMinuteMargin()
+    {
+        Guid immId, shiftId;
+        DateTime shiftStart;
+        int durationMinutes;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var shift = new Shift
+            {
+                StartMinutes = 8 * 60, DurationMinutes = 8 * 60, BreakStartMinutes = 12 * 60, BreakDurationMinutes = 30,
+                TimeZoneId = "Europe/Moscow"
+            };
+            db.Shifts.Add(shift);
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(shift.TimeZoneId);
+            var d0 = TimeZoneInfo.ConvertTimeToUtc(Date, tz);
+            shiftStart = d0.AddMinutes(shift.StartMinutes);
+            durationMinutes = shift.DurationMinutes;
+
+            var imm = new Core.Entities.Imm { Name = $"IMM-{Guid.NewGuid():N}", TemplateId = _factory.TestTemplateId, IsActive = true };
+            db.Imms.Add(imm);
+            await db.SaveChangesAsync();
+
+            // Сырой Auto на все сутки, заданий нет → «Работа без задания».
+            db.ImmStatusHistory.Add(new ImmStatusHistory
+            {
+                ImmId = imm.Id, Status = ImmStatus.Auto, ChangedAt = d0.AddHours(-1), EndedAt = d0.AddHours(25)
+            });
+            await db.SaveChangesAsync();
+            immId = imm.Id;
+            shiftId = shift.Id;
+        }
+
+        var client = _factory.CreateClient();
+        var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
+        AuthHelper.SetBearerToken(client, token!);
+
+        var daily = (await client.GetFromJsonAsync<DailyReportDto>(
+            $"/api/reports/daily?date={Date:yyyy-MM-dd}&immId={immId}&shiftId={shiftId}"))!;
+        var item = daily.ImmData.Should().ContainSingle().Subject;
+
+        var shiftSeconds = durationMinutes * 60;
+        item.Seconds.Values.Sum().Should().Be(shiftSeconds);
+        item.Seconds[EffectiveStatus.Unplanned].Should().Be(shiftSeconds);
+        item.Timeline.Min(t => t.Start).Should().Be(shiftStart.AddMinutes(-30));
+    }
+}
