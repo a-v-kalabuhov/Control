@@ -101,7 +101,7 @@
 - `ITaskResultsService` (Core/Interfaces) + `TaskResultsService` (Infrastructure/Services): одна
   точка расчёта, на ней же потом BL-05. Переиспользует `TaskActivityWindow.Release`,
   `IEffectiveStatusHistoryService`, `EffectiveStatusTimeline`, `ReleaseForecast.MinClosedCycles`.
-- Эндпоинт в `TasksController`, DTO в `Shared`.
+- Эндпоинт в `TasksController`, DTO в `Core/DTOs/Tasks` (как `TaskDto`).
 - Все `DateTime` в запросах — `Kind=Utc` (берутся из сущности и `UtcNow`).
 
 **Фронт**
