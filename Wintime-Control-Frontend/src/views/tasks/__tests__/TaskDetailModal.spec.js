@@ -115,4 +115,27 @@ describe('TaskDetailModal — вкладки', () => {
     await flushPromises()
     expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)   // сброс на «Данные задания»
   })
+
+  it('закрытие снаружи (modelValue=false) сбрасывает вкладку на «Данные задания»', async () => {
+    const task = { id: 't1', status: 'InProgress' }
+    const wrapper = mount(TaskDetailModal, {
+      props: { modelValue: true, task },
+      global: {
+        plugins: [ElementPlus, createPinia()],
+        stubs: { TaskResultsTab: { name: 'TaskResultsTab', props: ['taskId'], template: '<div class="results-stub" />' } }
+      },
+      attachTo: document.body
+    })
+    await flushPromises()
+    await wrapper.findAll('.el-tabs__item')[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(true)
+
+    await wrapper.setProps({ modelValue: false })
+    await flushPromises()
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)
+  })
 })

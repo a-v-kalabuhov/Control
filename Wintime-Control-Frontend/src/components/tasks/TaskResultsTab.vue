@@ -1,6 +1,11 @@
 <template>
   <div v-loading="loading" class="min-h-[120px]">
-    <p v-if="results && !results.releaseStarted" class="text-gray-500">Выпуск ещё не начат</p>
+    <div v-if="loadFailed && !results" data-test="load-error" class="text-gray-500">
+      <p class="mb-2">Не удалось загрузить итоги</p>
+      <el-button size="small" @click="load">Повторить</el-button>
+    </div>
+
+    <p v-else-if="results && !results.releaseStarted" class="text-gray-500">Выпуск ещё не начат</p>
 
     <template v-else-if="results">
       <p class="text-sm text-gray-600 mb-4">
@@ -92,6 +97,7 @@ const REFRESH_MS = 60_000
 
 const results = ref(null)
 const loading = ref(false)
+const loadFailed = ref(false)
 let refreshTimer = null
 let unmounted = false
 
@@ -129,8 +135,10 @@ async function load() {
     const res = await tasksApi.getResults(props.taskId)
     if (unmounted) return
     results.value = res.data
+    loadFailed.value = false
   } catch (error) {
     console.error(error)
+    loadFailed.value = true
   } finally {
     loading.value = false
   }

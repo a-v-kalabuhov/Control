@@ -90,9 +90,8 @@ public class TaskResultsService : ITaskResultsService
             .Where(s => s.EffectiveStatus == status)
             .Sum(s => (s.End - s.Start).TotalSeconds));
 
-        var downtimeCount = await _context.Events.CountAsync(e =>
-            e.ImmId == immId && e.EventType == EventType.Downtime
-            && e.StartTime < window.End && (e.EndTime == null || e.EndTime > window.Start), ct);
+        // Количество — из тех же строк событий, что и разбивка времени (один запрос GatherAsync)
+        var downtimeCount = inputs.Downtimes.Count;
 
         return new TaskTimeResultsDto
         {

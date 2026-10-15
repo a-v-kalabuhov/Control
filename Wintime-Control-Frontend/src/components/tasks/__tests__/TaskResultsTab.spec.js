@@ -37,7 +37,7 @@ const rowText = (w, testId) => w.find(`[data-test="${testId}"]`).text()
 
 describe('TaskResultsTab', () => {
   beforeEach(() => { vi.clearAllMocks() })
-  afterEach(() => { vi.useRealTimers() })
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
   it('выпуск не начат — одна строка, без блоков', async () => {
     tasksApi.getResults.mockResolvedValue({ data: { releaseStarted: false, inProgress: false } })
@@ -144,5 +144,42 @@ describe('TaskResultsTab', () => {
 
     await vi.advanceTimersByTimeAsync(120_000)
     expect(tasksApi.getResults).toHaveBeenCalledTimes(1)
+  })
+
+  it('ошибка первой загрузки — сообщение и «Повторить», повтор загружает данные', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    tasksApi.getResults.mockRejectedValueOnce(new Error('500'))
+    const w = mountTab()
+    await flushPromises()
+
+    expect(w.text()).toContain('Не удалось загрузить итоги')
+    expect(w.find('[data-test="output"]').exists()).toBe(false)
+
+    tasksApi.getResults.mockResolvedValue({ data: completed() })
+    const retry = w.findAll('button').find(b => b.text() === 'Повторить')
+    await retry.trigger('click')
+    await flushPromises()
+
+    expect(tasksApi.getResults).toHaveBeenCalledTimes(2)
+    expect(w.text()).not.toContain('Не удалось загрузить итоги')
+    expect(w.find('[data-test="output"]').exists()).toBe(true)
+  })
+
+  it('сбой фонового обновления — прежние данные остаются, опрос продолжается', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    tasksApi.getResults.mockResolvedValueOnce({ data: { ...completed(), inProgress: true } })
+    const w = mountTab()
+    await flushPromises()
+    tasksApi.getResults.mockRejectedValueOnce(new Error('500'))
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(tasksApi.getResults).toHaveBeenCalledTimes(2)
+    expect(w.find('[data-test="output"]').exists()).toBe(true)
+    expect(w.text()).not.toContain('Не удалось загрузить итоги')
+
+    tasksApi.getResults.mockResolvedValue({ data: { ...completed(), inProgress: true } })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(tasksApi.getResults).toHaveBeenCalledTimes(3)
   })
 })

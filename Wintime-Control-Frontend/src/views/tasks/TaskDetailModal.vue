@@ -170,11 +170,13 @@ const visible = computed({
   set: (value) => {
     if (!value) {
       closeReasonInput.value = ''
-      activeTab.value = 'data'
     }
     emit('update:modelValue', value)
   }
 })
+
+// Закрытие снаружи (modelValue=false от родителя) тоже возвращает на «Данные задания»
+watch(() => props.modelValue, v => { if (!v) activeTab.value = 'data' })
 
 // Другое задание — снова с «Данных задания» (итоги прошлого задания не показываем)
 watch(() => props.task?.id, () => { activeTab.value = 'data' })
