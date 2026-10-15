@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     :title="editingTask ? 'Редактирование задания' : 'Новое задание'"
-    width="700px"
+    width="960px"
     :close-on-click-modal="false"
     @closed="onClosed"
   >
@@ -10,207 +10,203 @@
       ref="formRef"
       :model="form" 
       :rules="rules" 
-      label-width="150px"
+      label-width="140px"
       label-position="left"
     >
-      <el-form-item label="Оборудование (ТПА)" prop="immId">
-        <el-select 
-          v-model="form.immId" 
-          placeholder="Выберите ТПА" 
-          class="w-full"
-          @focus="loadImms"
-          :disabled="editingTask"
-          :clearable="!editingTask"
-        >
-          <el-option
-            v-for="imm in immOptions"
-            :key="imm.id"
-            :label="immLabel(imm)"
-            :value="imm.id"
-            :disabled="!imm.isActive"
-          />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="Пресс-форма" prop="moldId">
-        <el-select 
-          v-model="form.moldId" 
-          placeholder="Выберите пресс-форму" 
-          class="w-full"
-          @focus="loadMolds"
-          :disabled="editingTask"
-          :clearable="!editingTask"
-          :no-data-text="moldNoDataText"
-          filterable
-        >
-          <el-option
-            v-for="mold in availableMolds"
-            :key="mold.id"
-            :label="`${mold.name} (${mold.cavities} гнёзд)`"
-            :value="mold.id"
-            :disabled="!mold.isActive"
+      <!-- Две колонки: поля попарно по смыслу, чтобы окно помещалось по высоте (FullHD) -->
+      <div class="grid grid-cols-2 gap-x-6">
+        <el-form-item label="ТПА" prop="immId">
+          <el-select 
+            v-model="form.immId" 
+            placeholder="Выберите ТПА" 
+            class="w-full"
+            @focus="loadImms"
+            :disabled="editingTask"
+            :clearable="!editingTask"
           >
-            <div class="flex justify-between items-center">
-              <span>{{ mold.name }}</span>
-              <el-tag size="small" type="info">{{ mold.cavities }} гнёзд</el-tag>
-            </div>
-          </el-option>
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="Заказ">
-        <el-select
-          v-model="form.orderId"
-          placeholder="Выберите заказ"
-          class="w-full"
-          filterable
-          :clearable="false"
-          :no-data-text="orderNoDataText"
-          :disabled="isRestricted || !!lockedOrder || !selectedProductTypeId"
-        >
-          <el-option
-            v-for="order in orderOptions"
-            :key="order.id"
-            :label="`${order.number}${order.productTypeArticle ? ' (' + order.productTypeArticle + ')' : ''}`"
-            :value="order.id"
-          />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="Наладчик" prop="personnelId">
-        <el-select 
-          v-model="form.personnelId" 
-          placeholder="Не назначен"
-          :clearable="!isLimitedEdit"
-          class="w-full"
-          @focus="loadPersonnel"
-          :disabled="isBufferOnlyEdit"
-          filterable
-        >
-          <el-option
-            v-for="person in personnelOptions"
-            :key="person.id"
-            :label="person.fullName"
-            :value="person.id"
-            :disabled="person.notInList"
+            <el-option
+              v-for="imm in immOptions"
+              :key="imm.id"
+              :label="immLabel(imm)"
+              :value="imm.id"
+              :disabled="!imm.isActive"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Пресс-форма" prop="moldId">
+          <el-select 
+            v-model="form.moldId" 
+            placeholder="Выберите пресс-форму" 
+            class="w-full"
+            @focus="loadMolds"
+            :disabled="editingTask"
+            :clearable="!editingTask"
+            :no-data-text="moldNoDataText"
+            filterable
           >
-            <div class="flex justify-between items-center">
-              <span>{{ person.fullName }}</span>
-              <el-tag size="small">{{ person.qualification || 'Наладчик' }}</el-tag>
-            </div>
-          </el-option>
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="План (шт.)" prop="planQuantity">
-        <el-input-number 
-          v-model="form.planQuantity" 
-          data-test="plan-quantity"
-          :min="1" 
-          :max="1000000"
-          :disabled="isRestricted"
-          class="w-full"
-          controls-position="right"
-        />
-      </el-form-item>
-
-      <el-form-item label="Рабочий режим" prop="workMode">
-        <el-select v-model="form.workMode" class="w-full" :disabled="isRestricted">
-          <el-option label="Автомат" value="Auto" />
-          <el-option label="Полуавтомат" value="SemiAuto" />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="Полный цикл (сек.)" prop="plannedFullCycleSeconds" :required="isFullCycleRequired">
-        <el-input-number
-          v-model="form.plannedFullCycleSeconds"
-          :min="1"
-          :max="86400"
-          :disabled="isRestricted"
-          class="w-full"
-          controls-position="right"
-        />
-      </el-form-item>
-
-      <el-form-item label="Цикл литья (сек.)" prop="plannedInjectionCycleSeconds">
-        <el-input-number
-          v-model="form.plannedInjectionCycleSeconds"
-          :min="1"
-          :max="86400"
-          :disabled="isRestricted"
-          class="w-full"
-          controls-position="right"
-        />
-        <div class="text-xs text-gray-500 mt-1">Необязательно — нужен для анализа стабильности</div>
-      </el-form-item>
-
-      <el-form-item label="Норматив наладки, мин" prop="plannedSetupMinutes">
-        <el-input-number
-          v-model="form.plannedSetupMinutes"
-          data-test="setup-minutes" :value-on-clear="0"
-          :min="0" :max="1440" :step="5"
-          :disabled="isBufferOnlyEdit"
-          class="w-full"
-          controls-position="right"
-        />
-      </el-form-item>
-
-      <el-form-item label="Буфер выпуска, мин" prop="releaseBufferFixedMinutes">
-        <el-input-number
-          v-model="form.releaseBufferFixedMinutes"
-          data-test="buffer-fixed-minutes" :value-on-clear="0"
-          :min="0" :max="1440" :step="5"
-          class="w-full"
-          controls-position="right"
-        />
-      </el-form-item>
-
-      <el-form-item label="Буфер выпуска, % от выпуска" prop="releaseBufferPercent">
-        <el-input-number
-          v-model="form.releaseBufferPercent"
-          data-test="buffer-percent" :value-on-clear="0"
-          :min="0" :max="100"
-          class="w-full"
-          controls-position="right"
-        />
-        <div class="text-xs text-gray-500 mt-1" data-test="plan-preview">{{ planPreview }}</div>
-      </el-form-item>
-
-      <el-form-item label="Плановая дата" prop="plannedDate">
-        <el-date-picker
-          v-model="form.plannedDate"
-          type="date"
-          placeholder="Выберите дату"
-          format="DD.MM.YYYY"
-          value-format="YYYY-MM-DD"
-          :disabled-date="isPastDate"
-          :disabled="isBufferOnlyEdit"
-          class="w-full"
-        />
-      </el-form-item>
-
-      <el-form-item label="Время начала наладки" prop="plannedSetupStartTime">
-        <el-time-picker
-          v-model="form.plannedSetupStartTime"
-          placeholder="Не задано"
-          format="HH:mm"
-          value-format="HH:mm:ss"
-          clearable
-          :disabled="isBufferOnlyEdit"
-          class="w-full"
-        />
-        <div class="text-xs text-gray-500 mt-1">Необязательно. Пусто — задание начинается с начала смены</div>
-      </el-form-item>
-
-      <el-form-item label="Примечание">
-        <el-input
-          v-model="form.note"
-          type="textarea"
-          :rows="3"
-          :disabled="isRestricted"
-          placeholder="Дополнительная информация"
-        />
-      </el-form-item>
+            <el-option
+              v-for="mold in availableMolds"
+              :key="mold.id"
+              :label="`${mold.name} (${mold.cavities} гнёзд)`"
+              :value="mold.id"
+              :disabled="!mold.isActive"
+            >
+              <div class="flex justify-between items-center">
+                <span>{{ mold.name }}</span>
+                <el-tag size="small" type="info">{{ mold.cavities }} гнёзд</el-tag>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Заказ">
+          <el-select
+            v-model="form.orderId"
+            placeholder="Выберите заказ"
+            class="w-full"
+            filterable
+            :clearable="false"
+            :no-data-text="orderNoDataText"
+            :disabled="isRestricted || !!lockedOrder || !selectedProductTypeId"
+          >
+            <el-option
+              v-for="order in orderOptions"
+              :key="order.id"
+              :label="`${order.number}${order.productTypeArticle ? ' (' + order.productTypeArticle + ')' : ''}`"
+              :value="order.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Наладчик" prop="personnelId">
+          <el-select 
+            v-model="form.personnelId" 
+            placeholder="Не назначен"
+            :clearable="!isLimitedEdit"
+            class="w-full"
+            @focus="loadPersonnel"
+            :disabled="isBufferOnlyEdit"
+            filterable
+          >
+            <el-option
+              v-for="person in personnelOptions"
+              :key="person.id"
+              :label="person.fullName"
+              :value="person.id"
+              :disabled="person.notInList"
+            >
+              <div class="flex justify-between items-center">
+                <span>{{ person.fullName }}</span>
+                <el-tag size="small">{{ person.qualification || 'Наладчик' }}</el-tag>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="План (шт.)" prop="planQuantity">
+          <el-input-number 
+            v-model="form.planQuantity" 
+            data-test="plan-quantity"
+            :min="1" 
+            :max="1000000"
+            :disabled="isRestricted"
+            class="w-full"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="Рабочий режим" prop="workMode">
+          <el-select v-model="form.workMode" class="w-full" :disabled="isRestricted">
+            <el-option label="Автомат" value="Auto" />
+            <el-option label="Полуавтомат" value="SemiAuto" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Полный цикл, с" prop="plannedFullCycleSeconds" :required="isFullCycleRequired">
+          <el-input-number
+            v-model="form.plannedFullCycleSeconds"
+            :min="1"
+            :max="86400"
+            :disabled="isRestricted"
+            class="w-full"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="Цикл литья, с" prop="plannedInjectionCycleSeconds">
+          <el-input-number
+            v-model="form.plannedInjectionCycleSeconds"
+            :min="1"
+            :max="86400"
+            :disabled="isRestricted"
+            class="w-full"
+            controls-position="right"
+          />
+          <div class="text-xs text-gray-500 mt-1">Необязательно — нужен для анализа стабильности</div>
+        </el-form-item>
+        <el-form-item label="Плановая дата" prop="plannedDate">
+          <el-date-picker
+            v-model="form.plannedDate"
+            type="date"
+            placeholder="Выберите дату"
+            format="DD.MM.YYYY"
+            value-format="YYYY-MM-DD"
+            :disabled-date="isPastDate"
+            :disabled="isBufferOnlyEdit"
+            class="w-full"
+          />
+        </el-form-item>
+        <el-form-item label="Начало наладки" prop="plannedSetupStartTime">
+          <el-time-picker
+            v-model="form.plannedSetupStartTime"
+            placeholder="Не задано"
+            format="HH:mm"
+            value-format="HH:mm:ss"
+            clearable
+            :disabled="isBufferOnlyEdit"
+            class="w-full"
+          />
+          <div class="text-xs text-gray-500 mt-1">Необязательно. Пусто — задание начинается с начала смены</div>
+        </el-form-item>
+        <el-form-item label="Норматив наладки, мин" prop="plannedSetupMinutes">
+          <el-input-number
+            v-model="form.plannedSetupMinutes"
+            data-test="setup-minutes" :value-on-clear="0"
+            :min="0" :max="1440" :step="5"
+            :disabled="isBufferOnlyEdit"
+            class="w-full"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="Буфер выпуска">
+          <div class="flex items-center gap-2 w-full">
+            <el-form-item prop="releaseBufferFixedMinutes" label-width="0" class="buffer-part">
+              <el-input-number
+                v-model="form.releaseBufferFixedMinutes"
+                data-test="buffer-fixed-minutes" :value-on-clear="0"
+                :min="0" :max="1440" :step="5"
+                class="!w-24"
+                controls-position="right"
+              />
+            </el-form-item>
+            <span class="text-gray-500">мин +</span>
+            <el-form-item prop="releaseBufferPercent" label-width="0" class="buffer-part">
+              <el-input-number
+                v-model="form.releaseBufferPercent"
+                data-test="buffer-percent" :value-on-clear="0"
+                :min="0" :max="100"
+                class="!w-24"
+                controls-position="right"
+              />
+            </el-form-item>
+            <span class="text-gray-500">%</span>
+          </div>
+          <div class="text-xs text-gray-500 mt-1" data-test="plan-preview">{{ planPreview }}</div>
+        </el-form-item>
+        <el-form-item label="Примечание" class="col-span-2">
+          <el-input
+            v-model="form.note"
+            type="textarea"
+            :rows="2"
+            :disabled="isRestricted"
+            placeholder="Дополнительная информация"
+          />
+        </el-form-item>
+      </div>
 
       <!-- Информация о пресс-форме (справочно) -->
       <el-alert
@@ -640,3 +636,9 @@ const onClosed = () => {
   resetForm()
 }
 </script>
+<style scoped>
+/* Части поля «Буфер выпуска» — вложенные el-form-item ради проверки каждого числа, без своего отступа снизу */
+.buffer-part {
+  margin-bottom: 0;
+}
+</style>
