@@ -24,8 +24,11 @@ public static class ImmEffectiveStatus
         if (task == ActiveTaskStatus.InProgress)
         {
             if (isAuto) return EffectiveStatus.Production;
-            return (hasOpenDowntime || thresholdPassed)
-                ? EffectiveStatus.Downtime
+            if (hasOpenDowntime || thresholdPassed) return EffectiveStatus.Downtime;
+            // Без простоя нет данных — не «Работа» (ADR-0019): иначе сбой сервера, при котором
+            // воркер не завёл простой, превращает весь период без связи в выработку.
+            return mode == OfflineMode
+                ? EffectiveStatus.Offline
                 : EffectiveStatus.Production; // до порога — «Stopped» растворён в Работу
         }
 

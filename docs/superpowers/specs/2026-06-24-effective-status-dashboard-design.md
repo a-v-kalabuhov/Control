@@ -113,7 +113,7 @@ public static class ImmEffectiveStatus
 | 1 | `task == Setup` | `Setup` (наладка доминирует над сигналом) |
 | 2 | `task == InProgress` && `mode == Auto` | `Production` |
 | 3 | `task == InProgress` && `mode != Auto` && (`hasOpenDowntime` \|\| `thresholdPassed`) | `Downtime` |
-| 4 | `task == InProgress` && `mode != Auto` && иначе | `Production` (до порога) |
+| 4 | `task == InProgress` && `mode != Auto` && иначе | `Production` (до порога); **`Offline` → `Offline`** (уточнено ADR-0019) |
 | 5 | `task == None` && `mode == Auto` | `Unplanned` |
 | 6 | `task == None` && `mode == Offline` | `Offline` |
 | 7 | `task == None` && иначе (Idle/Manual/Alarm) | `NoTask` |

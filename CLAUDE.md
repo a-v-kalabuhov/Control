@@ -126,6 +126,8 @@ ADR-0011). Control не детектирует границы — `CycleProcessi
 (`Core/Policies`), **не хранится**, считается на лету; история — `EffectiveStatusTimeline.Build`.
 6 значений: `Production` (Работа) · `Setup` (Наладка) · `Downtime` (Простой) ·
 `Unplanned` (Работа без задания) · `NoTask` (Без задания) · `Offline` (Нет связи).
+Сырой `Offline` при задании `InProgress` без простоя — `Offline`, **не** `Production`: нет данных —
+нет «работы» (иначе сбой сервера превращает период без связи в выработку). См. ADR-0019.
 Палитра/подписи на фронте — `src/constants/effectiveStatus.js`.
 Дизайн: `docs/superpowers/specs/2026-06-24-effective-status-dashboard-design.md`.
 
