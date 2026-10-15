@@ -70,7 +70,7 @@
         <span class="text-sm text-gray-600">Сигналы:</span>
         <el-checkbox-group v-model="selected" @change="onSelectionChange">
           <el-checkbox v-for="s in availableSignals" :key="s.parameterName" :value="s.parameterName">
-            {{ s.parameterName }}
+            {{ signalLabel(s) }}
           </el-checkbox>
         </el-checkbox-group>
       </div>
@@ -88,6 +88,7 @@
         <SignalChart
           class="min-w-0 flex-1"
           :signal="sig"
+          :title="signalTitle(sig.parameterName)"
           :cycles="cycles"
           :segments="segments"
           :window-start-ms="windowStartMs"
@@ -112,7 +113,7 @@ import SignalChart from '@/components/telemetry/SignalChart.vue'
 import { telemetryApi } from '@/api/telemetry'
 import { immApi } from '@/api/imm'
 import { shiftWindow } from '@/utils/telemetryWindow'
-import { mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
+import { mergeLivePoints, enforceMinOneSignal, signalLabel } from '@/utils/telemetryChart'
 import { monitoringQueryWithImm, showBackToCard, isImmId } from '@/utils/monitoringNav'
 import { useAuthStore } from '@/stores/auth'
 import { jwtSubject } from '@/utils/jwt'
@@ -175,6 +176,11 @@ let pollTimer = null
 let liveInFlight = null // маркер live-запроса в полёте: следующий тик пропускается, иначе его seq обесценит ответ
 let requestSeq = 0 // номер последнего запроса окна: применяется только ответ на последний
 let lastNonEmptySelection = [] // последний непустой выбор сигналов — для отката при попытке снять последний
+
+// Заголовок графика — то же читаемое название, что в фильтре датчиков
+function signalTitle(parameterName) {
+  return signalLabel(availableSignals.value.find(s => s.parameterName === parameterName) ?? { parameterName })
+}
 
 const orderedSignals = computed(() => {
   const byName = new Map(signalsData.value.map(s => [s.parameterName, s]))

@@ -186,3 +186,38 @@ describe('TelemetryDashboardView — live-опрос', () => {
     expect(w.text()).not.toContain('Показаны не все точки')
   })
 })
+
+describe('TelemetryDashboardView — названия датчиков', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    immApi.getList.mockResolvedValue({ data: [{ id: IMM, name: 'ТПА-4', templateId: 't1' }] })
+    telemetryApi.getSignals.mockResolvedValue({ data: [
+      { parameterName: 'MoldClosed', name: 'Смыкание формы', type: 'boolean' },
+      { parameterName: 'temp_zone_1', name: '', type: 'float' }
+    ] })
+    telemetryApi.getDashboard.mockResolvedValue({ data: {
+      signals: [{ parameterName: 'MoldClosed', type: 'boolean', points: [] }],
+      cycles: [], statusSegments: [], truncated: false
+    } })
+  })
+
+  it('фильтр датчиков: name из шаблона, без name — field', async () => {
+    const w = await mountHistory(null, null)
+
+    const labels = w.findAll('.el-checkbox').map(c => c.text())
+    expect(labels).toEqual(['Смыкание формы', 'temp_zone_1'])
+  })
+
+  it('заголовок графика получает читаемое название датчика', async () => {
+    const w = mount(TelemetryDashboardView, {
+      global: { plugins: [ElementPlus], stubs: { SignalChart: true, 'el-date-picker': true, ArrowLeft: true } }
+    })
+    await flushPromises()
+
+    const chart = w.findComponent({ name: 'SignalChart' })
+    expect(chart.exists()).toBe(true)
+    expect(chart.props('title')).toBe('Смыкание формы')
+    w.unmount()
+  })
+})

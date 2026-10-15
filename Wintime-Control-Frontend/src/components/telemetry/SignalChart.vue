@@ -1,7 +1,7 @@
 <template>
   <div class="signal-chart bg-white rounded-lg shadow-sm border">
     <div class="flex items-center justify-between px-3 py-1.5 border-b">
-      <span class="text-sm font-medium text-gray-700">{{ signal.parameterName }}</span>
+      <span class="text-sm font-medium text-gray-700">{{ label }}</span>
       <label v-if="axisKind === 'numeric'" class="text-xs text-gray-500 flex items-center gap-1 cursor-pointer">
         <input type="checkbox" v-model="fromZero" /> с нуля
       </label>
@@ -22,7 +22,10 @@ const props = defineProps({
   segments:      { type: Array,  default: () => [] }, // [{ effectiveStatus, changedAt, endedAt }]
   windowStartMs: { type: Number, required: true },
   windowEndMs:   { type: Number, required: true },
+  title:         { type: String, default: '' },     // читаемое название датчика; пусто — parameterName
 })
+
+const label = computed(() => props.title || props.signal.parameterName)
 
 const GROUP = 'telemetry-signals'
 const chartRef = ref(null)
@@ -74,7 +77,7 @@ function buildOption() {
     xAxis: { type: 'time', min: props.windowStartMs, max: props.windowEndMs, axisLabel: { fontSize: 10 } },
     yAxis,
     series: [{
-      name: props.signal.parameterName,
+      name: label.value,
       type: 'line',
       step: 'end',
       showSymbol: false,
