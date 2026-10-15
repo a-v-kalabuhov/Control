@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 
 vi.mock('vue-router', async (importOriginal) => ({
@@ -113,6 +113,75 @@ describe('TelemetryDashboardView — сдвиг окна истории', () => 
     await flushPromises()
     resolveFirst(dashboard(true))   // устаревший ответ: «Показаны не все точки»
     await flushPromises()
+
+    expect(w.text()).not.toContain('Показаны не все точки')
+  })
+
+  it('устаревший ответ с ошибкой не показывает тост и не меняет состояние', async () => {
+    const w = await mountHistory('2026-10-01T10:00:00', '2026-10-01T11:00:00')
+    const errSpy = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    let rejectFirst
+    let resolveSecond
+    telemetryApi.getDashboard
+      .mockImplementationOnce(() => new Promise((_, rej) => { rejectFirst = rej }))
+      .mockImplementationOnce(() => new Promise(r => { resolveSecond = r }))
+
+    await w.find('[data-test="shift-back"]').trigger('click')
+    await w.find('[data-test="shift-back"]').trigger('click')
+    resolveSecond(dashboard(false))
+    await flushPromises()
+    rejectFirst({ response: { status: 500 } })
+    await flushPromises()
+
+    expect(w.text()).not.toContain('Показаны не все точки')
+    expect(errSpy).not.toHaveBeenCalled()
+    errSpy.mockRestore()
+  })
+})
+
+describe('TelemetryDashboardView — live-опрос', () => {
+  const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms)
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    immApi.getList.mockResolvedValue({ data: [{ id: IMM, name: 'ТПА-4', templateId: 't1' }] })
+    telemetryApi.getSignals.mockResolvedValue({ data: [{ parameterName: 'p1', name: 'p1', type: 'number' }] })
+    telemetryApi.getDashboard.mockResolvedValue(dashboard())
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  const mountLive = async () => {
+    let resolveLive
+    telemetryApi.getDashboard.mockImplementationOnce(() => new Promise(r => { resolveLive = r }))
+    const w = mount(TelemetryDashboardView, {
+      global: { plugins: [ElementPlus], stubs: { SignalChart: true, 'el-date-picker': true, ArrowLeft: true } }
+    })
+    await tick()
+    return { w, resolve: (d) => resolveLive(d) }
+  }
+
+  it('медленный live-запрос не голодает: тики пропускаются, ответ применяется', async () => {
+    const { w, resolve } = await mountLive()
+    expect(telemetryApi.getDashboard).toHaveBeenCalledTimes(1)
+
+    await tick(25_000)
+    expect(telemetryApi.getDashboard).toHaveBeenCalledTimes(1)
+
+    resolve(dashboard(true))
+    await tick()
+    expect(w.text()).toContain('Показаны не все точки')
+  })
+
+  it('live-ответ, пришедший после переключения в «История», отбрасывается', async () => {
+    const { w, resolve } = await mountLive()
+
+    w.vm.mode = 'history'
+    w.vm.onModeChange()
+    await tick()
+    resolve(dashboard(true))
+    await tick()
 
     expect(w.text()).not.toContain('Показаны не все точки')
   })
