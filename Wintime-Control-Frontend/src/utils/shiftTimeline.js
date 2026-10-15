@@ -116,3 +116,47 @@ export function planTooltipLines(task) {
   if (actual != null) lines.push(`Факт наладки: ${formatDuration(actual)}`)
   return lines
 }
+
+// Жадная раскладка пересекающихся интервалов по дорожкам: по возрастанию start элемент
+// идёт в первую дорожку, где предыдущий кончился не позже его начала. Результат — в порядке входа.
+export function assignLanes(items) {
+  const order = items.map((_, i) => i).sort((a, b) => (items[a].start - items[b].start) || (a - b))
+  const laneEnds = []
+  const lanes = new Array(items.length)
+  for (const i of order) {
+    let lane = laneEnds.findIndex(end => end <= items[i].start)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(0)
+    }
+    laneEnds[lane] = items[i].end
+    lanes[i] = lane
+  }
+  return lanes
+}
+
+// Задания хронологии = активные в смене ∪ запланированные около смены; версия из active приоритетна.
+// Порядок (по плановому началу) задаёт цвет задания в рядах «План» и «Задания».
+export function mergeTimelineTasks(active, planned) {
+  const byId = new Map()
+  for (const t of planned ?? []) byId.set(t.id, t)
+  for (const t of active ?? []) byId.set(t.id, t)
+  return [...byId.values()].sort((a, b) =>
+    (new Date(a.plannedStartAt) - new Date(b.plannedStartAt)) || String(a.id).localeCompare(String(b.id)))
+}
+
+function toYmd(d) {
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+// PlannedDate — дата завода, смена — в поясе браузера: берём запас ±1 день,
+// точный отбор — по plannedStartAt в planBarLayout.
+export function plannedRangeForShift(shiftStart, shiftEnd) {
+  const from = new Date(shiftStart)
+  from.setDate(from.getDate() - 1)
+  const to = new Date(shiftEnd)
+  to.setDate(to.getDate() + 1)
+  return { plannedFrom: toYmd(from), plannedTo: toYmd(to) }
+}

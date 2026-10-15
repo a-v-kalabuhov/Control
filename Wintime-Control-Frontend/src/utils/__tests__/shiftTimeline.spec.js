@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  taskBarLayout, planBarLayout, setupDeviation, setupActualMs, planMarks, planTooltipLines, formatDuration
+  taskBarLayout, planBarLayout, setupDeviation, setupActualMs, planMarks, planTooltipLines, formatDuration,
+  assignLanes, mergeTimelineTasks, plannedRangeForShift
 } from '../shiftTimeline'
 
 const S = new Date('2026-10-13T08:00:00Z')
@@ -172,5 +173,63 @@ describe('planTooltipLines', () => {
 
   it('нет plannedStartAt — пусто', () => {
     expect(planTooltipLines({})).toEqual([])
+  })
+})
+
+describe('assignLanes', () => {
+  it('без перекрытий — одна дорожка', () => {
+    expect(assignLanes([{ start: 0, end: 10 }, { start: 20, end: 30 }])).toEqual([0, 0])
+  })
+
+  it('перекрытие — две дорожки', () => {
+    expect(assignLanes([{ start: 0, end: 10 }, { start: 5, end: 15 }])).toEqual([0, 1])
+  })
+
+  it('стык end == start — одна дорожка', () => {
+    expect(assignLanes([{ start: 0, end: 10 }, { start: 10, end: 20 }])).toEqual([0, 0])
+  })
+
+  it('освободившаяся дорожка переиспользуется, порядок входа сохраняется', () => {
+    // вход не отсортирован: c, a, b
+    const lanes = assignLanes([{ start: 12, end: 20 }, { start: 0, end: 10 }, { start: 5, end: 15 }])
+    expect(lanes).toEqual([0, 0, 1])
+  })
+
+  it('пустой вход', () => {
+    expect(assignLanes([])).toEqual([])
+  })
+})
+
+describe('mergeTimelineTasks', () => {
+  it('дубликаты по id — версия из active, сортировка по plannedStartAt', () => {
+    const active = [{ id: 'b', plannedStartAt: at(3), v: 'active' }]
+    const planned = [
+      { id: 'b', plannedStartAt: at(3), v: 'planned' },
+      { id: 'a', plannedStartAt: at(1) }
+    ]
+    const merged = mergeTimelineTasks(active, planned)
+    expect(merged.map(t => t.id)).toEqual(['a', 'b'])
+    expect(merged[1].v).toBe('active')
+  })
+
+  it('равный plannedStartAt — по id', () => {
+    const merged = mergeTimelineTasks([{ id: 'z', plannedStartAt: at(1) }], [{ id: 'y', plannedStartAt: at(1) }])
+    expect(merged.map(t => t.id)).toEqual(['y', 'z'])
+  })
+
+  it('null-входы', () => {
+    expect(mergeTimelineTasks(null, undefined)).toEqual([])
+  })
+})
+
+describe('plannedRangeForShift', () => {
+  it('ночная смена через полночь — ±1 день к локальным датам', () => {
+    const r = plannedRangeForShift(new Date(2026, 9, 15, 20, 0), new Date(2026, 9, 16, 8, 0))
+    expect(r).toEqual({ plannedFrom: '2026-10-14', plannedTo: '2026-10-17' })
+  })
+
+  it('переход месяца', () => {
+    const r = plannedRangeForShift(new Date(2026, 9, 1, 8, 0), new Date(2026, 9, 31, 20, 0))
+    expect(r).toEqual({ plannedFrom: '2026-09-30', plannedTo: '2026-11-01' })
   })
 })
