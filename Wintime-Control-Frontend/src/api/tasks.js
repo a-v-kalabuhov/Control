@@ -11,6 +11,11 @@ export const tasksApi = {
     return apiClient.get(`/tasks/${id}`)
   },
 
+  // Итоги выполнения по окну выпуска (вкладка «Результаты выполнения»)
+  getResults(id) {
+    return apiClient.get(`/tasks/${id}/results`)
+  },
+
   // Создать новое задание
   create(data) {
     return apiClient.post('/tasks', data)

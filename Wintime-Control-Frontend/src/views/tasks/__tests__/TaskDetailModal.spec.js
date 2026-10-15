@@ -87,3 +87,55 @@ describe('TaskDetailModal — план задания (PZP-14)', () => {
     expect(cellText(wrapper, 'Плановое окончание')).toBe('—')
   })
 })
+
+describe('TaskDetailModal — вкладки', () => {
+  it('по умолчанию «Данные задания»; «Результаты выполнения» монтируют вкладку итогов с id задания', async () => {
+    const wrapper = mount(TaskDetailModal, {
+      props: { modelValue: true, task: { id: 't1', status: 'InProgress' } },
+      global: {
+        plugins: [ElementPlus, createPinia()],
+        stubs: { TaskResultsTab: { name: 'TaskResultsTab', props: ['taskId'], template: '<div class="results-stub" />' } }
+      },
+      attachTo: document.body
+    })
+    await flushPromises()
+
+    const tabs = wrapper.findAll('.el-tabs__item').map(t => t.text())
+    expect(tabs).toEqual(['Данные задания', 'Результаты выполнения'])
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)
+
+    await wrapper.findAll('.el-tabs__item')[1].trigger('click')
+    await flushPromises()
+
+    const tab = wrapper.findComponent({ name: 'TaskResultsTab' })
+    expect(tab.exists()).toBe(true)
+    expect(tab.props('taskId')).toBe('t1')
+
+    await wrapper.setProps({ task: { id: 't2', status: 'Completed' } })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)   // сброс на «Данные задания»
+  })
+
+  it('закрытие снаружи (modelValue=false) сбрасывает вкладку на «Данные задания»', async () => {
+    const task = { id: 't1', status: 'InProgress' }
+    const wrapper = mount(TaskDetailModal, {
+      props: { modelValue: true, task },
+      global: {
+        plugins: [ElementPlus, createPinia()],
+        stubs: { TaskResultsTab: { name: 'TaskResultsTab', props: ['taskId'], template: '<div class="results-stub" />' } }
+      },
+      attachTo: document.body
+    })
+    await flushPromises()
+    await wrapper.findAll('.el-tabs__item')[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(true)
+
+    await wrapper.setProps({ modelValue: false })
+    await flushPromises()
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)
+  })
+})

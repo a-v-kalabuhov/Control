@@ -20,14 +20,16 @@ public class TasksController : ControllerBase
     private readonly IEmulatorControlService _emulator;
     private readonly IFactoryClock _factoryClock;
     private readonly IPlanningDefaultsService _planningDefaults;
+    private readonly ITaskResultsService _taskResults;
 
     public TasksController(ControlDbContext context, IEmulatorControlService emulator, IFactoryClock factoryClock,
-                           IPlanningDefaultsService planningDefaults)
+                           IPlanningDefaultsService planningDefaults, ITaskResultsService taskResults)
     {
         _context = context;
         _emulator = emulator;
         _factoryClock = factoryClock;
         _planningDefaults = planningDefaults;
+        _taskResults = taskResults;
     }
 
     /// <summary>
@@ -196,6 +198,18 @@ public class TasksController : ControllerBase
 
         var schedule = await _factoryClock.GetScheduleAsync();
         return Ok(task.ToDto(schedule));
+    }
+
+    /// <summary>
+    /// Итоги выполнения задания по окну выпуска (вкладка «Результаты выполнения»): выпуск, средние
+    /// циклы против эталонов, время работы / простоев / без связи. Считается на лету.
+    /// </summary>
+    [HttpGet("{id:guid}/results")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
+    public async Task<ActionResult<TaskResultsDto>> GetTaskResults(Guid id)
+    {
+        var results = await _taskResults.GetAsync(id, HttpContext.RequestAborted);
+        return results == null ? NotFound() : Ok(results);
     }
 
     /// <summary>Наладчик существует, активен и имеет роль Adjuster (PZP-13).</summary>
