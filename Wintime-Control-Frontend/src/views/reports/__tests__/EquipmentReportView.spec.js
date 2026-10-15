@@ -18,7 +18,7 @@ const H = 3600
 const row = (id, name, isActive = true) => ({
   immId: id, immName: name, isActive,
   seconds: { Production: 12 * H, Setup: 0, Downtime: 0, Unplanned: 0, NoTask: 12 * H, Offline: 0, NoData: 0 },
-  totalCycles: 10, avgCycleSeconds: 30, efficiency: 50, days: []
+  totalCycles: 10, efficiency: 50, days: []
 })
 
 function mountView(options = {}) {
@@ -114,6 +114,8 @@ describe('EquipmentReportView', () => {
     await nextTick()
     expect(w.findAllComponents({ name: 'EquipmentImmRow' })).toHaveLength(0)
     expect(w.find('[data-test="summary-table"]').exists()).toBe(true)
+    // «Ср. цикл» убран: средний цикл по разным изделиям бессмыслен
+    expect(w.findAllComponents({ name: 'ElTableColumn' }).map(c => c.props('label'))).not.toContain('Ср. цикл (с)')
 
     await w.find('[data-test="load-report"]').trigger('click')
     await flushPromises()
