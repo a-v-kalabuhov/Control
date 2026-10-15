@@ -27,12 +27,13 @@ public class ImmController : ControllerBase
     private readonly ITemplateCache _templateCache;
     private readonly TelemetryDashboardSettings _telemetryDashboard;
     private readonly IEffectiveStatusHistoryService _effectiveStatusHistory;
+    private readonly IReleaseForecastService _releaseForecast;
     private readonly ILogger<ImmController> _logger;
 
     public ImmController(ControlDbContext context, IImmStatusCache statusCache, IImmCache immCache,
         IOptions<DowntimeSettings> downtime, ITemplateCache templateCache,
         IOptions<TelemetryDashboardSettings> telemetryDashboard,
-        IEffectiveStatusHistoryService effectiveStatusHistory, ILogger<ImmController> logger)
+        IEffectiveStatusHistoryService effectiveStatusHistory, IReleaseForecastService releaseForecast, ILogger<ImmController> logger)
     {
         _context = context;
         _statusCache = statusCache;
@@ -41,6 +42,7 @@ public class ImmController : ControllerBase
         _templateCache = templateCache;
         _telemetryDashboard = telemetryDashboard.Value;
         _effectiveStatusHistory = effectiveStatusHistory;
+        _releaseForecast = releaseForecast;
         _logger = logger;
     }
 
@@ -113,22 +115,15 @@ public class ImmController : ControllerBase
                     TaskId = g.Key,
                     Count = g.Count(),
                     // Открытые циклы (EndTime = null, DurationSeconds = 0) в среднее не входят
-                    ClosedCount = g.Count(c => c.EndTime != null),
                     AvgDuration = g.Where(c => c.EndTime != null)
-                        .Average(c => (double?)c.DurationSeconds) ?? 0,
-                    // null-паузы (наладка, простой, порог) AVG пропускает — ADR-0017
-                    AvgPauseMs = g.Where(c => c.EndTime != null)
-                        .Average(c => (double?)c.PauseDurationMs)
+                        .Average(c => (double?)c.DurationSeconds) ?? 0
                 })
                 .ToListAsync();
 
-            // Входы прогноза выпуска (BL-32): только задания в работе
-            var forecastInputs = await _context.ShiftTasks
-                .Where(t => currentTaskIds.Contains(t.Id) && t.Status == Core.Enums.TaskStatus.InProgress)
-                .Select(t => new { t.Id, t.PlannedFullCycleSeconds, t.Mold.Cavities })
-                .ToDictionaryAsync(t => t.Id);
-
             var now = DateTime.UtcNow;
+            // Прогноз выпуска (BL-32) — общий с план-графиком цеха (PZP-07a)
+            var forecasts = await _releaseForecast.CalculateAsync(currentTaskIds, now);
+
             foreach (var dto in imms.Where(d => d.CurrentTaskId.HasValue))
             {
                 var taskId = dto.CurrentTaskId!.Value;
@@ -139,12 +134,8 @@ public class ImmController : ControllerBase
                     dto.AvgCycleTime = (decimal)stats.AvgDuration;
                 }
 
-                if (forecastInputs.TryGetValue(taskId, out var input))
+                if (forecasts.TryGetValue(taskId, out var forecast))
                 {
-                    var forecast = ReleaseForecast.Calculate(now,
-                        dto.PlanQuantity ?? 0, dto.ActualQuantity ?? 0, input.Cavities,
-                        stats?.ClosedCount ?? 0, stats?.AvgDuration ?? 0, stats?.AvgPauseMs,
-                        input.PlannedFullCycleSeconds);
                     dto.ReleaseRatePerHour = forecast.RatePerHour;
                     dto.ReleaseForecastAt = forecast.ForecastAt;
                 }
