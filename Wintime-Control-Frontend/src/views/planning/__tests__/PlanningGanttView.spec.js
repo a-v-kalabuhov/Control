@@ -25,12 +25,19 @@ const mountView = () => mount(PlanningGanttView, {
   }
 })
 
+const boardWith = (name) => ({ data: {
+  from: '2026-10-12T00:00:00Z', to: '2026-10-19T00:00:00Z', now: '2026-10-15T10:00:00Z',
+  rows: [{ imm: { id: name, name, isActive: true }, tasks: [] }]
+} })
+
+
 describe('PlanningGanttView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
     vi.setSystemTime(new Date(2026, 9, 15, 10, 0))
     vi.clearAllMocks()
+    planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWith('ТПА-1')))
   })
   afterEach(() => vi.useRealTimers())
 
@@ -64,5 +71,41 @@ describe('PlanningGanttView', () => {
     await flushPromises()
 
     expect(planningApi.getBoard.mock.calls.length).toBe(calls + 1)
+  })
+
+  it('устаревший ответ не перезаписывает доску нового периода', async () => {
+    const pending = []
+    planningApi.getBoard.mockImplementation(() => new Promise(resolve => pending.push(resolve)))
+    const w = mountView()
+    await flushPromises()
+    pending.splice(0).forEach(r => r(boardWith('ТПА-БАЗА')))
+    await flushPromises()
+
+    await w.find('[data-test="next"]').trigger('click')
+    await w.find('[data-test="next"]').trigger('click')
+    await flushPromises()
+    expect(pending.length).toBeGreaterThanOrEqual(2)
+    const older = pending[0]
+    const newer = pending[pending.length - 1]
+
+    newer(boardWith('ТПА-НОВЫЙ'))
+    await flushPromises()
+    older(boardWith('ТПА-СТАРЫЙ'))
+    await flushPromises()
+
+    expect(w.text()).toContain('ТПА-НОВЫЙ')
+    expect(w.text()).not.toContain('ТПА-СТАРЫЙ')
+  })
+
+  it('размонтирование до окончания загрузки не оставляет таймер', async () => {
+    const w = mountView()
+    w.unmount()
+    await flushPromises()
+    const calls = planningApi.getBoard.mock.calls.length
+
+    vi.advanceTimersByTime(60_000)
+    await flushPromises()
+
+    expect(planningApi.getBoard.mock.calls.length).toBe(calls)
   })
 })

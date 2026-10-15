@@ -72,20 +72,25 @@ const period = computed(() => periodFor(scale.value, anchor.value, firstShiftSta
 const ticks = computed(() => gridTicks(scale.value, period.value.from, period.value.to, dashboardStore.shifts))
 const periodText = computed(() => periodLabel(scale.value, period.value.from, period.value.to))
 
+// Счётчик запросов: применяем только ответ последнего, устаревшие игнорируем
+let loadSeq = 0
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const { data } = await planningApi.getBoard({
       from: period.value.from.toISOString(),
       to: period.value.to.toISOString()
     })
+    if (seq !== loadSeq) return
     board.value = data
     now.value = new Date(data.now)
   } catch (error) {
+    if (seq !== loadSeq) return
     // Последняя загруженная доска остаётся на экране, таймер продолжает попытки
     ElMessage.error(apiErrorMessage(error, 'Не удалось загрузить план-график'))
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
@@ -98,9 +103,10 @@ watch(() => `${period.value.from.getTime()}|${period.value.to.getTime()}`, load)
 
 let timer = null
 onMounted(async () => {
+  // Таймер — до первого await, иначе ранний unmount оставит его без владельца
+  timer = setInterval(load, REFRESH_MS)
   if (dashboardStore.shifts.length === 0) await dashboardStore.loadShifts()
   await load()
-  timer = setInterval(load, REFRESH_MS)
 })
 onUnmounted(() => clearInterval(timer))
 
