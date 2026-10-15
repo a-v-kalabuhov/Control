@@ -62,6 +62,19 @@ public class ControlDbContext : IdentityDbContext<User>
                   .WithMany(pt => pt.Molds)
                   .HasForeignKey(e => e.ProductTypeId)
                   .OnDelete(DeleteBehavior.SetNull);
+
+            // Совместимые ТПА (PZP-16): many-to-many без класса связи, навигация только у Mold.
+            entity.HasMany(e => e.CompatibleImms)
+                  .WithMany()
+                  .UsingEntity<Dictionary<string, object>>(
+                      "MoldCompatibleImms",
+                      r => r.HasOne<Imm>().WithMany().HasForeignKey("ImmId").OnDelete(DeleteBehavior.Restrict),
+                      l => l.HasOne<Mold>().WithMany().HasForeignKey("MoldId").OnDelete(DeleteBehavior.Cascade),
+                      j =>
+                      {
+                          j.HasKey("MoldId", "ImmId");
+                          j.HasIndex("ImmId");
+                      });
         });
 
         // Конфигурация ProductType (PZP-09)

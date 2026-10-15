@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import TaskFormModal from '../TaskFormModal.vue'
@@ -41,6 +41,7 @@ vi.mock('@/api/settings', () => ({
   }
 }))
 
+import { immApi } from '@/api/imm'
 import { moldsApi } from '@/api/molds'
 import { tasksApi } from '@/api/tasks'
 import { ordersApi } from '@/api/orders'
@@ -605,5 +606,120 @@ describe('TaskFormModal — норматив наладки и буфер вып
     expect(tasksApi.update).toHaveBeenCalledWith('t1', expect.objectContaining({
       plannedSetupMinutes: 45, releaseBufferFixedMinutes: 40, releaseBufferPercent: 20
     }))
+  })
+})
+
+describe('TaskFormModal — совместимость ПФ↔ТПА (PZP-16)', () => {
+  const compatMolds = [
+    { id: 'mold-any', name: 'Любая', cavities: 1, isActive: true, productTypeId: 'pt-X', compatibleImms: [] },
+    { id: 'mold-1', name: 'Только ТПА-1', cavities: 1, isActive: true, productTypeId: 'pt-X',
+      compatibleImms: [{ id: 'imm-1', name: 'ТПА-1', isActive: true }] },
+    { id: 'mold-2', name: 'Только ТПА-2', cavities: 1, isActive: true, productTypeId: 'pt-Y',
+      compatibleImms: [{ id: 'imm-2', name: 'ТПА-2', isActive: true }] }
+  ]
+  const compatImms = [
+    { id: 'imm-1', name: 'ТПА-1', isActive: true },
+    { id: 'imm-2', name: 'ТПА-2', isActive: true }
+  ]
+
+  // Дефолтные реализации из vi.mock-фабрики — вернём их в afterEach, чтобы блок не влиял на соседей.
+  const defaultMoldsImpl = moldsApi.getList.getMockImplementation()
+  const defaultImmsImpl = immApi.getList.getMockImplementation()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    moldsApi.getList.mockResolvedValue({ data: compatMolds })
+    immApi.getList.mockResolvedValue({ data: compatImms })
+  })
+
+  afterEach(() => {
+    moldsApi.getList.mockReset().mockImplementation(defaultMoldsImpl)
+    immApi.getList.mockReset().mockImplementation(defaultImmsImpl)
+  })
+
+  async function mountLoaded(props = {}) {
+    const wrapper = mountModal(props)
+    await wrapper.vm.loadMolds()
+    await wrapper.vm.loadImms()
+    await flushPromises()
+    return wrapper
+  }
+
+  it('без выбранного ТПА список ПФ полный', async () => {
+    const wrapper = await mountLoaded()
+    expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-any', 'mold-1', 'mold-2'])
+  })
+
+  it('после выбора ТПА остаются совместимые ПФ и ПФ с пустым списком', async () => {
+    const wrapper = await mountLoaded()
+    wrapper.vm.form.immId = 'imm-1'
+    await flushPromises()
+    expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-any', 'mold-1'])
+  })
+
+  it('после выбора ПФ со списком ТПА ограничены этим списком', async () => {
+    const wrapper = await mountLoaded()
+    wrapper.vm.form.moldId = 'mold-2'
+    await flushPromises()
+    expect(wrapper.vm.availableImms.map(i => i.id)).toEqual(['imm-2'])
+  })
+
+  it('ПФ с пустым списком не ограничивает ТПА', async () => {
+    const wrapper = await mountLoaded()
+    wrapper.vm.form.moldId = 'mold-any'
+    await flushPromises()
+    expect(wrapper.vm.availableImms.map(i => i.id)).toEqual(['imm-1', 'imm-2'])
+  })
+
+  it('фильтр по ТПА сочетается с фильтром по типу изделия заказа', async () => {
+    const wrapper = await mountLoaded({ lockedOrder: { id: 'order-9', number: 'ORD-9', productTypeId: 'pt-X', productTypeArticle: 'ART-X' } })
+    wrapper.vm.form.immId = 'imm-2'
+    await flushPromises()
+    expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-any'])
+  })
+
+  it('пустой список ПФ при выбранном ТПА объясняет причину', async () => {
+    moldsApi.getList.mockResolvedValue({ data: [compatMolds[2]] })
+    const wrapper = await mountLoaded()
+    wrapper.vm.form.immId = 'imm-1'
+    await flushPromises()
+    expect(wrapper.vm.availableMolds).toEqual([])
+    expect(wrapper.vm.moldNoDataText).toBe('Нет пресс-форм, совместимых с этим ТПА')
+  })
+
+  it('с заказом и выбранным ТПА текст называет оба условия', async () => {
+    const wrapper = await mountLoaded({ lockedOrder: { id: 'order-9', number: 'ORD-9', productTypeId: 'pt-X', productTypeArticle: 'ART-X' } })
+    wrapper.vm.form.immId = 'imm-1'
+    await flushPromises()
+    expect(wrapper.vm.moldNoDataText).toBe('Нет пресс-форм этого типа изделия, совместимых с этим ТПА')
+  })
+
+  it('в режиме редактирования фильтр не применяется — ПФ задания остаётся в опциях', async () => {
+    const task = { id: 'task-1', immId: 'imm-2', moldId: 'mold-1', planQuantity: 10, status: 'Planned' }
+    const wrapper = await mountLoaded({ task })
+    expect(wrapper.vm.availableMolds.map(m => m.id)).toContain('mold-1')
+    expect(wrapper.vm.availableImms.map(i => i.id)).toContain('imm-2')
+  })
+
+  it('после очистки ПФ список ТПА снова полный (нет тупика)', async () => {
+    const wrapper = await mountLoaded()
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+    expect(wrapper.vm.availableImms.map(i => i.id)).toEqual(['imm-1'])
+    wrapper.vm.form.moldId = undefined
+    await flushPromises()
+    expect(wrapper.vm.availableImms.map(i => i.id)).toEqual(['imm-1', 'imm-2'])
+  })
+
+  it('селекты ТПА и ПФ очищаемы при создании и не очищаемы при редактировании', async () => {
+    const find = (w, ph) => w.findAllComponents({ name: 'ElSelect' }).find(c => c.props('placeholder') === ph)
+    const create = await mountLoaded()
+    expect(find(create, 'Выберите ТПА').props('clearable')).toBe(true)
+    expect(find(create, 'Выберите пресс-форму').props('clearable')).toBe(true)
+    const task = { id: 'task-1', immId: 'imm-2', moldId: 'mold-1', planQuantity: 10, status: 'Planned' }
+    const edit = await mountLoaded({ task })
+    expect(find(edit, 'Выберите ТПА').props('clearable')).toBe(false)
+    expect(find(edit, 'Выберите пресс-форму').props('clearable')).toBe(false)
   })
 })

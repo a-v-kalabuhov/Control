@@ -39,6 +39,12 @@
           <el-tag v-else type="warning" size="small">не задан</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="ТПА" width="180" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span v-if="row.compatibleImms?.length">{{ formatCompatibleImms(row.compatibleImms) }}</span>
+          <span v-else class="text-gray-400">любой</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="cavities" label="Гнёзд" width="80" align="center" />
       <el-table-column label="Вес (г)" width="120">
         <template #default="{ row }">
@@ -172,6 +178,25 @@
           </el-col>
         </el-row>
 
+        <el-form-item label="Совместимые ТПА">
+          <el-select
+            v-model="form.compatibleImmIds"
+            multiple
+            filterable
+            clearable
+            placeholder="Любой ТПА"
+            class="w-full"
+          >
+            <el-option
+              v-for="imm in selectableImms"
+              :key="imm.id"
+              :label="immOptionLabel(imm)"
+              :value="imm.id"
+            />
+          </el-select>
+          <div class="text-xs text-gray-500">Пусто — подходит к любому ТПА</div>
+        </el-form-item>
+
         <el-form-item label="Статус">
           <el-switch v-model="form.isActive" active-text="Активна" inactive-text="Не активна" />
         </el-form-item>
@@ -192,6 +217,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { moldsApi } from '@/api/molds'
 import { productTypesApi } from '@/api/productTypes'
+import { immApi } from '@/api/imm'
+import { immOptionLabel, formatCompatibleImms } from '@/utils/moldCompatibility'
 import QrCodeDialog from '@/components/common/QrCodeDialog.vue'
 import dayjs from 'dayjs'
 
@@ -203,6 +230,16 @@ const formRef = ref(null)
 
 const molds = ref([])
 const productTypes = ref([])
+const imms = ref([])
+
+// PZP-16: опции — активные ТПА плюс уже привязанные к редактируемой ПФ архивные.
+// Архивные не disabled: тег отключённой опции в Element Plus снять нельзя, а повторно
+// добавить ранее привязанный архивный ТПА сервер разрешает.
+const selectableImms = computed(() => {
+  const linkedArchived = (editingMold.value?.compatibleImms ?? [])
+    .filter(i => !i.isActive && !imms.value.some(a => a.id === i.id))
+  return [...imms.value, ...linkedArchived]
+})
 // Синтетическая опция для архивного типа изделия текущей редактируемой пресс-формы
 // (не входит в productTypes, т.к. там только активные типы) — не влияет на список создания.
 const editingArchivedType = ref(null)
@@ -245,6 +282,7 @@ const form = reactive({
   storageLocationIndex: '',
   isActive: true,
   productTypeId: null,
+  compatibleImmIds: [],
 })
 
 const validateFormId = async (rule, value, callback) => {
@@ -279,8 +317,17 @@ const loadProductTypes = async () => {
   }
 }
 
+const loadImms = async () => {
+  try {
+    const { data } = await immApi.getList({ isActive: true })
+    imms.value = data
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки ТПА')
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([loadMolds(), loadProductTypes()])
+  await Promise.all([loadMolds(), loadProductTypes(), loadImms()])
 })
 
 const loadMolds = async () => {
@@ -313,6 +360,7 @@ const showCreateModal = () => {
     storageLocationIndex: '',
     isActive: true,
     productTypeId: null,
+    compatibleImmIds: [],
   })
   dialogVisible.value = true
 }
@@ -334,6 +382,7 @@ const editMold = (mold) => {
     storageLocationIndex: mold.storageLocationIndex,
     isActive: mold.isActive,
     productTypeId: mold.productTypeId ?? null,
+    compatibleImmIds: (mold.compatibleImms ?? []).map(i => i.id),
   })
   dialogVisible.value = true
 }
