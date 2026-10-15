@@ -65,3 +65,14 @@ describe('ShiftTimeline — ряд «План» (BL-40)', () => {
     expect(w.findAll('.plan-block')).toHaveLength(0)
   })
 })
+
+describe('ShiftTimeline — клик по заданию', () => {
+  it('клик по бару задания (факт и план) сообщает выбранное задание', async () => {
+    const w = mountTimeline([inRelease, notStarted])
+
+    await w.find('.task-block').trigger('click')
+    await w.findAll('.plan-block')[1].trigger('click')
+
+    expect(w.emitted('task-click')).toEqual([[inRelease], [notStarted]])
+  })
+})

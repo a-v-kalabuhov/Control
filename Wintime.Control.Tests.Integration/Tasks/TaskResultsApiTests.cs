@@ -70,7 +70,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task Observer_Returns403()
+    public async Task Observer_CanReadResults()   // только чтение: итоги задания в карточке ТПА на дашборде
     {
         Guid taskId;
         using (var scope = _factory.Services.CreateScope())
@@ -86,7 +86,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
 
         var resp = await client.GetAsync($"/api/tasks/{taskId}/results");
 
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]

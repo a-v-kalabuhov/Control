@@ -205,7 +205,8 @@ public class TasksController : ControllerBase
     /// циклы против эталонов, время работы / простоев / без связи. Считается на лету.
     /// </summary>
     [HttpGet("{id:guid}/results")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
+    // Observer — только чтение: итоги задания из хронологии карточки ТПА на дашборде
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<TaskResultsDto>> GetTaskResults(Guid id)
     {
         var results = await _taskResults.GetAsync(id, HttpContext.RequestAborted);

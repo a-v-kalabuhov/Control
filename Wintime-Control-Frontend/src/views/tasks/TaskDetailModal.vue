@@ -4,6 +4,7 @@
     title="Детали задания"
     width="800px"
     :close-on-click-modal="false"
+    :append-to-body="appendToBody"
   >
     <div v-loading="loading">
       <el-tabs v-model="activeTab">
@@ -155,6 +156,16 @@ const props = defineProps({
   task: {
     type: Object,
     default: null
+  },
+  // Только просмотр (из хронологии карточки ТПА): без кнопок действий и поля причины закрытия
+  readonly: {
+    type: Boolean,
+    default: false
+  },
+  // Открыта поверх другого окна (карточки ТПА) — вложенный el-dialog должен рендериться в body
+  appendToBody: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -182,23 +193,23 @@ watch(() => props.modelValue, v => { if (!v) activeTab.value = 'data' })
 watch(() => props.task?.id, () => { activeTab.value = 'data' })
 
 const canEdit = computed(() => {
-  if (!props.task) return false
+  if (!props.task || props.readonly) return false
   // PZP-14: в «Наладке»/«В работе» форма открывается в режиме «только буфер»
   return ['Planned', 'Issued', 'Setup', 'InProgress'].includes(props.task.status) && authStore.isManager
 })
 
 const canIssue = computed(() => {
-  if (!props.task) return false
+  if (!props.task || props.readonly) return false
   return props.task.status === 'Planned' && authStore.isManager
 })
 
 const canComplete = computed(() => {
-  if (!props.task) return false
+  if (!props.task || props.readonly) return false
   return props.task.status === 'InProgress' && authStore.isAdjuster
 })
 
 const canClose = computed(() => {
-  if (!props.task) return false
+  if (!props.task || props.readonly) return false
   return ['Completed', 'InProgress'].includes(props.task.status) && authStore.isManager
 })
 
