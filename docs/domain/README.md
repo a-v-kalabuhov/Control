@@ -64,7 +64,7 @@
 - 🔲 `event.md` — Событие/Простой (`Event` + `DowntimeReason`): ручные и авто-простои
 - 🔲 `imm-status.md` — Статусы ТПА и эффективное состояние (сводит сырой режим + статус задания)
 - 🔲 `user-role.md` — Пользователи и роли (`UserRole`: Adjuster < Manager < Admin)
-- 🔲 `template.md` — Шаблон оборудования (`Template`, `SensorTemplate`)
+- ✅ [`template.md`](template.md) — Шаблон оборудования (`Template`, `SensorTemplate`): структура `JsonConfig`, обязательные поля датчика
 - 🔲 `shift.md` — Смена (`Shift`)
 
 ## Связанные артефакты

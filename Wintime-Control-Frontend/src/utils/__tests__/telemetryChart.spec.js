@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildStepSeries, resolveAxisKind, mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
+import { buildStepSeries, resolveAxisKind, mergeLivePoints, enforceMinOneSignal, signalLabel } from '@/utils/telemetryChart'
 
 const t = (iso) => new Date(iso).getTime()
 
@@ -155,5 +155,17 @@ describe('enforceMinOneSignal', () => {
   it('не-массив/undefined откатывается на прежний', () => {
     expect(enforceMinOneSignal(undefined, ['a'])).toEqual(['a'])
     expect(enforceMinOneSignal(null, ['a'])).toEqual(['a'])
+  })
+})
+
+describe('signalLabel', () => {
+  it('читаемое название из шаблона (name)', () => {
+    expect(signalLabel({ parameterName: 'MoldClosed', name: 'Смыкание формы' })).toBe('Смыкание формы')
+  })
+
+  it('без name или с пустым name — field (parameterName)', () => {
+    expect(signalLabel({ parameterName: 'MoldClosed', name: '' })).toBe('MoldClosed')
+    expect(signalLabel({ parameterName: 'MoldClosed', name: '   ' })).toBe('MoldClosed')
+    expect(signalLabel({ parameterName: 'MoldClosed' })).toBe('MoldClosed')
   })
 })
