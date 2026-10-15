@@ -120,6 +120,21 @@ public class PlanningBoardTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Planned_task_passing_date_prefilter_but_ending_before_window_is_not_on_board()
+    {
+        var immId = await _factory.CreateFreshImmAsync();
+        var moldId = await SeedMoldAsync();
+        var taskId = await SeedTaskAsync(immId, moldId, _ => { });
+        var wide = await GetBoardAsync(DateTime.UtcNow.AddDays(-2), DateTime.UtcNow.AddDays(3));
+        var plan = wide.Rows.Single(r => r.Imm.Id == immId).Tasks.Single(t => t.Task.Id == taskId).Plan;
+        var from = plan.BufferEnd!.Value.AddHours(1);
+
+        var board = await GetBoardAsync(from, from.AddDays(1));
+
+        board.Rows.Single(r => r.Imm.Id == immId).Tasks.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task InProgress_task_planned_before_window_is_on_board_by_activity_with_forecast()
     {
         var immId = await _factory.CreateFreshImmAsync();

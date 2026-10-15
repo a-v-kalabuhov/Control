@@ -85,6 +85,7 @@ async function load() {
     if (seq !== loadSeq) return
     board.value = data
     now.value = new Date(data.now)
+    refreshSelectedTask(data)
   } catch (error) {
     if (seq !== loadSeq) return
     // Последняя загруженная доска остаётся на экране, таймер продолжает попытки
@@ -118,6 +119,18 @@ const editingTask = ref(null)
 const issueVisible = ref(false)
 const issuingTask = ref(null)
 
+// Открытая карточка показывает свежие данные; если задание ушло с доски — прежний снимок
+function refreshSelectedTask(data) {
+  if (!selectedTask.value) return
+  for (const row of data.rows ?? []) {
+    const item = row.tasks?.find(t => t.task.id === selectedTask.value.id)
+    if (item) {
+      selectedTask.value = item.task
+      return
+    }
+  }
+}
+
 function openDetail(task) {
   selectedTask.value = task
   detailVisible.value = true
@@ -148,12 +161,10 @@ async function issueTask(task) {
 }
 
 async function closeTask(task, closeReason) {
-  try {
-    await tasksStore.closeTask(task.id, { closeReason })
-    detailVisible.value = false
-    await load()
-  } catch {
-    ElMessage.error('Ошибка закрытия задания')
-  }
+  // Стор не бросает: ошибку показывает сам и возвращает { success: false }
+  const result = await tasksStore.closeTask(task.id, { closeReason })
+  if (!result?.success) return
+  detailVisible.value = false
+  await load()
 }
 </script>

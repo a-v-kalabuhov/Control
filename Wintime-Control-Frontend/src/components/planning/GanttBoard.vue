@@ -80,7 +80,7 @@ const nowPct = computed(() => {
 }
 .gantt__track { position: relative; flex: 1; }
 .grid { position: absolute; top: 0; bottom: 0; border-left: 1px solid #ebeef5; }
-.now-line { position: absolute; top: 0; bottom: 0; border-left: 2px solid #f56c6c; z-index: 2; }
+.now-line { position: absolute; top: 0; bottom: 0; border-left: 2px solid #f56c6c; z-index: 2; pointer-events: none; }
 .pair-lane { position: absolute; left: 0; right: 0; height: 40px; pointer-events: none; }
 .pair-lane :deep(.pair) { pointer-events: auto; }
 </style>

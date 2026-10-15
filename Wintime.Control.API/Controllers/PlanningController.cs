@@ -118,12 +118,14 @@ public class PlanningController : ControllerBase
     }
 
     private IQueryable<ShiftTask> TasksQuery() => _context.ShiftTasks
+        .AsNoTracking()
         .Include(t => t.Imm)
         .Include(t => t.Mold).ThenInclude(m => m.ProductType)
         .Include(t => t.Personnel)
         .Include(t => t.Order);
 
-    // ISO с «Z» биндится как Local (уже переведённое в пояс сервера), без суффикса — Unspecified (= UTC).
+    // Биндер DateTime (AdjustToUniversal): ISO с «Z»/смещением даёт Kind=Utc, без суффикса — Unspecified (= UTC).
+    // Ветка Local — страховка.
     private static DateTime ToUtc(DateTime value) =>
         value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }

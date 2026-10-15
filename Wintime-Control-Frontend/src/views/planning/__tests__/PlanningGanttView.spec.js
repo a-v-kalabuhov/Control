@@ -4,6 +4,9 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import PlanningGanttView from '../PlanningGanttView.vue'
+import GanttBoard from '@/components/planning/GanttBoard.vue'
+import TaskDetailModal from '@/views/tasks/TaskDetailModal.vue'
+import { useTasksStore } from '@/stores/tasks'
 
 vi.mock('@/api/planning', () => ({
   planningApi: {
@@ -107,5 +110,77 @@ describe('PlanningGanttView', () => {
     await flushPromises()
 
     expect(planningApi.getBoard.mock.calls.length).toBe(calls)
+  })
+  describe('карточка задания', () => {
+    const boardWithTask = (task) => ({ data: {
+      from: '2026-10-12T00:00:00Z', to: '2026-10-19T00:00:00Z', now: '2026-10-15T10:00:00Z',
+      rows: [{ imm: { id: 'i1', name: 'ТПА-1', isActive: true }, tasks: [{ task }] }]
+    } })
+    const mountWithStubbedBoard = () => mount(PlanningGanttView, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: { GanttBoard: true, TaskDetailModal: true, TaskFormModal: true, IssueTaskDialog: true }
+      }
+    })
+    const openCard = async (w, task) => {
+      w.findComponent(GanttBoard).vm.$emit('select', task)
+      await flushPromises()
+    }
+
+    it('неудачное закрытие оставляет карточку открытой и не перезагружает доску', async () => {
+      planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWithTask({ id: 't1', planQuantity: 1 })))
+      const w = mountWithStubbedBoard()
+      await flushPromises()
+      vi.spyOn(useTasksStore(), 'closeTask').mockResolvedValue({ success: false, message: 'x' })
+      await openCard(w, { id: 't1' })
+      const calls = planningApi.getBoard.mock.calls.length
+
+      w.findComponent(TaskDetailModal).vm.$emit('close', { id: 't1' }, 'причина')
+      await flushPromises()
+
+      expect(w.findComponent(TaskDetailModal).props('modelValue')).toBe(true)
+      expect(planningApi.getBoard.mock.calls.length).toBe(calls)
+    })
+
+    it('успешное закрытие скрывает карточку и перезагружает доску', async () => {
+      planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWithTask({ id: 't1', planQuantity: 1 })))
+      const w = mountWithStubbedBoard()
+      await flushPromises()
+      vi.spyOn(useTasksStore(), 'closeTask').mockResolvedValue({ success: true })
+      await openCard(w, { id: 't1' })
+      const calls = planningApi.getBoard.mock.calls.length
+
+      w.findComponent(TaskDetailModal).vm.$emit('close', { id: 't1' }, 'причина')
+      await flushPromises()
+
+      expect(w.findComponent(TaskDetailModal).props('modelValue')).toBe(false)
+      expect(planningApi.getBoard.mock.calls.length).toBe(calls + 1)
+    })
+
+    it('открытая карточка обновляется свежими данными после перезагрузки доски', async () => {
+      planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWithTask({ id: 't1', planQuantity: 1 })))
+      const w = mountWithStubbedBoard()
+      await flushPromises()
+      await openCard(w, { id: 't1', planQuantity: 1 })
+
+      planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWithTask({ id: 't1', planQuantity: 2 })))
+      vi.advanceTimersByTime(60_000)
+      await flushPromises()
+
+      expect(w.findComponent(TaskDetailModal).props('task').planQuantity).toBe(2)
+    })
+
+    it('если задание пропало с доски, остаётся старый снимок', async () => {
+      planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWithTask({ id: 't1', planQuantity: 1 })))
+      const w = mountWithStubbedBoard()
+      await flushPromises()
+      await openCard(w, { id: 't1', planQuantity: 1 })
+
+      planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWith('ТПА-1')))
+      vi.advanceTimersByTime(60_000)
+      await flushPromises()
+
+      expect(w.findComponent(TaskDetailModal).props('task').planQuantity).toBe(1)
+    })
   })
 })
