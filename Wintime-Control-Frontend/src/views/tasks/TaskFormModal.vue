@@ -20,6 +20,7 @@
           class="w-full"
           @focus="loadImms"
           :disabled="editingTask"
+          :clearable="!editingTask"
         >
           <el-option
             v-for="imm in availableImms"
@@ -38,6 +39,7 @@
           class="w-full"
           @focus="loadMolds"
           :disabled="editingTask"
+          :clearable="!editingTask"
           :no-data-text="moldNoDataText"
           filterable
         >

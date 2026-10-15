@@ -39,7 +39,7 @@
           <el-tag v-else type="warning" size="small">не задан</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="ТПА" width="180">
+      <el-table-column label="ТПА" width="180" show-overflow-tooltip>
         <template #default="{ row }">
           <span v-if="row.compatibleImms?.length">{{ formatCompatibleImms(row.compatibleImms) }}</span>
           <span v-else class="text-gray-400">любой</span>

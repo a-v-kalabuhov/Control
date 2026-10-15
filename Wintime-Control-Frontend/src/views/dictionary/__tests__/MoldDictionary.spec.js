@@ -40,7 +40,7 @@ const moldRow = {
 }
 
 function mountView() {
-  return mount(MoldDictionary, { global: { plugins: [ElementPlus] } })
+  return mount(MoldDictionary, { global: { plugins: [ElementPlus], stubs: { Plus: true } } })
 }
 
 describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
