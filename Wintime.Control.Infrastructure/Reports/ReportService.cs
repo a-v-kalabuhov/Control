@@ -68,9 +68,16 @@ public class ReportService : IReportService
 
         var imms = await immQuery.ToListAsync(ct);
 
+        // Эффективное состояние — те же ряды, что у карточки ТПА и «Производительности» (ADR-0006/0019).
+        // Открытые интервалы тянутся только до «сейчас», не до конца окна графика.
+        var now = DateTime.UtcNow;
+        var timelineEnd = period.TimelineEnd < now ? period.TimelineEnd : now;
+        var inputs = await _effectiveStatusHistory.GatherAsync(
+            imms.Select(i => i.Id).ToList(), period.TimelineStart, period.TimelineEnd, timelineEnd, ct);
+
         foreach (var imm in imms)
         {
-            var item = await GenerateDailyImmItemAsync(imm, period, ct);
+            var item = await GenerateDailyImmItemAsync(imm, period, inputs[imm.Id], now, timelineEnd, ct);
             if (item != null)
                 report.ImmData.Add(item);
         }
@@ -81,18 +88,11 @@ public class ReportService : IReportService
     /// <summary>
     /// Генерация данных по одному ТПА за период
     /// </summary>
-    private async Task<DailyReportImmItemDto?> GenerateDailyImmItemAsync(Imm imm, DailyReportPeriod period, CancellationToken ct)
+    private async Task<DailyReportImmItemDto?> GenerateDailyImmItemAsync(Imm imm, DailyReportPeriod period,
+        EffectiveStatusInputs inputs, DateTime now, DateTime timelineEnd, CancellationToken ct)
     {
         var periodStart = period.PeriodStart;
         var periodEnd = period.PeriodEnd;
-
-        // История статусов ТПА за окно графика (оно шире периода агрегатов на поля смены)
-        var statusHistory = await _context.ImmStatusHistory
-            .Where(h => h.ImmId == imm.Id
-                && h.ChangedAt < period.TimelineEnd
-                && (h.EndedAt == null || h.EndedAt > period.TimelineStart))
-            .OrderBy(h => h.ChangedAt)
-            .ToListAsync(ct);
 
         // Успешные циклы за период
         var cycles = await _context.ImmCycles
@@ -122,46 +122,19 @@ public class ReportService : IReportService
             .Include(e => e.Reason)
             .ToListAsync(ct);
 
-        // Расчёт времени по пяти состояниям и построение Timeline
-        var workTimeSeconds = 0;
-        var setupSeconds = 0;
-        var downtimeSeconds = 0;
-        var offlineSeconds = 0;
-        var timeline = new List<TimelineItemDto>();
+        // Хронология эффективного состояния за окно графика; дыры в сырой истории — «Нет данных»,
+        // как в «Производительности оборудования».
+        var segments = EffectiveStatusTimeline.Build(
+            inputs.Raw, inputs.Tasks, inputs.Downtimes, period.TimelineStart, timelineEnd, gapAsNoData: true);
+        var timeline = segments
+            .Select(s => new TimelineItemDto { Start = s.Start, End = s.End, Type = s.EffectiveStatus })
+            .ToList();
 
-        // Незакрытый (текущий) статус тянется только до «сейчас», а не до конца окна —
-        // иначе для сегодняшнего дня активный статус закрашивал бы будущее до конца суток.
-        var now = DateTime.UtcNow;
-        var timelineEnd = period.TimelineEnd < now ? period.TimelineEnd : now;
+        // Часы — по периоду (смена/сутки) до «сейчас»; та же раскладка, что в «Производительности».
         var aggregateEnd = periodEnd < now ? periodEnd : now;
-
-        foreach (var entry in statusHistory)
-        {
-            var entryEnd = entry.EndedAt ?? DateTime.MaxValue;
-            var type = MapStatusToType(entry.Status);
-
-            // Сегмент графика — в окне графика (смена ±30 мин)
-            var tlStart = entry.ChangedAt < period.TimelineStart ? period.TimelineStart : entry.ChangedAt;
-            var tlEnd   = entryEnd > timelineEnd ? timelineEnd : entryEnd;
-            if (tlEnd > tlStart)
-                timeline.Add(new TimelineItemDto { Start = tlStart, End = tlEnd, Type = type });
-
-            // Агрегаты — только в пределах периода (смены/суток)
-            var start = entry.ChangedAt < periodStart ? periodStart : entry.ChangedAt;
-            var end   = entryEnd > aggregateEnd ? aggregateEnd : entryEnd;
-            if (end <= start) continue;
-
-            var duration = (int)(end - start).TotalSeconds;
-
-            switch (type)
-            {
-                case "work":    workTimeSeconds += duration; break;
-                case "setup":   setupSeconds    += duration; break;
-                case "alarm":
-                case "idle":    downtimeSeconds += duration; break;
-                case "offline": offlineSeconds  += duration; break;
-            }
-        }
+        var seconds = aggregateEnd > periodStart
+            ? DailyStatusBreakdown.Split(segments, new[] { new FactoryDay(periodStart, periodStart, aggregateEnd) })[0]
+            : DailyStatusBreakdown.Empty();
 
         // Средний цикл не считаем — он смотрится по заданию (вкладка «Результаты выполнения»).
         var totalCycles = cycles.Count;
@@ -204,12 +177,6 @@ public class ReportService : IReportService
             TaskActivityWindow.Release(t, now), t.PlanQuantity, t.Mold?.Cavities ?? 0,
             t.PlannedFullCycleSeconds, periodStart, aggregateEnd));
 
-        // Эффективность: полезная работа / (работа + наладка + простои)
-        var productiveBase = workTimeSeconds + setupSeconds + downtimeSeconds;
-        var efficiency = productiveBase > 0
-            ? (decimal)workTimeSeconds / productiveBase * 100
-            : 0;
-
         return new DailyReportImmItemDto
         {
             ImmId = imm.Id,
@@ -218,11 +185,8 @@ public class ReportService : IReportService
             PlanQuantity = planQuantity,
             ActualQuantity = actualQuantity,
             CycleCount = totalCycles,
-            WorkTimeSeconds = workTimeSeconds,
-            SetupSeconds = setupSeconds,
-            DowntimeSeconds = downtimeSeconds,
-            OfflineSeconds = offlineSeconds,
-            Efficiency = efficiency,
+            Seconds = seconds,
+            Efficiency = DailyStatusBreakdown.Efficiency(seconds),
             RawMaterialKg = rawMaterialKg,
             DowntimeDetails = downtimeDetails,
             Timeline = timeline
@@ -269,15 +233,6 @@ public class ReportService : IReportService
                 ? Math.Max(0, (int)(r.StartedAt!.Value - r.SetupStartedAt.Value).TotalSeconds)
                 : null)).ToList();
     }
-
-    private static string MapStatusToType(string status) => ImmMode.Normalize(status) switch
-    {
-        ImmMode.Auto   => "work",
-        ImmMode.Manual => "setup",
-        ImmMode.Alarm  => "alarm",
-        ImmMode.Idle   => "idle",
-        _              => "offline"
-    };
 
     /// <summary>
     /// Отчёт "Производительность оборудования": по каждому ТПА — секунды эффективного состояния
@@ -702,14 +657,19 @@ public class ReportService : IReportService
             row += 2;
 
             // Заголовки таблицы
-            var headers = new[] { "ТПА", "Пресс-форма", "План", "Факт", "Циклы", "Работа (ч)", "Наладка (ч)", "Простой (ч)", "Эффективность %", "Сырьё (кг)" };
-            for (int i = 0; i < headers.Length; i++)
+            // Колонки часов — эффективные состояния без «Нет данных», как в «Производительности».
+            var hourKeys = DailyStatusBreakdown.Keys.Where(k => k != EffectiveStatus.NoData).ToArray();
+            var headers = new List<string> { "ТПА", "Пресс-форма", "План", "Факт", "Циклы" };
+            headers.AddRange(hourKeys.Select(k => $"{DailyStatusBreakdown.Labels[k]} (ч)"));
+            headers.AddRange(["Эффективность %", "Сырьё (кг)"]);
+            for (int i = 0; i < headers.Count; i++)
             {
                 worksheet.Cell(row, i + 1).Value = headers[i];
                 worksheet.Cell(row, i + 1).Style.Font.Bold = true;
             }
             row++;
 
+            var effCol = 6 + hourKeys.Length;
             foreach (var item in dailyReport.ImmData)
             {
                 worksheet.Cell(row, 1).Value = item.ImmName;
@@ -717,11 +677,13 @@ public class ReportService : IReportService
                 worksheet.Cell(row, 3).Value = item.PlanQuantity;
                 worksheet.Cell(row, 4).Value = item.ActualQuantity;
                 worksheet.Cell(row, 5).Value = item.CycleCount;
-                worksheet.Cell(row, 6).Value = Math.Round(item.WorkTimeSeconds / 3600m, 2);
-                worksheet.Cell(row, 7).Value = Math.Round(item.SetupSeconds / 3600m, 2);
-                worksheet.Cell(row, 8).Value = Math.Round(item.DowntimeSeconds / 3600m, 2);
-                worksheet.Cell(row, 9).Value = Math.Round(item.Efficiency, 2);
-                worksheet.Cell(row, 10).Value = Math.Round(item.RawMaterialKg, 2);
+                for (var k = 0; k < hourKeys.Length; k++)
+                    worksheet.Cell(row, 6 + k).Value = Math.Round(item.Seconds.GetValueOrDefault(hourKeys[k]) / 3600m, 2);
+                if (item.Efficiency.HasValue)
+                    worksheet.Cell(row, effCol).Value = Math.Round(item.Efficiency.Value, 2);
+                else
+                    worksheet.Cell(row, effCol).Value = "—";
+                worksheet.Cell(row, effCol + 1).Value = Math.Round(item.RawMaterialKg, 2);
                 row++;
             }
         }
