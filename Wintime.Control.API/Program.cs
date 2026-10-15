@@ -173,6 +173,7 @@ builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<IFactoryClock, FactoryClock>();
 builder.Services.AddScoped<IPlanningDefaultsService, PlanningDefaultsService>();
 builder.Services.AddScoped<IEffectiveStatusHistoryService, EffectiveStatusHistoryService>();
+builder.Services.AddScoped<IReleaseForecastService, ReleaseForecastService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IPdfReportService, PdfReportService>();

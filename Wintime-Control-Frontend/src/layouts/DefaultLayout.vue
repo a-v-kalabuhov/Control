@@ -44,6 +44,7 @@
             </template>
             <el-menu-item index="/orders">Заказы</el-menu-item>
             <el-menu-item index="/tasks">Задания</el-menu-item>
+            <el-menu-item index="/planning/gantt">План-график цеха</el-menu-item>
           </el-sub-menu>
 
           <!-- Журналы: простои и работа без задания (для Manager, Admin) -->
