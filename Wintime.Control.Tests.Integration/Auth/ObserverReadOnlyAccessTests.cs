@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Wintime.Control.Core.DTOs.Personnel;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -33,6 +34,31 @@ public class ObserverReadOnlyAccessTests : IClassFixture<IntegrationTestFactory>
         var response = await client.GetAsync(url);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>Фильтру «Наладчик» нужны только id и ФИО — логины Observer не видит.</summary>
+    [Fact]
+    public async Task Observer_gets_personnel_without_logins()
+    {
+        var client = await ObserverClientAsync();
+
+        var list = await client.GetFromJsonAsync<List<PersonnelDto>>("/api/personnel");
+
+        list.Should().NotBeEmpty();
+        list!.Should().OnlyContain(p => p.Login == null);
+        list.Should().OnlyContain(p => !string.IsNullOrEmpty(p.FullName));
+    }
+
+    [Fact]
+    public async Task Manager_gets_personnel_with_logins()
+    {
+        var client = _factory.CreateClient();
+        var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
+        AuthHelper.SetBearerToken(client, token!);
+
+        var list = await client.GetFromJsonAsync<List<PersonnelDto>>("/api/personnel");
+
+        list!.Should().Contain(p => p.Login == "test_observer");
     }
 
     [Theory]
