@@ -234,6 +234,14 @@ public class TasksController : ControllerBase
         if (mold.ProductTypeId == null)
             return BadRequest("У пресс-формы не задан тип изделия.");
 
+        // PZP-16: ТПА должен входить в список совместимых ПФ (пустой список — любой ТПА).
+        var compatibleImmIds = await _context.Molds
+            .Where(m => m.Id == request.MoldId)
+            .SelectMany(m => m.CompatibleImms.Select(i => i.Id))
+            .ToListAsync();
+        if (!Wintime.Control.Core.Policies.MoldImmCompatibility.IsCompatible(compatibleImmIds, request.ImmId))
+            return BadRequest("Пресс-форма не совместима с выбранным ТПА.");
+
         var task = new Core.Entities.ShiftTask
         {
             ImmId = request.ImmId,
