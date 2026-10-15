@@ -131,6 +131,9 @@ ADR-0011). Control не детектирует границы — `CycleProcessi
 Палитра/подписи на фронте — `src/constants/effectiveStatus.js`.
 Дизайн: `docs/superpowers/specs/2026-06-24-effective-status-dashboard-design.md`.
 
+Все отчёты по ТПА («Картина рабочего дня», «Производительность оборудования») и карточка ТПА показывают
+**эффективное состояние** (одна палитра `effectiveStatus.js`); сырой режим — только `ImmStatusHistory`/телеметрия.
+
 ## Правила кода
 
 ### DateTime → PostgreSQL (Npgsql)
