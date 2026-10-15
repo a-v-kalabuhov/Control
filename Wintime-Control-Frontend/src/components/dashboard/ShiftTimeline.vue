@@ -104,8 +104,10 @@ const props = defineProps({
 const TASK_COLORS = ['#3b82f6', '#7c3aed', '#0891b2', '#059669', '#d97706']
 
 // Дорожки (BL-40): высота дорожки фиксирована, ряд растёт с числом дорожек.
-const TASK_LANE_H = 44
-const PLAN_LANE_H = 34
+// Высоты дорожек — высота бара (border-box, рамка 1px внутри); ряд добавляет ещё 2px рамки.
+const TASK_LANE_H = 42
+const PLAN_LANE_H = 32
+const ROW_BORDER = 2 // рамка ряда сверху и снизу
 const LANE_GAP = 4
 const TASK_PAD = 7
 const PLAN_PAD = 4
@@ -139,7 +141,7 @@ function withLanes(bars) {
 
 function rowHeight(bars, laneH, pad) {
   const n = bars.reduce((max, b) => Math.max(max, b.lane + 1), 1)
-  return pad * 2 + n * laneH + (n - 1) * LANE_GAP
+  return ROW_BORDER + pad * 2 + n * laneH + (n - 1) * LANE_GAP
 }
 
 // Бары заданий: только задания с окном активности, пересекающим смену.
@@ -344,6 +346,7 @@ function taskTitle(task) {
   border-radius: 6px;
   border: 1px dashed #e5e7eb;
   position: relative;
+  overflow: hidden;
 }
 
 .plan-block {

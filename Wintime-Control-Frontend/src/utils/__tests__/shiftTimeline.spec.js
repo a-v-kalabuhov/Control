@@ -130,6 +130,9 @@ describe('setupActualMs', () => {
   it('нет startedAt — null', () => {
     expect(setupActualMs({ setupStartedAt: at(1) })).toBeNull()
   })
+  it('startedAt раньше setupStartedAt — 0', () => {
+    expect(setupActualMs({ setupStartedAt: at(2), startedAt: at(1) })).toBe(0)
+  })
 })
 
 describe('planMarks', () => {

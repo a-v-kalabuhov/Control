@@ -171,6 +171,8 @@ const summary = computed(() => {
 })
 
 // --- Загрузка данных ---
+const items = (res) => res.data?.items ?? res.data ?? []
+
 const loadData = async () => {
   if (!props.immId) return
   loading.value = true
@@ -182,16 +184,20 @@ const loadData = async () => {
   // BL-40: кроме активных в смене — запланированные около смены (для ряда «План»),
   // включая ещё не начатые. Точный отбор по plannedStartAt — в ShiftTimeline.
   const { plannedFrom, plannedTo } = plannedRangeForShift(shift.value.start, shift.value.end)
-  const items = (res) => res.data?.items ?? res.data ?? []
 
   try {
-    const [historyRes, activeRes, plannedRes] = await Promise.all([
+    // Запросы заданий не фатальны: у Observer нет доступа к /api/tasks (403), а строка статусов
+    // должна показываться всё равно — упавший запрос даёт пустой список, без тоста.
+    const [historyRes, taskRes] = await Promise.all([
       dashboardApi.getImmEffectiveStatusHistory(props.immId, { from: fromIso, to: toIso }),
-      tasksApi.getList({ immId: props.immId, activeFrom: fromIso, activeTo: toIso }),
-      tasksApi.getList({ immId: props.immId, plannedFrom, plannedTo }),
+      Promise.allSettled([
+        tasksApi.getList({ immId: props.immId, activeFrom: fromIso, activeTo: toIso }),
+        tasksApi.getList({ immId: props.immId, plannedFrom, plannedTo }),
+      ]),
     ])
+    const [active, planned] = taskRes.map(r => (r.status === 'fulfilled' ? items(r.value) : []))
     statusSegments.value = historyRes.data
-    tasks.value          = mergeTimelineTasks(items(activeRes), items(plannedRes))
+    tasks.value          = mergeTimelineTasks(active, planned)
   } catch (error) {
     ElMessage.error('Ошибка загрузки данных смены')
     console.error(error)

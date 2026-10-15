@@ -89,7 +89,7 @@ export function setupDeviation(task) {
 // Фактическая длительность наладки; null — наладка не завершена.
 export function setupActualMs(task) {
   if (!task?.setupStartedAt || !task?.startedAt) return null
-  return new Date(task.startedAt).getTime() - new Date(task.setupStartedAt).getTime()
+  return Math.max(0, new Date(task.startedAt).getTime() - new Date(task.setupStartedAt).getTime())
 }
 
 const DEVIATION_TONE = { late: 'late', early: 'muted', onTime: 'normal' }
