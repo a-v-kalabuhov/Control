@@ -228,18 +228,14 @@ public class TasksController : ControllerBase
         if (request.PlannedDate is null)
             return BadRequest("Укажите плановую дату");
 
-        var mold = await _context.Molds.FindAsync(request.MoldId);
+        var mold = await _context.Molds.Include(m => m.CompatibleImms).FirstOrDefaultAsync(m => m.Id == request.MoldId);
         if (mold == null || !mold.IsActive)
             return BadRequest("Указана неактивная или несуществующая пресс-форма.");
         if (mold.ProductTypeId == null)
             return BadRequest("У пресс-формы не задан тип изделия.");
 
         // PZP-16: ТПА должен входить в список совместимых ПФ (пустой список — любой ТПА).
-        var compatibleImmIds = await _context.Molds
-            .Where(m => m.Id == request.MoldId)
-            .SelectMany(m => m.CompatibleImms.Select(i => i.Id))
-            .ToListAsync();
-        if (!Wintime.Control.Core.Policies.MoldImmCompatibility.IsCompatible(compatibleImmIds, request.ImmId))
+        if (!MoldImmCompatibility.IsCompatible(mold.CompatibleImms.Select(i => i.Id).ToList(), request.ImmId))
             return BadRequest("Пресс-форма не совместима с выбранным ТПА.");
 
         var task = new Core.Entities.ShiftTask
