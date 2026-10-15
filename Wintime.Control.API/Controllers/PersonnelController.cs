@@ -25,7 +25,7 @@ public class PersonnelController : ControllerBase
     /// Список персонала
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<PersonnelDto>>> GetPersonnelList(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? role = null)

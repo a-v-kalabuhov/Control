@@ -25,7 +25,7 @@ public class MoldsController : ControllerBase
     /// Список всех пресс-форм
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<MoldDto>>> GetMoldList(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
@@ -61,7 +61,7 @@ public class MoldsController : ControllerBase
     /// Получить данные пресс-формы по ID
     /// </summary>
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<MoldDto>> GetMoldById(Guid id)
     {
         var mold = await _context.Molds.Include(m => m.ProductType).Include(m => m.CompatibleImms).FirstOrDefaultAsync(m => m.Id == id);

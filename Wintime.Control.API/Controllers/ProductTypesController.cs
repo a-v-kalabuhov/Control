@@ -24,7 +24,7 @@ public class ProductTypesController : ControllerBase
 
     /// <summary>Список типов изделий (фильтры: активность, поиск по артикулу/наименованию).</summary>
     [HttpGet]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<ProductTypeDto>>> GetList(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
@@ -41,7 +41,7 @@ public class ProductTypesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<ProductTypeDto>> GetById(Guid id)
     {
         var pt = await _context.ProductTypes.FindAsync(id);
