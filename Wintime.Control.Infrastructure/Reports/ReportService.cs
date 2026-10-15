@@ -163,11 +163,8 @@ public class ReportService : IReportService
             }
         }
 
-        // Подсчёт циклов и среднего времени цикла
+        // Средний цикл не считаем — он смотрится по заданию (вкладка «Результаты выполнения»).
         var totalCycles = cycles.Count;
-        var avgCycleTime = cycles.Count > 0
-            ? (decimal)cycles.Average(c => c.DurationSeconds)
-            : 0m;
 
         // Выработка — по снапшоту гнёздности каждого цикла (ImmCycle.Cavities), не по текущему Mold.Cavities.
         var actualQuantity = cycles.Sum(c => c.Cavities);
@@ -225,7 +222,6 @@ public class ReportService : IReportService
             SetupSeconds = setupSeconds,
             DowntimeSeconds = downtimeSeconds,
             OfflineSeconds = offlineSeconds,
-            AvgCycleTime = avgCycleTime,
             Efficiency = efficiency,
             RawMaterialKg = rawMaterialKg,
             DowntimeDetails = downtimeDetails,
