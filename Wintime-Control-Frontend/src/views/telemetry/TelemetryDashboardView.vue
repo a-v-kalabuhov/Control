@@ -30,6 +30,10 @@
         </div>
 
         <template v-if="mode === 'history'">
+          <el-button
+            size="small" data-test="shift-back" :disabled="!canShiftBack"
+            title="Сдвинуть период назад на треть" @click="shift(-1)"
+          >◀</el-button>
           <el-date-picker
             v-model="historyFrom" type="datetime" size="small"
             placeholder="Начало" format="YYYY-MM-DD HH:mm:ss" value-format="YYYY-MM-DDTHH:mm:ss"
@@ -38,6 +42,10 @@
             v-model="historyTo" type="datetime" size="small"
             placeholder="Конец" format="YYYY-MM-DD HH:mm:ss" value-format="YYYY-MM-DDTHH:mm:ss"
           />
+          <el-button
+            size="small" data-test="shift-forward" :disabled="!canShiftForward"
+            title="Сдвинуть период вперёд на треть" @click="shift(1)"
+          >▶</el-button>
           <el-button size="small" type="primary" @click="loadHistory">Показать</el-button>
         </template>
 
@@ -99,9 +107,11 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import dayjs from 'dayjs'
 import SignalChart from '@/components/telemetry/SignalChart.vue'
 import { telemetryApi } from '@/api/telemetry'
 import { immApi } from '@/api/imm'
+import { shiftWindow } from '@/utils/telemetryWindow'
 import { mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
 import { monitoringQueryWithImm, showBackToCard, isImmId } from '@/utils/monitoringNav'
 import { useAuthStore } from '@/stores/auth'
@@ -162,6 +172,7 @@ const windowStartMs = ref(Date.now() - 15 * 60000)
 const windowEndMs = ref(Date.now())
 
 let pollTimer = null
+let requestSeq = 0 // номер последнего запроса окна: применяется только ответ на последний
 let lastNonEmptySelection = [] // последний непустой выбор сигналов — для отката при попытке снять последний
 
 const orderedSignals = computed(() => {
@@ -182,6 +193,7 @@ function clearData() {
 
 async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null } = {}) {
   const reqImmId = immId.value
+  const seq = ++requestSeq
   if (!reqImmId || selected.value.length === 0) {
     clearData()
     return
@@ -193,7 +205,8 @@ async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null }
       parameters: selected.value,
       pointsFrom: pointsFromMs ? toIsoUtc(pointsFromMs) : undefined,
     })
-    if (reqImmId !== immId.value) return // ответ для прежнего ТПА — пользователь уже сменил выбор
+    // ответ устарел: пришёл позже более нового запроса или для прежнего ТПА
+    if (seq !== requestSeq || reqImmId !== immId.value) return
     truncated.value = data.truncated
     cycles.value = data.cycles
     segments.value = data.statusSegments
@@ -211,7 +224,7 @@ async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null }
       signalsData.value = data.signals
     }
   } catch (e) {
-    if (reqImmId !== immId.value) return
+    if (seq !== requestSeq || reqImmId !== immId.value) return
     truncated.value = false
     const status = e?.response?.status
     if (status === 400) ElMessage.warning(e.response.data ?? 'Некорректный период')
@@ -238,6 +251,26 @@ async function loadHistory() {
   windowStartMs.value = fromMs
   windowEndMs.value = toMs
   await fetchWindow(fromMs, toMs)
+}
+
+// ── Сдвиг окна истории ◀ / ▶ (треть окна, вправо — не дальше «сейчас») ──
+const PICKER_FORMAT = 'YYYY-MM-DDTHH:mm:ss' // = value-format полей периода
+
+function shiftedWindow(direction) {
+  if (!immId.value || !historyFrom.value || !historyTo.value) return null
+  return shiftWindow(
+    new Date(historyFrom.value).getTime(), new Date(historyTo.value).getTime(), direction, Date.now())
+}
+
+const canShiftBack = computed(() => shiftedWindow(-1) !== null)
+const canShiftForward = computed(() => shiftedWindow(1) !== null)
+
+function shift(direction) {
+  const next = shiftedWindow(direction)
+  if (!next) return
+  historyFrom.value = dayjs(next.fromMs).format(PICKER_FORMAT)
+  historyTo.value = dayjs(next.toMs).format(PICKER_FORMAT)
+  loadHistory()
 }
 
 // ── Live ──
