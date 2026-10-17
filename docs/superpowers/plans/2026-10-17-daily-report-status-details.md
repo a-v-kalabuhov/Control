@@ -745,3 +745,273 @@ const onTabChange = (name) => {
 git add Wintime-Control-Frontend/src/views/reports/DailyReportView.vue Wintime-Control-Frontend/src/views/reports/__tests__/DailyReportView.spec.js docs/user-guide/manager.md VERSION
 git commit -m "feat(reports-ui): daily report tabs — zoomable chart and status table (0.16.0)"
 ```
+
+---
+
+## Дополнение: клик по диаграмме → эпизод в таблице (Tasks 6–8)
+
+Spec: раздел «Дополнение: клик по диаграмме → эпизод в таблице». Версия не меняется (0.16.0).
+
+### Task 6: `findEpisodeIndex` и клик по сегменту в `GanttChart`
+
+**Files:**
+- Modify: `Wintime-Control-Frontend/src/utils/statusRows.js`, test `src/utils/__tests__/statusRows.spec.js`
+- Modify: `Wintime-Control-Frontend/src/components/reports/GanttChart.vue`, test `src/components/reports/__tests__/GanttChart.spec.js`
+
+**Interfaces:**
+- Produces: `findEpisodeIndex(rows, start: number(ms), end: number(ms)) → number` — индекс первой строки, пересекающей `[start, end)`, иначе `-1`.
+- Produces: событие `GanttChart` `segment-click` с payload `{ immId, start: number(ms), end: number(ms) }` (границы сегмента диаграммы, не обрезанные по периоду).
+
+- [ ] **Step 1: failing tests.** В `statusRows.spec.js` добавить импорт `findEpisodeIndex` и блок:
+
+```js
+describe('findEpisodeIndex', () => {
+  const rows = [
+    { type: 'NoTask', start: t('08:00'), end: t('08:10') },
+    { type: 'Production', start: t('08:10'), end: t('16:00') }
+  ]
+  it('строка, пересекающая сегмент', () => {
+    expect(findEpisodeIndex(rows, t('09:00'), t('09:30'))).toBe(1)
+  })
+  it('сегмент из поля до начала периода — первая строка периода', () => {
+    expect(findEpisodeIndex(rows, t('07:40'), t('08:05'))).toBe(0)
+  })
+  it('граница [start, end): сегмент, начинающийся в конце строки, относится к следующей', () => {
+    expect(findEpisodeIndex(rows, t('08:10'), t('08:20'))).toBe(1)
+  })
+  it('сегмент целиком вне периода → -1', () => {
+    expect(findEpisodeIndex(rows, t('07:30'), t('08:00'))).toBe(-1)
+    expect(findEpisodeIndex(rows, t('16:00'), t('16:30'))).toBe(-1)
+    expect(findEpisodeIndex([], t('09:00'), t('10:00'))).toBe(-1)
+  })
+})
+```
+
+В `GanttChart.spec.js`: в `chartMock` добавить `on: vi.fn()`; в `data` первому ТПА добавить `immId: 'imm-1'`; добавить блок:
+
+```js
+describe('GanttChart — клик по сегменту', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('клик по сегменту → segment-click с ТПА и границами сегмента', () => {
+    const w = mount(GanttChart, { props: { data, shifts: [], date: '2026-10-01' } })
+    const onClick = chartMock.on.mock.calls.find(c => c[0] === 'click')[1]
+    const s = Date.parse('2026-10-01T05:00:00Z'), e = Date.parse('2026-10-01T06:00:00Z')
+
+    onClick({ seriesType: 'custom', value: ['ТПА-1', s, e, 'Production', 'imm-1'] })
+
+    expect(w.emitted('segment-click')).toEqual([[{ immId: 'imm-1', start: s, end: e }]])
+  })
+
+  it('данные серии несут immId пятым значением', () => {
+    mount(GanttChart, { props: { data, shifts: [], date: '2026-10-01' } })
+    expect(lastOption().series[0].data[0][4]).toBe('imm-1')
+  })
+})
+```
+
+- [ ] **Step 2: run, expect FAIL.** `npx vitest run src/utils/__tests__/statusRows.spec.js src/components/reports/__tests__/GanttChart.spec.js`
+
+- [ ] **Step 3: implement.** В `statusRows.js` (после `buildStatusRows`):
+
+```js
+// Эпизод (строка таблицы) для сегмента диаграммы: первая строка, пересекающая [start, end).
+// Сегмент из полей ±30 мин, задевающий период, даёт крайнюю строку; целиком вне периода — -1.
+export function findEpisodeIndex(rows, start, end) {
+  return rows.findIndex(r => r.start < end && start < r.end)
+}
+```
+
+В `GanttChart.vue`:
+- `const emit = defineEmits(['segment-click'])` после `defineProps`.
+- В `seriesData.push([...])` пятым элементом добавить `imm.immId`.
+- В tooltip formatter к возвращаемой строке дописать `<br/><span style="color:#9ca3af">Клик — показать в таблице</span>`.
+- В объекте, который возвращает `renderItem`, добавить `cursor: 'pointer'` рядом с `type: 'rect'`.
+- В `initChart` после `chart = echarts.init(chartRef.value)`:
+
+```js
+  // Клик по сегменту — показать его эпизод в таблице статусов (вкладка отчёта).
+  chart.on('click', (params) => {
+    if (params.seriesType !== 'custom') return
+    const [, start, end, , immId] = params.value
+    emit('segment-click', { immId, start, end })
+  })
+```
+
+- [ ] **Step 4: run, expect PASS**; затем `npx vitest run`.
+- [ ] **Step 5: commit** `feat(reports-ui): Gantt segment click event and episode lookup`
+
+---
+
+### Task 7: `StatusTimelineTable.focusEpisode`
+
+**Files:**
+- Modify: `Wintime-Control-Frontend/src/components/reports/StatusTimelineTable.vue`
+- Test: `Wintime-Control-Frontend/src/components/reports/__tests__/StatusTimelineTable.spec.js`
+
+**Interfaces:**
+- Consumes: `findEpisodeIndex(rows, start, end)` из `@/utils/statusRows` (Task 6).
+- Produces: `defineExpose({ focusEpisode })`, `focusEpisode(immId, start: ms, end: ms) → Promise<boolean>` — `false`, если эпизода нет; иначе раскрывает группу ТПА, делает строку текущей (подсветка `current-row`), снимает текущую строку в остальных группах, прокручивает строку в центр (`scrollIntoView({ block: 'center', behavior: 'smooth' })`).
+
+- [ ] **Step 1: failing tests** — добавить в `StatusTimelineTable.spec.js` (в импорт vitest добавить `beforeEach`):
+
+```js
+describe('StatusTimelineTable.focusEpisode', () => {
+  const data = [
+    { immId: 'a', immName: 'ТПА-1', timeline: [seg('Setup', '08:00', '08:30'), seg('Production', '08:30', '16:00')] },
+    { immId: 'b', immName: 'ТПА-2', timeline: [seg('NoTask', '08:00', '16:00')] }
+  ]
+  const ms = (s) => dayjs(`2026-10-01 ${s}`).valueOf()
+  let scrollSpy
+  beforeEach(() => { scrollSpy = vi.fn(); Element.prototype.scrollIntoView = scrollSpy })
+
+  it('раскрывает свёрнутую группу, подсвечивает строку эпизода и прокручивает к ней', async () => {
+    const w = await mountTable(data)
+    await w.findComponent({ name: 'ElCollapse' }).vm.$emit('update:modelValue', ['b'])
+    await flushPromises()
+
+    const ok = await w.vm.focusEpisode('a', ms('09:00'), ms('09:30'))
+    await flushPromises()
+
+    expect(ok).toBe(true)
+    expect(w.findComponent({ name: 'ElCollapse' }).props('modelValue')).toContain('a')
+    const rows = w.findAll('[data-test="imm-group"]')[0].findAll('tr.el-table__row')
+    expect(rows[1].classes()).toContain('current-row')
+    expect(rows[0].classes()).not.toContain('current-row')
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+  })
+
+  it('новый фокус снимает подсветку в другой группе', async () => {
+    const w = await mountTable(data)
+    await w.vm.focusEpisode('a', ms('08:00'), ms('08:10'))
+    await w.vm.focusEpisode('b', ms('09:00'), ms('09:10'))
+    await flushPromises()
+
+    expect(w.findAll('[data-test="imm-group"]')[0].findAll('tr.current-row')).toHaveLength(0)
+    expect(w.findAll('[data-test="imm-group"]')[1].findAll('tr.current-row')).toHaveLength(1)
+  })
+
+  it('эпизода нет (вне периода / неизвестный ТПА) → false, без прокрутки', async () => {
+    const w = await mountTable(data)
+    expect(await w.vm.focusEpisode('a', ms('07:30'), ms('08:00'))).toBe(false)
+    expect(await w.vm.focusEpisode('zzz', ms('09:00'), ms('09:10'))).toBe(false)
+    expect(scrollSpy).not.toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: run, expect FAIL** (`focusEpisode is not a function`). `npx vitest run src/components/reports/__tests__/StatusTimelineTable.spec.js`
+
+- [ ] **Step 3: implement** в `StatusTimelineTable.vue`:
+- `el-table`: добавить `highlight-current-row` и `:ref="setTableRef(g.immId)"`.
+- script: импорт `nextTick` из vue, `findEpisodeIndex` из `@/utils/statusRows`; добавить:
+
+```js
+// Таблицы групп по ТПА — для подсветки и прокрутки к эпизоду по клику на диаграмме.
+const tableRefs = new Map()
+const setTableRef = (immId) => (el) => { if (el) tableRefs.set(immId, el); else tableRefs.delete(immId) }
+
+// Показать эпизод сегмента диаграммы: раскрыть группу ТПА, сделать строку текущей, прокрутить к ней.
+const focusEpisode = async (immId, start, end) => {
+  const g = groups.value.find(x => x.immId === immId)
+  const index = g ? findEpisodeIndex(g.rows, start, end) : -1
+  if (index < 0) return false
+
+  if (!expanded.value.includes(immId)) expanded.value = [...expanded.value, immId]
+  await nextTick()
+  tableRefs.forEach((table, id) => table.setCurrentRow(id === immId ? g.rows[index] : undefined))
+  await nextTick()
+  tableRefs.get(immId)?.$el.querySelectorAll('tr.el-table__row')[index]
+    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  return true
+}
+
+defineExpose({ focusEpisode })
+```
+
+- [ ] **Step 4: run, expect PASS**; затем `npx vitest run`.
+- [ ] **Step 5: commit** `feat(reports-ui): status table focuses episode (expand, highlight, scroll)`
+
+---
+
+### Task 8: связка в `DailyReportView` + руководство
+
+**Files:**
+- Modify: `Wintime-Control-Frontend/src/views/reports/DailyReportView.vue`, test `src/views/reports/__tests__/DailyReportView.spec.js`
+- Modify: `docs/user-guide/manager.md` (§8.1)
+
+**Interfaces:**
+- Consumes: `GanttChart` событие `segment-click` `{ immId, start, end }` (Task 6); `StatusTimelineTable` `focusEpisode(immId, start, end) → Promise<boolean>` (Task 7); `buildStatusRows`, `findEpisodeIndex` из `@/utils/statusRows`.
+
+- [ ] **Step 1: failing tests** — в `DailyReportView.spec.js` добавить (период в `mountWithReport` — `2026-10-01T05:00:00Z`…`2026-10-02T05:00:00Z`, `item()` имеет `immId: '1'`):
+
+```js
+describe('DailyReportView — клик по диаграмме открывает эпизод', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia()); vi.clearAllMocks()
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+  const timeline = [
+    { type: 'Setup', start: '2026-10-01T05:00:00Z', end: '2026-10-01T06:00:00Z' },
+    { type: 'Production', start: '2026-10-01T06:00:00Z', end: '2026-10-01T09:00:00Z' }
+  ]
+
+  it('сегмент в периоде → вкладка «Таблица статусов» и подсвеченная строка эпизода', async () => {
+    const w = await mountWithReport([item({ timeline })])
+
+    w.findComponent({ name: 'GanttChart' }).vm.$emit('segment-click', {
+      immId: '1', start: Date.parse('2026-10-01T06:00:00Z'), end: Date.parse('2026-10-01T09:00:00Z')
+    })
+    await flushPromises()
+
+    expect(w.findComponent({ name: 'ElTabs' }).props('modelValue')).toBe('table')
+    expect(w.find('tr.current-row').text()).toContain('Работа')
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
+  })
+
+  it('сегмент вне периода → остаёмся на диаграмме', async () => {
+    const w = await mountWithReport([item({ timeline })])
+
+    w.findComponent({ name: 'GanttChart' }).vm.$emit('segment-click', {
+      immId: '1', start: Date.parse('2026-10-01T04:30:00Z'), end: Date.parse('2026-10-01T05:00:00Z')
+    })
+    await flushPromises()
+
+    expect(w.findComponent({ name: 'ElTabs' }).props('modelValue')).toBe('chart')
+  })
+})
+```
+
+- [ ] **Step 2: run, expect FAIL.** `npx vitest run src/views/reports/__tests__/DailyReportView.spec.js`
+
+- [ ] **Step 3: implement** в `DailyReportView.vue`:
+- `<GanttChart ... @segment-click="onSegmentClick" />`; `<StatusTimelineTable ref="statusTableRef" ... />`.
+- script: `import { buildStatusRows, findEpisodeIndex } from '@/utils/statusRows'`; после `onTabChange`:
+
+```js
+const statusTableRef = ref(null)
+
+// Клик по сегменту диаграммы — открыть таблицу статусов на его эпизоде.
+// Проверяем заранее: панель таблицы ленивая, до первого показа её компонента нет.
+const onSegmentClick = async ({ immId, start, end }) => {
+  const { immData, periodStart, periodEnd } = reportData.value ?? {}
+  const imm = immData?.find(i => i.immId === immId)
+  const rows = imm ? buildStatusRows(imm.timeline, periodStart, periodEnd) : []
+  if (findEpisodeIndex(rows, start, end) < 0) {
+    ElMessage.info('Эпизод вне периода отчёта')
+    return
+  }
+  activeTab.value = 'table'
+  await nextTick() // ленивая панель монтируется после переключения
+  await statusTableRef.value?.focusEpisode(immId, start, end)
+}
+```
+
+  Если одного `nextTick` в тесте недостаточно для монтирования ленивой панели — добавить второй `await nextTick()` (не таймеры).
+
+- [ ] **Step 4: run, expect PASS**; затем `npx vitest run` и `npm run build`.
+
+- [ ] **Step 5: docs.** В `docs/user-guide/manager.md` §8.1, в пункте **Диаграмма** после предложения про «Сбросить масштаб» дописать:
+  «Клик по участку диаграммы открывает вкладку «Таблица статусов» и выделяет строку этого эпизода (если участок лежит вне смены — в полях по 30 мин, — появится сообщение «Эпизод вне периода отчёта»).»
+
+- [ ] **Step 6: commit** `feat(reports-ui): Gantt click opens status table on the episode`
