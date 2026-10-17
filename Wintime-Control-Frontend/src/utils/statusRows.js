@@ -21,7 +21,8 @@ export function buildStatusRows(timeline, periodStart, periodEnd) {
     if (prev && prev.type === s.type && prev.end === s.start) prev.end = s.end
     else rows.push({ ...s })
   }
-  return rows.map(r => ({ ...r, durationSeconds: Math.round((r.end - r.start) / 1000) }))
+  // Целые секунды от начала периода (как на бэкенде): длительность сходится с показанными временами и суммами.
+  return rows.map(r => ({ ...r, durationSeconds: Math.floor((r.end - from) / 1000) - Math.floor((r.start - from) / 1000) }))
 }
 
 // Сумма по состояниям — ненулевые, в порядке палитры отчёта. Неизвестный тип — «Нет данных».

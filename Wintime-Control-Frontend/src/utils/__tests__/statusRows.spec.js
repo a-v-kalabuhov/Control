@@ -44,6 +44,13 @@ describe('buildStatusRows', () => {
     expect(buildStatusRows([seg('Setup', '08:00', '08:00'), seg('Setup', '06:00', '07:00')], iso('08:00'), iso('16:00'))).toEqual([])
     expect(buildStatusRows(undefined, iso('08:00'), iso('16:00'))).toEqual([])
   })
+
+  it('длительность в целых секундах от начала периода (как на бэкенде): 08:00:00.900–08:04:07.000 → 247', () => {
+    const rows = buildStatusRows(
+      [{ type: 'Setup', start: dayjs('2026-10-01 08:00:00.900').toISOString(), end: dayjs('2026-10-01 08:04:07.000').toISOString() }],
+      iso('08:00'), iso('16:00'))
+    expect(rows[0].durationSeconds).toBe(247)
+  })
 })
 
 describe('summarizeStatusRows', () => {
