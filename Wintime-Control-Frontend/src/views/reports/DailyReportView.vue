@@ -53,12 +53,28 @@
       </el-form>
     </el-card>
 
-    <!-- График Ганта -->
+    <!-- Диаграмма и таблица статусов -->
     <el-card class="mb-4" v-if="reportData?.immData?.length">
       <template #header>
-        <span class="font-semibold">{{ ganttTitle }}</span>
+        <div class="flex items-center justify-between">
+          <span class="font-semibold">{{ ganttTitle }}</span>
+          <el-button v-if="activeTab === 'chart'" size="small" data-test="reset-zoom" @click="ganttRef?.resetZoom?.()">
+            Сбросить масштаб
+          </el-button>
+        </div>
       </template>
-      <GanttChart :data="reportData.immData" :shifts="shifts" :date="filters.date" :shiftId="filters.shiftId" />
+      <el-tabs v-model="activeTab" @tab-change="onTabChange">
+        <el-tab-pane label="Диаграмма" name="chart">
+          <GanttChart ref="ganttRef" :data="reportData.immData" :shifts="shifts" :date="filters.date" :shiftId="filters.shiftId" />
+        </el-tab-pane>
+        <el-tab-pane label="Таблица статусов" name="table" lazy>
+          <StatusTimelineTable
+            :data="reportData.immData"
+            :period-start="reportData.periodStart"
+            :period-end="reportData.periodEnd"
+          />
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <!-- Таблица -->
@@ -115,13 +131,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useReportsStore } from '@/stores/reports'
 import { immApi } from '@/api/imm'
 import { shiftsApi } from '@/api/shifts'
 import GanttChart from '@/components/reports/GanttChart.vue'
+import StatusTimelineTable from '@/components/reports/StatusTimelineTable.vue'
 import dayjs from 'dayjs'
 import { toHours, formatEfficiency } from '@/utils/equipmentReport'
 import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveStatus'
@@ -138,6 +155,15 @@ const imms = ref([])
 const shifts = ref([])
 const reportData = ref(null)
 const loadedFilters = ref({ date: null, shiftId: null })
+
+// Вкладка сохраняется между «Сформировать»; по умолчанию — диаграмма.
+const activeTab = ref('chart')
+const ganttRef = ref(null)
+
+// Пока вкладка скрыта, ширина диаграммы могла измениться (resize окна) — пересчитать при показе.
+const onTabChange = (name) => {
+  if (name === 'chart') nextTick(() => ganttRef.value?.resize?.())
+}
 
 const filters = reactive({
   date: dayjs().format('YYYY-MM-DD'),

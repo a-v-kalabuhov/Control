@@ -23,7 +23,7 @@ const item = (o = {}) => ({
 })
 
 async function mountWithReport(rows) {
-  reportsApi.getDaily.mockResolvedValue({ data: { date: '2026-10-01', immData: rows } })
+  reportsApi.getDaily.mockResolvedValue({ data: { date: '2026-10-01', periodStart: '2026-10-01T05:00:00Z', periodEnd: '2026-10-02T05:00:00Z', immData: rows } })
   const w = mount(DailyReportView, {
     global: { plugins: [ElementPlus], components: { Download: { template: '<i />' } }, stubs: { GanttChart: true, 'el-date-picker': true } }
   })
@@ -58,5 +58,32 @@ describe('DailyReportView — эффективные состояния', () => 
     const w = await mountWithReport([item({ efficiency: null })])
 
     expect(w.find('[data-test="efficiency"]').text()).toBe('—')
+  })
+})
+
+describe('DailyReportView — вкладки диаграммы и таблицы статусов', () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks() })
+
+  it('две вкладки, по умолчанию активна «Диаграмма»', async () => {
+    const w = await mountWithReport([item()])
+
+    const tabs = w.findComponent({ name: 'ElTabs' })
+    expect(tabs.props('modelValue')).toBe('chart')
+    const panes = w.findAllComponents({ name: 'ElTabPane' }).map(p => p.props('label'))
+    expect(panes).toEqual(['Диаграмма', 'Таблица статусов'])
+    expect(w.find('[data-test="reset-zoom"]').exists()).toBe(true)
+  })
+
+  it('вкладка «Таблица статусов» показывает группы по ТПА за период отчёта', async () => {
+    const w = await mountWithReport([item()])
+
+    await w.findComponent({ name: 'ElTabs' }).vm.$emit('update:modelValue', 'table')
+    await flushPromises()
+
+    const table = w.findComponent({ name: 'StatusTimelineTable' })
+    expect(table.exists()).toBe(true)
+    expect(table.props('periodStart')).toBe('2026-10-01T05:00:00Z')
+    expect(table.props('periodEnd')).toBe('2026-10-02T05:00:00Z')
+    expect(w.find('[data-test="reset-zoom"]').exists()).toBe(false)
   })
 })
