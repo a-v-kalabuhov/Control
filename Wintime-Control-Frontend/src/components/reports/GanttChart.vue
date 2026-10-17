@@ -165,17 +165,29 @@ const initChart = () => {
     grid: {
       left: '3%',
       right: '4%',
-      bottom: '3%',
+      bottom: 48, // место под ползунок масштаба
       top: '5%',
       containLabel: true
     },
+    // Масштаб по времени: ползунок под осью + колесо мыши/перетаскивание по диаграмме.
+    // filterMode 'none' — сегмент, частично попавший в окно, не пропадает (его обрезает renderItem).
+    dataZoom: [
+      {
+        type: 'slider', xAxisIndex: 0, filterMode: 'none', minValueSpan: 60 * 1000,
+        bottom: 8, height: 20, labelFormatter: (value) => dayjs(value).format('HH:mm:ss')
+      },
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none', minValueSpan: 60 * 1000 }
+    ],
     xAxis: {
       type: 'time',
       min: axisMin ?? undefined,
       max: axisMax ?? undefined,
-      minInterval: 3600 * 1000,
       axisLabel: {
-        formatter: (value) => dayjs(value).format('HH:mm')
+        // Подпись по уровню деления: при сильном приближении — до секунд, полночь — время, не дата.
+        formatter: {
+          year: '{HH}:{mm}', month: '{HH}:{mm}', day: '{HH}:{mm}',
+          hour: '{HH}:{mm}', minute: '{HH}:{mm}', second: '{HH}:{mm}:{ss}', millisecond: '{HH}:{mm}:{ss}'
+        }
       },
       splitLine: { show: false }
     },
@@ -233,14 +245,22 @@ const initChart = () => {
   chart.setOption(option)
 }
 
+// Одна и та же функция для add/removeEventListener — иначе обработчик не снимается.
+const onResize = () => chart?.resize()
+
+// Сброс масштаба к полному периоду (кнопка «Сбросить масштаб» в отчёте).
+const resetZoom = () => chart?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })
+
+defineExpose({ resetZoom, resize: onResize })
+
 onMounted(() => {
   initChart()
-  window.addEventListener('resize', () => chart?.resize())
+  window.addEventListener('resize', onResize)
 })
 
 onUnmounted(() => {
   chart?.dispose()
-  window.removeEventListener('resize', () => chart?.resize())
+  window.removeEventListener('resize', onResize)
 })
 
 watch(() => props.data, () => {

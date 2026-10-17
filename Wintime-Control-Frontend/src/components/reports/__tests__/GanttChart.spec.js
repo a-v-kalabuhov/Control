@@ -1,14 +1,24 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { REPORT_STATUS, REPORT_STATUS_KEYS } from '@/constants/effectiveStatus'
 
+const chartMock = vi.hoisted(() => ({
+  setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn(), dispatchAction: vi.fn()
+}))
+
 vi.mock('echarts', () => ({
-  init: () => ({ setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() }),
+  init: () => chartMock,
   graphic: { clipRectByRect: vi.fn(() => ({})) }
 }))
 
 const { default: GanttChart } = await import('../GanttChart.vue')
+
+const data = [{
+  immName: 'ТПА-1',
+  timeline: [{ type: 'Production', start: '2026-10-01T05:00:00Z', end: '2026-10-01T06:00:00Z' }]
+}]
+const lastOption = () => chartMock.setOption.mock.calls.at(-1)[0]
 
 describe('GanttChart — палитра эффективных состояний', () => {
   it('легенда — все состояния отчёта в цветах и подписях общей палитры', () => {
@@ -25,5 +35,46 @@ describe('GanttChart — палитра эффективных состояни�
       expect(swatch).toBe(rgb)
     })
     expect(w.text()).not.toContain('Авария')
+  })
+})
+
+describe('GanttChart — масштаб', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('ось времени масштабируется ползунком и колесом, минимум — минута', () => {
+    mount(GanttChart, { props: { data, shifts: [], date: '2026-10-01' } })
+
+    const { dataZoom, xAxis } = lastOption()
+    expect(dataZoom.map(z => z.type)).toEqual(['slider', 'inside'])
+    dataZoom.forEach(z => {
+      expect(z.xAxisIndex).toBe(0)
+      expect(z.filterMode).toBe('none')
+      expect(z.minValueSpan).toBe(60 * 1000)
+    })
+    // Иначе при приближении не появятся мелкие деления
+    expect(xAxis.minInterval).toBeUndefined()
+    expect(xAxis.axisLabel.formatter.second).toBe('{HH}:{mm}:{ss}')
+    expect(xAxis.axisLabel.formatter.minute).toBe('{HH}:{mm}')
+    expect(xAxis.axisLabel.formatter.day).toBe('{HH}:{mm}')
+  })
+
+  it('resetZoom возвращает весь период', () => {
+    const w = mount(GanttChart, { props: { data, shifts: [], date: '2026-10-01' } })
+
+    w.vm.resetZoom()
+
+    expect(chartMock.dispatchAction).toHaveBeenCalledWith({ type: 'dataZoom', start: 0, end: 100 })
+  })
+
+  it('снимает тот же обработчик resize, что повесил', () => {
+    const add = vi.spyOn(window, 'addEventListener')
+    const remove = vi.spyOn(window, 'removeEventListener')
+    const w = mount(GanttChart, { props: { data, shifts: [], date: '2026-10-01' } })
+    const handler = add.mock.calls.find(c => c[0] === 'resize')[1]
+
+    w.unmount()
+
+    expect(remove).toHaveBeenCalledWith('resize', handler)
+    add.mockRestore(); remove.mockRestore()
   })
 })
