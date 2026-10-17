@@ -55,6 +55,8 @@ public class ReportService : IReportService
             ShiftNumber = shiftNumber,
             ShiftStartTime = shiftStartTime,
             ShiftEndTime = shiftEndTime,
+            PeriodStart = period.PeriodStart,
+            PeriodEnd = period.PeriodEnd,
             ImmData = new List<DailyReportImmItemDto>()
         };
 

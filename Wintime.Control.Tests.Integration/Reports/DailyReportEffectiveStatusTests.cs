@@ -73,6 +73,10 @@ public class DailyReportEffectiveStatusTests : IClassFixture<IntegrationTestFact
             $"/api/reports/daily?date={Date:yyyy-MM-dd}&immId={immId}"))!;
         var item = daily.ImmData.Should().ContainSingle().Subject;
 
+        // Границы периода отчёта — локальные сутки завода, без полей графика.
+        daily.PeriodStart.Should().Be(d0);
+        daily.PeriodEnd.Should().Be(d0.AddDays(1));
+
         // Работа 8–10 + 13–14 · Наладка 7:30–8 · Простой 12–13 · Нет связи 10–12 (ADR-0019) · Без задания 14–16.
         item.Seconds[EffectiveStatus.Production].Should().Be(3 * 3600);
         item.Seconds[EffectiveStatus.Setup].Should().Be(1800);
@@ -175,6 +179,10 @@ public class DailyReportShiftEffectiveStatusTests : IClassFixture<IntegrationTes
         var daily = (await client.GetFromJsonAsync<DailyReportDto>(
             $"/api/reports/daily?date={Date:yyyy-MM-dd}&immId={immId}&shiftId={shiftId}"))!;
         var item = daily.ImmData.Should().ContainSingle().Subject;
+
+        // Период — ровно смена (поля ±30 мин — только у графика).
+        daily.PeriodStart.Should().Be(shiftStart);
+        daily.PeriodEnd.Should().Be(shiftStart.AddMinutes(durationMinutes));
 
         var shiftSeconds = durationMinutes * 60;
         item.Seconds.Values.Sum().Should().Be(shiftSeconds);

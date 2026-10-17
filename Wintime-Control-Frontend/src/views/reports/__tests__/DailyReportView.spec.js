@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 
 vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -23,7 +23,7 @@ const item = (o = {}) => ({
 })
 
 async function mountWithReport(rows) {
-  reportsApi.getDaily.mockResolvedValue({ data: { date: '2026-10-01', immData: rows } })
+  reportsApi.getDaily.mockResolvedValue({ data: { date: '2026-10-01', periodStart: '2026-10-01T05:00:00Z', periodEnd: '2026-10-02T05:00:00Z', immData: rows } })
   const w = mount(DailyReportView, {
     global: { plugins: [ElementPlus], components: { Download: { template: '<i />' } }, stubs: { GanttChart: true, 'el-date-picker': true } }
   })
@@ -58,5 +58,70 @@ describe('DailyReportView — эффективные состояния', () => 
     const w = await mountWithReport([item({ efficiency: null })])
 
     expect(w.find('[data-test="efficiency"]').text()).toBe('—')
+  })
+})
+
+describe('DailyReportView — вкладки диаграммы и таблицы статусов', () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks() })
+
+  it('две вкладки, по умолчанию активна «Диаграмма»', async () => {
+    const w = await mountWithReport([item()])
+
+    const tabs = w.findComponent({ name: 'ElTabs' })
+    expect(tabs.props('modelValue')).toBe('chart')
+    const panes = w.findAllComponents({ name: 'ElTabPane' }).map(p => p.props('label'))
+    expect(panes).toEqual(['Диаграмма', 'Таблица статусов'])
+    expect(w.find('[data-test="reset-zoom"]').exists()).toBe(true)
+  })
+
+  it('вкладка «Таблица статусов» показывает группы по ТПА за период отчёта', async () => {
+    const w = await mountWithReport([item()])
+
+    await w.findComponent({ name: 'ElTabs' }).vm.$emit('update:modelValue', 'table')
+    await flushPromises()
+
+    const table = w.findComponent({ name: 'StatusTimelineTable' })
+    expect(table.exists()).toBe(true)
+    expect(table.props('periodStart')).toBe('2026-10-01T05:00:00Z')
+    expect(table.props('periodEnd')).toBe('2026-10-02T05:00:00Z')
+    expect(w.find('[data-test="reset-zoom"]').exists()).toBe(false)
+  })
+})
+
+describe('DailyReportView — клик по диаграмме открывает эпизод', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia()); vi.clearAllMocks()
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+  const timeline = [
+    { type: 'Setup', start: '2026-10-01T05:00:00Z', end: '2026-10-01T06:00:00Z' },
+    { type: 'Production', start: '2026-10-01T06:00:00Z', end: '2026-10-01T09:00:00Z' }
+  ]
+
+  it('сегмент в периоде → вкладка «Таблица статусов» и подсвеченная строка эпизода', async () => {
+    const w = await mountWithReport([item({ timeline })])
+
+    w.findComponent({ name: 'GanttChart' }).vm.$emit('segment-click', {
+      immId: '1', start: Date.parse('2026-10-01T06:00:00Z'), end: Date.parse('2026-10-01T09:00:00Z')
+    })
+    await flushPromises()
+
+    expect(w.findComponent({ name: 'ElTabs' }).props('modelValue')).toBe('table')
+    expect(w.find('tr.current-row').text()).toContain('Работа')
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
+  })
+
+  it('сегмент вне периода → остаёмся на диаграмме', async () => {
+    const w = await mountWithReport([item({ timeline })])
+    const info = vi.spyOn(ElMessage, 'info').mockImplementation(() => {})
+
+    w.findComponent({ name: 'GanttChart' }).vm.$emit('segment-click', {
+      immId: '1', start: Date.parse('2026-10-01T04:30:00Z'), end: Date.parse('2026-10-01T05:00:00Z')
+    })
+    await flushPromises()
+
+    expect(w.findComponent({ name: 'ElTabs' }).props('modelValue')).toBe('chart')
+    expect(info).toHaveBeenCalledWith('Эпизод вне периода отчёта')
+    info.mockRestore()
   })
 })
