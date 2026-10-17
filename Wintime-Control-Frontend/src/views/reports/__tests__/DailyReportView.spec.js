@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 
 vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -113,6 +113,7 @@ describe('DailyReportView — клик по диаграмме открывае�
 
   it('сегмент вне периода → остаёмся на диаграмме', async () => {
     const w = await mountWithReport([item({ timeline })])
+    const info = vi.spyOn(ElMessage, 'info').mockImplementation(() => {})
 
     w.findComponent({ name: 'GanttChart' }).vm.$emit('segment-click', {
       immId: '1', start: Date.parse('2026-10-01T04:30:00Z'), end: Date.parse('2026-10-01T05:00:00Z')
@@ -120,5 +121,7 @@ describe('DailyReportView — клик по диаграмме открывае�
     await flushPromises()
 
     expect(w.findComponent({ name: 'ElTabs' }).props('modelValue')).toBe('chart')
+    expect(info).toHaveBeenCalledWith('Эпизод вне периода отчёта')
+    info.mockRestore()
   })
 })
