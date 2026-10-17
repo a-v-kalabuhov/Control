@@ -65,10 +65,11 @@
       </template>
       <el-tabs v-model="activeTab" @tab-change="onTabChange">
         <el-tab-pane label="Диаграмма" name="chart">
-          <GanttChart ref="ganttRef" :data="reportData.immData" :shifts="shifts" :date="filters.date" :shiftId="filters.shiftId" />
+          <GanttChart ref="ganttRef" :data="reportData.immData" :shifts="shifts" :date="filters.date" :shiftId="filters.shiftId" @segment-click="onSegmentClick" />
         </el-tab-pane>
         <el-tab-pane label="Таблица статусов" name="table" lazy>
           <StatusTimelineTable
+            ref="statusTableRef"
             :data="reportData.immData"
             :period-start="reportData.periodStart"
             :period-end="reportData.periodEnd"
@@ -139,6 +140,7 @@ import { immApi } from '@/api/imm'
 import { shiftsApi } from '@/api/shifts'
 import GanttChart from '@/components/reports/GanttChart.vue'
 import StatusTimelineTable from '@/components/reports/StatusTimelineTable.vue'
+import { buildStatusRows, findEpisodeIndex } from '@/utils/statusRows'
 import dayjs from 'dayjs'
 import { toHours, formatEfficiency } from '@/utils/equipmentReport'
 import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveStatus'
@@ -163,6 +165,23 @@ const ganttRef = ref(null)
 // Пока вкладка скрыта, ширина диаграммы могла измениться (resize окна) — пересчитать при показе.
 const onTabChange = (name) => {
   if (name === 'chart') nextTick(() => ganttRef.value?.resize?.())
+}
+
+const statusTableRef = ref(null)
+
+// Клик по сегменту диаграммы — открыть таблицу статусов на его эпизоде.
+// Проверяем заранее: панель таблицы ленивая, до первого показа её компонента нет.
+const onSegmentClick = async ({ immId, start, end }) => {
+  const { immData, periodStart, periodEnd } = reportData.value ?? {}
+  const imm = immData?.find(i => i.immId === immId)
+  const rows = imm ? buildStatusRows(imm.timeline, periodStart, periodEnd) : []
+  if (findEpisodeIndex(rows, start, end) < 0) {
+    ElMessage.info('Эпизод вне периода отчёта')
+    return
+  }
+  activeTab.value = 'table'
+  await nextTick() // ленивая панель монтируется после переключения
+  await statusTableRef.value?.focusEpisode(immId, start, end)
 }
 
 const filters = reactive({

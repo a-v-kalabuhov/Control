@@ -87,3 +87,38 @@ describe('DailyReportView — вкладки диаграммы и таблиц�
     expect(w.find('[data-test="reset-zoom"]').exists()).toBe(false)
   })
 })
+
+describe('DailyReportView — клик по диаграмме открывает эпизод', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia()); vi.clearAllMocks()
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+  const timeline = [
+    { type: 'Setup', start: '2026-10-01T05:00:00Z', end: '2026-10-01T06:00:00Z' },
+    { type: 'Production', start: '2026-10-01T06:00:00Z', end: '2026-10-01T09:00:00Z' }
+  ]
+
+  it('сегмент в периоде → вкладка «Таблица статусов» и подсвеченная строка эпизода', async () => {
+    const w = await mountWithReport([item({ timeline })])
+
+    w.findComponent({ name: 'GanttChart' }).vm.$emit('segment-click', {
+      immId: '1', start: Date.parse('2026-10-01T06:00:00Z'), end: Date.parse('2026-10-01T09:00:00Z')
+    })
+    await flushPromises()
+
+    expect(w.findComponent({ name: 'ElTabs' }).props('modelValue')).toBe('table')
+    expect(w.find('tr.current-row').text()).toContain('Работа')
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
+  })
+
+  it('сегмент вне периода → остаёмся на диаграмме', async () => {
+    const w = await mountWithReport([item({ timeline })])
+
+    w.findComponent({ name: 'GanttChart' }).vm.$emit('segment-click', {
+      immId: '1', start: Date.parse('2026-10-01T04:30:00Z'), end: Date.parse('2026-10-01T05:00:00Z')
+    })
+    await flushPromises()
+
+    expect(w.findComponent({ name: 'ElTabs' }).props('modelValue')).toBe('chart')
+  })
+})
