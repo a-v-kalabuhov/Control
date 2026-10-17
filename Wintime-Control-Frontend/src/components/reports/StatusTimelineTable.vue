@@ -16,7 +16,15 @@
         </div>
       </template>
 
-      <el-table v-if="g.rows.length" :data="g.rows" stripe size="small" style="width: 100%">
+      <el-table
+        v-if="g.rows.length"
+        :ref="setTableRef(g.immId)"
+        :data="g.rows"
+        highlight-current-row
+        stripe
+        size="small"
+        style="width: 100%"
+      >
         <el-table-column label="Состояние" min-width="200">
           <template #default="{ row }">
             <span class="flex items-center gap-2">
@@ -45,9 +53,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { REPORT_STATUS } from '@/constants/effectiveStatus'
-import { buildStatusRows, summarizeStatusRows, isCutAtNow, formatDuration, formatPoint } from '@/utils/statusRows'
+import { buildStatusRows, summarizeStatusRows, isCutAtNow, formatDuration, formatPoint, findEpisodeIndex } from '@/utils/statusRows'
 
 // Таблица статусов «Картины рабочего дня»: по группе на ТПА, строки — за период отчёта
 // (смена/сутки, без полей ±30 мин диаграммы), сводка в заголовке совпадает с часами сводной таблицы.
@@ -73,4 +81,25 @@ const groups = computed(() => props.data.map(imm => {
 // По умолчанию все группы раскрыты; новый отчёт снова раскрывает все.
 const expanded = ref([])
 watch(() => props.data, (data) => { expanded.value = data.map(i => i.immId) }, { immediate: true })
+
+// Таблицы групп по ТПА — для подсветки и прокрутки к эпизоду по клику на диаграмме.
+const tableRefs = new Map()
+const setTableRef = (immId) => (el) => { if (el) tableRefs.set(immId, el); else tableRefs.delete(immId) }
+
+// Показать эпизод сегмента диаграммы: раскрыть группу ТПА, сделать строку текущей, прокрутить к ней.
+const focusEpisode = async (immId, start, end) => {
+  const g = groups.value.find(x => x.immId === immId)
+  const index = g ? findEpisodeIndex(g.rows, start, end) : -1
+  if (index < 0) return false
+
+  if (!expanded.value.includes(immId)) expanded.value = [...expanded.value, immId]
+  await nextTick()
+  tableRefs.forEach((table, id) => table.setCurrentRow(id === immId ? g.rows[index] : undefined))
+  await nextTick()
+  tableRefs.get(immId)?.$el.querySelectorAll('tr.el-table__row')[index]
+    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  return true
+}
+
+defineExpose({ focusEpisode })
 </script>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import dayjs from 'dayjs'
@@ -63,5 +63,48 @@ describe('StatusTimelineTable', () => {
     const w = await mountTable([{ immId: 'a', immName: 'ТПА-1', timeline: [] }])
 
     expect(w.find('[data-test="no-data"]').text()).toBe('Нет данных за период')
+  })
+})
+
+describe('StatusTimelineTable.focusEpisode', () => {
+  const data = [
+    { immId: 'a', immName: 'ТПА-1', timeline: [seg('Setup', '08:00', '08:30'), seg('Production', '08:30', '16:00')] },
+    { immId: 'b', immName: 'ТПА-2', timeline: [seg('NoTask', '08:00', '16:00')] }
+  ]
+  const ms = (s) => dayjs(`2026-10-01 ${s}`).valueOf()
+  let scrollSpy
+  beforeEach(() => { scrollSpy = vi.fn(); Element.prototype.scrollIntoView = scrollSpy })
+
+  it('раскрывает свёрнутую группу, подсвечивает строку эпизода и прокручивает к ней', async () => {
+    const w = await mountTable(data)
+    await w.findComponent({ name: 'ElCollapse' }).vm.$emit('update:modelValue', ['b'])
+    await flushPromises()
+
+    const ok = await w.vm.focusEpisode('a', ms('09:00'), ms('09:30'))
+    await flushPromises()
+
+    expect(ok).toBe(true)
+    expect(w.findComponent({ name: 'ElCollapse' }).props('modelValue')).toContain('a')
+    const rows = w.findAll('[data-test="imm-group"]')[0].findAll('tr.el-table__row')
+    expect(rows[1].classes()).toContain('current-row')
+    expect(rows[0].classes()).not.toContain('current-row')
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+  })
+
+  it('новый фокус снимает подсветку в другой группе', async () => {
+    const w = await mountTable(data)
+    await w.vm.focusEpisode('a', ms('08:00'), ms('08:10'))
+    await w.vm.focusEpisode('b', ms('09:00'), ms('09:10'))
+    await flushPromises()
+
+    expect(w.findAll('[data-test="imm-group"]')[0].findAll('tr.current-row')).toHaveLength(0)
+    expect(w.findAll('[data-test="imm-group"]')[1].findAll('tr.current-row')).toHaveLength(1)
+  })
+
+  it('эпизода нет (вне периода / неизвестный ТПА) → false, без прокрутки', async () => {
+    const w = await mountTable(data)
+    expect(await w.vm.focusEpisode('a', ms('07:30'), ms('08:00'))).toBe(false)
+    expect(await w.vm.focusEpisode('zzz', ms('09:00'), ms('09:10'))).toBe(false)
+    expect(scrollSpy).not.toHaveBeenCalled()
   })
 })
