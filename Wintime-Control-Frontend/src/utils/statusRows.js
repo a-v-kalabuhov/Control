@@ -25,6 +25,12 @@ export function buildStatusRows(timeline, periodStart, periodEnd) {
   return rows.map(r => ({ ...r, durationSeconds: Math.floor((r.end - from) / 1000) - Math.floor((r.start - from) / 1000) }))
 }
 
+// Эпизод (строка таблицы) для сегмента диаграммы: первая строка, пересекающая [start, end).
+// Сегмент из полей ±30 мин, задевающий период, даёт крайнюю строку; целиком вне периода — -1.
+export function findEpisodeIndex(rows, start, end) {
+  return rows.findIndex(r => r.start < end && start < r.end)
+}
+
 // Сумма по состояниям — ненулевые, в порядке палитры отчёта. Неизвестный тип — «Нет данных».
 export function summarizeStatusRows(rows) {
   const sums = {}

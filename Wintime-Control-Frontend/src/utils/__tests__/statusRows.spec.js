@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import dayjs from 'dayjs'
-import { buildStatusRows, summarizeStatusRows, isCutAtNow, formatDuration, formatPoint } from '../statusRows'
+import { buildStatusRows, summarizeStatusRows, isCutAtNow, formatDuration, formatPoint, findEpisodeIndex } from '../statusRows'
 
 // Локальное время браузера — как в отчёте.
 const t = (s) => dayjs(`2026-10-01 ${s}`).valueOf()
@@ -92,5 +92,26 @@ describe('formatPoint', () => {
   })
   it('другая дата → с датой', () => {
     expect(formatPoint(dayjs('2026-10-02 01:00:00').valueOf(), iso('20:00'))).toBe('02.10 01:00:00')
+  })
+})
+
+describe('findEpisodeIndex', () => {
+  const rows = [
+    { type: 'NoTask', start: t('08:00'), end: t('08:10') },
+    { type: 'Production', start: t('08:10'), end: t('16:00') }
+  ]
+  it('строка, пересекающая сегмент', () => {
+    expect(findEpisodeIndex(rows, t('09:00'), t('09:30'))).toBe(1)
+  })
+  it('сегмент из поля до начала периода — первая строка периода', () => {
+    expect(findEpisodeIndex(rows, t('07:40'), t('08:05'))).toBe(0)
+  })
+  it('граница [start, end): сегмент, начинающийся в конце строки, относится к следующей', () => {
+    expect(findEpisodeIndex(rows, t('08:10'), t('08:20'))).toBe(1)
+  })
+  it('сегмент целиком вне периода → -1', () => {
+    expect(findEpisodeIndex(rows, t('07:30'), t('08:00'))).toBe(-1)
+    expect(findEpisodeIndex(rows, t('16:00'), t('16:30'))).toBe(-1)
+    expect(findEpisodeIndex([], t('09:00'), t('10:00'))).toBe(-1)
   })
 })

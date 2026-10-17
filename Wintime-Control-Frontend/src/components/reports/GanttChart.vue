@@ -35,6 +35,8 @@ const props = defineProps({
   }
 })
 
+const emit = defineEmits(['segment-click'])
+
 const chartRef = ref(null)
 let chart = null
 
@@ -133,6 +135,13 @@ const initChart = () => {
   chart?.dispose()
   chart = echarts.init(chartRef.value)
 
+  // Клик по сегменту — показать его эпизод в таблице статусов (вкладка отчёта).
+  chart.on('click', (params) => {
+    if (params.seriesType !== 'custom') return
+    const [, start, end, , immId] = params.value
+    emit('segment-click', { immId, start, end })
+  })
+
   const immNames = props.data.map(i => i.immName)
 
   const seriesData = []
@@ -142,7 +151,8 @@ const initChart = () => {
         imm.immName,
         dayjs(t.start).valueOf(),
         dayjs(t.end).valueOf(),
-        t.type
+        t.type,
+        imm.immId
       ])
     })
   })
@@ -159,7 +169,7 @@ const initChart = () => {
         const m = Math.floor((totalSec % 3600) / 60)
         const s = totalSec % 60
         const duration = [h && `${h} ч.`, m && `${m} мин.`, (!h && !m) || s ? `${s} сек.` : ''].filter(Boolean).join(' ')
-        return `${name}<br/>${statusMeta(type).label}<br/>${dayjs(start).format('HH:mm:ss')} — ${dayjs(end).format('HH:mm:ss')} (${duration})`
+        return `${name}<br/>${statusMeta(type).label}<br/>${dayjs(start).format('HH:mm:ss')} — ${dayjs(end).format('HH:mm:ss')} (${duration})<br/><span style="color:#9ca3af">Клик — показать в таблице</span>`
       }
     },
     grid: {
@@ -225,6 +235,7 @@ const initChart = () => {
 
           return {
             type: 'rect',
+            cursor: 'pointer',
             shape,
             style: api.style({
               fill: statusMeta(type).hex

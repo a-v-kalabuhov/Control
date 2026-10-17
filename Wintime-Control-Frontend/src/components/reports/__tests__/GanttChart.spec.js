@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import { REPORT_STATUS, REPORT_STATUS_KEYS } from '@/constants/effectiveStatus'
 
 const chartMock = vi.hoisted(() => ({
-  setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn(), dispatchAction: vi.fn()
+  setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn(), dispatchAction: vi.fn(), on: vi.fn()
 }))
 
 vi.mock('echarts', () => ({
@@ -15,6 +15,7 @@ vi.mock('echarts', () => ({
 const { default: GanttChart } = await import('../GanttChart.vue')
 
 const data = [{
+  immId: 'imm-1',
   immName: 'ТПА-1',
   timeline: [{ type: 'Production', start: '2026-10-01T05:00:00Z', end: '2026-10-01T06:00:00Z' }]
 }]
@@ -76,5 +77,24 @@ describe('GanttChart — масштаб', () => {
 
     expect(remove).toHaveBeenCalledWith('resize', handler)
     add.mockRestore(); remove.mockRestore()
+  })
+})
+
+describe('GanttChart — клик по сегменту', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('клик по сегменту → segment-click с ТПА и границами сегмента', () => {
+    const w = mount(GanttChart, { props: { data, shifts: [], date: '2026-10-01' } })
+    const onClick = chartMock.on.mock.calls.find(c => c[0] === 'click')[1]
+    const s = Date.parse('2026-10-01T05:00:00Z'), e = Date.parse('2026-10-01T06:00:00Z')
+
+    onClick({ seriesType: 'custom', value: ['ТПА-1', s, e, 'Production', 'imm-1'] })
+
+    expect(w.emitted('segment-click')).toEqual([[{ immId: 'imm-1', start: s, end: e }]])
+  })
+
+  it('данные серии несут immId пятым значением', () => {
+    mount(GanttChart, { props: { data, shifts: [], date: '2026-10-01' } })
+    expect(lastOption().series[0].data[0][4]).toBe('imm-1')
   })
 })
