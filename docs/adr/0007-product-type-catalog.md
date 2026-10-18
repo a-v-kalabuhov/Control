@@ -1,6 +1,6 @@
 # ADR-0007: Каталог изделий (ProductType) как общая номенклатурная основа
 
-- **Статус:** Accepted
+- **Статус:** Superseded by [ADR-0020](0020-product-types-and-products.md)
 - **Дата:** 2026-07-25
 
 ## Контекст

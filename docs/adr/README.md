@@ -38,7 +38,7 @@
 - [ADR-0004](0004-single-role-source-user-role.md) — Единственный источник роли — `User.Role`
 - [ADR-0005](0005-cov-filter-variant-b-hold-last-value.md) — COV-фильтрация телеметрии: Вариант B (удержание последнего значения)
 - [ADR-0006](0006-effective-imm-state.md) — Эффективное состояние ТПА определяет обработку телеметрии и простои
-- [ADR-0007](0007-product-type-catalog.md) — Каталог изделий (`ProductType`) как общая номенклатурная основа
+- [ADR-0007](0007-product-type-catalog.md) — Каталог изделий (`ProductType`) как общая номенклатурная основа *(заменён ADR-0020)*
 - [ADR-0008](0008-cycle-pipeline-and-unplanned-run.md) — Конвейер обработки цикла + журнал «работы без задания» (UnplannedRun)
 - [ADR-0009](0009-orders-module.md) — Модуль учёта заказов (`Order`)
 - [ADR-0013](0013-unplanned-run-split-on-idle-gap.md) — Эпизод «работы без задания» разрывается простоем дольше порога
@@ -48,3 +48,4 @@
 - [ADR-0017](0017-release-forecast-mean-cycle-period.md) — Прогноз окончания выпуска по среднему периоду цикла
 - [ADR-0018](0018-mold-imm-compatibility-manual-list.md) — Совместимость ПФ↔ТПА: ручной список в карточке ПФ
 - [ADR-0019](0019-offline-with-task-is-offline.md) — «Нет связи» при задании в работе — это «Нет связи», а не «Работа»
+- [ADR-0020](0020-product-types-and-products.md) — Типы изделий и изделия (артикулы): двухуровневый каталог `ProductType` → `Product`
