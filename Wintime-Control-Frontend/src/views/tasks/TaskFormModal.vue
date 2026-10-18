@@ -58,6 +58,24 @@
             </el-option>
           </el-select>
         </el-form-item>
+        <el-form-item label="Изделие" prop="productId">
+          <el-select
+            v-model="form.productId"
+            placeholder="Выберите изделие"
+            class="w-full"
+            filterable
+            :disabled="isProductLocked || !form.moldId"
+            @focus="loadProductTypes"
+          >
+            <el-option
+              v-for="product in productOptions"
+              :key="product.id"
+              :label="`${product.fullArticle} — ${product.name}`"
+              :value="product.id"
+              :disabled="!product.isActive"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="Заказ">
           <el-select
             v-model="form.orderId"
@@ -66,12 +84,12 @@
             filterable
             :clearable="false"
             :no-data-text="orderNoDataText"
-            :disabled="isRestricted || !!lockedOrder || !selectedProductTypeId"
+            :disabled="isRestricted || !!lockedOrder || !form.productId"
           >
             <el-option
               v-for="order in orderOptions"
               :key="order.id"
-              :label="`${order.number}${order.productTypeArticle ? ' (' + order.productTypeArticle + ')' : ''}`"
+              :label="`${order.number}${order.productFullArticle ? ' (' + order.productFullArticle + ')' : ''}`"
               :value="order.id"
             />
           </el-select>
@@ -242,6 +260,8 @@ import { moldsApi } from '@/api/molds'
 import { personnelApi } from '@/api/personnel'
 import { tasksApi } from '@/api/tasks'
 import { ordersApi } from '@/api/orders'
+import { productTypesApi } from '@/api/productTypes'
+import { activeProducts } from '@/utils/productLabel'
 import { apiErrorMessage } from '@/utils/apiError'
 import { settingsApi } from '@/api/settings'
 import { isMoldCompatibleWithImm } from '@/utils/moldCompatibility'
@@ -257,7 +277,7 @@ const props = defineProps({
     default: null
   },
   // Заказ, из карточки которого открыли форму. Задан — заказ менять нельзя,
-  // а список ПФ ограничен его типом изделия (см. спеку 2026-07-27).
+  // а изделие подставлено из заказа, список ПФ ограничен его типом изделия (см. спеку 2026-07-27, PZP-19).
   // Взаимоисключим с task: lockedOrder — только для создания нового задания,
   // при редактировании существующего (task задан) заказ через этот проп не подставляется.
   lockedOrder: {
@@ -278,6 +298,7 @@ const loading = ref(false)
 const editingTask = ref(null)
 const imms = ref([])
 const molds = ref([])
+const productTypes = ref([])
 const personnel = ref([])
 const orderOptions = ref([])
 const initialOrderId = ref(null)
@@ -285,6 +306,7 @@ const initialOrderId = ref(null)
 const form = reactive({
   immId: '',
   moldId: '',
+  productId: null,
   personnelId: null,
   planQuantity: 1000,
   plannedDate: null,
@@ -303,6 +325,7 @@ const rules = {
   plannedDate: [{ required: true, message: 'Укажите плановую дату', trigger: 'change' }],
   immId: [{ required: true, message: 'Выберите ТПА', trigger: 'change' }],
   moldId: [{ required: true, message: 'Выберите пресс-форму', trigger: 'change' }],
+  productId: [{ required: true, message: 'Выберите изделие', trigger: 'change' }],
   planQuantity: [
     { required: true, message: 'Введите план', trigger: 'blur' },
     { type: 'number', min: 1, message: 'План должен быть больше 0', trigger: 'blur' }
@@ -388,6 +411,23 @@ const loadPlanningDefaults = async () => {
 
 const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productTypeId || null)
 
+// PZP-19: изделия берём из типа выбранной ПФ
+const productOptions = computed(() => {
+  const type = productTypes.value.find(t => t.id === selectedProductTypeId.value)
+  const list = activeProducts(type)
+  // Текущее (архивное) изделие редактируемого задания показываем по артикулу из задания
+  const task = editingTask.value
+  if (task?.productId && !list.some(p => p.id === task.productId))
+    return [...list, { id: task.productId, fullArticle: task.productFullArticle || task.productId, name: task.productName, isActive: false }]
+  return list
+})
+
+// Изделие диктует заказ (из карточки заказа или уже привязанный); править его можно только в «Планируется»
+const isProductLocked = computed(() =>
+  !!props.lockedOrder || (!!editingTask.value && (editingTask.value.status !== 'Planned' || !!editingTask.value.orderId)))
+
+const selectedProduct = computed(() => productOptions.value.find(p => p.id === form.productId) || null)
+
 // PZP-16: при создании выбор ПФ и ТПА фильтруется по совместимости (пустой список ПФ — любой ТПА).
 // При редактировании ТПА и ПФ заблокированы — фильтр не применяем, иначе ПФ «несовместимого»
 // задания выпала бы из опций и селект показал бы сырой ID.
@@ -433,22 +473,23 @@ const moldNoDataText = computed(() => {
   const byImm = filterByCompatibility.value && !!form.immId
   if (props.lockedOrder) {
     if (byImm) return 'Нет пресс-форм этого типа изделия, совместимых с этим ТПА'
-    const article = props.lockedOrder.productTypeArticle
-    return `Нет активных пресс-форм для типа изделия ${article || 'заказа'}`
+    const article = props.lockedOrder.productFullArticle
+    return `Нет активных пресс-форм для изделия ${article || 'заказа'}`
   }
   return byImm ? 'Нет пресс-форм, совместимых с этим ТПА' : undefined
 })
 
-// Заказы подбираются по типу изделия выбранной ПФ (селект без ПФ заблокирован).
+// Заказы подбираются по выбранному изделию (селект без изделия заблокирован).
 const orderNoDataText = computed(() => {
-  const article = selectedMoldInfo.value?.productTypeArticle
-  return `Нет активных заказов на изделие ${article || 'выбранной пресс-формы'}`
+  const article = selectedProduct.value?.fullArticle
+  return `Нет активных заказов на изделие ${article || 'выбранное изделие'}`
 })
 
 const resetForm = () => {
   Object.assign(form, {
     immId: '',
     moldId: '',
+    productId: props.lockedOrder?.productId ?? null,
     personnelId: null,
     planQuantity: 1000,
     plannedDate: null,
@@ -466,14 +507,14 @@ const resetForm = () => {
   initialOrderId.value = null
 }
 
-const loadOrdersForProductType = async (productTypeId) => {
-  if (!productTypeId) {
+const loadOrdersForProduct = async (productId) => {
+  if (!productId) {
     orderOptions.value = []
     form.orderId = null
     return
   }
   try {
-    const response = await ordersApi.getList({ status: 'Active', productTypeId })
+    const response = await ordersApi.getList({ status: 'Active', productId })
     orderOptions.value = response.data
     if (form.orderId && !orderOptions.value.some(o => o.id === form.orderId)) {
       form.orderId = null
@@ -483,10 +524,27 @@ const loadOrdersForProductType = async (productTypeId) => {
   }
 }
 
-watch(selectedProductTypeId, (productTypeId) => {
+watch(() => form.productId, (productId) => {
   // При заблокированном заказе список заказов не нужен, а вызов затёр бы form.orderId.
   if (props.lockedOrder) return
-  loadOrdersForProductType(productTypeId)
+  loadOrdersForProduct(productId)
+})
+
+// Автоподстановка изделия по ПФ. Типы могут загрузиться позже ПФ — следим за обоими.
+watch([selectedProductTypeId, productTypes], ([typeId]) => {
+  if (props.lockedOrder) {
+    form.productId = props.lockedOrder.productId
+    return
+  }
+  // При редактировании изделие задания не трогаем
+  if (editingTask.value) return
+  if (typeId && productTypes.value.length === 0) {
+    loadProductTypes()
+    return
+  }
+  if (!productOptions.value.some(p => p.id === form.productId)) {
+    form.productId = productOptions.value.length === 1 ? productOptions.value[0].id : null
+  }
 })
 
 const loadMolds = async () => {
@@ -499,6 +557,16 @@ const loadMolds = async () => {
   }
 }
 
+async function loadProductTypes() {
+  if (productTypes.value.length > 0) return
+  try {
+    const response = await productTypesApi.getList({ isActive: true })
+    productTypes.value = response.data
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки изделий')
+  }
+}
+
 // Единственная опция селекта — сам заказ: отдельный запрос не нужен,
 // карточка заказа уже передала всё для отображения.
 const applyLockedOrder = () => {
@@ -508,9 +576,11 @@ const applyLockedOrder = () => {
   if (props.task) return
   orderOptions.value = [props.lockedOrder]
   form.orderId = props.lockedOrder.id
+  form.productId = props.lockedOrder.productId
   // Список ПФ фильтруется по типу изделия заказа, поэтому нужен сразу,
   // не дожидаясь @focus на селекте.
   loadMolds()
+  loadProductTypes()
 }
 
 watch(() => props.lockedOrder, applyLockedOrder, { immediate: true })
@@ -526,6 +596,7 @@ const populateForm = (task) => {
   Object.assign(form, {
     immId: task.immId,
     moldId: task.moldId,
+    productId: task.productId ?? null,
     personnelId: task.personnelId ?? null,
     planQuantity: task.planQuantity,
     plannedDate: task.plannedDate,
@@ -544,6 +615,7 @@ const populateForm = (task) => {
   // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
   // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
   loadMolds()
+  loadProductTypes()
   // То же для ТПА (селект задизейблен) и наладчика: без списков селекты показывают id.
   loadImms()
   loadPersonnel()

@@ -33,6 +33,20 @@ vi.mock('@/api/orders', () => ({
     setTaskOrder: vi.fn(() => Promise.resolve({ data: {} }))
   }
 }))
+vi.mock('@/api/productTypes', () => ({
+  productTypesApi: {
+    getList: vi.fn(() => Promise.resolve({ data: [
+      { id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, products: [
+        { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true }
+      ] },
+      { id: 'pt-Y', article: 'ART-Y', name: 'Тип Y', isActive: true, products: [
+        { id: 'p-Y0', article: '0', fullArticle: 'ART-Y.0', name: 'По умолчанию', isActive: true },
+        { id: 'p-YB', article: 'BLK', fullArticle: 'ART-Y.BLK', name: 'Чёрный', isActive: true },
+        { id: 'p-YW', article: 'WHT', fullArticle: 'ART-Y.WHT', name: 'Белый', isActive: false }
+      ] }
+    ] }))
+  }
+}))
 vi.mock('@/api/settings', () => ({
   settingsApi: {
     getPlanningDefaults: vi.fn(() => Promise.resolve({ data: {
@@ -59,61 +73,123 @@ function mountModal(props = {}) {
 describe('TaskFormModal — заказ', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('при выборе ПФ запрашивает активные заказы по её типу изделия', async () => {
+  it('при выборе ПФ с одним изделием подставляет его и запрашивает активные заказы по изделию', async () => {
     const wrapper = mountModal()
     await flushPromises()
 
-    // имитируем выбор пресс-формы
     await wrapper.vm.loadMolds()
     wrapper.vm.form.moldId = 'mold-1'
     await flushPromises()
 
-    expect(ordersApi.getList).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'Active', productTypeId: 'pt-X' })
-    )
+    expect(wrapper.vm.form.productId).toBe('p-X0')
+    expect(ordersApi.getList).toHaveBeenCalledWith({ status: 'Active', productId: 'p-X0' })
   })
 
-  it('при создании: пустой список заказов называет изделие выбранной ПФ', async () => {
-    const wrapper = mountModal()
-    await wrapper.vm.loadMolds()
-    wrapper.vm.form.moldId = 'mold-1'
-    await flushPromises()
-
-    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие ART-X')
-  })
-
-  it('при редактировании: пустой список заказов называет изделие ПФ задания', async () => {
-    const task = { id: 'task-1', immId: 'imm-1', moldId: 'mold-1', planQuantity: 10, status: 'Planned' }
-    const wrapper = mountModal({ task })
-    await flushPromises()
-
-    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие ART-X')
-  })
-
-  it('пустой список заказов без артикула у ПФ — без пустого места в тексте', async () => {
+  it('при выборе ПФ с несколькими изделиями изделие не подставляется, заказ заблокирован', async () => {
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()
     wrapper.vm.form.moldId = 'mold-2'
     await flushPromises()
 
-    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие выбранной пресс-формы')
+    expect(wrapper.vm.form.productId).toBeNull()
+    // архивного p-YW среди опций нет
+    expect(wrapper.vm.productOptions.map(p => p.id)).toEqual(['p-Y0', 'p-YB'])
+    expect(ordersApi.getList).not.toHaveBeenCalled()
+    const orderSelect = wrapper.findAllComponents({ name: 'ElSelect' }).find(s => s.props('placeholder') === 'Выберите заказ')
+    expect(orderSelect.props('disabled')).toBe(true)
   })
 
-  it('при смене ПФ сбрасывает orderId, если заказ больше не входит в список', async () => {
+  it('при создании: пустой список заказов называет полный артикул изделия', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие ART-X.0')
+  })
+
+  it('при редактировании: пустой список заказов называет изделие задания', async () => {
+    const task = { id: 'task-1', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0', planQuantity: 10, status: 'Planned' }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие ART-X.0')
+  })
+
+  it('изделие не выбрано — нейтральный текст', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-2'
+    await flushPromises()
+
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие выбранное изделие')
+  })
+
+  it('при смене ПФ сбрасывает изделие и заказ, если они не подходят новой ПФ', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+    expect(wrapper.vm.form.productId).toBe('p-X0')
+    wrapper.vm.form.orderId = 'order-1'
+
+    wrapper.vm.form.moldId = 'mold-2'
+    await flushPromises()
+
+    expect(wrapper.vm.form.productId).toBeNull()
+    expect(wrapper.vm.form.orderId).toBeFalsy()
+  })
+
+  it('при смене изделия сбрасывает orderId, если заказ больше не входит в список', async () => {
     ordersApi.getList
       .mockResolvedValueOnce({ data: [{ id: 'order-1', number: 'ORD-1' }] })
       .mockResolvedValueOnce({ data: [{ id: 'order-2', number: 'ORD-2' }] })
 
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()
-    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.moldId = 'mold-2'
+    await flushPromises()
+    wrapper.vm.form.productId = 'p-Y0'
     await flushPromises()
     wrapper.vm.form.orderId = 'order-1'
 
-    wrapper.vm.form.moldId = 'mold-2'
+    wrapper.vm.form.productId = 'p-YB'
     await flushPromises()
 
+    expect(ordersApi.getList).toHaveBeenLastCalledWith({ status: 'Active', productId: 'p-YB' })
     expect(wrapper.vm.form.orderId).toBeFalsy()
+  })
+
+  it('при создании задания передаёт productId в tasksApi.create', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalledWith(expect.objectContaining({ productId: 'p-X0' }))
+  })
+
+  it('без изделия форма не отправляется', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-2'
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).not.toHaveBeenCalled()
   })
 
   it('при создании задания передаёт orderId в tasksApi.create', async () => {
@@ -141,7 +217,7 @@ describe('TaskFormModal — заказ', () => {
 
   it('при редактировании — если orderId изменился, вызывает ordersApi.setTaskOrder', async () => {
     const task = {
-      id: 'task-1', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
+      id: 'task-1', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0', personnelId: '',
       planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null, note: '', orderId: null,
       plannedFullCycleSeconds: 60
     }
@@ -156,9 +232,9 @@ describe('TaskFormModal — заказ', () => {
     expect(ordersApi.setTaskOrder).toHaveBeenCalledWith('task-1', 'order-1')
   })
 
-  it('в режиме редактирования сама открывает форму и без ручного loadMolds подгружает заказы по типу изделия задания', async () => {
+  it('в режиме редактирования сама открывает форму и без ручного loadMolds подгружает заказы по изделию задания', async () => {
     const task = {
-      id: 'task-2', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
+      id: 'task-2', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0', personnelId: '',
       planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null, note: '', orderId: null
     }
 
@@ -167,11 +243,61 @@ describe('TaskFormModal — заказ', () => {
     const wrapper = mountModal({ task })
     await flushPromises()
 
-    expect(ordersApi.getList).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'Active', productTypeId: 'pt-X' })
-    )
+    expect(ordersApi.getList).toHaveBeenCalledWith({ status: 'Active', productId: 'p-X0' })
     expect(wrapper.vm.molds.length).toBeGreaterThan(0)
     expect(wrapper.vm.selectedProductTypeId).toBe('pt-X')
+  })
+})
+
+describe('TaskFormModal — изделие (PZP-19)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const editTask = (over = {}) => ({
+    id: 'task-p', status: 'Planned', immId: 'imm-1', moldId: 'mold-2', productId: 'p-Y0', orderId: null,
+    personnelId: '', planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null, note: '',
+    plannedFullCycleSeconds: 60, ...over
+  })
+  const productSelect = (w) => w.findAllComponents({ name: 'ElSelect' }).find(s => s.props('placeholder') === 'Выберите изделие')
+
+  it('Planned без заказа: селект изделия активен', async () => {
+    const wrapper = mountModal({ task: editTask() })
+    await flushPromises()
+    expect(wrapper.vm.isProductLocked).toBe(false)
+    expect(productSelect(wrapper).props('disabled')).toBe(false)
+  })
+
+  it('Planned с заказом: селект изделия заблокирован', async () => {
+    const wrapper = mountModal({ task: editTask({ orderId: 'order-1' }) })
+    await flushPromises()
+    expect(productSelect(wrapper).props('disabled')).toBe(true)
+  })
+
+  it('Issued: селект изделия заблокирован', async () => {
+    const wrapper = mountModal({ task: editTask({ status: 'Issued', personnelId: 'adj-1' }) })
+    await flushPromises()
+    expect(productSelect(wrapper).props('disabled')).toBe(true)
+  })
+
+  it('архивное изделие задания остаётся в опциях под своим артикулом', async () => {
+    const wrapper = mountModal({ task: editTask({ productId: 'p-YW', productFullArticle: 'ART-Y.WHT', productName: 'Белый' }) })
+    await flushPromises()
+    expect(wrapper.vm.productOptions.map(p => p.id)).toEqual(['p-Y0', 'p-YB', 'p-YW'])
+    expect(wrapper.vm.productOptions.at(-1).fullArticle).toBe('ART-Y.WHT')
+  })
+
+  it('при редактировании update получает productId', async () => {
+    const wrapper = mountModal({ task: editTask() })
+    await flushPromises()
+    wrapper.vm.form.productId = 'p-YB'
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.update).toHaveBeenCalledWith('task-p', expect.objectContaining({ productId: 'p-YB' }))
+  })
+
+  it('при редактировании изделие задания сохраняется в форме', async () => {
+    const wrapper = mountModal({ task: editTask() })
+    await flushPromises()
+    expect(wrapper.vm.form.productId).toBe('p-Y0')
   })
 })
 
@@ -179,11 +305,28 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
   const lockedOrder = {
     id: 'order-9',
     number: 'ORD-9',
+    productId: 'p-X0',
     productTypeId: 'pt-X',
-    productTypeArticle: 'ART-X'
+    productFullArticle: 'ART-X.0'
   }
 
   beforeEach(() => vi.clearAllMocks())
+
+  it('подставляет изделие заказа, блокирует селект изделия, ПФ — только типа изделия', async () => {
+    const order = { id: 'order-1', number: 'ORD-1', productId: 'p-YB', productTypeId: 'pt-Y', productFullArticle: 'ART-Y.BLK' }
+    const wrapper = mountModal({ lockedOrder: order })
+    await flushPromises()
+
+    expect(wrapper.vm.form.productId).toBe('p-YB')
+    const sel = wrapper.findAllComponents({ name: 'ElSelect' }).find(s => s.props('placeholder') === 'Выберите изделие')
+    expect(sel.props('disabled')).toBe(true)
+    expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-2'])
+    // выбор ПФ не меняет изделие заказа
+    wrapper.vm.form.moldId = 'mold-2'
+    await flushPromises()
+    expect(wrapper.vm.form.productId).toBe('p-YB')
+    expect(ordersApi.getList).not.toHaveBeenCalled()
+  })
 
   it('подставляет заказ в форму и не запрашивает список заказов', async () => {
     const wrapper = mountModal({ lockedOrder })
@@ -202,11 +345,10 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     // .el-select__placeholder <span>, а сам <input> остаётся пустым. Поэтому вместо
     // поиска input по placeholder="Выберите заказ" (как было в плане) проверяем
     // блокировку и отображаемый текст через обёртку .el-select__wrapper.is-disabled —
-    // единственный disabled-селект в этой форме.
-    const orderSelect = wrapper.find('.el-select__wrapper.is-disabled')
-    expect(orderSelect.exists()).toBe(true)
+    // disabled-селект, показывающий номер заказа (селект изделия тоже заблокирован).
+    const orderSelect = wrapper.findAll('.el-select__wrapper.is-disabled').find(w => w.text().includes('ORD-9'))
+    expect(orderSelect).toBeTruthy()
     expect(orderSelect.find('input').element.disabled).toBe(true)
-    expect(orderSelect.text()).toContain('ORD-9')
   })
 
   it('оставляет в списке ПФ только пресс-формы с типом изделия заказа', async () => {
@@ -221,14 +363,14 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     const wrapper = mountModal({ lockedOrder })
     await flushPromises()
 
-    expect(wrapper.vm.moldNoDataText).toBe('Нет активных пресс-форм для типа изделия ART-X')
+    expect(wrapper.vm.moldNoDataText).toBe('Нет активных пресс-форм для изделия ART-X.0')
   })
 
   it('при пустом списке ПФ без артикула заказа не выводит пустое место', async () => {
-    const wrapper = mountModal({ lockedOrder: { ...lockedOrder, productTypeArticle: null } })
+    const wrapper = mountModal({ lockedOrder: { ...lockedOrder, productFullArticle: null } })
     await flushPromises()
 
-    expect(wrapper.vm.moldNoDataText).toBe('Нет активных пресс-форм для типа изделия заказа')
+    expect(wrapper.vm.moldNoDataText).toBe('Нет активных пресс-форм для изделия заказа')
   })
 
   it('при выборе ПФ не сбрасывает orderId и не грузит заказы', async () => {
@@ -359,7 +501,7 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
   // поправить старое задание, не выдумав цифру эталона.
   it('при редактировании legacy-задания (plannedFullCycleSeconds: null) сохраняет без заполнения эталона', async () => {
     const task = {
-      id: 'task-legacy', immId: 'imm-1', moldId: 'mold-1', personnelId: '',
+      id: 'task-legacy', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0', personnelId: '',
       planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: null, note: '', orderId: null,
       plannedFullCycleSeconds: null
     }
@@ -397,7 +539,7 @@ describe('TaskFormModal — плановое начало и наладчик (P
   beforeEach(() => vi.clearAllMocks())
 
   const draft = {
-    id: 't1', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', personnelId: null,
+    id: 't1', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0', personnelId: null,
     planQuantity: 10, plannedDate: '2026-10-20', plannedSetupStartTime: '14:00:00',
     note: '', orderId: null, workMode: 'Auto', plannedFullCycleSeconds: 30, plannedInjectionCycleSeconds: null
   }
@@ -414,7 +556,9 @@ describe('TaskFormModal — плановое начало и наладчик (P
   it('создание без времени и без наладчика проходит', async () => {
     const wrapper = mountModal()
     await flushPromises()
+    await wrapper.vm.loadMolds()
     Object.assign(wrapper.vm.form, { immId: 'imm-1', moldId: 'mold-1', planQuantity: 5, plannedFullCycleSeconds: 30, plannedDate: '2099-01-01' })
+    await flushPromises()
     await wrapper.vm.handleSubmit()
     await flushPromises()
     expect(tasksApi.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -593,7 +737,7 @@ describe('TaskFormModal — норматив наладки и буфер вып
 
   it('при сохранении шлёт норматив и буфер', async () => {
     const wrapper = mountModal({ task: {
-      id: 't1', status: 'InProgress', immId: 'imm-1', moldId: 'mold-1', planQuantity: 100,
+      id: 't1', status: 'InProgress', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0', planQuantity: 100,
       plannedDate: '2026-10-20', plannedFullCycleSeconds: 60,
       plannedSetupMinutes: 45, releaseBufferFixedMinutes: 5, releaseBufferPercent: 20
     } })
@@ -672,7 +816,7 @@ describe('TaskFormModal — совместимость ПФ↔ТПА (PZP-16)', 
   })
 
   it('фильтр по ТПА сочетается с фильтром по типу изделия заказа', async () => {
-    const wrapper = await mountLoaded({ lockedOrder: { id: 'order-9', number: 'ORD-9', productTypeId: 'pt-X', productTypeArticle: 'ART-X' } })
+    const wrapper = await mountLoaded({ lockedOrder: { id: 'order-9', number: 'ORD-9', productId: 'p-X0', productTypeId: 'pt-X', productFullArticle: 'ART-X.0' } })
     wrapper.vm.form.immId = 'imm-2'
     await flushPromises()
     expect(wrapper.vm.availableMolds.map(m => m.id)).toEqual(['mold-any'])
@@ -688,7 +832,7 @@ describe('TaskFormModal — совместимость ПФ↔ТПА (PZP-16)', 
   })
 
   it('с заказом и выбранным ТПА текст называет оба условия', async () => {
-    const wrapper = await mountLoaded({ lockedOrder: { id: 'order-9', number: 'ORD-9', productTypeId: 'pt-X', productTypeArticle: 'ART-X' } })
+    const wrapper = await mountLoaded({ lockedOrder: { id: 'order-9', number: 'ORD-9', productId: 'p-X0', productTypeId: 'pt-X', productFullArticle: 'ART-X.0' } })
     wrapper.vm.form.immId = 'imm-1'
     await flushPromises()
     expect(wrapper.vm.moldNoDataText).toBe('Нет пресс-форм этого типа изделия, совместимых с этим ТПА')
