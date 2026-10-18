@@ -99,7 +99,8 @@ export const useDashboardStore = defineStore('dashboard', {
         result = result.filter(i => 
           i.name.toLowerCase().includes(search) ||
           i.model?.toLowerCase().includes(search) ||
-          i.currentMoldName?.toLowerCase().includes(search)
+          i.currentMoldName?.toLowerCase().includes(search) ||
+          i.currentProductArticle?.toLowerCase().includes(search)
         )
       }
 

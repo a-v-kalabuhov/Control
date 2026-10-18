@@ -1,6 +1,6 @@
 <template>
   <el-dialog v-model="visible" title="Выдать задание" width="420px" :close-on-click-modal="false">
-    <p v-if="task" class="mb-4 text-gray-600">{{ task.immName }} / {{ task.moldName }}</p>
+    <p v-if="task" class="mb-4 text-gray-600">{{ task.immName }} / {{ task.moldName }} / {{ task.productFullArticle }}</p>
     <el-form label-position="top">
       <el-form-item label="Наладчик" required>
         <el-select v-model="personnelId" placeholder="Выберите наладчика" filterable class="w-full">

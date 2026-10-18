@@ -22,6 +22,15 @@
       <div class="text-base text-gray-700">{{ task.moldName }}</div>
     </div>
 
+    <!-- Изделие (PZP-19) -->
+    <div class="mb-3">
+      <div class="text-xs text-gray-500 mb-1">Изделие</div>
+      <div class="text-base font-semibold text-gray-800">{{ task.productFullArticle }}</div>
+      <div v-if="productSecondary(task.productTypeName, task.productName)" class="text-sm text-gray-500">
+        {{ productSecondary(task.productTypeName, task.productName) }}
+      </div>
+    </div>
+
     <!-- Плановое начало (PZP-13) -->
     <div v-if="task.status === 'Issued'" class="mb-3 flex items-center gap-2">
       <span class="text-sm text-gray-500">Начало:</span>
@@ -108,6 +117,7 @@ import { computed } from 'vue'
 import MobileStatusBadge from './MobileStatusBadge.vue'
 import { formatPlannedStart, isPlannedStartOverdue, isPlannedStartToday } from '@/utils/plannedStart'
 import { formatDuration } from '@/utils/taskPlan'
+import { productSecondary } from '@/utils/productLabel'
 
 const props = defineProps({
   task: {

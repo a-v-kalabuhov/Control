@@ -33,3 +33,10 @@ describe('ImmCard — темп и прогноз (BL-32)', () => {
     expect(w.text()).not.toContain('Прогноз окончания')
   })
 })
+
+describe('ImmCard — изделие (PZP-19)', () => {
+  it('полный артикул виден под названием ПФ', () => {
+    const w = mountCard(imm({ currentProductArticle: 'A123.BLK' }))
+    expect(w.text()).toContain('A123.BLK')
+  })
+})

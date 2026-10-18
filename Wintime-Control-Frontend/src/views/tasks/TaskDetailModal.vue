@@ -26,6 +26,12 @@
             <el-descriptions-item label="Пресс-форма">
               {{ task?.moldName }}
             </el-descriptions-item>
+            <el-descriptions-item label="Изделие">
+              <div class="font-semibold">{{ task?.productFullArticle }}</div>
+              <div v-if="productSecondary(task?.productTypeName, task?.productName)" class="text-sm text-gray-500">
+                {{ productSecondary(task?.productTypeName, task?.productName) }}
+              </div>
+            </el-descriptions-item>
             <el-descriptions-item label="Наладчик">
               {{ task?.personnelName || '—' }}
             </el-descriptions-item>
@@ -150,6 +156,7 @@ import TaskResultsTab from '@/components/tasks/TaskResultsTab.vue'
 import { formatPlannedStart } from '@/utils/plannedStart'
 import dayjs from 'dayjs'
 import { formatDuration } from '@/utils/taskPlan'
+import { productSecondary } from '@/utils/productLabel'
 
 const props = defineProps({
   modelValue: {
