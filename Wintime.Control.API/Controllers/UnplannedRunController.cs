@@ -40,6 +40,7 @@ public class UnplannedRunController : ControllerBase
         var query = _context.UnplannedRuns
             .Include(r => r.Imm)
             .Include(r => r.AssignedTask).ThenInclude(t => t!.Mold)
+            .Include(r => r.AssignedTask).ThenInclude(t => t!.Product)
             .Include(r => r.AssignedTask).ThenInclude(t => t!.Personnel)
             .AsQueryable();
 
@@ -68,7 +69,7 @@ public class UnplannedRunController : ControllerBase
                 IsClosed = r.ClosedAt != null,
                 AssignedTaskId = r.AssignedTaskId,
                 AssignedTaskLabel = r.AssignedTask == null ? null
-                    : $"{r.AssignedTask.Mold.Name} · план {r.AssignedTask.PlanQuantity}",
+                    : $"{r.AssignedTask.Product!.FullArticle} · {r.AssignedTask.Mold.Name} · план {r.AssignedTask.PlanQuantity}",
                 PersonnelName = r.AssignedTask?.Personnel?.FullName
             });
         }
@@ -92,6 +93,7 @@ public class UnplannedRunController : ControllerBase
         var tasks = await _context.ShiftTasks
             .Where(t => t.ImmId == run.ImmId)
             .Include(t => t.Mold)
+            .Include(t => t.Product)
             .Include(t => t.Personnel)
             .ToListAsync();
 
@@ -142,7 +144,7 @@ public class UnplannedRunController : ControllerBase
             return new TaskCandidateDto
             {
                 TaskId = e.Task.Id,
-                Label = $"{e.Task.Mold.Name} · план {e.Task.PlanQuantity} · {e.Task.PlannedDate:dd.MM.yyyy}",
+                Label = $"{e.Task.Product!.FullArticle} · {e.Task.Mold.Name} · план {e.Task.PlanQuantity} · {e.Task.PlannedDate:dd.MM.yyyy}",
                 PersonnelName = e.Task.Personnel?.FullName,
                 Recommended = e.Task.Id == recommendedId
             };

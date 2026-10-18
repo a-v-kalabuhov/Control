@@ -51,14 +51,26 @@ public class TasksController : ControllerBase
         [FromQuery] DateOnly? plannedFrom = null,
         [FromQuery] DateOnly? plannedTo = null,
         [FromQuery] DateTime? activeFrom = null,
-        [FromQuery] DateTime? activeTo = null)
+        [FromQuery] DateTime? activeTo = null,
+        [FromQuery] string? search = null)
     {
         var query = _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
+            .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
             .Include(t => t.Order)
             .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = $"%{search.Trim()}%";
+            query = query.Where(t =>
+                EF.Functions.ILike(t.Imm.Name, pattern) ||
+                EF.Functions.ILike(t.Mold.Name, pattern) ||
+                EF.Functions.ILike(t.Product!.FullArticle, pattern) ||
+                EF.Functions.ILike(t.Product!.Name, pattern));
+        }
 
         bool activeFilter = activeFrom.HasValue || activeTo.HasValue;
 
@@ -106,7 +118,7 @@ public class TasksController : ControllerBase
     /// <summary>
     /// Мои задания — для текущего наладчика (по JWT): в работе, очередь по плановому началу, архив.
     /// </summary>
-    /// <param name="search">Фильтр по названию ТПА или пресс-формы (регистронезависимый).</param>
+    /// <param name="search">Фильтр по названию ТПА, пресс-формы, артикулу или названию изделия (регистронезависимый).</param>
     /// <param name="archivePage">Номер страницы архива (с 1).</param>
     /// <param name="archivePageSize">Размер страницы архива.</param>
     [HttpGet("my")]
@@ -126,6 +138,7 @@ public class TasksController : ControllerBase
         var baseQuery = _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
+            .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
             .Where(t => t.PersonnelId == userId)
             .Where(t => t.Status != Core.Enums.TaskStatus.Planned);
@@ -135,7 +148,9 @@ public class TasksController : ControllerBase
             var pattern = $"%{search.Trim()}%";
             baseQuery = baseQuery.Where(t =>
                 EF.Functions.ILike(t.Imm.Name, pattern) ||
-                EF.Functions.ILike(t.Mold.Name, pattern));
+                EF.Functions.ILike(t.Mold.Name, pattern) ||
+                EF.Functions.ILike(t.Product!.FullArticle, pattern) ||
+                EF.Functions.ILike(t.Product!.Name, pattern));
         }
 
         var schedule = await _factoryClock.GetScheduleAsync();
@@ -189,6 +204,7 @@ public class TasksController : ControllerBase
         var task = await _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
+            .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
             .Include(t => t.Order)
             .FirstOrDefaultAsync(t => t.Id == id);
@@ -252,6 +268,13 @@ public class TasksController : ControllerBase
         if (request.ProductId is null)
             return BadRequest("Укажите изделие.");
 
+        var product = await _context.Products.Include(p => p.ProductType)
+            .FirstOrDefaultAsync(p => p.Id == request.ProductId.Value);
+        if (product == null)
+            return BadRequest("Указано несуществующее изделие.");
+        ProductSelection.EnsureSelectable(product);
+        ProductSelection.EnsureBelongsToMold(product, mold.ProductTypeId);
+
         // PZP-16: ТПА должен входить в список совместимых ПФ (пустой список — любой ТПА).
         if (!MoldImmCompatibility.IsCompatible(mold.CompatibleImms.Select(i => i.Id).ToList(), request.ImmId))
             return BadRequest("Пресс-форма не совместима с выбранным ТПА.");
@@ -295,6 +318,7 @@ public class TasksController : ControllerBase
             return BadRequest("Укажите активного наладчика");
 
         task.Mold = mold;
+        task.Product = product;
         _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
 
@@ -308,9 +332,20 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> UpdateTask(Guid id, [FromBody] UpdateTaskRequestDto request)
     {
-        var task = await _context.ShiftTasks.FindAsync(id);
+        var task = await _context.ShiftTasks.Include(t => t.Mold).FirstOrDefaultAsync(t => t.Id == id);
         if (task == null)
             return NotFound();
+
+        if (request.ProductId.HasValue && request.ProductId.Value != task.ProductId)
+        {
+            var product = await _context.Products.Include(p => p.ProductType)
+                .FirstOrDefaultAsync(p => p.Id == request.ProductId.Value);
+            if (product == null)
+                return BadRequest("Указано несуществующее изделие.");
+            ProductSelection.EnsureSelectable(product);
+            ProductSelection.EnsureBelongsToMold(product, task.Mold.ProductTypeId);
+            task.SetProduct(product.Id);   // статус и заказ — гард в сущности (ADR-0002)
+        }
 
         if (request.PlanQuantity.HasValue)
             task.SetPlanQuantity(request.PlanQuantity.Value);

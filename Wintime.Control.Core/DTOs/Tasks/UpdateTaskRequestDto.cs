@@ -5,6 +5,8 @@ namespace Wintime.Control.Core.DTOs.Tasks;
 public class UpdateTaskRequestDto
 {
     public int? PlanQuantity { get; set; }
+    /// <summary>Изделие задания (PZP-19); <c>null</c> — не менять.</summary>
+    public Guid? ProductId { get; set; }
     public string? Note { get; set; }
     /// <summary>Плановая дата; <c>null</c> — не менять.</summary>
     public DateOnly? PlannedDate { get; set; }

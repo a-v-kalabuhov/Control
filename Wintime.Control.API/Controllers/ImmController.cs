@@ -79,6 +79,10 @@ public class ImmController : ControllerBase
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => t.Mold.Name)
                     .FirstOrDefault(),
+                CurrentProductArticle = i.ShiftTasks
+                    .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
+                    .Select(t => t.Product!.FullArticle)
+                    .FirstOrDefault(),
                 PersonnelName = i.ShiftTasks
                     .Where(t => t.Status == Core.Enums.TaskStatus.InProgress || t.Status == Core.Enums.TaskStatus.Setup)
                     .Select(t => t.Personnel != null ? t.Personnel.FullName : null)
