@@ -42,13 +42,14 @@ public class ProductTypesController : ControllerBase
 
     // ── Единое пространство артикулов (PZP-19, решение 4) ──
     // Артикул типа не совпадает ни с другим артикулом типа, ни с полным артикулом изделия.
+    // Изделия самого типа (exceptTypeId) пропускаются: их полные артикулы пересчитываются и проверяются отдельно.
     private async Task<string?> TypeArticleConflictAsync(string article, Guid? exceptTypeId)
     {
         var type = await _context.ProductTypes.FirstOrDefaultAsync(t => t.Article == article && t.Id != exceptTypeId);
         if (type != null)
             return $"Артикул '{article}' уже используется типом изделия «{type.Name}».";
         var product = await _context.Products.Include(p => p.ProductType)
-            .FirstOrDefaultAsync(p => p.FullArticle == article);
+            .FirstOrDefaultAsync(p => p.FullArticle == article && p.ProductTypeId != exceptTypeId);
         return product == null ? null
             : $"Артикул {article} совпадает с полным артикулом изделия «{product.Name}» (тип {product.ProductType!.Article}).";
     }
@@ -81,8 +82,11 @@ public class ProductTypesController : ControllerBase
         if (isActive.HasValue)
             query = query.Where(p => p.IsActive == isActive.Value);
         if (!string.IsNullOrEmpty(search))
-            query = query.Where(p => p.Name.Contains(search) || p.Article.Contains(search)
-                || p.Products.Any(x => x.FullArticle.Contains(search) || x.Name.Contains(search)));
+        {
+            var pattern = $"%{search}%";
+            query = query.Where(p => EF.Functions.ILike(p.Name, pattern) || EF.Functions.ILike(p.Article, pattern)
+                || p.Products.Any(x => EF.Functions.ILike(x.FullArticle, pattern) || EF.Functions.ILike(x.Name, pattern)));
+        }
 
         var items = await query.OrderBy(p => p.Article).ToListAsync();
         var usedIds = await UsedProductIdsAsync(items.SelectMany(t => t.Products).Select(p => p.Id).ToList());
@@ -270,9 +274,16 @@ public class ProductTypesController : ControllerBase
             return Conflict("Изделие используется в заказах или заданиях — его можно только отправить в архив");
         if (pt.Products.Count <= 1)
             return Conflict("Нельзя удалить последнее изделие типа.");
+        if (product.IsActive && pt.IsActive && !pt.Products.Any(p => p.IsActive && p.Id != productId))
+            return Conflict("Это последнее активное изделие типа. Чтобы вывести тип из оборота, переведите в архив сам тип");
 
         _context.Products.Remove(product);
-        await _context.SaveChangesAsync();
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateException e) when (e.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.ForeignKeyViolation })
+        {
+            // Гонка: изделие использовали между проверкой и удалением.
+            return Conflict("Изделие используется в заказах или заданиях — его можно только отправить в архив");
+        }
         return NoContent();
     }
 }

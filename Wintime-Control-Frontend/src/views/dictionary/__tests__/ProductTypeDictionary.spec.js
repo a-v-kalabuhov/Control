@@ -45,6 +45,7 @@ describe('ProductTypeDictionary (PZP-19)', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     mounted.splice(0).forEach(w => w.unmount())
     document.body.innerHTML = ''
   })
@@ -131,5 +132,50 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     await flushPromises()
 
     expect(spy).toHaveBeenCalledWith('Полный артикул A123.BLK уже есть в типе')
+  })
+
+  it('восстановление типа из архива: текст 409 сервера показывается пользователю', async () => {
+    const spy = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const text = 'Сначала верните из архива хотя бы одно изделие типа'
+    productTypesApi.update.mockRejectedValueOnce({ response: { data: text } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.toggleArchive({ ...typeA, isActive: false })
+    await flushPromises()
+
+    expect(spy).toHaveBeenCalledWith(text)
+  })
+
+  it('нестроковое тело ошибки не попадает в сообщение: показывается запасной текст', async () => {
+    const spy = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    productTypesApi.update.mockRejectedValueOnce({ response: { data: { errors: {} } } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.toggleArchive(typeA)
+    await flushPromises()
+
+    expect(spy).toHaveBeenCalledWith('Ошибка изменения статуса')
+  })
+
+  it('сбой перезагрузки после сохранения изделия не выдаётся за ошибку сохранения', async () => {
+    const err = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const ok = vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
+    productTypesApi.addProduct.mockResolvedValue({ data: {} })
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.showProductModal()
+    wrapper.vm.productForm.article = 'BLK'
+    wrapper.vm.productForm.name = 'Чёрный'
+    productTypesApi.getById.mockRejectedValueOnce(new Error('network'))
+
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+
+    expect(ok).toHaveBeenCalledWith('Изделие добавлено')
+    expect(err).not.toHaveBeenCalledWith('Ошибка сохранения изделия')
+    expect(err).toHaveBeenCalledWith('Не удалось обновить данные типа')
   })
 })

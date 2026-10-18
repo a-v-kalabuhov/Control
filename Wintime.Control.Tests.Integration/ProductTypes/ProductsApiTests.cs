@@ -286,6 +286,70 @@ public class ProductsApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task DeleteLastActiveProduct_Conflict()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        var p = await AddProductAsync(c, t.Id, "BLK");
+        (await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{t.Products[0].Id}", new UpdateProductRequestDto { IsActive = false }))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var del = await c.DeleteAsync($"/api/producttypes/{t.Id}/products/{p.Id}");
+        del.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await del.Content.ReadAsStringAsync()).Should().Contain("Это последнее активное изделие типа");
+        (await GetTypeAsync(c, t.Id)).Products.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task RenameType_ToOwnProductFullArticle_Ok()
+    {
+        var c = await ClientAsync();
+        var a = Uniq("A");
+        var t = await CreateTypeAsync(c, a);
+        await AddProductAsync(c, t.Id, "B");
+        var put = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}", new UpdateProductTypeRequestDto { Article = $"{a}.B" });
+        put.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var got = await GetTypeAsync(c, t.Id);
+        got.Article.Should().Be($"{a}.B");
+        got.Products.Select(p => p.FullArticle).Should().BeEquivalentTo(new[] { $"{a}.B.0", $"{a}.B.B" });
+    }
+
+    [Fact]
+    public async Task Search_IsCaseInsensitive()
+    {
+        var c = await ClientAsync();
+        var a = Uniq("T");
+        var t = await CreateTypeAsync(c, a);
+        await AddProductAsync(c, t.Id, "BLK");
+        var list = await c.GetFromJsonAsync<List<ProductTypeDto>>($"/api/producttypes?search={a.ToLowerInvariant()}.blk");
+        list.Should().Contain(x => x.Id == t.Id);
+    }
+
+    [Fact]
+    public async Task UpdateProduct_RenameToCollidingFullArticle_Conflict()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        await AddProductAsync(c, t.Id, "BLK");
+        var wht = await AddProductAsync(c, t.Id, "WHT");
+        var put = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{wht.Id}", new UpdateProductRequestDto { Article = "blk" });
+        put.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task UpdateAndDeleteProduct_OfAnotherType_NotFound()
+    {
+        var c = await ClientAsync();
+        var t1 = await CreateTypeAsync(c, Uniq("T"));
+        var t2 = await CreateTypeAsync(c, Uniq("T"));
+        var foreign = await AddProductAsync(c, t2.Id, "BLK");
+        (await c.PutAsJsonAsync($"/api/producttypes/{t1.Id}/products/{foreign.Id}", new UpdateProductRequestDto { Name = "x" }))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await c.DeleteAsync($"/api/producttypes/{t1.Id}/products/{foreign.Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Adjuster_CannotAddProduct()
     {
         var m = await ClientAsync();

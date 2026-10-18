@@ -43,7 +43,8 @@ VALUES (gen_random_uuid(),now(),now() + interval '7 days','ORD-1','{TypeId}',100
 INSERT INTO ""ShiftTasks"" (""Id"",""ActualMaterialWeightGrams"",""ActualQuantity"",""CreatedAt"",""DefectQuantity"",""ImmId"",""MoldId"",""PlanQuantity"",""PlannedDate"",""PlannedSetupMinutes"",""ReleaseBufferFixedMinutes"",""ReleaseBufferPercent"",""Status"",""WorkMode"")
 VALUES (gen_random_uuid(),0,0,now(),0,'{ImmId}','{MoldId}',100,current_date,0,0,0,0,0);";
 
-    private async Task<(IMigrator Migrator, string Target)> MigrateToPreviousAndSeedAsync(ControlDbContext db, string moldTypeSql)
+    private async Task<(IMigrator Migrator, string Target)> MigrateToPreviousAndSeedAsync(
+        ControlDbContext db, string moldTypeSql, string extraSql = "")
     {
         var migrator = db.GetService<IMigrator>();
         var all = db.Database.GetMigrations().ToList();
@@ -52,7 +53,7 @@ VALUES (gen_random_uuid(),0,0,now(),0,'{ImmId}','{MoldId}',100,current_date,0,0,
 
         await using var conn = new NpgsqlConnection(_pg.GetConnectionString());
         await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand(SeedSql(moldTypeSql), conn);
+        await using var cmd = new NpgsqlCommand(SeedSql(moldTypeSql) + extraSql, conn);
         await cmd.ExecuteNonQueryAsync();
         return (migrator, target);
     }
@@ -80,6 +81,19 @@ VALUES (gen_random_uuid(),0,0,now(),0,'{ImmId}','{MoldId}',100,current_date,0,0,
     {
         await using var db = NewContext();
         var (migrator, target) = await MigrateToPreviousAndSeedAsync(db, "NULL");
+
+        await FluentActions.Awaiting(() => migrator.MigrateAsync(target))
+            .Should().ThrowAsync<PostgresException>()
+            .Where(e => e.MessageText.Contains("PZP-19"));
+    }
+
+    [Fact]
+    public async Task AddProducts_TypeArticleEqualsDefaultFullArticleOfAnother_FailsWithMessage()
+    {
+        await using var db = NewContext();
+        var (migrator, target) = await MigrateToPreviousAndSeedAsync(db, $"'{TypeId}'", @"
+INSERT INTO ""ProductTypes"" (""Id"",""Article"",""CreatedAt"",""IsActive"",""Name"")
+VALUES (gen_random_uuid(),'abc.0',now(),TRUE,'Крышка 2');");
 
         await FluentActions.Awaiting(() => migrator.MigrateAsync(target))
             .Should().ThrowAsync<PostgresException>()

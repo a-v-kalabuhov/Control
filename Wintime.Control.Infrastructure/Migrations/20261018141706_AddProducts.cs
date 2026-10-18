@@ -14,6 +14,19 @@ namespace Wintime.Control.Infrastructure.Migrations
             // 1. Артикулы типов — к нормализованному виду (раньше заглавные обеспечивал только фронт).
             migrationBuilder.Sql(@"UPDATE ""ProductTypes"" SET ""Article"" = upper(trim(""Article""));");
 
+            // 1а. Артикул типа не должен совпасть с полным артикулом изделия по умолчанию другого типа
+            //     (единое пространство артикулов, инвариант 1) — иначе дальше упадёт уникальный индекс.
+            migrationBuilder.Sql(@"
+DO $$
+DECLARE conflict_list text;
+BEGIN
+  SELECT string_agg(a.""Article"" || ' / ' || b.""Article"", ', ') INTO conflict_list
+  FROM ""ProductTypes"" a JOIN ""ProductTypes"" b ON a.""Article"" = b.""Article"" || '.0' AND a.""Id"" <> b.""Id"";
+  IF conflict_list IS NOT NULL THEN
+    RAISE EXCEPTION 'PZP-19: артикул типа совпадает с полным артикулом изделия по умолчанию другого типа (%). Переименуйте тип и повторите обновление.', conflict_list;
+  END IF;
+END $$;");
+
             // 2. Таблица изделий.
             migrationBuilder.CreateTable(
                 name: "Products",
@@ -82,6 +95,8 @@ FROM ""Products"" p WHERE p.""ProductTypeId"" = o.""ProductTypeId"" AND p.""Arti
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // ВНИМАНИЕ: откат корректен только на пустой БД. Orders.ProductId хранит id изделий,
+            // а не типов — после переименования в ProductTypeId значения не восстанавливаются.
             migrationBuilder.DropForeignKey(
                 name: "FK_Orders_Products_ProductId",
                 table: "Orders");

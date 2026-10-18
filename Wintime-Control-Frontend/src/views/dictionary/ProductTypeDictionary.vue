@@ -144,6 +144,13 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productTypesApi } from '@/api/productTypes'
 import { activeProducts } from '@/utils/productLabel'
+import { apiErrorMessage } from '@/utils/apiError'
+
+// Текст ошибки сервера; нестроковое тело (ProblemDetails и т.п.) заменяется запасным текстом.
+function errText(error, fallback) {
+  const msg = apiErrorMessage(error, fallback)
+  return typeof msg === 'string' && msg ? msg : fallback
+}
 
 const loading = ref(false)
 const saving = ref(false)
@@ -214,7 +221,7 @@ async function save() {
       }
       await loadItems()
     } catch (error) {
-      ElMessage.error(error.response?.data ?? 'Ошибка сохранения типа изделия')
+      ElMessage.error(errText(error, 'Ошибка сохранения типа изделия'))
     } finally {
       saving.value = false
     }
@@ -226,8 +233,8 @@ async function toggleArchive(row) {
     await productTypesApi.update(row.id, { isActive: !row.isActive })
     ElMessage.success(row.isActive ? 'Тип изделия в архиве' : 'Тип изделия возвращён')
     await loadItems()
-  } catch {
-    ElMessage.error('Ошибка изменения статуса')
+  } catch (error) {
+    ElMessage.error(errText(error, 'Ошибка изменения статуса'))
   }
 }
 
@@ -254,6 +261,15 @@ async function reloadEditing() {
   await loadItems()
 }
 
+// Перезагрузка после успешного сохранения: её сбой — не ошибка самого сохранения.
+async function safeReloadEditing() {
+  try {
+    await reloadEditing()
+  } catch {
+    ElMessage.error('Не удалось обновить данные типа')
+  }
+}
+
 async function saveProduct() {
   const article = productForm.article.trim().toUpperCase()
   const name = productForm.name.trim()
@@ -272,22 +288,24 @@ async function saveProduct() {
       ElMessage.success('Изделие добавлено')
     }
     productDialogVisible.value = false
-    await reloadEditing()
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка сохранения изделия')
+    ElMessage.error(errText(error, 'Ошибка сохранения изделия'))
+    return
   } finally {
     savingProduct.value = false
   }
+  await safeReloadEditing()
 }
 
 async function toggleProductArchive(p) {
   try {
     await productTypesApi.updateProduct(editing.value.id, p.id, { isActive: !p.isActive })
     ElMessage.success(p.isActive ? 'Изделие в архиве' : 'Изделие возвращено')
-    await reloadEditing()
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка изменения статуса')
+    ElMessage.error(errText(error, 'Ошибка изменения статуса'))
+    return
   }
+  await safeReloadEditing()
 }
 
 async function deleteProduct(p) {
@@ -301,9 +319,10 @@ async function deleteProduct(p) {
   try {
     await productTypesApi.deleteProduct(editing.value.id, p.id)
     ElMessage.success('Изделие удалено')
-    await reloadEditing()
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка удаления изделия')
+    ElMessage.error(errText(error, 'Ошибка удаления изделия'))
+    return
   }
+  await safeReloadEditing()
 }
 </script>
