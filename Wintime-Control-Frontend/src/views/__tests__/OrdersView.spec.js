@@ -60,7 +60,8 @@ describe('OrdersView', () => {
 
   it('ограничивает прогресс-бар 100%, но показывает реальные числа в подписи', async () => {
     const wrapper = mountView([
-      { id: '2', number: 'ORD-2', productTypeArticle: 'B', quantity: 100,
+      { id: '2', number: 'ORD-2', productFullArticle: 'B7.RED', productId: 'p-2', productName: 'Красное',
+        productTypeId: 'pt-2', quantity: 100,
         goodQuantity: 130, progressPercent: 130, status: 'Active',
         dueDate: '2026-08-01T00:00:00Z' }
     ])
@@ -73,9 +74,11 @@ describe('OrdersView', () => {
 
   it('блокирует «Завершить», если годных меньше плана, и разрешает, если план выполнен', async () => {
     const wrapper = mountView([
-      { id: '3', number: 'ORD-3', productTypeArticle: 'C', quantity: 100,
+      { id: '3', number: 'ORD-3', productFullArticle: 'A123.BLK', productId: 'p-1', productName: 'Чёрная',
+        productTypeId: 'pt-1', quantity: 100,
         goodQuantity: 40, progressPercent: 40, status: 'Active', dueDate: null },
-      { id: '4', number: 'ORD-4', productTypeArticle: 'D', quantity: 100,
+      { id: '4', number: 'ORD-4', productFullArticle: 'B7.BLU', productId: 'p-3', productName: 'Синее',
+        productTypeId: 'pt-2', quantity: 100,
         goodQuantity: 100, progressPercent: 100, status: 'Active', dueDate: null }
     ])
     await flushPromises()
@@ -88,7 +91,7 @@ describe('OrdersView', () => {
 
   it('редактирование существующего заказа вызывает ordersApi.update', async () => {
     const wrapper = mountView([
-      { id: '5', number: 'ORD-5', productTypeArticle: 'E', quantity: 50,
+      { id: '5', number: 'ORD-5', productFullArticle: 'A123.BLK', productName: 'Чёрная', quantity: 50,
         goodQuantity: 10, progressPercent: 20, status: 'Active', dueDate: '2026-08-01T00:00:00Z',
         orderDate: '2026-07-01', productTypeId: 'pt-1', productId: 'p-1', note: 'старое примечание' }
     ])
@@ -251,6 +254,23 @@ describe('OrdersView', () => {
       await flushPromises()
       expect(wrapper.vm.form.productTypeId).toBe('pt-2')
       expect(wrapper.vm.form.productId).toBe('p-3')
+    })
+
+    it('редактирование заказа с архивным изделием сохраняет productId и добавляет его в опции', async () => {
+      const wrapper = mountView([
+        { id: '8', number: 'ORD-8', productFullArticle: 'B7.OLD', productId: 'p-4', productName: 'Старое',
+          productTypeId: 'pt-2', quantity: 5, goodQuantity: 0, progressPercent: 0, status: 'Active',
+          dueDate: '2026-08-01T00:00:00Z' }
+      ])
+      await flushPromises()
+      await wrapper.findAll('button').find(b => b.text() === 'Редактировать').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.vm.form.productId).toBe('p-4')
+      // el-select застуб не рендерит слоты, поэтому проверяем список опций, из которого строится шаблон
+      expect(wrapper.vm.productOptions).toContainEqual(
+        expect.objectContaining({ id: 'p-4', fullArticle: 'B7.OLD', name: 'Старое', isActive: false })
+      )
     })
   })
 })

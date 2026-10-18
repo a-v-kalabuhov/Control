@@ -143,6 +143,7 @@
               :key="p.id"
               :label="`${p.fullArticle} — ${p.name}`"
               :value="p.id"
+              :disabled="!p.isActive"
             />
           </el-select>
         </el-form-item>
@@ -178,6 +179,7 @@ const dialogVisible = ref(false)
 const showDetail = ref(false)
 const selectedOrderId = ref(null)
 const editingId = ref(null)
+const editingRow = ref(null)
 const formRef = ref(null)
 const orders = ref([])
 const productTypes = ref([])
@@ -203,9 +205,24 @@ const rules = {
 }
 
 // Изделия выбранного типа: только активные (архивные нельзя назначить в новый заказ).
-const productOptions = computed(() =>
-  activeProducts(productTypes.value.find((t) => t.id === form.productTypeId))
-)
+// При редактировании изделие заказа могло быть архивировано позже — добавляем его
+// отдельной неактивной опцией, иначе select покажет сырой GUID.
+const productOptions = computed(() => {
+  const list = activeProducts(productTypes.value.find((t) => t.id === form.productTypeId))
+  const row = editingRow.value
+  if (row?.productId && form.productId === row.productId && !list.some((p) => p.id === row.productId)) {
+    return [
+      ...list,
+      {
+        id: row.productId,
+        fullArticle: row.productFullArticle || row.productId,
+        name: row.productName,
+        isActive: false
+      }
+    ]
+  }
+  return list
+})
 
 // При открытии на редактирование тип и изделие выставляются разом — watch не должен сбросить изделие.
 let populating = false
@@ -222,7 +239,10 @@ onMounted(loadOrders)
 // Сбрасываем режим редактирования при закрытии модалки (крестик/Esc/клик вне окна),
 // чтобы следующее открытие «Создать заказ» не унаследовало editingId.
 watch(dialogVisible, (visible) => {
-  if (!visible) editingId.value = null
+  if (!visible) {
+    editingId.value = null
+    editingRow.value = null
+  }
 })
 
 function progressPercentage(row) {
@@ -262,6 +282,7 @@ async function loadProductTypes() {
 
 function showCreateModal() {
   editingId.value = null
+  editingRow.value = null
   Object.assign(form, { number: '', orderDate: '', dueDate: '', productTypeId: null, productId: null, quantity: 1, note: '' })
   dialogVisible.value = true
   loadProductTypes()
@@ -269,6 +290,7 @@ function showCreateModal() {
 
 function editItem(row) {
   editingId.value = row.id
+  editingRow.value = row
   populating = true
   Object.assign(form, {
     number: row.number ?? '',
