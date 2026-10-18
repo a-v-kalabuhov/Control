@@ -218,19 +218,19 @@ public class TasksController : ControllerBase
         _context.Users.AnyAsync(u => u.Id == personnelId && u.IsActive && u.Role == UserRole.Adjuster);
 
     /// <summary>
-    /// Ищет заказ по Id и проверяет правило привязки (PZP-05: активен, тип изделия совпадает
-    /// с типом ПФ задания). Общая последовательность для CreateTask и SetOrder (M4).
+    /// Ищет заказ по Id и проверяет правило привязки (PZP-05, PZP-19: активен, изделие задания
+    /// совпадает с изделием заказа). Общая последовательность для CreateTask и SetOrder (M4).
     /// Возвращает найденный заказ, либо готовый ActionResult ошибки (заказ не найден — 400;
     /// нарушение правила привязки — DomainException, отдаётся глобальным хендлером как 400).
     /// </summary>
     private async Task<(Order? Order, ActionResult? Error)> ResolveOrderForBindingAsync(
-        Guid orderId, Guid? moldProductTypeId)
+        Guid orderId, Guid taskProductId)
     {
         var order = await _context.Orders.FindAsync(orderId);
         if (order == null)
             return (null, BadRequest("Указан несуществующий заказ."));
 
-        Wintime.Control.Core.Policies.OrderTaskBinding.EnsureCanBind(order, moldProductTypeId);
+        Wintime.Control.Core.Policies.OrderTaskBinding.EnsureCanBind(order, taskProductId);
         return (order, null);
     }
 
@@ -249,6 +249,8 @@ public class TasksController : ControllerBase
             return BadRequest("Указана неактивная или несуществующая пресс-форма.");
         if (mold.ProductTypeId == null)
             return BadRequest("У пресс-формы не задан тип изделия.");
+        if (request.ProductId is null)
+            return BadRequest("Укажите изделие.");
 
         // PZP-16: ТПА должен входить в список совместимых ПФ (пустой список — любой ТПА).
         if (!MoldImmCompatibility.IsCompatible(mold.CompatibleImms.Select(i => i.Id).ToList(), request.ImmId))
@@ -258,6 +260,7 @@ public class TasksController : ControllerBase
         {
             ImmId = request.ImmId,
             MoldId = request.MoldId,
+            ProductId = request.ProductId.Value,
             PersonnelId = string.IsNullOrWhiteSpace(request.PersonnelId) ? null : request.PersonnelId,
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
@@ -282,7 +285,7 @@ public class TasksController : ControllerBase
 
         if (request.OrderId.HasValue)
         {
-            var (order, error) = await ResolveOrderForBindingAsync(request.OrderId.Value, mold.ProductTypeId);
+            var (order, error) = await ResolveOrderForBindingAsync(request.OrderId.Value, request.ProductId.Value);
             if (error != null)
                 return error;
             task.OrderId = order!.Id;
@@ -535,12 +538,11 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> SetOrder(Guid id, [FromBody] SetOrderRequestDto request)
     {
         var task = await _context.ShiftTasks
-            .Include(t => t.Mold)
             .FirstOrDefaultAsync(t => t.Id == id);
         if (task == null)
             return NotFound();
 
-        var (_, error) = await ResolveOrderForBindingAsync(request.OrderId, task.Mold?.ProductTypeId);
+        var (_, error) = await ResolveOrderForBindingAsync(request.OrderId, task.ProductId);
         if (error != null)
             return error;
 

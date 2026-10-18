@@ -40,7 +40,7 @@ public class TaskProductTypeGuardTests : IClassFixture<IntegrationTestFactory>
         var client = await ManagerClientAsync();
         var resp = await client.PostAsJsonAsync("/api/tasks", new
         {
-            immId = _factory.TestImmId, moldId, planQuantity = 10, note = "x", plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
+            immId = _factory.TestImmId, moldId, productId = _factory.TestProductId, planQuantity = 10, note = "x", plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             plannedFullCycleSeconds = 30
         });
 
@@ -54,7 +54,7 @@ public class TaskProductTypeGuardTests : IClassFixture<IntegrationTestFactory>
         var client = await ManagerClientAsync();
         var resp = await client.PostAsJsonAsync("/api/tasks", new
         {
-            immId = _factory.TestImmId, moldId = _factory.TestMoldId, planQuantity = 10, note = "x", plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
+            immId = _factory.TestImmId, moldId = _factory.TestMoldId, productId = _factory.TestProductId, planQuantity = 10, note = "x", plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             plannedFullCycleSeconds = 30
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);

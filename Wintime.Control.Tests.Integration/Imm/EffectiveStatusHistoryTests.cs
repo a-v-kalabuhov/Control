@@ -34,7 +34,7 @@ public class EffectiveStatusHistoryTests : IClassFixture<IntegrationTestFactory>
             };
             db.Imms.Add(imm);
 
-            var mold = new Mold { Name = "M1", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true };
+            var mold = new Mold { Name = "M1", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
             db.Molds.Add(mold);
             await db.SaveChangesAsync();
 
@@ -43,7 +43,7 @@ public class EffectiveStatusHistoryTests : IClassFixture<IntegrationTestFactory>
 
             db.ShiftTasks.Add(new ShiftTask
             {
-                ImmId = imm.Id, MoldId = mold.Id, PlanQuantity = 100,
+                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100,
                 Status = TaskStatus.InProgress, SetupStartedAt = from, StartedAt = from, CompletedAt = to
             });
             await db.SaveChangesAsync();
@@ -85,7 +85,7 @@ public class EffectiveStatusHistoryTests : IClassFixture<IntegrationTestFactory>
             };
             db.Imms.Add(imm);
 
-            var mold = new Mold { Name = "M1", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true };
+            var mold = new Mold { Name = "M1", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
             db.Molds.Add(mold);
             await db.SaveChangesAsync();
 
@@ -94,7 +94,7 @@ public class EffectiveStatusHistoryTests : IClassFixture<IntegrationTestFactory>
 
             db.ShiftTasks.Add(new ShiftTask
             {
-                ImmId = imm.Id, MoldId = mold.Id, PlanQuantity = 100,
+                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100,
                 Status = TaskStatus.InProgress, SetupStartedAt = setupStartedAt, StartedAt = startedAt, CompletedAt = null
             });
             await db.SaveChangesAsync();

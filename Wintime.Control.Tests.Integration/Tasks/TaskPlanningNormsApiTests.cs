@@ -46,6 +46,7 @@ public class TaskPlanningNormsApiTests : IClassFixture<IntegrationTestFactory>
         {
             ["immId"] = _factory.TestImmId,
             ["moldId"] = _factory.TestMoldId,           // Cavities = 1
+            ["productId"] = _factory.TestProductId,
             ["planQuantity"] = 100,
             ["plannedDate"] = Tomorrow.ToString("yyyy-MM-dd"),
             ["plannedFullCycleSeconds"] = 60
@@ -68,7 +69,7 @@ public class TaskPlanningNormsApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 100, Note = "указание",
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Note = "указание",
             Status = status, PlannedDate = Tomorrow, PlannedFullCycleSeconds = 60,
             PlannedSetupMinutes = 30, ReleaseBufferFixedMinutes = 10, ReleaseBufferPercent = 10
         };

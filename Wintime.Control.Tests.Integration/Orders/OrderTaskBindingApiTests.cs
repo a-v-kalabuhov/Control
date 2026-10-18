@@ -39,14 +39,14 @@ public class OrderTaskBindingApiTests : IClassFixture<IntegrationTestFactory>
         (await (await client.PostAsJsonAsync("/api/orders", new CreateOrderRequestDto
         {
             Number = "ORD-B", OrderDate = DateTime.UtcNow.Date, DueDate = DateTime.UtcNow.Date.AddDays(3),
-            ProductTypeId = _factory.TestProductTypeId, Quantity = 100
+            ProductId = _factory.TestProductId, Quantity = 100
         })).Content.ReadFromJsonAsync<OrderDto>(JsonOptions))!.Id;
 
-    private async Task<Guid> CreateTaskAsync(Guid moldId)
+    private async Task<Guid> CreateTaskAsync(Guid moldId, Guid productId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        var t = new ShiftTask { ImmId = _factory.TestImmId, MoldId = moldId, PlanQuantity = 50, Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow };
+        var t = new ShiftTask { ImmId = _factory.TestImmId, MoldId = moldId, ProductId = productId, PlanQuantity = 50, Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow };
         db.ShiftTasks.Add(t);
         await db.SaveChangesAsync();
         return t.Id;
@@ -57,7 +57,7 @@ public class OrderTaskBindingApiTests : IClassFixture<IntegrationTestFactory>
     {
         var client = await ManagerClientAsync();
         var orderId = await CreateOrderAsync(client);
-        var taskId = await CreateTaskAsync(_factory.TestMoldId);  // ПФ с TestProductType
+        var taskId = await CreateTaskAsync(_factory.TestMoldId, _factory.TestProductId);  // ПФ с TestProductType
 
         (await client.PostAsJsonAsync($"/api/orders/{orderId}/tasks", new AttachTaskRequestDto { TaskId = taskId }))
             .StatusCode.Should().Be(HttpStatusCode.OK);
@@ -79,24 +79,23 @@ public class OrderTaskBindingApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task Attach_ProductTypeMismatch_Returns400()
+    public async Task Attach_ProductMismatch_Returns400()
     {
         var client = await ManagerClientAsync();
         var orderId = await CreateOrderAsync(client);
 
-        // ПФ другого типа изделия
+        // ПФ другого типа изделия → изделие задания ≠ изделию заказа (PZP-19)
+        var (otherTypeId, otherProductId) = await _factory.CreateProductTypeAsync();
         Guid otherMoldId;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var otherPt = new ProductType { Article = "OTHER-TYPE", Name = "Other", IsActive = true };
-            db.ProductTypes.Add(otherPt);
-            var mold = new Mold { Name = "Other Mold", FormId = $"OM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = otherPt.Id };
+            var mold = new Mold { Name = "Other Mold", FormId = $"OM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = otherTypeId };
             db.Molds.Add(mold);
             await db.SaveChangesAsync();
             otherMoldId = mold.Id;
         }
-        var taskId = await CreateTaskAsync(otherMoldId);
+        var taskId = await CreateTaskAsync(otherMoldId, otherProductId);
 
         (await client.PostAsJsonAsync($"/api/orders/{orderId}/tasks", new AttachTaskRequestDto { TaskId = taskId }))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -108,7 +107,7 @@ public class OrderTaskBindingApiTests : IClassFixture<IntegrationTestFactory>
         var client = await ManagerClientAsync();
         var orderId = await CreateOrderAsync(client);
         await client.PostAsync($"/api/orders/{orderId}/cancel", null);
-        var taskId = await CreateTaskAsync(_factory.TestMoldId);
+        var taskId = await CreateTaskAsync(_factory.TestMoldId, _factory.TestProductId);
 
         (await client.PostAsJsonAsync($"/api/orders/{orderId}/tasks", new AttachTaskRequestDto { TaskId = taskId }))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);

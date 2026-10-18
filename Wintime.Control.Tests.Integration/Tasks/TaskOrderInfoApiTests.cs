@@ -28,12 +28,12 @@ public class TaskOrderInfoApiTests : IClassFixture<IntegrationTestFactory>
             var order = new Order
             {
                 Number = "ORD-77", OrderDate = orderDate, DueDate = orderDate.AddDays(30),
-                ProductTypeId = _factory.TestProductTypeId, Quantity = 100
+                ProductId = _factory.TestProductId, Quantity = 100
             };
             db.Orders.Add(order);
             var task = new ShiftTask
             {
-                ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+                ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10,
                 Status = TaskStatus.Planned, OrderId = order.Id
             };
             db.ShiftTasks.Add(task);

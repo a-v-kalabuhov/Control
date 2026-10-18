@@ -6,7 +6,7 @@ public class UpdateOrderRequestDto
     public DateTime? OrderDate { get; set; }
     public bool ClearOrderDate { get; set; }        // true — убрать дату (null в OrderDate = «не менять»)
     public DateTime? DueDate { get; set; }
-    public Guid? ProductTypeId { get; set; }
+    public Guid? ProductId { get; set; }
     public int? Quantity { get; set; }
     public string? Note { get; set; }
 }

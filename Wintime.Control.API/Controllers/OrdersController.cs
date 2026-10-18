@@ -60,9 +60,11 @@ public class OrdersController : ControllerBase
             Number = o.Number,
             OrderDate = o.OrderDate,
             DueDate = o.DueDate,
-            ProductTypeId = o.ProductTypeId,
-            ProductTypeArticle = o.ProductType?.Article,
-            ProductTypeName = o.ProductType?.Name,
+            ProductId = o.ProductId,
+            ProductFullArticle = o.Product?.FullArticle,
+            ProductName = o.Product?.Name,
+            ProductTypeId = o.Product?.ProductTypeId ?? Guid.Empty,
+            ProductTypeName = o.Product?.ProductType?.Name,
             Quantity = o.Quantity,
             Status = o.Status,
             Note = o.Note,
@@ -79,15 +81,18 @@ public class OrdersController : ControllerBase
     public async Task<ActionResult<IEnumerable<OrderDto>>> GetList(
         [FromQuery] OrderStatus? status = null,
         [FromQuery] string? search = null,
-        [FromQuery] Guid? productTypeId = null)
+        [FromQuery] Guid? productTypeId = null,
+        [FromQuery] Guid? productId = null)
     {
-        var query = _context.Orders.Include(o => o.ProductType).AsQueryable();
+        var query = _context.Orders.Include(o => o.Product).ThenInclude(p => p!.ProductType).AsQueryable();
         if (status.HasValue)
             query = query.Where(o => o.Status == status.Value);
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(o => o.Number.Contains(search));
         if (productTypeId.HasValue)
-            query = query.Where(o => o.ProductTypeId == productTypeId.Value);
+            query = query.Where(o => o.Product!.ProductTypeId == productTypeId.Value);
+        if (productId.HasValue)
+            query = query.Where(o => o.ProductId == productId.Value);
 
         var orders = await query.OrderByDescending(o => o.CreatedAt).ToListAsync();
         var agg = await ComputeAggregatesAsync(orders.Select(o => o.Id).ToList());
@@ -99,9 +104,10 @@ public class OrdersController : ControllerBase
     public async Task<ActionResult<OrderDetailsDto>> GetById(Guid id)
     {
         var order = await _context.Orders
-            .Include(o => o.ProductType)
+            .Include(o => o.Product).ThenInclude(p => p!.ProductType)
             .Include(o => o.Tasks).ThenInclude(t => t.Imm)
             .Include(o => o.Tasks).ThenInclude(t => t.Mold)
+            .Include(o => o.Tasks).ThenInclude(t => t.Product)
             .FirstOrDefaultAsync(o => o.Id == id);
         if (order == null)
             return NotFound();
@@ -111,6 +117,7 @@ public class OrdersController : ControllerBase
         var tasks = order.Tasks.Select(t => new OrderTaskSummaryDto
         {
             TaskId = t.Id, ImmName = t.Imm?.Name, MoldName = t.Mold?.Name,
+            ProductFullArticle = t.Product?.FullArticle,
             PlanQuantity = t.PlanQuantity, ActualQuantity = t.ActualQuantity,
             DefectQuantity = t.DefectQuantity, Status = t.Status
         }).ToList();
@@ -124,9 +131,11 @@ public class OrdersController : ControllerBase
             return BadRequest("Номер заказа обязателен.");
         if (request.Quantity <= 0)
             return BadRequest("Количество должно быть больше нуля.");
-        var pt = await _context.ProductTypes.FindAsync(request.ProductTypeId);
-        if (pt == null || !pt.IsActive)
-            return BadRequest("Указан неактивный или несуществующий тип изделия.");
+        var product = await _context.Products.Include(p => p.ProductType)
+            .FirstOrDefaultAsync(p => p.Id == request.ProductId);
+        if (product == null)
+            return BadRequest("Указано несуществующее изделие.");
+        ProductSelection.EnsureSelectable(product);   // DomainException → 400
 
         var order = new Order
         {
@@ -135,7 +144,7 @@ public class OrdersController : ControllerBase
                 ? DateTime.SpecifyKind(request.OrderDate.Value, DateTimeKind.Utc)
                 : null,
             DueDate = DateTime.SpecifyKind(request.DueDate, DateTimeKind.Utc),
-            ProductTypeId = request.ProductTypeId,
+            ProductId = product.Id,
             Quantity = request.Quantity,
             Note = request.Note,
             Status = OrderStatus.Active
@@ -143,7 +152,7 @@ public class OrdersController : ControllerBase
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
 
-        order.ProductType = pt;
+        order.Product = product;
         return CreatedAtAction(nameof(GetById), new { id = order.Id }, ToDto(order, (0, 0, 0)));
     }
 
@@ -174,16 +183,18 @@ public class OrdersController : ControllerBase
             order.DueDate = DateTime.SpecifyKind(request.DueDate.Value, DateTimeKind.Utc);
         if (request.Note != null)
             order.Note = request.Note;
-        if (request.ProductTypeId.HasValue && request.ProductTypeId.Value != order.ProductTypeId)
+        if (request.ProductId.HasValue && request.ProductId.Value != order.ProductId)
         {
-            // Смена изделия запрещена, если по заказу уже есть привязанные задания (аналогия ADR-0007).
+            // Смена изделия запрещена, если по заказу уже есть привязанные задания (инвариант 8 PZP-19).
             var hasTasks = await _context.ShiftTasks.AnyAsync(t => t.OrderId == id);
             if (hasTasks)
                 return Conflict("Нельзя сменить изделие заказа: к нему привязаны задания.");
-            var pt = await _context.ProductTypes.FindAsync(request.ProductTypeId.Value);
-            if (pt == null || !pt.IsActive)
-                return BadRequest("Указан неактивный или несуществующий тип изделия.");
-            order.ProductTypeId = request.ProductTypeId.Value;
+            var product = await _context.Products.Include(p => p.ProductType)
+                .FirstOrDefaultAsync(p => p.Id == request.ProductId.Value);
+            if (product == null)
+                return BadRequest("Указано несуществующее изделие.");
+            ProductSelection.EnsureSelectable(product);
+            order.ProductId = product.Id;
         }
 
         await _context.SaveChangesAsync();
@@ -231,12 +242,11 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
         var task = await _context.ShiftTasks
-            .Include(t => t.Mold)
             .FirstOrDefaultAsync(t => t.Id == request.TaskId);
         if (task == null)
             return NotFound("Задание не найдено.");
 
-        OrderTaskBinding.EnsureCanBind(order, task.Mold?.ProductTypeId);  // DomainException → 400
+        OrderTaskBinding.EnsureCanBind(order, task.ProductId);  // DomainException → 400
         task.OrderId = id;
         await _context.SaveChangesAsync();
         return Ok(new { message = "Задание привязано к заказу" });

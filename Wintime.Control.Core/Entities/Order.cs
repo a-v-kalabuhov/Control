@@ -4,7 +4,7 @@ using Wintime.Control.Core.Exceptions;
 namespace Wintime.Control.Core.Entities;
 
 /// <summary>
-/// Заказ — одна номенклатурная позиция (ProductType + Quantity). Уровень над заданиями:
+/// Заказ — одна номенклатурная позиция (Product + Quantity). Уровень над заданиями:
 /// Order → ShiftTask (1:N). Прогресс НЕ хранится (derive-on-read). См. ADR-0009, PZP-05.
 /// </summary>
 public class Order : BaseEntity
@@ -12,8 +12,8 @@ public class Order : BaseEntity
     public string Number { get; set; } = string.Empty;  // человекочитаемый, НЕ уникален (CRM/1С)
     public DateTime? OrderDate { get; set; }             // дата коммерческого заказа (Utc), необязательна
     public DateTime DueDate { get; set; }                // крайний срок (Utc)
-    public Guid ProductTypeId { get; set; }              // изделие заказа
-    public ProductType? ProductType { get; set; }
+    public Guid ProductId { get; set; }                  // изделие заказа (PZP-19); тип — через Product
+    public Product? Product { get; set; }
     public int Quantity { get; set; }                    // требуемое кол-во годных, > 0
     public OrderStatus Status { get; set; } = OrderStatus.Active;
     public string? Note { get; set; }

@@ -164,8 +164,6 @@ public class UnplannedRunController : ControllerBase
 
         if (task.ImmId != run.ImmId)
             return BadRequest("Задание принадлежит другому ТПА");
-        if (task.Mold.ProductTypeId == null)
-            return BadRequest("У пресс-формы задания не задан тип изделия");
 
         var agg = await ComputeAggregatesAsync(run.ImmId, run.StartTime, run.ClosedAt, run.AssignedTaskId);
         var episodeEnd = run.ClosedAt ?? agg.EndTime ?? run.StartTime;

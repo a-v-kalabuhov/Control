@@ -34,7 +34,7 @@ public class TaskPersonnelApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10,
             Status = status, PersonnelId = personnelId, PlannedFullCycleSeconds = 30,
             PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)
         };

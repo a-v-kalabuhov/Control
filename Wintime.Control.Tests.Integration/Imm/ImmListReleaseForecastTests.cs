@@ -34,12 +34,12 @@ public class ImmListReleaseForecastTests : IClassFixture<IntegrationTestFactory>
         var t0 = DateTime.UtcNow.AddMinutes(-10);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        var mold = new Mold { Name = "M-BL32", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 2, IsActive = true };
+        var mold = new Mold { Name = "M-BL32", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 2, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
         db.Molds.Add(mold);
         await db.SaveChangesAsync();
         var task = new ShiftTask
         {
-            ImmId = immId, MoldId = mold.Id, PlanQuantity = 100, ActualQuantity = 40,
+            ImmId = immId, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, ActualQuantity = 40,
             PlannedFullCycleSeconds = 60, Status = status, SetupStartedAt = t0.AddMinutes(-5),
             StartedAt = status == TaskStatus.InProgress ? t0 : null
         };

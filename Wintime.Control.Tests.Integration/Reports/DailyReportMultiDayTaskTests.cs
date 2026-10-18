@@ -33,10 +33,11 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
         return report!.ImmData.Should().ContainSingle().Subject;
     }
 
-    private static Mold NewMold(string name, int cavities, decimal part, decimal runner) => new()
+    private Mold NewMold(string name, int cavities, decimal part, decimal runner) => new()
     {
         Name = name, FormId = $"F-{Guid.NewGuid():N}", Cavities = cavities,
-        PartWeightGrams = part, RunnerWeightGrams = runner, IsActive = true
+        PartWeightGrams = part, RunnerWeightGrams = runner, IsActive = true,
+        ProductTypeId = _factory.TestProductTypeId
     };
 
     [Fact]
@@ -53,7 +54,7 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
             // Выпуск: d1 11:00Z → d3 11:00Z (48 ч), норма 60 с × 2 гнезда = 120 шт/ч
             db.ShiftTasks.Add(new ShiftTask
             {
-                ImmId = immId, MoldId = mold.Id, PlanQuantity = 100_000, PlannedFullCycleSeconds = 60,
+                ImmId = immId, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100_000, PlannedFullCycleSeconds = 60,
                 Status = TaskStatus.Completed, PlannedDate = DateOnly.FromDateTime(d1),
                 SetupStartedAt = d1.AddHours(10), StartedAt = d1.AddHours(11), CompletedAt = d1.AddDays(2).AddHours(11)
             });
@@ -87,14 +88,14 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
             // Задание 1: выпуск 08:00–10:00, норма 120 шт/ч → 240, план 100 → 100
             var t1 = new ShiftTask
             {
-                ImmId = immId, MoldId = mold1.Id, PlanQuantity = 100, PlannedFullCycleSeconds = 60,
+                ImmId = immId, MoldId = mold1.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, PlannedFullCycleSeconds = 60,
                 Status = TaskStatus.Completed, PlannedDate = DateOnly.FromDateTime(d),
                 SetupStartedAt = d.AddHours(7), StartedAt = d.AddHours(8), CompletedAt = d.AddHours(10)
             };
             // Задание 2: выпуск 12:00–13:00, норма 30 с × 1 гнездо → 120
             var t2 = new ShiftTask
             {
-                ImmId = immId, MoldId = mold2.Id, PlanQuantity = 1000, PlannedFullCycleSeconds = 30,
+                ImmId = immId, MoldId = mold2.Id, ProductId = _factory.TestProductId, PlanQuantity = 1000, PlannedFullCycleSeconds = 30,
                 Status = TaskStatus.Completed, PlannedDate = DateOnly.FromDateTime(d),
                 SetupStartedAt = d.AddHours(11), StartedAt = d.AddHours(12), CompletedAt = d.AddHours(13)
             };

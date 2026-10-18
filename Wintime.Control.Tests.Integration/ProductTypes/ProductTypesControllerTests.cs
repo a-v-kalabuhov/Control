@@ -36,7 +36,7 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
         create.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var dto = await create.Content.ReadFromJsonAsync<ProductTypeDto>();
-        dto!.Article.Should().Be(article);
+        dto!.Article.Should().Be(article.ToUpperInvariant());   // PZP-19: артикул нормализуется
         dto.IsActive.Should().BeTrue();
 
         var get = await client.GetAsync($"/api/producttypes/{dto.Id}");

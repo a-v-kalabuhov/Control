@@ -40,7 +40,7 @@ public class DailyReportEffectiveStatusTests : IClassFixture<IntegrationTestFact
             DateTime H(double h) => d0.AddHours(h);
 
             var imm = new Core.Entities.Imm { Name = $"IMM-{Guid.NewGuid():N}", TemplateId = _factory.TestTemplateId, IsActive = true };
-            var mold = new Mold { Name = "M-daily", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true };
+            var mold = new Mold { Name = "M-daily", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
             db.Imms.Add(imm);
             db.Molds.Add(mold);
             await db.SaveChangesAsync();
@@ -48,7 +48,7 @@ public class DailyReportEffectiveStatusTests : IClassFixture<IntegrationTestFact
             // Наладка 7:30–8:00, выпуск 8:00–14:00.
             db.ShiftTasks.Add(new ShiftTask
             {
-                ImmId = imm.Id, MoldId = mold.Id, PlanQuantity = 100, Status = TaskStatus.Completed,
+                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Status = TaskStatus.Completed,
                 SetupStartedAt = H(7.5), StartedAt = H(8), CompletedAt = H(14)
             });
             // Сырой режим: manual 7:30–8 · auto 8–10 · offline 10–12 · idle 12–13 · auto 13–14 · idle 14–16 (без задания).

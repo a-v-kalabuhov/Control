@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.DTOs.ProductType;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
 
@@ -52,15 +53,23 @@ public class ProductTypesController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<ProductTypeDto>> Create([FromBody] CreateProductTypeRequestDto request)
     {
-        var article = (request.Article ?? string.Empty).Trim();
+        var article = ProductArticle.Normalize(request.Article);
         if (string.IsNullOrWhiteSpace(article))
             return BadRequest("Артикул обязателен.");
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest("Наименование обязательно.");
-        if (await _context.ProductTypes.AnyAsync(p => p.Article.ToLower() == article.ToLower()))
+        if (await _context.ProductTypes.AnyAsync(p => p.Article == article))
             return Conflict($"Артикул '{article}' уже используется.");
 
+        // PZP-19: тип создаётся вместе с изделием по умолчанию (у типа всегда ≥ 1 изделия).
         var pt = new ProductType { Article = article, Name = request.Name.Trim(), IsActive = true };
+        pt.Products.Add(new Product
+        {
+            Article = ProductArticle.DefaultPart,
+            Name = ProductArticle.DefaultName,
+            FullArticle = ProductArticle.Compose(article, ProductArticle.DefaultPart),
+            IsActive = true
+        });
         _context.ProductTypes.Add(pt);
         await _context.SaveChangesAsync();
 

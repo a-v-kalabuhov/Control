@@ -1,8 +1,7 @@
 namespace Wintime.Control.Core.Entities;
 
 /// <summary>
-/// Тип изделия / номенклатурная позиция. Каталог-фундамент под заказы (PZP-05)
-/// и партии/паспорт (BL-27). См. ADR-0007.
+/// Тип изделия. Содержит изделия (<c>Product</c>), ПФ ссылается на тип. См. ADR-0020.
 /// </summary>
 public class ProductType : BaseEntity
 {
@@ -12,4 +11,5 @@ public class ProductType : BaseEntity
 
     // Navigation
     public ICollection<Mold> Molds { get; set; } = new List<Mold>();
+    public ICollection<Product> Products { get; set; } = new List<Product>(); // всегда ≥ 1 (PZP-19)
 }
