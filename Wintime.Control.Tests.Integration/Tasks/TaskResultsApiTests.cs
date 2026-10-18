@@ -35,7 +35,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
     private async Task<(Guid ImmId, Guid MoldId)> SeedImmAndMoldAsync(ControlDbContext db)
     {
         var imm = new Core.Entities.Imm { Name = $"IMM-{Guid.NewGuid():N}", TemplateId = _factory.TestTemplateId, IsActive = true };
-        var mold = new Mold { Name = "M-results", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 2, IsActive = true };
+        var mold = new Mold { Name = "M-results", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 2, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
         db.Imms.Add(imm);
         db.Molds.Add(mold);
         await db.SaveChangesAsync();
@@ -77,7 +77,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
             var (immId, moldId) = await SeedImmAndMoldAsync(db);
-            var task = new ShiftTask { ImmId = immId, MoldId = moldId, PlanQuantity = 10, Status = TaskStatus.Planned };
+            var task = new ShiftTask { ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Status = TaskStatus.Planned };
             db.ShiftTasks.Add(task);
             await db.SaveChangesAsync();
             taskId = task.Id;
@@ -99,7 +99,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
             var (immId, moldId) = await SeedImmAndMoldAsync(db);
             var task = new ShiftTask
             {
-                ImmId = immId, MoldId = moldId, PlanQuantity = 10, Status = TaskStatus.Setup,
+                ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Status = TaskStatus.Setup,
                 SetupStartedAt = M(0)
             };
             db.ShiftTasks.Add(task);
@@ -129,7 +129,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
             var (immId, moldId) = await SeedImmAndMoldAsync(db);
             var task = new ShiftTask
             {
-                ImmId = immId, MoldId = moldId, Status = TaskStatus.Completed,
+                ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, Status = TaskStatus.Completed,
                 PlanQuantity = 100, ActualQuantity = 110, DefectQuantity = 4,
                 CloseReason = "Перевыпуск по просьбе мастера",
                 PlannedFullCycleSeconds = 60, PlannedInjectionCycleSeconds = 55,
@@ -137,7 +137,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
             };
             var other = new ShiftTask
             {
-                ImmId = immId, MoldId = moldId, Status = TaskStatus.Completed, PlanQuantity = 1,
+                ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, Status = TaskStatus.Completed, PlanQuantity = 1,
                 SetupStartedAt = M(-200), StartedAt = M(-190), CompletedAt = M(-100)
             };
             db.ShiftTasks.AddRange(task, other);
@@ -207,7 +207,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
             var (immId, moldId) = await SeedImmAndMoldAsync(db);
             var task = new ShiftTask
             {
-                ImmId = immId, MoldId = moldId, Status = TaskStatus.Completed, PlanQuantity = 10,
+                ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, Status = TaskStatus.Completed, PlanQuantity = 10,
                 PlannedFullCycleSeconds = 60, SetupStartedAt = M(-10), StartedAt = M(0), CompletedAt = M(10)
             };
             db.ShiftTasks.Add(task);
@@ -239,7 +239,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
             var (immId, moldId) = await SeedImmAndMoldAsync(db);
             var task = new ShiftTask
             {
-                ImmId = immId, MoldId = moldId, Status = TaskStatus.Completed, PlanQuantity = 10,
+                ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, Status = TaskStatus.Completed, PlanQuantity = 10,
                 SetupStartedAt = M(-10), StartedAt = M(0), CompletedAt = M(10)
             };
             db.ShiftTasks.Add(task);
@@ -271,7 +271,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
             var (immId, moldId) = await SeedImmAndMoldAsync(db);
             var task = new ShiftTask
             {
-                ImmId = immId, MoldId = moldId, Status = TaskStatus.InProgress,
+                ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, Status = TaskStatus.InProgress,
                 PlanQuantity = 100, ActualQuantity = 40,
                 SetupStartedAt = startedAt.AddMinutes(-15), StartedAt = startedAt
             };
@@ -302,7 +302,7 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
             var (immId, moldId) = await SeedImmAndMoldAsync(db);
             var task = new ShiftTask
             {
-                ImmId = immId, MoldId = moldId, Status = TaskStatus.Closed, PlanQuantity = 10,
+                ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, Status = TaskStatus.Closed, PlanQuantity = 10,
                 CloseReason = "Сломалась ПФ",
                 SetupStartedAt = M(-10), StartedAt = M(0), ClosedAt = M(30)
             };

@@ -60,6 +60,8 @@ export const useTasksStore = defineStore('tasks', {
         result = result.filter(t => 
           t.immName?.toLowerCase().includes(search) ||
           t.moldName?.toLowerCase().includes(search) ||
+          t.productFullArticle?.toLowerCase().includes(search) ||
+          t.productName?.toLowerCase().includes(search) ||
           t.personnelName?.toLowerCase().includes(search)
         )
       }

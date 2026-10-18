@@ -35,7 +35,7 @@ public class OrdersCrudTests : IClassFixture<IntegrationTestFactory>
         Number = "ORD-100",
         OrderDate = DateTime.UtcNow.Date,
         DueDate = DateTime.UtcNow.Date.AddDays(7),
-        ProductTypeId = _factory.TestProductTypeId,
+        ProductId = _factory.TestProductId,
         Quantity = qty
     };
 
@@ -47,7 +47,7 @@ public class OrdersCrudTests : IClassFixture<IntegrationTestFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         var dto = await resp.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         dto!.Status.Should().Be(Core.Enums.OrderStatus.Active);
-        dto.ProductTypeArticle.Should().Be("TYPE-TEST");
+        dto.ProductFullArticle.Should().Be("TYPE-TEST.0");
     }
 
     [Fact]
@@ -101,11 +101,11 @@ public class OrdersCrudTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task Create_UnknownProductType_Returns400()
+    public async Task Create_UnknownProduct_Returns400()
     {
         var client = await ManagerClientAsync();
         var body = ValidOrder();
-        body.ProductTypeId = Guid.NewGuid();
+        body.ProductId = Guid.NewGuid();
         var resp = await client.PostAsJsonAsync("/api/orders", body);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

@@ -47,7 +47,7 @@ public class EpisodeEndClosedAtTests : IClassFixture<IntegrationTestFactory>
         // в кандидаты по резервному правилу "backdated" (SameDate), а не по ClosedAt-смежности.
         var task = new EntityTask
         {
-            ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 50,
+            ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50,
             Status = TaskStatus.Setup, IssuedAt = t0.AddDays(-3), PlannedDate = DateOnly.FromDateTime(t0.AddDays(-3)), SetupStartedAt = t0.AddSeconds(600)
         };
         db.ShiftTasks.Add(task);

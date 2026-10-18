@@ -76,3 +76,14 @@ describe('ShiftTimeline — клик по заданию', () => {
     expect(w.emitted('task-click')).toEqual([[inRelease], [notStarted]])
   })
 })
+
+describe('ShiftTimeline — изделие (PZP-19)', () => {
+  it('подпись бара и подсказка начинаются с артикула', () => {
+    const t = { ...inRelease, productFullArticle: 'A123.BLK', moldName: 'Форма 1' }
+    const w = mountTimeline([t])
+    expect(w.find('.plan-block').text()).toContain('A123.BLK · Форма 1')
+    expect(w.find('.task-block').text()).toContain('A123.BLK · Форма 1')
+    expect(w.find('.plan-block').attributes('title').startsWith('A123.BLK · Форма 1')).toBe(true)
+    expect(w.find('.task-block').attributes('title').startsWith('A123.BLK · Форма 1')).toBe(true)
+  })
+})

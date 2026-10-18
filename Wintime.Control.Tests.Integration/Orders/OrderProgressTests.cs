@@ -36,16 +36,16 @@ public class OrderProgressTests : IClassFixture<IntegrationTestFactory>
         var order = await (await client.PostAsJsonAsync("/api/orders", new CreateOrderRequestDto
         {
             Number = "ORD-P", OrderDate = DateTime.UtcNow.Date, DueDate = DateTime.UtcNow.Date.AddDays(3),
-            ProductTypeId = _factory.TestProductTypeId, Quantity = 100
+            ProductId = _factory.TestProductId, Quantity = 100
         })).Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
 
         // Два задания того же заказа: 60 годных + 50 выпущено − 10 брак = 40 годных → всего 100 годных
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId,
+            db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
                 PlanQuantity = 60, ActualQuantity = 60, DefectQuantity = 0, Status = TaskStatus.Completed, OrderId = order!.Id });
-            db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId,
+            db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
                 PlanQuantity = 50, ActualQuantity = 50, DefectQuantity = 10, Status = TaskStatus.Completed, OrderId = order.Id });
             await db.SaveChangesAsync();
         }
@@ -73,13 +73,13 @@ public class OrderProgressTests : IClassFixture<IntegrationTestFactory>
         var order = await (await client.PostAsJsonAsync("/api/orders", new CreateOrderRequestDto
         {
             Number = "ORD-P2", OrderDate = DateTime.UtcNow.Date, DueDate = DateTime.UtcNow.Date.AddDays(3),
-            ProductTypeId = _factory.TestProductTypeId, Quantity = 100
+            ProductId = _factory.TestProductId, Quantity = 100
         })).Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId,
+            db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
                 PlanQuantity = 100, ActualQuantity = 100, DefectQuantity = 5, Status = TaskStatus.Completed, OrderId = order!.Id });
             await db.SaveChangesAsync();
         }

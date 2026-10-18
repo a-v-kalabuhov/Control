@@ -20,6 +20,12 @@
         <el-descriptions-item label="Пресс-форма">
           <div class="text-base">{{ task?.moldName }}</div>
         </el-descriptions-item>
+        <el-descriptions-item label="Изделие">
+          <div class="text-base font-semibold">{{ task?.productFullArticle }}</div>
+          <div v-if="productSecondary(task?.productTypeName, task?.productName)" class="text-sm text-gray-500">
+            {{ productSecondary(task?.productTypeName, task?.productName) }}
+          </div>
+        </el-descriptions-item>
         <el-descriptions-item label="План">
           <div class="text-xl font-bold text-primary-600">{{ task?.planQuantity }} шт</div>
         </el-descriptions-item>
@@ -214,6 +220,7 @@ import { useMobileStore } from '@/stores/mobile'
 import { useAuthStore } from '@/stores/auth'
 import MobileStatusBadge from '@/components/mobile/MobileStatusBadge.vue'
 import { formatDuration } from '@/utils/taskPlan'
+import { productSecondary } from '@/utils/productLabel'
 import dayjs from 'dayjs'
 
 const props = defineProps({

@@ -30,7 +30,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         // 2 сироты-цикла по 2 гнезда, годные
         db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, Cavities = 0, IsSuccessful = true, StartTime = start, EndTime = start.AddSeconds(60), DurationSeconds = 60 });
         db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, Cavities = 0, IsSuccessful = true, StartTime = start.AddSeconds(60), EndTime = start.AddSeconds(120), DurationSeconds = 60 });
-        var task = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2) };
+        var task = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2) };
         db.ShiftTasks.Add(task);
         await db.SaveChangesAsync();
         return (run.Id, task.Id, immId);
@@ -68,7 +68,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var t = new EntityTask { ImmId = otherImm, MoldId = _factory.TestMoldId, PlanQuantity = 10, Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow, PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow) };
+            var t = new EntityTask { ImmId = otherImm, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow, PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow) };
             db.ShiftTasks.Add(t);
             await db.SaveChangesAsync();
             otherTaskId = t.Id;
@@ -96,7 +96,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
             var run = await db.UnplannedRuns.FindAsync(runId);
-            var t = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = run!.StartTime, PlannedDate = DateOnly.FromDateTime(run!.StartTime), SetupStartedAt = run.ClosedAt };
+            var t = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = run!.StartTime, PlannedDate = DateOnly.FromDateTime(run!.StartTime), SetupStartedAt = run.ClosedAt };
             db.ShiftTasks.Add(t);
             await db.SaveChangesAsync();
             taskB = t.Id;

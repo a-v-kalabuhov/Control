@@ -61,10 +61,10 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
             db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, StartTime = start, EndTime = start.AddSeconds(60), DurationSeconds = 60, IsSuccessful = true });
 
             // задание того же ТПА, начавшееся сразу после эпизода (Setup)
-            var adj = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2) };
+            var adj = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2) };
             db.ShiftTasks.Add(adj);
             // задание ДРУГОГО ТПА — не должно попасть
-            db.ShiftTasks.Add(new EntityTask { ImmId = otherImm, MoldId = _factory.TestMoldId, PlanQuantity = 50, Status = TaskStatus.Setup, SetupStartedAt = start.AddMinutes(2) });
+            db.ShiftTasks.Add(new EntityTask { ImmId = otherImm, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, SetupStartedAt = start.AddMinutes(2) });
             await db.SaveChangesAsync();
             runId = run.Id; adjacentTaskId = adj.Id;
         }
@@ -98,7 +98,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
             var farTask = new EntityTask
             {
                 ImmId = immId,
-                MoldId = _factory.TestMoldId,
+                MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
                 PlanQuantity = 50,
                 Status = TaskStatus.Completed,
                 IssuedAt = start.AddHours(-4), PlannedDate = DateOnly.FromDateTime(start.AddHours(-4)),
@@ -139,7 +139,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
             var beforeTask = new EntityTask
             {
                 ImmId = immId,
-                MoldId = _factory.TestMoldId,
+                MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
                 PlanQuantity = 10,
                 Status = TaskStatus.Completed,
                 IssuedAt = start.AddMinutes(-30), PlannedDate = DateOnly.FromDateTime(start.AddMinutes(-30)),
@@ -152,7 +152,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
             var afterTask = new EntityTask
             {
                 ImmId = immId,
-                MoldId = _factory.TestMoldId,
+                MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
                 PlanQuantity = 20,
                 Status = TaskStatus.Setup,
                 IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start),
@@ -164,7 +164,7 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
             var overlapTask = new EntityTask
             {
                 ImmId = immId,
-                MoldId = _factory.TestMoldId,
+                MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
                 PlanQuantity = 30,
                 Status = TaskStatus.Completed,
                 IssuedAt = start.AddMinutes(-5), PlannedDate = DateOnly.FromDateTime(start.AddMinutes(-5)),
@@ -216,8 +216,8 @@ public class UnplannedRunJournalTests : IClassFixture<IntegrationTestFactory>
             db.UnplannedRuns.Add(run);
             db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, StartTime = start, EndTime = start.AddSeconds(60), DurationSeconds = 60, IsSuccessful = true });
 
-            var factoryDateTask = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 10, Status = TaskStatus.Issued, PlannedDate = factoryDate };
-            var utcDateTask = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 20, Status = TaskStatus.Issued, PlannedDate = utcDate };
+            var factoryDateTask = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Status = TaskStatus.Issued, PlannedDate = factoryDate };
+            var utcDateTask = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 20, Status = TaskStatus.Issued, PlannedDate = utcDate };
             db.ShiftTasks.AddRange(factoryDateTask, utcDateTask);
             await db.SaveChangesAsync();
             runId = run.Id;

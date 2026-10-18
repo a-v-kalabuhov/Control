@@ -6,4 +6,5 @@ public class ProductTypeDto
     public string Article { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool IsActive { get; set; }
+    public List<ProductDto> Products { get; set; } = new();
 }

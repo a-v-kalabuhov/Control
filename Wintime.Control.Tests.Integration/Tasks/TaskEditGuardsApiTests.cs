@@ -37,7 +37,7 @@ public class TaskEditGuardsApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 100, Note = "указание",
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Note = "указание",
             Status = status, PlannedDate = Tomorrow, PlannedFullCycleSeconds = 60
         };
         db.ShiftTasks.Add(task);

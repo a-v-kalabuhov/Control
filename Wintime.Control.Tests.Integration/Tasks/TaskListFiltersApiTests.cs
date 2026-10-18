@@ -27,7 +27,7 @@ public class TaskListFiltersApiTests : IClassFixture<IntegrationTestFactory>
         var immId = await _factory.CreateFreshImmAsync();
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        var mold = new Mold { Name = $"M-{Guid.NewGuid():N}", FormId = $"F-{Guid.NewGuid():N}", Cavities = 1, IsActive = true };
+        var mold = new Mold { Name = $"M-{Guid.NewGuid():N}", FormId = $"F-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
         db.Molds.Add(mold);
         await db.SaveChangesAsync();
         return (immId, mold.Id);
@@ -41,7 +41,7 @@ public class TaskListFiltersApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = immId, MoldId = moldId, PlanQuantity = 10, Status = status, PlannedDate = plannedDate,
+            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Status = status, PlannedDate = plannedDate,
             IssuedAt = issued, SetupStartedAt = setup, StartedAt = started, CompletedAt = completed, ClosedAt = closed
         };
         db.ShiftTasks.Add(task);

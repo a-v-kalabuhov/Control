@@ -6,7 +6,7 @@ namespace Wintime.Control.Core.DTOs.Tasks;
 public static class TaskMappingExtensions
 {
     /// <summary>
-    /// Маппинг сущности задания в DTO. Имена ТПА/ПФ/наладчика заполняются,
+    /// Маппинг сущности задания в DTO. Имена ТПА/ПФ/изделия/наладчика заполняются,
     /// только если соответствующие навигации загружены (Include),
     /// а план задания (PZP-14) — только если загружена <c>Mold</c>.
     /// </summary>
@@ -24,6 +24,10 @@ public static class TaskMappingExtensions
             ImmName = t.Imm?.Name,
             MoldId = t.MoldId,
             MoldName = t.Mold?.Name,
+            ProductId = t.ProductId,
+            ProductFullArticle = t.Product?.FullArticle,
+            ProductName = t.Product?.Name,
+            ProductTypeName = t.Product?.ProductType?.Name,
             PersonnelId = t.PersonnelId,
             PersonnelName = t.Personnel?.FullName,
             PlanQuantity = t.PlanQuantity,

@@ -24,6 +24,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<Shift> Shifts { get; set; }
     public DbSet<ImmCycle> ImmCycles { get; set; }
     public DbSet<ProductType> ProductTypes { get; set; }
+    public DbSet<Product> Products { get; set; }
     public DbSet<UnplannedRun> UnplannedRuns { get; set; }
     public DbSet<Order> Orders { get; set; }
     public DbSet<PlanningDefaults> PlanningDefaults { get; set; }
@@ -85,6 +86,18 @@ public class ControlDbContext : IdentityDbContext<User>
         });
         builder.Entity<ProductType>().ToTable("ProductTypes");
 
+        // Конфигурация Product (PZP-19, ADR-0020): изделие внутри типа; FullArticle уникален в БД.
+        builder.Entity<Product>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.ProductType)
+                  .WithMany(pt => pt.Products)
+                  .HasForeignKey(e => e.ProductTypeId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => e.FullArticle).IsUnique();
+            entity.ToTable("Products");
+        });
+
         // Конфигурация Task
         builder.Entity<Wintime.Control.Core.Entities.ShiftTask>(entity =>
         {
@@ -92,6 +105,7 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.HasOne(e => e.Imm).WithMany(i => i.ShiftTasks).HasForeignKey(e => e.ImmId);
             entity.HasOne(e => e.Mold).WithMany(m => m.ShiftTasks).HasForeignKey(e => e.MoldId);
             entity.HasOne(e => e.Personnel).WithMany(p => p.AssignedTasks).HasForeignKey(e => e.PersonnelId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.Product).WithMany().HasForeignKey(e => e.ProductId).OnDelete(DeleteBehavior.Restrict);
         });
 
         // Конфигурация Telemetry (Оптимизация)
@@ -214,10 +228,10 @@ public class ControlDbContext : IdentityDbContext<User>
         builder.Entity<Order>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasOne(e => e.ProductType)
+            entity.HasOne(e => e.Product)
                   .WithMany()
-                  .HasForeignKey(e => e.ProductTypeId)
-                  .OnDelete(DeleteBehavior.Restrict);   // ProductType физически не удаляют (IsActive)
+                  .HasForeignKey(e => e.ProductId)
+                  .OnDelete(DeleteBehavior.Restrict);   // использованное изделие физически не удаляют
             entity.Property(e => e.OrderDate).HasColumnType("timestamp with time zone");
             entity.Property(e => e.DueDate).HasColumnType("timestamp with time zone");
             entity.HasIndex(e => e.Number);              // Number НЕ уникален (решение п.2) — обычный индекс

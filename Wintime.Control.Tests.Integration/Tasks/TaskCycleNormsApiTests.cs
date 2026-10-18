@@ -31,7 +31,7 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
     private object CreateBody(object? workMode, int? full, int? injection) => new
     {
         immId = _factory.TestImmId,
-        moldId = _factory.TestMoldId,
+        moldId = _factory.TestMoldId, productId = _factory.TestProductId,
         planQuantity = 100,
         plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
         workMode,
@@ -72,7 +72,7 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
         var resp = await client.PostAsJsonAsync("/api/tasks", new
         {
             immId = _factory.TestImmId,
-            moldId = _factory.TestMoldId,
+            moldId = _factory.TestMoldId, productId = _factory.TestProductId,
             planQuantity = 100,
         plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             plannedFullCycleSeconds = 45
@@ -145,7 +145,7 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
             var task = new ShiftTask
             {
                 ImmId = _factory.TestImmId,
-                MoldId = _factory.TestMoldId,
+                MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
                 PlanQuantity = 100,
                 Status = TaskStatus.Planned,
                 PlannedFullCycleSeconds = null,

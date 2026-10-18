@@ -56,7 +56,7 @@ public class TaskMoldCompatibilityGuardTests : IClassFixture<IntegrationTestFact
         var client = await ManagerClientAsync();
         return await client.PostAsJsonAsync("/api/tasks", new
         {
-            immId = _factory.TestImmId, moldId, planQuantity = 10, note = "x",
+            immId = _factory.TestImmId, moldId, productId = _factory.TestProductId, planQuantity = 10, note = "x",
             plannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             plannedFullCycleSeconds = 30
         });

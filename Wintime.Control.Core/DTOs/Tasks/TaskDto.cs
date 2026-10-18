@@ -7,6 +7,11 @@ public class TaskDto
     public string? ImmName { get; set; }
     public Guid MoldId { get; set; }
     public string? MoldName { get; set; }
+    // PZP-19: изделие задания
+    public Guid ProductId { get; set; }
+    public string? ProductFullArticle { get; set; }
+    public string? ProductName { get; set; }
+    public string? ProductTypeName { get; set; }
     public string? PersonnelId { get; set; }
     public string? PersonnelName { get; set; }
     public int PlanQuantity { get; set; }
