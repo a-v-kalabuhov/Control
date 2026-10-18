@@ -10,9 +10,9 @@ vi.mock('@/api/orders', () => ({
     getById: vi.fn(() => Promise.resolve({ data: {
       id: '1', number: 'ORD-1', quantity: 100, producedQuantity: 110,
       defectQuantity: 10, goodQuantity: 100, progressPercent: 100, status: 'Active',
-      productTypeId: 'pt-1', productTypeArticle: 'A', dueDate: '2026-08-01T00:00:00Z',
+      productId: 'p-1', productTypeId: 'pt-1', productFullArticle: 'A123.BLK', dueDate: '2026-08-01T00:00:00Z',
       tasks: [
-        { taskId: 't1', immName: 'ТПА-1', moldName: 'ПФ-1', planQuantity: 60, actualQuantity: 60, defectQuantity: 0, status: 'Completed' }
+        { taskId: 't1', immName: 'ТПА-1', moldName: 'ПФ-1', productFullArticle: 'A123.BLK', planQuantity: 60, actualQuantity: 60, defectQuantity: 0, status: 'Completed' }
       ]
     } })),
     detachTask: vi.fn(() => Promise.resolve({ data: {} })),
@@ -33,6 +33,8 @@ vi.mock('@/api/molds', () => ({
 }))
 
 import { ordersApi } from '@/api/orders'
+import { tasksApi } from '@/api/tasks'
+import { moldsApi } from '@/api/molds'
 
 function mountModal() {
   return mount(OrderDetailModal, {
@@ -85,7 +87,7 @@ describe('OrderDetailModal', () => {
       ordersApi.getById.mockResolvedValueOnce({ data: {
         id: '1', number: 'ORD-1', quantity: 100, producedQuantity: 100,
         defectQuantity: 0, goodQuantity: 100, progressPercent: 100, status,
-        productTypeId: 'pt-1', productTypeArticle: 'A',
+        productId: 'p-1', productTypeId: 'pt-1', productFullArticle: 'A123.BLK',
         dueDate: '2026-08-01T00:00:00Z', tasks: []
       } })
 
@@ -109,9 +111,32 @@ describe('OrderDetailModal', () => {
     expect(form.props('lockedOrder')).toEqual({
       id: '1',
       number: 'ORD-1',
+      productId: 'p-1',
       productTypeId: 'pt-1',
-      productTypeArticle: 'A'
+      productFullArticle: 'A123.BLK'
     })
+  })
+
+  it('кандидаты на привязку — задания без заказа с тем же изделием, без запроса ПФ', async () => {
+    tasksApi.getList.mockResolvedValueOnce({ data: [
+      { id: 'a', immName: 'ТПА-1', moldName: 'ПФ-1', productId: 'p-1', productFullArticle: 'A123.BLK' },
+      { id: 'b', immName: 'ТПА-2', moldName: 'ПФ-2', productId: 'p-2', productFullArticle: 'A123.RED' },
+      { id: 'c', immName: 'ТПА-3', moldName: 'ПФ-3', productId: 'p-1', productFullArticle: 'A123.BLK', orderId: 'x' }
+    ] })
+    const wrapper = mountModal()
+    await flushPromises()
+    await findButton(wrapper, 'Привязать существующее').trigger('click')
+    await flushPromises()
+    expect(wrapper.vm.attachableTasks.map(t => t.id)).toEqual(['a'])
+    expect(moldsApi.getList).not.toHaveBeenCalled()
+  })
+
+  it('в таблице заданий колонка «Изделие» — полный артикул', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    const table = wrapper.find('.el-table')
+    expect(table.text()).toContain('Изделие')
+    expect(table.text()).toContain('A123.BLK')
   })
 
   it('после создания задания перечитывает заказ и эмитит updated', async () => {

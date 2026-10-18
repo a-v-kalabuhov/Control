@@ -53,6 +53,7 @@
       </div>
       <el-table :data="order?.tasks ?? []" stripe style="width: 100%">
         <el-table-column prop="immName" label="ТПА" />
+        <el-table-column prop="productFullArticle" label="Изделие" />
         <el-table-column prop="moldName" label="ПФ" />
         <el-table-column prop="planQuantity" label="План" width="90" align="center" />
         <el-table-column prop="actualQuantity" label="Факт" width="90" align="center" />
@@ -79,7 +80,7 @@
         <el-option
           v-for="t in attachableTasks"
           :key="t.id"
-          :label="`${t.immName} / ${t.moldName}`"
+          :label="`${t.immName} / ${t.moldName} / ${t.productFullArticle}`"
           :value="t.id"
         />
       </el-select>
@@ -105,7 +106,6 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import { ordersApi } from '@/api/orders'
 import { tasksApi } from '@/api/tasks'
-import { moldsApi } from '@/api/molds'
 import { getOrderStatusMeta } from '@/constants/orderStatus'
 import { apiErrorMessage } from '@/utils/apiError'
 import TaskFormModal from '@/views/tasks/TaskFormModal.vue'
@@ -149,8 +149,9 @@ const lockedOrder = computed(() =>
     ? {
         id: order.value.id,
         number: order.value.number,
+        productId: order.value.productId,
         productTypeId: order.value.productTypeId,
-        productTypeArticle: order.value.productTypeArticle
+        productFullArticle: order.value.productFullArticle
       }
     : null
 )
@@ -195,10 +196,9 @@ async function openAttachDialog() {
   attachDialogVisible.value = true
   attachLoading.value = true
   try {
-    const [tasksRes, moldsRes] = await Promise.all([tasksApi.getList(), moldsApi.getList()])
-    const productTypeByMoldId = new Map(moldsRes.data.map((m) => [m.id, m.productTypeId]))
-    attachableTasks.value = tasksRes.data.filter(
-      (t) => !t.orderId && productTypeByMoldId.get(t.moldId) === order.value?.productTypeId
+    const { data } = await tasksApi.getList()
+    attachableTasks.value = data.filter(
+      (t) => !t.orderId && t.productId === order.value?.productId
     )
   } catch (error) {
     attachableTasks.value = []

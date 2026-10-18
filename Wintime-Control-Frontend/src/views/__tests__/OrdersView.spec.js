@@ -7,7 +7,7 @@ import OrdersView from '../OrdersView.vue'
 vi.mock('@/api/orders', () => ({
   ordersApi: {
     getList: vi.fn(() => Promise.resolve({ data: [
-      { id: '1', number: 'ORD-1', productTypeArticle: 'A', quantity: 100,
+      { id: '1', number: 'ORD-1', productFullArticle: 'A123.BLK', quantity: 100,
         goodQuantity: 40, progressPercent: 40, status: 'Active',
         dueDate: '2026-08-01T00:00:00Z' }
     ] })),
@@ -19,7 +19,16 @@ vi.mock('@/api/orders', () => ({
   }
 }))
 vi.mock('@/api/productTypes', () => ({
-  productTypesApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) }
+  productTypesApi: { getList: vi.fn(() => Promise.resolve({ data: [
+    { id: 'pt-1', article: 'A123', name: 'Крышка', products: [
+      { id: 'p-1', article: 'BLK', fullArticle: 'A123.BLK', name: 'Чёрная', isActive: true }
+    ] },
+    { id: 'pt-2', article: 'B7', name: 'Ведро', products: [
+      { id: 'p-2', article: 'RED', fullArticle: 'B7.RED', name: 'Красное', isActive: true },
+      { id: 'p-3', article: 'BLU', fullArticle: 'B7.BLU', name: 'Синее', isActive: true },
+      { id: 'p-4', article: 'OLD', fullArticle: 'B7.OLD', name: 'Старое', isActive: false }
+    ] }
+  ] })) }
 }))
 
 import { ordersApi } from '@/api/orders'
@@ -81,7 +90,7 @@ describe('OrdersView', () => {
     const wrapper = mountView([
       { id: '5', number: 'ORD-5', productTypeArticle: 'E', quantity: 50,
         goodQuantity: 10, progressPercent: 20, status: 'Active', dueDate: '2026-08-01T00:00:00Z',
-        orderDate: '2026-07-01', productTypeId: 'pt-1', note: 'старое примечание' }
+        orderDate: '2026-07-01', productTypeId: 'pt-1', productId: 'p-1', note: 'старое примечание' }
     ])
     await flushPromises()
 
@@ -110,6 +119,8 @@ describe('OrdersView', () => {
     wrapper.vm.form.dueDate = '2026-08-01'
     wrapper.vm.form.productTypeId = 'pt-1'
     await flushPromises()
+    wrapper.vm.form.productId = 'p-1'
+    await flushPromises()
 
     await wrapper.findAll('button').find(b => b.text() === 'Сохранить').trigger('click')
     await flushPromises()
@@ -122,7 +133,7 @@ describe('OrdersView', () => {
   it('очистка даты при редактировании шлёт clearOrderDate: true', async () => {
     const wrapper = mountView([
       { id: '6', number: 'ORD-6', quantity: 5, goodQuantity: 0, progressPercent: 0, status: 'Active',
-        dueDate: '2026-08-01T00:00:00Z', orderDate: '2026-07-01', productTypeId: 'pt-1' }
+        dueDate: '2026-08-01T00:00:00Z', orderDate: '2026-07-01', productTypeId: 'pt-1', productId: 'p-1' }
     ])
     await flushPromises()
 
@@ -152,6 +163,8 @@ describe('OrdersView', () => {
     wrapper.vm.form.dueDate = '2026-08-01'
     wrapper.vm.form.productTypeId = 'pt-1'
     await flushPromises()
+    wrapper.vm.form.productId = 'p-1'
+    await flushPromises()
 
     const saveButton = wrapper.findAll('button').find(b => b.text() === 'Сохранить')
     expect(saveButton).toBeTruthy()
@@ -163,5 +176,81 @@ describe('OrdersView', () => {
     )
     const callArg = ordersApi.create.mock.calls[0][0]
     expect(callArg.date).toBeUndefined()
+  })
+
+  describe('выбор изделия', () => {
+    async function openCreate() {
+      const wrapper = mountView([])
+      await flushPromises()
+      await wrapper.findAll('button').find(b => b.text().includes('Создать заказ')).trigger('click')
+      await flushPromises()
+      return wrapper
+    }
+
+    it('поле «Изделие» заблокировано, пока не выбран тип', async () => {
+      const wrapper = await openCreate()
+      expect(wrapper.findAll('el-select-stub').at(-1).attributes('disabled')).toBe('true')
+      wrapper.vm.form.productTypeId = 'pt-1'
+      await flushPromises()
+      expect(wrapper.findAll('el-select-stub').at(-1).attributes('disabled')).toBe('false')
+    })
+
+    it('тип с одним активным изделием подставляет его', async () => {
+      const wrapper = await openCreate()
+      wrapper.vm.form.productTypeId = 'pt-1'
+      await flushPromises()
+      expect(wrapper.vm.form.productId).toBe('p-1')
+    })
+
+    it('тип с двумя активными изделиями не подставляет, архивное не в опциях', async () => {
+      const wrapper = await openCreate()
+      wrapper.vm.form.productTypeId = 'pt-2'
+      await flushPromises()
+      expect(wrapper.vm.form.productId).toBeNull()
+      expect(wrapper.vm.productOptions.map(p => p.id)).toEqual(['p-2', 'p-3'])
+    })
+
+    it('смена типа сбрасывает изделие', async () => {
+      const wrapper = await openCreate()
+      wrapper.vm.form.productTypeId = 'pt-1'
+      await flushPromises()
+      expect(wrapper.vm.form.productId).toBe('p-1')
+      wrapper.vm.form.productTypeId = 'pt-2'
+      await flushPromises()
+      expect(wrapper.vm.form.productId).toBeNull()
+    })
+
+    it('создание шлёт productId, а не productTypeId', async () => {
+      const wrapper = await openCreate()
+      await wrapper.find('input[placeholder="ORD-001"]').setValue('ORD-P')
+      wrapper.vm.form.dueDate = '2026-08-01'
+      wrapper.vm.form.productTypeId = 'pt-1'
+      await flushPromises()
+      await wrapper.findAll('button').find(b => b.text() === 'Сохранить').trigger('click')
+      await flushPromises()
+      const arg = ordersApi.create.mock.calls[0][0]
+      expect(arg).toEqual(expect.objectContaining({ productId: 'p-1' }))
+      expect(arg).not.toHaveProperty('productTypeId')
+    })
+
+    it('колонка «Изделие» показывает полный артикул', async () => {
+      const wrapper = mount(OrdersView, {
+        global: { plugins: [ElementPlus], stubs: { 'el-progress': true, 'el-select': true, 'el-option': true } }
+      })
+      await flushPromises()
+      expect(wrapper.text()).toContain('A123.BLK')
+    })
+
+    it('редактирование заполняет тип и изделие из строки', async () => {
+      const wrapper = mountView([
+        { id: '7', number: 'ORD-7', quantity: 5, goodQuantity: 0, progressPercent: 0, status: 'Active',
+          dueDate: '2026-08-01T00:00:00Z', productTypeId: 'pt-2', productId: 'p-3' }
+      ])
+      await flushPromises()
+      await wrapper.findAll('button').find(b => b.text() === 'Редактировать').trigger('click')
+      await flushPromises()
+      expect(wrapper.vm.form.productTypeId).toBe('pt-2')
+      expect(wrapper.vm.form.productId).toBe('p-3')
+    })
   })
 })
