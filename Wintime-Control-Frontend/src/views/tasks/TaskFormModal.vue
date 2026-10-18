@@ -70,7 +70,7 @@
             <el-option
               v-for="product in productOptions"
               :key="product.id"
-              :label="`${product.fullArticle} — ${product.name}`"
+              :label="[product.fullArticle, product.name].filter(Boolean).join(' — ')"
               :value="product.id"
               :disabled="!product.isActive"
             />
@@ -411,14 +411,26 @@ const loadPlanningDefaults = async () => {
 
 const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productTypeId || null)
 
+// Опция-заглушка изделия, которого нет в активном списке (архивное у задания, изделие заказа до выбора ПФ),
+// — иначе el-select выведет сырой GUID. source — задание или заказ с полями productId/productFullArticle.
+const withFallbackProduct = (list, source, isActive) => {
+  if (!source?.productId || list.some(p => p.id === source.productId)) return list
+  return [...list, {
+    id: source.productId,
+    fullArticle: source.productFullArticle || source.productId,
+    name: source.productName,
+    isActive
+  }]
+}
+
 // PZP-19: изделия берём из типа выбранной ПФ
 const productOptions = computed(() => {
   const type = productTypes.value.find(t => t.id === selectedProductTypeId.value)
   const list = activeProducts(type)
   // Текущее (архивное) изделие редактируемого задания показываем по артикулу из задания
-  const task = editingTask.value
-  if (task?.productId && !list.some(p => p.id === task.productId))
-    return [...list, { id: task.productId, fullArticle: task.productFullArticle || task.productId, name: task.productName, isActive: false }]
+  if (editingTask.value) return withFallbackProduct(list, editingTask.value, false)
+  // Изделие заказа известно сразу, а список появляется только после выбора ПФ
+  if (props.lockedOrder) return withFallbackProduct(list, props.lockedOrder, true)
   return list
 })
 
@@ -482,7 +494,9 @@ const moldNoDataText = computed(() => {
 // Заказы подбираются по выбранному изделию (селект без изделия заблокирован).
 const orderNoDataText = computed(() => {
   const article = selectedProduct.value?.fullArticle
-  return `Нет активных заказов на изделие ${article || 'выбранное изделие'}`
+  return article
+    ? `Нет активных заказов на изделие ${article}`
+    : 'Нет активных заказов на выбранное изделие'
 })
 
 const resetForm = () => {

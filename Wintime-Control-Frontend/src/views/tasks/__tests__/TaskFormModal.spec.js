@@ -122,7 +122,7 @@ describe('TaskFormModal — заказ', () => {
     wrapper.vm.form.moldId = 'mold-2'
     await flushPromises()
 
-    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие выбранное изделие')
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на выбранное изделие')
   })
 
   it('при смене ПФ сбрасывает изделие и заказ, если они не подходят новой ПФ', async () => {
@@ -326,6 +326,16 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     await flushPromises()
     expect(wrapper.vm.form.productId).toBe('p-YB')
     expect(ordersApi.getList).not.toHaveBeenCalled()
+  })
+
+  it('до выбора ПФ изделие заказа есть в опциях (иначе селект покажет сырой GUID)', async () => {
+    const wrapper = mountModal({ lockedOrder })
+    await flushPromises()
+
+    expect(wrapper.vm.form.moldId).toBeFalsy()
+    const option = wrapper.vm.productOptions.find(p => p.id === lockedOrder.productId)
+    expect(option).toBeTruthy()
+    expect(option.fullArticle).toBe(lockedOrder.productFullArticle)
   })
 
   it('подставляет заказ в форму и не запрашивает список заказов', async () => {
