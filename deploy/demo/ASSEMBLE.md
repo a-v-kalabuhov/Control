@@ -29,15 +29,18 @@
    с PAT (`write:packages`).
 5. **Локальный конфиг:** скопировать `deploy.local.example.psd1` → `deploy.local.psd1`, указать пути к
    `.crt` домена, `.crt` УЦ и `.key`. Затем `.\deploy\demo\deploy.ps1 -Certs`.
-6. **Секреты на VPS** (под deploy): `mkdir -p ~/wtctrl-demo && cd ~/wtctrl-demo`, создать `.env` по образцу
-   `.env.example` (`DB_PASSWORD` — длинный случайный).
+6. **Секреты на VPS:** `.env` нужно создать **до первого деплоя** — без него `deploy.ps1` откажется работать.
+   С вашей машины: `ssh deploy@195.208.2.44 mkdir -p wtctrl-demo`, затем
+   `scp deploy/demo/package/.env.example deploy@195.208.2.44:wtctrl-demo/.env` и на VPS отредактировать
+   `~/wtctrl-demo/.env` (`DB_PASSWORD` — длинный случайный).
 7. **Первый деплой:** `.\deploy\demo\deploy.ps1 -ResetDb`.
 
 ## Обновление версии
 
 1. Поднять `VERSION` (SemVer), закоммитить.
 2. `.\deploy\demo\deploy.ps1` — сборка, push `api:<VERSION>` и `latest`, копирование пакета, `pull` + `up -d`,
-   ожидание `https://control-demo.ru/health`, сверка образа, `docker image prune -f`.
+   ожидание `https://control-demo.ru/health`, сверка образа, `docker image prune -af` (удаляет все образы, которые
+   не использует ни один контейнер, — старые версии API не копятся).
 
 ## Сброс БД перед показом
 
@@ -46,7 +49,8 @@
 
 Сброс выполняется **в фоне на VPS** (`nohup bash reset-db.sh`), лог — `~/wtctrl-demo/reset-db.log`.
 `deploy.ps1` только опрашивает лог раз в 30 с, поэтому обрыв SSH или закрытый ноутбук сброс не останавливают.
-Если скрипт прервали, посмотреть результат: `ssh deploy@195.208.2.44 tail -n 30 ~/wtctrl-demo/reset-db.log`.
+Повторный запуск, пока сброс идёт, отклоняется (`pgrep` в `deploy.ps1` и `flock` в `reset-db.sh`) —
+дождитесь окончания. Если скрипт прервали, посмотреть результат: `ssh deploy@195.208.2.44 tail -n 30 ~/wtctrl-demo/reset-db.log`.
 
 ## Сертификат
 
@@ -56,13 +60,15 @@
 
 ## Откат
 
-На VPS: `cd ~/wtctrl-demo && sed -i '/^API_TAG=/d' .env && printf '\nAPI_TAG=%s\n' <старая версия> >> .env && docker compose up -d`.
+На VPS: `cd ~/wtctrl-demo && sed -i '/^API_TAG=/d' .env && printf '\nAPI_TAG=%s\n' <старая версия> >> .env && docker compose pull api && docker compose up -d`.
+Старый образ после деплоя удалён (`image prune -af`), поэтому `pull` обязателен — он заново скачает его из GHCR.
 Схема БД при этом не откатывается — если в новой версии были миграции, после отката нужен `-ResetDbOnly`
 со старым сидом.
 
 ## Диск
 
-Раздел 8,6 ГБ. БД после сида ~4,6 ГБ и после деплоя почти не растёт. `deploy.ps1` требует ≥ 1,5 ГБ свободно
+Раздел 8,6 ГБ. БД после сида ~4,6 ГБ и после деплоя почти не растёт. Старые образы API
+чистятся при каждом деплое (`docker image prune -af` — только образы без контейнеров). `deploy.ps1` требует ≥ 1,5 ГБ свободно
 перед `pull`, `reset-db.sh` — ≥ 7 ГБ перед сидом. Не хватает — уменьшить `ppc` (точек телеметрии на цикл)
 или `days` в начале `seed/seed_demo.sql`.
 

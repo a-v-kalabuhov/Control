@@ -26,5 +26,21 @@ public class AppInfoTests : IClassFixture<IntegrationTestFactory>
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var dto = await response.Content.ReadFromJsonAsync<AppInfoDto>();
         dto!.DemoMode.Should().Be(expected);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("\"demoMode\":true");
+    }
+
+    [Fact]
+    public async Task GetAppInfo_WithDemoModeDisabled_ReturnsDemoModeFalse()
+    {
+        // DemoMode=false: API не создаёт демо-аккаунты, администратор берётся из Bootstrap (в тестовой БД он уже есть)
+        using var factory = _factory.WithWebHostBuilder(b => b
+            .UseSetting("DemoMode", "false")
+            .UseSetting("Bootstrap:AdminPassword", "Test-Admin-123"));
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/app-info");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("\"demoMode\":false");
     }
 }

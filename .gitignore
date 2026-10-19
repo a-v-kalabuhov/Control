@@ -99,3 +99,4 @@ deploy/demo/deploy.local.psd1
 deploy/demo/package/certs/
 deploy/demo/package/.env
 deploy/demo/package/seed_demo.sql
+deploy/demo/package/reset-db.lock

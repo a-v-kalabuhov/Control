@@ -1,3 +1,4 @@
+#Requires -Version 7.3
 # Деплой публичного демо Control на VPS (control-demo.ru). Подробно — ASSEMBLE.md.
 #   .\deploy.ps1               сборка -> push в GHCR -> пакет на VPS -> pull + up -d -> проверка
 #   .\deploy.ps1 -ResetDb      то же + сброс БД свежим сидом (45–60 мин)
@@ -11,6 +12,8 @@ param(
     [switch]$Force
 )
 $ErrorActionPreference = "Stop"
+if ($Certs -and ($ResetDb -or $ResetDbOnly -or $Force)) { throw "-Certs запускается отдельно от других флагов" }
+if ($ResetDb -and $ResetDbOnly) { throw "-ResetDb и -ResetDbOnly взаимоисключающие" }
 [Console]::OutputEncoding = [Text.Encoding]::UTF8   # кириллица из лога на VPS
 $PSNativeCommandUseErrorActionPreference = $true
 $ScriptDir    = $PSScriptRoot
@@ -64,7 +67,10 @@ function Wait-Site {
 # Здесь только опрашиваем лог раз в 30 с.
 function Invoke-ResetDb {
     $log = "$Remote/reset-db.log"
-    Invoke-Remote "cd $Remote && nohup bash reset-db.sh > reset-db.log 2>&1 < /dev/null & echo started" | Out-Null
+    $out = "$(Invoke-Remote "cd $Remote && if pgrep -f '[r]eset-db.sh' >/dev/null; then echo already-running; else nohup bash reset-db.sh > reset-db.log 2>&1 < /dev/null & echo started; fi")".Trim()
+    if ($out -eq "already-running") {
+        throw "Сброс БД уже идёт — дождитесь окончания (лог ~/$log или повторите позже)"
+    }
     $seen = 0
     $started = Get-Date
     while ($true) {
@@ -165,7 +171,7 @@ if ($ResetDbOnly) {
     Wait-Site
     $img = Get-RemoteImage
     if ($img -ne "$Registry/api:$Version") { throw "На VPS запущен $img, ожидался $Registry/api:$Version" }
-    Invoke-Remote "docker image prune -f" | Out-Null
+    Invoke-Remote "docker image prune -af" | Out-Null
 }
 
 if ($ResetDb -or $ResetDbOnly) {

@@ -1,6 +1,6 @@
 -- ============================================================
 -- Wintime Control — данные публичного демо (control-demo.ru)
--- Период   : последние _cfg.days суток до t0 = момента загрузки. Ничего позже t0.
+-- Период   : последние _cfg.days суток до t0 = момента загрузки. Ничего позже t0, кроме сроков заказов (DueDate — план).
 -- Состав   : 2 шаблона, 12 ТПА (ТПА-12 в архиве), 15 ПФ, 10 типов изделий (тип 10 в архиве),
 --            6 сотрудников сида (без пароля — войти нельзя), заказы, задания, циклы, простои, телеметрия.
 -- Логины   : только демо-аккаунты API (admin / manager / adjuster / emulator). Сид их не создаёт;
@@ -523,7 +523,12 @@ FROM (SELECT DISTINCT product_id, bucket FROM _tb) d;
 INSERT INTO "Orders" ("Id","Number","OrderDate","DueDate","Quantity","Status","Note","CreatedAt","ProductId")
 SELECT o.id, 'З-' || lpad(o.rn::text, 3, '0'),
        min(t."CreatedAt") - interval '2 days',
-       LEAST((max(t."PlannedDate") + 5)::timestamp AT TIME ZONE 'Europe/Moscow', (SELECT t0 FROM _cfg)),
+       -- срок — плановая дата: у незавершённого заказа бывает в будущем (не раньше t0 + 3 суток),
+       -- у завершённого — в прошлом
+       CASE WHEN bool_and(t."Status" IN (3, 4))
+            THEN (max(t."PlannedDate") + 5)::timestamp AT TIME ZONE 'Europe/Moscow'
+            ELSE GREATEST((max(t."PlannedDate") + 5)::timestamp AT TIME ZONE 'Europe/Moscow',
+                          (SELECT t0 FROM _cfg) + interval '3 days') END,
        (ceil(sum(t."PlanQuantity") / 1000.0) * 1000)::int,
        CASE WHEN bool_and(t."Status" IN (3, 4)) THEN 1 ELSE 0 END,
        NULL, min(t."CreatedAt") - interval '2 days', o.product_id
@@ -541,7 +546,7 @@ SELECT gen_random_uuid(), v.num, c.t0 - v.ago * interval '1 day', c.t0 - v.due *
        v.note, c.t0 - v.ago * interval '1 day', (SELECT "Id" FROM "Products" WHERE "FullArticle" = v.art)
 FROM _cfg c,
      (VALUES ('З-900', 20, 5, 5000,  2, 'Отменён заказчиком',                    'КП38.К'),
-             ('З-901',  1, 0, 12000, 0, 'Новый заказ — задания ещё не созданы',  'ВТ20.Н')) v(num, ago, due, qty, status, note, art);
+             ('З-901',  1, -14, 12000, 0, 'Новый заказ — задания ещё не созданы',  'ВТ20.Н')) v(num, ago, due, qty, status, note, art);
 
 -- ============================================================
 -- Телеметрия: ppc точек на каждый датчик на каждый цикл, по фазам цикла

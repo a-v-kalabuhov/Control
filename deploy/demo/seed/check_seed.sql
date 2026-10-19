@@ -9,7 +9,8 @@ SELECT 'future_rows', (
     + (SELECT count(*) FROM "ImmStatusHistory" WHERE GREATEST("ChangedAt","EndedAt") > now())
     + (SELECT count(*) FROM "Events"           WHERE GREATEST("StartTime","EndTime","CreatedAt") > now())
     + (SELECT count(*) FROM "Telemetry"        WHERE "Timestamp" > now())
-    + (SELECT count(*) FROM "Orders"           WHERE GREATEST("OrderDate","DueDate","CreatedAt") > now())
+    -- DueDate заказа — плановая дата, может быть в будущем, поэтому здесь не проверяется
+    + (SELECT count(*) FROM "Orders"           WHERE GREATEST("OrderDate","CreatedAt") > now())
     + (SELECT count(*) FROM "UnplannedRuns"    WHERE GREATEST("StartTime","ClosedAt","CreatedAt") > now()))
 UNION ALL SELECT 'type_without_product', count(*) FROM "ProductTypes" pt
   WHERE NOT EXISTS (SELECT 1 FROM "Products" p WHERE p."ProductTypeId" = pt."Id")

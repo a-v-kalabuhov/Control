@@ -4,6 +4,8 @@
 # На 1 ядре сид грузится 45–60 мин; всё это время демо недоступно.
 set -euo pipefail
 cd "$(dirname "$0")"
+exec 9>reset-db.lock
+flock -n 9 || { echo "Сброс БД уже идёт" >&2; exit 3; }
 
 NEED_GB=7
 DB=WintimeControlDb
