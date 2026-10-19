@@ -19,4 +19,10 @@ describe('formatAppVersion', () => {
     expect(r.label).toBe('v0.9.0 · 05.01.2026')
     expect(r.tooltip).toBe('')
   })
+
+  it('демо-стенд: дописывает «демо-версия»', () => {
+    const r = formatAppVersion({ version: '1.18.0', buildDate: '2026-10-19T12:00:00Z', commit: 'abc1234', demo: true })
+    expect(r.label).toBe('v1.18.0 · 19.10.2026 · демо-версия')
+    expect(r.tooltip).toBe('commit abc1234')
+  })
 })

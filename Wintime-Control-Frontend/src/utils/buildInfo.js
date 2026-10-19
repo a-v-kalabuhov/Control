@@ -2,8 +2,11 @@
 // Константы вшиваются Vite (define в vite.config.js) при сборке.
 import { formatAppVersion } from './appVersion'
 
-export const appVersion = formatAppVersion({
+const build = {
   version: __APP_VERSION__,
   buildDate: __BUILD_DATE__,
   commit: __GIT_COMMIT__,
-})
+}
+
+// Подпись версии; demo — признак демо-стенда из стора appInfo.
+export const appVersionFor = (demo) => formatAppVersion({ ...build, demo })

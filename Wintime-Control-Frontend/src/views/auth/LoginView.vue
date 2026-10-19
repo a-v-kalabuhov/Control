@@ -5,6 +5,7 @@
       <div class="text-center mb-8">
         <div class="text-3xl font-bold text-primary-700 mb-2">CONTROL</div>
         <p class="text-gray-600">Управление цехом ТПА</p>
+        <p class="text-xs text-gray-400 mt-1" :title="appVersion.tooltip">{{ appVersion.label }}</p>
       </div>
 
       <!-- Форма входа -->
@@ -59,8 +60,8 @@
         class="mt-4"
       />
 
-      <!-- Демо-учётки (для разработки) -->
-      <div class="mt-6 p-4 bg-gray-50 rounded-lg text-sm">
+      <!-- Демо-учётки: только на демо-стенде (DemoMode), у клиентов таких аккаунтов нет -->
+      <div v-if="appInfo.demoMode" class="mt-6 p-4 bg-gray-50 rounded-lg text-sm">
         <p class="font-medium text-gray-700 mb-2">📋 Демо-учётки:</p>
         <div class="space-y-1 text-gray-600">
           <div><span class="font-mono">admin</span> / Admin123! (Администратор)</div>
@@ -73,13 +74,18 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
+import { appVersionFor } from '@/utils/buildInfo'
+import { useAppInfoStore } from '@/stores/appInfo'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const appInfo = useAppInfoStore()
+const appVersion = computed(() => appVersionFor(appInfo.demoMode))
+onMounted(() => appInfo.load())
 
 const formRef = ref(null)
 const loading = ref(false)
