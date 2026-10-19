@@ -45,7 +45,8 @@ function Get-RemoteImage {
 }
 
 function Assert-FreeSpace {
-    $mb = [int]("$(Invoke-Remote "df -BM --output=avail / | tail -1")" -replace '\D', '')
+    # Место — на диске с данными Docker (на демо это отдельный сетевой диск), а не на /
+    $mb = [int]("$(Invoke-Remote "df -BM --output=avail `"`$(docker info -f '{{.DockerRootDir}}')`" | tail -1")" -replace '\D', '')
     if ($mb -lt $MinFreeMb) { throw "На VPS свободно $mb МБ, нужно не меньше $MinFreeMb МБ (ASSEMBLE.md, «Диск»)" }
 }
 

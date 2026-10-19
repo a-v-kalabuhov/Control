@@ -18,7 +18,8 @@ docker compose stop api
 docker compose rm -f -s postgres
 docker volume rm -f wtctrl-demo_postgres_data >/dev/null
 
-avail=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
+# Место считаем там, где Docker хранит данные (на демо — отдельный сетевой диск, см. ASSEMBLE.md)
+avail=$(df -BG --output=avail "$(docker info -f '{{.DockerRootDir}}')" | tail -1 | tr -dc '0-9')
 if [ "$avail" -lt "$NEED_GB" ]; then
   echo "Свободно ${avail} ГБ, нужно не меньше ${NEED_GB} ГБ. API остановлен." >&2
   echo "Освободите диск или уменьшите ppc/days в начале seed_demo.sql и запустите снова." >&2

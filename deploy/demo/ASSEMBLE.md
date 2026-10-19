@@ -24,7 +24,23 @@
    docker inspect wtctrl-prod-api --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}'
    cd <папка из вывода> && docker compose -f docker-compose.prod.yml down -v
    docker image prune -a -f
-   df -h /                                         # нужно ≥ 7 ГБ свободно
+   ```
+   **Данные Docker — на отдельном диске.** Системный раздел (8,6 ГБ, из них ~3,8 ГБ — Ubuntu) БД ~4,6 ГБ
+   не вмещает, поэтому к VPS подключён сетевой диск 10 ГБ (`/dev/sdb`), и весь `data-root` Docker
+   перенесён на него (под root, один раз):
+   ```bash
+   mkfs.ext4 -L dockerdata /dev/sdb        # только новый пустой диск
+   mkdir -p /mnt/docker
+   echo 'LABEL=dockerdata /mnt/docker ext4 defaults,nofail,_netdev 0 2' >> /etc/fstab
+   mount /mnt/docker
+   systemctl stop docker docker.socket
+   rsync -a /var/lib/docker/ /mnt/docker/
+   echo '{ "data-root": "/mnt/docker" }' > /etc/docker/daemon.json
+   mkdir -p /etc/systemd/system/docker.service.d
+   printf '[Unit]\nRequiresMountsFor=/mnt/docker\n' > /etc/systemd/system/docker.service.d/mount.conf
+   systemctl daemon-reload && systemctl start docker
+   docker info -f '{{.DockerRootDir}}'     # /mnt/docker
+   df -h /mnt/docker                       # нужно ≥ 7 ГБ свободно
    ```
 3. **Файрвол:** `ufw status`; если активен — `ufw allow 80/tcp && ufw allow 443/tcp`.
 4. **GHCR:** проверить под `deploy`: `docker pull ghcr.io/a-v-kalabuhov/control/api:latest`. Если «denied» —
@@ -70,7 +86,9 @@
 
 ## Диск
 
-Раздел 8,6 ГБ. БД после сида ~4,6 ГБ и после деплоя почти не растёт. Старые образы API
+Данные Docker (образы, БД, логи контейнеров) — на сетевом диске 10 ГБ `/mnt/docker` (`data-root`, см.
+«Первичная настройка», шаг 2); системный раздел 8,6 ГБ им не занят. Обе проверки ниже смотрят на диск
+`docker info -f '{{.DockerRootDir}}'`. БД после сида ~4,6 ГБ и после деплоя почти не растёт. Старые образы API
 чистятся при каждом деплое (`docker image prune -af` — только образы без контейнеров). `deploy.ps1` требует ≥ 1,5 ГБ свободно
 перед `pull`, `reset-db.sh` — ≥ 7 ГБ перед сидом. Не хватает — уменьшить `ppc` (точек телеметрии на цикл)
 или `days` в начале `seed/seed_demo.sql`.
