@@ -48,15 +48,16 @@ function Assert-FreeSpace {
 
 function Wait-Site {
     $url = "https://$($cfg.Domain)/health"
+    $lastErr = ""
     for ($i = 0; $i -lt 24; $i++) {
         try {
             $r = Invoke-WebRequest $url -TimeoutSec 10 -UseBasicParsing
             if ($r.StatusCode -eq 200) { Write-Host "    $url -> 200"; return }
-        } catch { }
+        } catch { $lastErr = $_.Exception.Message }
         Start-Sleep -Seconds 5
     }
     Invoke-Remote "cd $Remote && docker compose logs --tail 100 api"
-    throw "$url не отвечает 200 за 2 мин"
+    throw "$url не отвечает 200 за 2 мин. Последняя ошибка: $lastErr"
 }
 
 # Сброс БД идёт на VPS в фоне (nohup): обрыв SSH или закрытая крышка ноутбука его не останавливают.
@@ -83,12 +84,22 @@ function Invoke-ResetDb {
         if ($lines -contains "Сброс БД завершён.") { return }
         $PSNativeCommandUseErrorActionPreference = $false
         ssh @SshOpts $Target "pgrep -f '[r]eset-db.sh'" | Out-Null
-        $alive = $LASTEXITCODE -eq 0
+        $pgrepCode = $LASTEXITCODE
         $PSNativeCommandUseErrorActionPreference = $true
-        if (-not $alive) {
-            Invoke-Remote "tail -n 30 $log"
-            throw "Сброс БД упал — см. ~/wtctrl-demo/reset-db.log"
+        if ($pgrepCode -eq 0) { continue }                 # процесс жив
+        if ($pgrepCode -ne 1) { Write-Host "    (нет связи с VPS, повторяю)"; continue }   # 255 и т.п. — неизвестно
+        # Процесса нет: он мог завершиться между cat и pgrep — перечитать лог ещё раз
+        $PSNativeCommandUseErrorActionPreference = $false
+        $final = @(ssh @SshOpts $Target "cat $log 2>/dev/null")
+        $finalOk = $LASTEXITCODE -eq 0
+        $PSNativeCommandUseErrorActionPreference = $true
+        if (-not $finalOk) { continue }
+        if ($final -contains "Сброс БД завершён.") {
+            if ($final.Count -gt $seen) { $final[$seen..($final.Count - 1)] | ForEach-Object { Write-Host "    $_" } }
+            return
         }
+        Invoke-Remote "tail -n 30 $log"
+        throw "Сброс БД упал — см. ~/$log"
     }
 }
 
@@ -140,17 +151,17 @@ if ($ResetDbOnly) {
         if ((Get-RemoteImage) -eq "$Registry/api:$Version") { throw "На VPS уже $Version — поднимите VERSION (или -Force)" }
     }
     Assert-FreeSpace
+    try { Invoke-Remote "test -f $Remote/.env && test -f $Remote/certs/fullchain.pem && test -f $Remote/certs/privkey.pem" }
+    catch { throw "На VPS нет $Remote/.env или сертификата — ASSEMBLE.md, «Первичная настройка», шаги 5–6" }
     Build-And-Push $Version
 
     Write-Host "==> Пакет на VPS..."
     Invoke-Remote "mkdir -p $Remote"
     Copy-ToRemote @((Join-Path $PackageDir "docker-compose.yml"), (Join-Path $PackageDir "mosquitto.conf"),
                     (Join-Path $PackageDir ".env.example"), (Join-Path $PackageDir "reset-db.sh"), $SeedFile) "$Remote/"
-    try { Invoke-Remote "test -f $Remote/.env && test -f $Remote/certs/fullchain.pem && test -f $Remote/certs/privkey.pem" }
-    catch { throw "На VPS нет $Remote/.env или сертификата — ASSEMBLE.md, «Первичная настройка», шаги 5–6" }
 
     Write-Host "==> pull + up -d..."
-    Invoke-Remote "cd $Remote && sed -i '/^API_TAG=/d' .env && echo API_TAG=$Version >> .env && docker compose pull api && docker compose up -d"
+    Invoke-Remote "cd $Remote && sed -i '/^API_TAG=/d' .env && printf '\nAPI_TAG=%s\n' $Version >> .env && docker compose pull api && docker compose up -d"
     Wait-Site
     $img = Get-RemoteImage
     if ($img -ne "$Registry/api:$Version") { throw "На VPS запущен $img, ожидался $Registry/api:$Version" }
