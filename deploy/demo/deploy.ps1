@@ -31,22 +31,38 @@ if (-not (Test-Path $cfgPath)) {
 $cfg     = Import-PowerShellDataFile $cfgPath
 $Target  = "$($cfg.User)@$($cfg.Host)"
 $Remote  = $cfg.RemoteDir
-$SshOpts = @("-o", "BatchMode=yes", "-o", "ServerAliveInterval=30")
+$SshOpts = @("-o", "BatchMode=yes", "-o", "ServerAliveInterval=30", "-o", "ConnectTimeout=15")
 
-function Invoke-Remote([string]$Command) { ssh @SshOpts $Target $Command }
+# VPS иногда не принимает подключение, если ssh идут подряд (код 255) — повторяем до 4 раз.
+# Любой другой ненулевой код — ошибка самой удалённой команды, её не повторяем.
+function Invoke-WithRetry([scriptblock]$Call, [string]$What) {
+    for ($i = 1; ; $i++) {
+        $PSNativeCommandUseErrorActionPreference = $false
+        $out = & $Call
+        $code = $LASTEXITCODE
+        $PSNativeCommandUseErrorActionPreference = $true
+        if ($code -ne 255 -or $i -ge 4) { break }
+        Write-Host "    нет связи с VPS ($What), повтор через 10 с..."
+        Start-Sleep -Seconds 10
+    }
+    if ($code -ne 0) { throw "${What}: код $code" }
+    return $out
+}
 
-function Copy-ToRemote([string[]]$Files, [string]$Dest) { scp @SshOpts @Files "${Target}:$Dest" }
+function Invoke-Remote([string]$Command) { Invoke-WithRetry { ssh @SshOpts $Target $Command } "ssh" }
+
+function Copy-ToRemote([string[]]$Files, [string]$Dest) { Invoke-WithRetry { scp @SshOpts @Files "${Target}:$Dest" } "scp" }
 
 function Get-RemoteImage {
-    $PSNativeCommandUseErrorActionPreference = $false   # контейнера может ещё не быть
-    $img = ssh @SshOpts $Target "docker inspect -f '{{.Config.Image}}' $ApiContainer 2>/dev/null"
-    $PSNativeCommandUseErrorActionPreference = $true
+    # контейнера может ещё не быть — тогда пустая строка
+    $img = Invoke-Remote "docker inspect -f '{{.Config.Image}}' $ApiContainer 2>/dev/null || true"
     return "$img".Trim()
 }
 
 function Assert-FreeSpace {
     # Место — на диске с данными Docker (на демо это отдельный сетевой диск), а не на /
-    $mb = [int]("$(Invoke-Remote "df -BM --output=avail `"`$(docker info -f '{{.DockerRootDir}}')`" | tail -1")" -replace '\D', '')
+    # Без двойных кавычек внутри: pwsh передаёт их в ssh экранированными (\"), и удалённая команда ломается
+    $mb = [int]("$(Invoke-Remote "df -BM --output=avail `$(docker info -f {{.DockerRootDir}}) | tail -1")" -replace '\D', '')
     if ($mb -lt $MinFreeMb) { throw "На VPS свободно $mb МБ, нужно не меньше $MinFreeMb МБ (ASSEMBLE.md, «Диск»)" }
 }
 
@@ -69,9 +85,8 @@ function Wait-Site {
 function Invoke-ResetDb {
     $log = "$Remote/reset-db.log"
     $out = "$(Invoke-Remote "cd $Remote && if pgrep -f '[r]eset-db.sh' >/dev/null; then echo already-running; else nohup bash reset-db.sh > reset-db.log 2>&1 < /dev/null & echo started; fi")".Trim()
-    if ($out -eq "already-running") {
-        throw "Сброс БД уже идёт — дождитесь окончания (лог ~/$log или повторите позже)"
-    }
+    # already-running бывает, если первую попытку запуска оборвала связь после старта — просто следим за ним
+    if ($out -eq "already-running") { Write-Host "    сброс уже идёт — слежу за его логом" }
     $seen = 0
     $started = Get-Date
     while ($true) {
@@ -143,13 +158,19 @@ catch { throw "Нет входа по ключу на $Target — см. ASSEMBLE
 
 if ($Certs) {
     Publish-Certs
-    Invoke-Remote "cd $Remote && if [ -n `"`$(docker compose ps -q api 2>/dev/null)`" ]; then docker compose restart api; fi"
+    Invoke-Remote "cd $Remote && if docker compose ps -q api 2>/dev/null | grep -q .; then docker compose restart api; fi"
     Write-Host "Сертификат обновлён."
     return
 }
 
+# Пока идёт сброс БД, пакет и сид на VPS трогать нельзя: psql читает seed_demo.sql, scp его бы перезаписал.
+$resetRunning = "$(Invoke-Remote "pgrep -f '[r]eset-db.sh' >/dev/null && echo yes || echo no")".Trim() -eq "yes"
+if ($resetRunning -and -not $ResetDbOnly) {
+    throw "На VPS идёт сброс БД — деплой после его окончания (дождаться: .\deploy\demo\deploy.ps1 -ResetDbOnly)"
+}
+
 if ($ResetDbOnly) {
-    Copy-ToRemote @((Join-Path $PackageDir "reset-db.sh"), $SeedFile) "$Remote/"
+    if (-not $resetRunning) { Copy-ToRemote @((Join-Path $PackageDir "reset-db.sh"), $SeedFile) "$Remote/" }
 } else {
     $Version = (Get-Content (Join-Path $ControlRoot "VERSION") -Raw).Trim()
     Write-Host "==> Версия $Version"
