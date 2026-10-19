@@ -25,7 +25,15 @@ fi
 
 echo "==> 2/6 Поднимаю postgres..."
 docker compose up -d postgres
-until [ "$(docker inspect -f '{{.State.Health.Status}}' "$PG")" = "healthy" ]; do sleep 2; done
+for i in $(seq 1 90); do
+  [ "$(docker inspect -f '{{.State.Health.Status}}' "$PG" 2>/dev/null)" = "healthy" ] && break
+  if [ "$i" -eq 90 ]; then
+    echo "postgres не стал healthy за 3 мин:" >&2
+    docker compose logs --tail 50 postgres >&2
+    exit 1
+  fi
+  sleep 2
+done
 
 echo "==> 3/6 Запускаю API: миграции и демо-аккаунты..."
 docker compose up -d api
