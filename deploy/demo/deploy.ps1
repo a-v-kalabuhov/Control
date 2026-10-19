@@ -82,11 +82,15 @@ function Wait-Site {
 
 # Сброс БД идёт на VPS в фоне (nohup): обрыв SSH или закрытая крышка ноутбука его не останавливают.
 # Здесь только опрашиваем лог раз в 30 с.
-function Invoke-ResetDb {
+function Invoke-ResetDb([bool]$AlreadyRunning) {
     $log = "$Remote/reset-db.log"
-    $out = "$(Invoke-Remote "cd $Remote && if pgrep -f '[r]eset-db.sh' >/dev/null; then echo already-running; else nohup bash reset-db.sh > reset-db.log 2>&1 < /dev/null & echo started; fi")".Trim()
-    # already-running бывает, если первую попытку запуска оборвала связь после старта — просто следим за ним
-    if ($out -eq "already-running") { Write-Host "    сброс уже идёт — слежу за его логом" }
+    if ($AlreadyRunning) {
+        Write-Host "    сброс уже идёт — слежу за его логом"
+    } else {
+        # pgrep в эту же команду не ставить: её строка содержит «reset-db.sh» и pgrep -f найдёт сам себя.
+        # От двойного запуска защищают проверка $resetRunning в начале скрипта и flock в reset-db.sh.
+        Invoke-Remote "cd $Remote && nohup bash reset-db.sh > reset-db.log 2>&1 < /dev/null &" | Out-Null
+    }
     $seen = 0
     $started = Get-Date
     while ($true) {
@@ -95,7 +99,7 @@ function Invoke-ResetDb {
             throw "Сброс БД не завершился за 90 мин — см. ~/$log"
         }
         $PSNativeCommandUseErrorActionPreference = $false   # временный сбой SSH не должен ронять опрос
-        $lines = @(ssh @SshOpts $Target "cat $log 2>/dev/null")
+        $lines = @(ssh @SshOpts $Target "cat $log 2>/dev/null || true")   # лога ещё нет — не «нет связи»
         $sshOk = $LASTEXITCODE -eq 0
         $PSNativeCommandUseErrorActionPreference = $true
         if (-not $sshOk) { Write-Host "    (нет связи с VPS, повторяю)"; continue }
@@ -112,7 +116,7 @@ function Invoke-ResetDb {
         if ($pgrepCode -ne 1) { Write-Host "    (нет связи с VPS, повторяю)"; continue }   # 255 и т.п. — неизвестно
         # Процесса нет: он мог завершиться между cat и pgrep — перечитать лог ещё раз
         $PSNativeCommandUseErrorActionPreference = $false
-        $final = @(ssh @SshOpts $Target "cat $log 2>/dev/null")
+        $final = @(ssh @SshOpts $Target "cat $log 2>/dev/null || true")
         $finalOk = $LASTEXITCODE -eq 0
         $PSNativeCommandUseErrorActionPreference = $true
         if (-not $finalOk) { continue }
@@ -198,7 +202,7 @@ if ($ResetDbOnly) {
 
 if ($ResetDb -or $ResetDbOnly) {
     Write-Host "==> Сброс БД (45–60 мин, в фоне на VPS, лог ~/$Remote/reset-db.log)..."
-    Invoke-ResetDb
+    Invoke-ResetDb $resetRunning
     Wait-Site
 }
 
