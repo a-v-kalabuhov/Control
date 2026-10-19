@@ -563,21 +563,30 @@ INSERT INTO _phase VALUES
   (5, 6, 0.92,    5, 80, 0.4,  350),   -- начало раскрытия
   (6, 3, 1.00,    5, 80, 0.0,    0);   -- раскрытие
 
-INSERT INTO "Telemetry" ("ImmId","Timestamp","ParameterName","ValueNumeric")
-SELECT c."ImmId",
-       CASE WHEN ph.frac IS NULL THEN c."InjectionStartTime" + c."InjectionDurationMs" * interval '1 millisecond'
-            ELSE c."StartTime" + ph.frac * c."DurationSeconds" * interval '1 second' END,
-       s.name,
-       round((CASE s.name
-         WHEN 'MeltTemp'          THEN 222 + (hashtext(c."ImmId"::text) & 7) + random() * 1.5
-         WHEN 'InjectionPressure' THEN ph.press * (0.95 + random() * 0.1)
-         WHEN 'ScrewPosition'     THEN ph.screw + random() * 2
-         WHEN 'MoldTemp'          THEN 45 + ph.mold_dt + random() * 0.5
-         ELSE                          ph.clamp * (0.98 + random() * 0.04) END)::numeric, 1)
-FROM "ImmCycles" c
-CROSS JOIN (SELECT * FROM _phase WHERE prio <= (SELECT ppc FROM _cfg)) ph
-CROSS JOIN (VALUES ('MeltTemp'), ('InjectionPressure'), ('ScrewPosition'), ('MoldTemp'), ('ClampForce')) s(name)
-WHERE c."EndTime" IS NOT NULL;
+-- Пачками «ТПА × сутки» (~55 тыс. строк): FK Telemetry.ImmId → Imms копит отложенную проверку на каждую
+-- вставленную строку до конца оператора — одним INSERT на ~20 млн строк postgres с лимитом 384 МБ убивает OOM.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT DISTINCT "ImmId" AS imm, date_trunc('day', "StartTime") AS d FROM "ImmCycles" ORDER BY 1, 2 LOOP
+    INSERT INTO "Telemetry" ("ImmId","Timestamp","ParameterName","ValueNumeric")
+    SELECT c."ImmId",
+           CASE WHEN ph.frac IS NULL THEN c."InjectionStartTime" + c."InjectionDurationMs" * interval '1 millisecond'
+                ELSE c."StartTime" + ph.frac * c."DurationSeconds" * interval '1 second' END,
+           s.name,
+           round((CASE s.name
+             WHEN 'MeltTemp'          THEN 222 + (hashtext(c."ImmId"::text) & 7) + random() * 1.5
+             WHEN 'InjectionPressure' THEN ph.press * (0.95 + random() * 0.1)
+             WHEN 'ScrewPosition'     THEN ph.screw + random() * 2
+             WHEN 'MoldTemp'          THEN 45 + ph.mold_dt + random() * 0.5
+             ELSE                          ph.clamp * (0.98 + random() * 0.04) END)::numeric, 1)
+    FROM "ImmCycles" c
+    CROSS JOIN (SELECT * FROM _phase WHERE prio <= (SELECT ppc FROM _cfg)) ph
+    CROSS JOIN (VALUES ('MeltTemp'), ('InjectionPressure'), ('ScrewPosition'), ('MoldTemp'), ('ClampForce')) s(name)
+    WHERE c."ImmId" = r.imm AND c."StartTime" >= r.d AND c."StartTime" < r.d + interval '1 day'
+      AND c."EndTime" IS NOT NULL;
+  END LOOP;
+END $$;
 
 -- Пульс приложения = t0: при старте API закроет открытые статусы записью Offline сразу после t0
 INSERT INTO "AppHeartbeat" ("Id","LastHeartbeatAt") SELECT 1, t0 FROM _cfg

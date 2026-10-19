@@ -35,8 +35,9 @@ Write-Host "==> 2/5 Временный postgres..."
 $PSNativeCommandUseErrorActionPreference = $false   # контейнера может не быть — это норма
 docker rm -f $Container 2>$null | Out-Null
 $PSNativeCommandUseErrorActionPreference = $true
-docker run -d --name $Container -e POSTGRES_PASSWORD=test -e POSTGRES_DB=$Db postgres:16-alpine `
-    postgres -c shared_buffers=128MB | Out-Null
+# Те же лимит памяти и настройки, что у postgres на VPS (docker-compose.yml): OOM должен ловиться здесь
+docker run -d --name $Container --memory=384m -e POSTGRES_PASSWORD=test -e POSTGRES_DB=$Db postgres:16-alpine `
+    postgres -c shared_buffers=128MB -c max_connections=20 -c max_wal_size=256MB | Out-Null
 try {
     # -h 127.0.0.1: на время init-скриптов образ слушает только unix-сокет, по TCP — уже рабочий сервер
     $ready = $false
