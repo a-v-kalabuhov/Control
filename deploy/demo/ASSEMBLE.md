@@ -11,11 +11,14 @@
 1. **Вход по ключу для `deploy`** (под root на VPS):
    ```bash
    mkdir -p /home/deploy/.ssh
-   cat >> /home/deploy/.ssh/authorized_keys      # вставить содержимое ~/.ssh/id_rsa.pub, Ctrl+D
-   chown -R deploy:deploy /home/deploy/.ssh && chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys
+   # ключ — одной строкой, без комментария: вставка через `cat >>` легко рвёт его на части
+   echo 'ssh-rsa AAAA…ваш ключ из ~/.ssh/id_rsa.pub…' > /home/deploy/.ssh/authorized_keys
+   chown -R deploy:deploy /home/deploy/.ssh
+   chmod go-w /home/deploy && chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys
    usermod -aG docker deploy                      # docker без sudo
    ```
-   Проверка с вашей машины: `ssh deploy@195.208.2.44 docker ps`.
+   Проверка с вашей машины — из **PowerShell**: `ssh deploy@195.208.2.44 docker ps`. Ssh из Git Bash не
+   читает ключ, если в пути профиля есть кириллица, и просит пароль; `deploy.ps1` тоже запускать из PowerShell.
 2. **Снести старое демо** (под root). Старый стек с эмулятором забил диск телеметрией:
    ```bash
    docker inspect wtctrl-prod-api --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}'

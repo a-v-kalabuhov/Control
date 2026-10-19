@@ -18,7 +18,8 @@ services:
       POSTGRES_DB: WintimeControlDb
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:?задайте DB_PASSWORD в .env}
-    command: postgres -c shared_buffers=128MB -c max_connections=20
+    # max_wal_size: загрузка сида (~4,6 ГБ) не должна раздувать WAL на маленьком диске VPS
+    command: postgres -c shared_buffers=128MB -c max_connections=20 -c max_wal_size=256MB
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
