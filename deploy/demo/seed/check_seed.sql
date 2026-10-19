@@ -51,5 +51,12 @@ UNION ALL SELECT 'no_recent_unclassified_downtime',
   CASE WHEN EXISTS (SELECT 1 FROM "Events" WHERE "ReasonId" IS NULL AND "StartTime" > now() - interval '3 hours')
        THEN 0 ELSE 1 END
 UNION ALL SELECT 'too_few_orders', CASE WHEN (SELECT count(*) FROM "Orders") >= 10 THEN 0 ELSE 1 END
+-- Раскладка ТПА: 12 машин, одна в архиве; история статусов начинается с локальной полуночи 30 дней назад
+UNION ALL SELECT 'imm_layout_not_12_with_1_archived',
+  CASE WHEN (SELECT count(*) FROM "Imms") = 12 AND (SELECT count(*) FROM "Imms" WHERE NOT "IsActive") = 1
+       THEN 0 ELSE 1 END
+UNION ALL SELECT 'history_not_about_30_days',
+  CASE WHEN (SELECT min("ChangedAt") FROM "ImmStatusHistory") BETWEEN now() - interval '31 days' AND now() - interval '29 days'
+       THEN 0 ELSE 1 END
 UNION ALL SELECT 'heartbeat_not_t0',
   CASE WHEN (SELECT "LastHeartbeatAt" FROM "AppHeartbeat" WHERE "Id" = 1) <= now() THEN 0 ELSE 1 END;

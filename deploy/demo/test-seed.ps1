@@ -14,9 +14,13 @@ New-Item -ItemType Directory -Force $Tmp | Out-Null
 
 Write-Host "==> 1/5 SQL-скрипт миграций..."
 Push-Location $ControlRoot
-dotnet ef migrations script --project Wintime.Control.Infrastructure --startup-project Wintime.Control.API `
-    -o (Join-Path $Tmp "schema.sql")
-Pop-Location
+try {
+    dotnet ef migrations script --project Wintime.Control.Infrastructure --startup-project Wintime.Control.API `
+        -o (Join-Path $Tmp "schema.sql")
+}
+finally {
+    Pop-Location
+}
 
 # Демо-аккаунт adjuster: в проде его создаёт API при DemoMode=true, сид ищет его по UserName
 $adjusterSql = @'
@@ -61,15 +65,23 @@ try {
 
     Write-Host "==> 5/5 Проверки..."
     $rows = docker exec $Container psql -U postgres -d $Db -At -F "|" -v ON_ERROR_STOP=1 -f /tmp/check.sql
+    # Число SELECT-строк в check_seed.sql: пустой или обрезанный вывод не должен пройти как «всё в порядке»
+    $ExpectedChecks = 23
     $failed = @()
+    $parsed = 0
     foreach ($row in $rows) {
+        if ($row -notmatch '^\w+\|\d+$') { throw "Неожиданная строка проверки: $row" }
         $name, $count = $row -split '\|'
         Write-Host ("    {0,-40} {1}" -f $name, $count)
         if ([long]$count -ne 0) { $failed += $name }
+        $parsed++
     }
+    if ($parsed -ne $ExpectedChecks) { throw "Получено проверок: $parsed, ожидалось: $ExpectedChecks" }
     if ($failed.Count -gt 0) { throw "Нарушены проверки: $($failed -join ', ')" }
     Write-Host "Сид в порядке."
 }
 finally {
+    # Ошибка удаления контейнера не должна маскировать исходную ошибку проверки
+    $PSNativeCommandUseErrorActionPreference = $false
     docker rm -f $Container | Out-Null
 }
