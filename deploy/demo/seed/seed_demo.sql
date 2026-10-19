@@ -34,12 +34,14 @@ END $$;
 -- ============================================================
 INSERT INTO "Templates" ("Id","Name","Manufacturer","Model","Version","Author","JsonConfig","IsActive","CreatedAt","UpdatedAt")
 SELECT v.id::uuid, v.name, v.maker, v.model, '1.0', 'Wintime',
+       -- Сигналы — как у коннектора USR-Modbus (роли MoldClosed/Injection/MoldOpened/InjectionPosition,
+       -- сырые мВ, scale 1.0); подушка (Cushion) приходит не датчиком, а в блоке цикла — ImmCycles.Cushion
        '{"device_timeout_seconds":30,"sensors":['
-       || '{"name":"Температура расплава, °C","field":"MeltTemp","type":"float","threshold":0.5},'
-       || '{"name":"Давление впрыска, бар","field":"InjectionPressure","type":"float","threshold":5},'
-       || '{"name":"Положение шнека, мм","field":"ScrewPosition","type":"float","threshold":0.5},'
-       || '{"name":"Температура формы, °C","field":"MoldTemp","type":"float","threshold":0.2},'
-       || '{"name":"Усилие смыкания, кН","field":"ClampForce","type":"float","threshold":10}]}',
+       || '{"name":"Смыкание формы","field":"MoldClosed","type":"boolean"},'
+       || '{"name":"Впрыск","field":"Injection","type":"boolean"},'
+       || '{"name":"Раскрытие формы","field":"MoldOpened","type":"boolean"},'
+       || '{"name":"Положение шнека, мВ","field":"InjectionPosition","type":"float","threshold":0.5},'
+       || '{"name":"Положение платформы, мВ","field":"MoldPosition","type":"float","threshold":0.5}]}',
        true, c.t0 - interval '90 days', c.t0 - interval '90 days'
 FROM _cfg c,
      (VALUES ('a3000000-0000-0000-0000-000000000001','Haitian Mars III','Haitian','MA III'),
@@ -224,7 +226,7 @@ BEGIN
          p_inj * 1000 - 200 + (random() * 400)::int,
          s.st + interval '1 second',
          CASE WHEN s.g = 0 THEN NULL ELSE ((p_ct + p_gap - s.prev_d) * 1000)::int END,
-         round((3 + random() * 3)::numeric, 2),
+         round((800 + random() * 300)::numeric, 1),   -- подушка, мВ: минимум InjectionPosition за литьё
          p_no + s.g + 1,
          s.st + s.d * interval '1 second'
   FROM (SELECT g, st, d, lag(d) OVER (ORDER BY g) AS prev_d
@@ -554,14 +556,17 @@ FROM _cfg c,
 -- ============================================================
 DO $$ BEGIN RAISE NOTICE 'Телеметрия...'; END $$;
 
-CREATE TEMP TABLE _phase (k int, prio int, frac numeric, press numeric, screw numeric, mold_dt numeric, clamp numeric);
+-- closed/inj/opened — дискретные входы; screw/platen — положение шнека и платформы, мВ
+-- (screw NULL — конец литья: шнек в крайнем положении = подушка цикла)
+CREATE TEMP TABLE _phase (k int, prio int, frac numeric, closed boolean, inj boolean, opened boolean,
+                          screw numeric, platen numeric);
 INSERT INTO _phase VALUES
-  (1, 1, 0.00,    5, 80, 0.0,    0),   -- смыкание
-  (2, 4, 0.04,  950, 78, 0.6, 1450),   -- начало литья
-  (3, 2, NULL,  620, 12, 1.6, 1500),   -- конец литья
-  (4, 5, 0.60,   40, 64, 1.1, 1500),   -- середина охлаждения
-  (5, 6, 0.92,    5, 80, 0.4,  350),   -- начало раскрытия
-  (6, 3, 1.00,    5, 80, 0.0,    0);   -- раскрытие
+  (1, 1, 0.00, true,  false, false, 4200,  350),   -- смыкание
+  (2, 4, 0.04, true,  true,  false, 4150,  350),   -- начало литья
+  (3, 2, NULL, true,  false, false, NULL,  350),   -- конец литья
+  (4, 5, 0.60, true,  false, false, 3900,  350),   -- середина охлаждения (шнек набрал дозу)
+  (5, 6, 0.92, false, false, false, 4200, 2600),   -- начало раскрытия
+  (6, 3, 1.00, false, false, true,  4200, 4800);   -- раскрытие
 
 -- Пачками «ТПА × сутки» (~55 тыс. строк): FK Telemetry.ImmId → Imms копит отложенную проверку на каждую
 -- вставленную строку до конца оператора — одним INSERT на ~20 млн строк postgres с лимитом 384 МБ убивает OOM.
@@ -569,20 +574,24 @@ DO $$
 DECLARE r record;
 BEGIN
   FOR r IN SELECT DISTINCT "ImmId" AS imm, date_trunc('day', "StartTime") AS d FROM "ImmCycles" ORDER BY 1, 2 LOOP
-    INSERT INTO "Telemetry" ("ImmId","Timestamp","ParameterName","ValueNumeric")
+    -- boolean — в ValueText ("true"/"false"), как пишет StoreTelemetryDataHandler; float — в ValueNumeric
+    INSERT INTO "Telemetry" ("ImmId","Timestamp","ParameterName","ValueNumeric","ValueText")
     SELECT c."ImmId",
            CASE WHEN ph.frac IS NULL THEN c."InjectionStartTime" + c."InjectionDurationMs" * interval '1 millisecond'
                 ELSE c."StartTime" + ph.frac * c."DurationSeconds" * interval '1 second' END,
            s.name,
-           round((CASE s.name
-             WHEN 'MeltTemp'          THEN 222 + (hashtext(c."ImmId"::text) & 7) + random() * 1.5
-             WHEN 'InjectionPressure' THEN ph.press * (0.95 + random() * 0.1)
-             WHEN 'ScrewPosition'     THEN ph.screw + random() * 2
-             WHEN 'MoldTemp'          THEN 45 + ph.mold_dt + random() * 0.5
-             ELSE                          ph.clamp * (0.98 + random() * 0.04) END)::numeric, 1)
+           CASE s.name
+             WHEN 'InjectionPosition' THEN round(COALESCE(ph.screw + random() * 20 - 10, c."Cushion")::numeric, 1)
+             WHEN 'MoldPosition'      THEN round((ph.platen + random() * 20 - 10)::numeric, 1)
+           END,
+           CASE s.name
+             WHEN 'MoldClosed' THEN ph.closed::text
+             WHEN 'Injection'  THEN ph.inj::text
+             WHEN 'MoldOpened' THEN ph.opened::text
+           END
     FROM "ImmCycles" c
     CROSS JOIN (SELECT * FROM _phase WHERE prio <= (SELECT ppc FROM _cfg)) ph
-    CROSS JOIN (VALUES ('MeltTemp'), ('InjectionPressure'), ('ScrewPosition'), ('MoldTemp'), ('ClampForce')) s(name)
+    CROSS JOIN (VALUES ('MoldClosed'), ('Injection'), ('MoldOpened'), ('InjectionPosition'), ('MoldPosition')) s(name)
     WHERE c."ImmId" = r.imm AND c."StartTime" >= r.d AND c."StartTime" < r.d + interval '1 day'
       AND c."EndTime" IS NOT NULL;
   END LOOP;
