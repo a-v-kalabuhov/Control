@@ -1,0 +1,83 @@
+name: wtctrl-demo
+
+# Публичное демо Control (controldemo.ru). DemoMode=true НАМЕРЕННО: открытые демо-аккаунты всех
+# ролей на экране входа — суть демо. Для клиентских установок — deploy/pzp/ (DemoMode=false).
+# Эмулятора нет: живых данных на демо нет, все ТПА «Нет связи» (живая телеметрия — BL-46).
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wtctrl-demo-postgres
+    environment:
+      POSTGRES_DB: WintimeControlDb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?задайте DB_PASSWORD в .env}
+    # max_wal_size: загрузка сида (~4,6 ГБ) не должна раздувать WAL на маленьком диске VPS
+    command: postgres -c shared_buffers=128MB -c max_connections=20 -c max_wal_size=256MB
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d WintimeControlDb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 384m
+    logging: *logging
+    networks: [wtctrl]
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: wtctrl-demo-mosquitto
+    # Портов наружу нет: брокер анонимный, нужен только API внутри сети compose.
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: *logging
+    networks: [wtctrl]
+
+  api:
+    image: ghcr.io/a-v-kalabuhov/control/api:${API_TAG:-latest}
+    container_name: wtctrl-demo-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      DemoMode: "true"
+      # TLS завершает Kestrel: https на 8443 (снаружи 443), http на 8080 (снаружи 80) редиректит на https
+      ASPNETCORE_URLS: "http://+:8080;https://+:8443"
+      ASPNETCORE_HTTPS_PORT: "${HTTPS_PORT:-443}"
+      Https__Redirect: "true"
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /certs/fullchain.pem
+      ASPNETCORE_Kestrel__Certificates__Default__KeyPath: /certs/privkey.pem
+      DOTNET_gcServer: "0"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=WintimeControlDb;Username=postgres;Password=${DB_PASSWORD};"
+      MqttSettings__BrokerUrl: mosquitto
+    ports:
+      - "${HTTP_PORT:-80}:8080"
+      - "${HTTPS_PORT:-443}:8443"
+    volumes:
+      - ./certs:/certs:ro
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *logging
+    networks: [wtctrl]
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+
+networks:
+  wtctrl:
+    driver: bridge

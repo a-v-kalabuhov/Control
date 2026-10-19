@@ -18,7 +18,7 @@ dotnet ef database update       --project Wintime.Control.Infrastructure --start
 
 docker-compose up   # PostgreSQL + Mosquitto + API
 
-.\build.ps1          # публикация образов; ПЕРЕД ней поднять номер в VERSION (SemVer)
+.\deploy\demo\deploy.ps1   # деплой демо-VPS (GHCR + ssh); ПЕРЕД ним поднять номер в VERSION (SemVer); -ResetDbOnly — сброс БД
 ```
 Frontend: `cd Wintime-Control-Frontend && npm run dev` — порт 3000, проксирует `/api` → `https://localhost:5001`.
 

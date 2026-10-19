@@ -93,3 +93,10 @@ deploy/smoke-test/
 deploy/smoke-test/dist/
 deploy/smoke-test/package/images/
 deploy/smoke-test/package/.env
+
+# Demo VPS deploy — локальные настройки и секреты (не в git)
+deploy/demo/deploy.local.psd1
+deploy/demo/package/certs/
+deploy/demo/package/.env
+deploy/demo/package/seed_demo.sql
+deploy/demo/package/reset-db.lock
