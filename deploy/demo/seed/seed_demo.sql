@@ -8,7 +8,8 @@
 -- Запуск   : свежая БД после первого старта API (миграции + демо-аккаунты), API остановлен — reset-db.sh:
 --   docker exec -i wtctrl-demo-postgres psql -U postgres -d WintimeControlDb -v ON_ERROR_STOP=1 -q < seed_demo.sql
 -- Параметры: _cfg ниже — days (история, сутки), ppc (точек телеметрии на датчик на цикл, 1..6).
---            Объём при 30/6: ~0,45 млн циклов, ~13 млн строк телеметрии, БД ~3 ГБ.
+--            Объём при 30/6: ~0,68 млн циклов, ~20 млн строк телеметрии, БД ~4,5 ГБ;
+--            загрузка ~12 мин на ПК разработчика, на VPS с 1 ядром ~45–60 мин.
 -- ============================================================
 SET synchronous_commit = off;
 
@@ -182,15 +183,27 @@ CREATE FUNCTION pg_temp.rmin(lo int, hi int) RETURNS interval LANGUAGE sql VOLAT
 $$ SELECT ((lo + random() * (hi - lo))::int) * interval '1 minute' $$;
 
 -- Запись статуса; b = NULL — открытая (текущая) запись
-CREATE FUNCTION pg_temp.st(p_imm uuid, p_status text, a timestamptz, b timestamptz) RETURNS void LANGUAGE sql AS
-$$ INSERT INTO "ImmStatusHistory" ("ImmId","Status","ChangedAt","EndedAt")
-   SELECT p_imm, p_status, a, b WHERE b IS NULL OR b > a $$;
+-- Если последняя запись ТПА с тем же статусом заканчивается в a — продлевает её, а не добавляет подряд идущую такую же
+CREATE FUNCTION pg_temp.st(p_imm uuid, p_status text, a timestamptz, b timestamptz) RETURNS void LANGUAGE plpgsql AS
+$$
+DECLARE v_id bigint;
+BEGIN
+  IF b IS NOT NULL AND b <= a THEN RETURN; END IF;
+  SELECT "Id" INTO v_id FROM "ImmStatusHistory"
+   WHERE "ImmId" = p_imm AND "ChangedAt" = (SELECT max("ChangedAt") FROM "ImmStatusHistory" WHERE "ImmId" = p_imm)
+     AND "Status" = p_status AND "EndedAt" = a;
+  IF FOUND THEN
+    UPDATE "ImmStatusHistory" SET "EndedAt" = b WHERE "Id" = v_id;
+  ELSE
+    INSERT INTO "ImmStatusHistory" ("ImmId","Status","ChangedAt","EndedAt") VALUES (p_imm, p_status, a, b);
+  END IF;
+END $$;
 
 -- Простой; p_reason = NULL — неразмеченный (причину укажет наладчик)
 CREATE FUNCTION pg_temp.ev(p_imm uuid, p_task uuid, p_adj text, p_reason int, a timestamptz, b timestamptz)
 RETURNS void LANGUAGE sql AS
 $$ INSERT INTO "Events" ("Id","ImmId","EventType","ReasonId","ReasonName","StartTime","EndTime","PersonnelId","TaskId","IsAuto","CreatedAt")
-   SELECT gen_random_uuid(), p_imm, 0, r."Id", r."Name", a, b, p_adj, p_task, true, a
+   SELECT gen_random_uuid(), p_imm, 0, r."Id", r."Name", a, b, CASE WHEN p_reason IS NULL THEN NULL ELSE p_adj END, p_task, true, a
    FROM (SELECT 1) one
    LEFT JOIN "DowntimeReasons" r ON r."Id" = ('d3000000-0000-0000-0000-00000000000' || p_reason)::uuid
    WHERE b > a $$;
@@ -296,7 +309,13 @@ BEGIN
       IF last_mold IS NOT NULL AND random() < 0.2 THEN
         SELECT * INTO m FROM _mold WHERE _mold.n = last_mold;
         u_a := cur + (g_end - cur) * 0.3;
-        n := pg_temp.cyc(im.id, NULL, m.id, m.cav, m.ct, m.inj, 1, u_a, LEAST(u_a + pg_temp.rmin(20, 90), g_end), cno, 1000000);
+        -- ПФ не может работать на двух ТПА одновременно
+        IF NOT EXISTS (SELECT 1 FROM "ShiftTasks" x
+                        WHERE x."MoldId" = m.id AND x."ImmId" <> im.id
+                          AND x."SetupStartedAt" < u_a + interval '90 minutes'
+                          AND COALESCE(x."CompletedAt", 'infinity') > u_a) THEN
+          n := pg_temp.cyc(im.id, NULL, m.id, m.cav, m.ct, m.inj, 1, u_a, LEAST(u_a + pg_temp.rmin(20, 90), g_end), cno, 1000000);
+        END IF;
       END IF;
       IF n > 0 THEN
         u_b := u_a + n * (m.ct + 1) * interval '1 second';
@@ -318,8 +337,23 @@ BEGIN
       END IF;
 
       -- Задание: план считается из доступного времени, ТПА остановится по плану
-      SELECT p.mold INTO v_mold FROM _pool p WHERE p.imm = im.n ORDER BY random() LIMIT 1;
+      -- ПФ из пула, которая не занята на другом ТПА в ближайшие 6 часов
+      SELECT p.mold INTO v_mold FROM _pool p JOIN _mold pm ON pm.n = p.mold
+       WHERE p.imm = im.n
+         AND NOT EXISTS (SELECT 1 FROM "ShiftTasks" x
+                          WHERE x."MoldId" = pm.id AND x."ImmId" <> im.id
+                            AND x."SetupStartedAt" < cur + interval '6 hours'
+                            AND COALESCE(x."CompletedAt", 'infinity') > cur)
+       ORDER BY random() LIMIT 1;
+      IF v_mold IS NULL THEN
+        PERFORM pg_temp.st(im.id, 'Idle', cur, LEAST(cur + interval '2 hours', lim));
+        cur := LEAST(cur + interval '2 hours', lim);
+        CONTINUE;
+      END IF;
       SELECT * INTO m FROM _mold WHERE _mold.n = v_mold;
+      -- задание должно закончиться раньше, чем эта ПФ понадобится на другом ТПА
+      lim := LEAST(lim, (SELECT min(x."SetupStartedAt") FROM "ShiftTasks" x
+                          WHERE x."MoldId" = m.id AND x."ImmId" <> im.id AND x."SetupStartedAt" >= cur) - interval '1 hour');
       v_mode   := CASE WHEN random() < 0.2 THEN 1 ELSE 0 END;          -- 20% — полуавтомат
       v_gap    := CASE WHEN v_mode = 1 THEN 6 ELSE 1 END;              -- пауза между циклами, с
       v_period := m.ct + v_gap;
