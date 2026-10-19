@@ -1,5 +1,5 @@
 #Requires -Version 7.3
-# Деплой публичного демо Control на VPS (control-demo.ru). Подробно — ASSEMBLE.md.
+# Деплой публичного демо Control на VPS (controldemo.ru). Подробно — ASSEMBLE.md.
 #   .\deploy.ps1               сборка -> push в GHCR -> пакет на VPS -> pull + up -d -> проверка
 #   .\deploy.ps1 -ResetDb      то же + сброс БД свежим сидом (45–60 мин)
 #   .\deploy.ps1 -ResetDbOnly  только сброс БД (перед показом)

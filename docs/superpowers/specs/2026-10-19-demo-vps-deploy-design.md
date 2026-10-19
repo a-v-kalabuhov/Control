@@ -4,7 +4,7 @@
 
 ## Цель
 
-Обновить публичное демо Control на VPS `control-demo.ru` (195.208.2.44) до текущей версии и собрать
+Обновить публичное демо Control на VPS `controldemo.ru` (195.208.2.44) до текущей версии и собрать
 всё, что нужно для деплоя, в одной папке `deploy/demo/`, как уже сделано для `deploy/pzp/` и
 `deploy/smoke-test/`. Одновременно:
 
@@ -57,7 +57,7 @@
 2. `.\deploy.ps1`: проверки (чистое дерево, `VERSION` ≠ версии на VPS) → сборка фронта и
    `dotnet publish` → `docker build` → push `api:<VERSION>` и `api:latest` в GHCR → `scp` пакета
    и сида → `ssh`: `docker compose pull && docker compose up -d` → ожидание `200` от
-   `https://control-demo.ru/health` → проверка версии (см. «Проверка версии»).
+   `https://controldemo.ru/health` → проверка версии (см. «Проверка версии»).
 
 **Альтернативы:** грязное рабочее дерево или `VERSION` не поднят — отказ до сборки (флаг
 `-Force` пропускает проверку версии); push в GHCR без авторизации — ошибка с подсказкой
@@ -82,7 +82,7 @@ API) — сид сам выбрасывает исключение `RAISE EXCEPT
 
 ### UC-4. Посетитель смотрит демо
 
-1. Открывает `https://control-demo.ru` (http редиректит на https), сертификат валиден.
+1. Открывает `https://controldemo.ru` (http редиректит на https), сертификат валиден.
 2. Входит под любым демо-аккаунтом с экрана входа (`admin`, `manager`, `adjuster`).
 3. Видит: дашборд (все ТПА «Нет связи» — живых данных нет), задания, заказы, справочники,
    отчёты за последние 30 суток, историю на карточке ТПА.
@@ -133,7 +133,7 @@ deploy/demo/
 | `-Force` | пропустить проверку «`VERSION` поднят» |
 
 Конфиг `deploy.local.psd1`:
-`@{ Host = '195.208.2.44'; User = 'deploy'; RemoteDir = 'wtctrl-demo'; Domain = 'control-demo.ru';
+`@{ Host = '195.208.2.44'; User = 'deploy'; RemoteDir = 'wtctrl-demo'; Domain = 'controldemo.ru';
 CertFile = '...'; CaFile = '...'; KeyFile = '...' }`.
 
 Образ: `ghcr.io/a-v-kalabuhov/control/api:<VERSION>`, compose ссылается на `${API_TAG:-latest}`.
@@ -293,7 +293,7 @@ CertFile = '...'; CaFile = '...'; KeyFile = '...' }`.
 1. `test-seed.ps1` проходит локально, все проверки 0.
 2. `deploy.ps1 -ResetDb` на VPS завершается успешно, версия на VPS = 1.18.0; под логотипом —
    `v1.18.0 · <дата> · демо-версия`.
-3. `https://control-demo.ru` открывается с валидным сертификатом; `http://` редиректит на https;
+3. `https://controldemo.ru` открывается с валидным сертификатом; `http://` редиректит на https;
    порты 5000/1883/9001 снаружи закрыты.
 4. Вход `admin / Admin123!` работает; отчёты за последние 30 суток заполнены; в БД нет данных
    позже момента сброса.

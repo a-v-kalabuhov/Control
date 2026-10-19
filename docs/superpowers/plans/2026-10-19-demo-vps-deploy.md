@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** собрать в `deploy/demo/` всё для обновления публичного демо `control-demo.ru`: образ API в GHCR,
+**Goal:** собрать в `deploy/demo/` всё для обновления публичного демо `controldemo.ru`: образ API в GHCR,
 compose с HTTPS через Kestrel, сброс БД новым `seed_demo.sql` (только прошлое, даты от момента загрузки),
 плюс подпись «демо-версия» в приложении.
 
@@ -18,7 +18,7 @@ PostgreSQL 16 (PL/pgSQL), Docker Compose v2, PowerShell 7, bash, OpenSSH.
 
 ## Global Constraints
 
-- VPS: `deploy@195.208.2.44`, домен `control-demo.ru`, папка на VPS `~/wtctrl-demo`; VPS 1 ГБ ОЗУ / 1 ядро / 8,6 ГБ диска.
+- VPS: `deploy@195.208.2.44`, домен `controldemo.ru`, папка на VPS `~/wtctrl-demo`; VPS 1 ГБ ОЗУ / 1 ядро / 8,6 ГБ диска.
 - `DemoMode=true` на демо — намеренно; демо-аккаунты создаёт API, сид их не создаёт и не меняет.
 - Эмулятора (`Wintime.Control.Emulator`) в деплое нет; образ эмулятора больше не публикуется.
 - Образ: `ghcr.io/a-v-kalabuhov/control/api:<VERSION>` и `:latest`.
@@ -582,7 +582,7 @@ git commit -m "test(demo): seed invariant checks and local seed test harness"
 
 ```sql
 -- ============================================================
--- Wintime Control — данные публичного демо (control-demo.ru)
+-- Wintime Control — данные публичного демо (controldemo.ru)
 -- Период   : последние _cfg.days суток до t0 = момента загрузки. Ничего позже t0.
 -- Состав   : 2 шаблона, 12 ТПА (ТПА-12 в архиве), 15 ПФ, 10 типов изделий (тип 10 в архиве),
 --            6 сотрудников сида (без пароля — войти нельзя), заказы, задания, циклы, простои, телеметрия.
@@ -1175,7 +1175,7 @@ git commit -m "feat(demo): new demo seed relative to load time (30 days, 12 IMMs
 ```yaml
 name: wtctrl-demo
 
-# Публичное демо Control (control-demo.ru). DemoMode=true НАМЕРЕННО: открытые демо-аккаунты всех
+# Публичное демо Control (controldemo.ru). DemoMode=true НАМЕРЕННО: открытые демо-аккаунты всех
 # ролей на экране входа — суть демо. Для клиентских установок — deploy/pzp/ (DemoMode=false).
 # Эмулятора нет: живых данных на демо нет, все ТПА «Нет связи» (живая телеметрия — BL-46).
 
@@ -1419,17 +1419,17 @@ git commit -m "feat(demo): compose package with Kestrel HTTPS and reset-db scrip
     Host      = '195.208.2.44'
     User      = 'deploy'
     RemoteDir = 'wtctrl-demo'                       # относительно домашней папки пользователя на VPS
-    Domain    = 'control-demo.ru'
-    CertFile  = 'C:\certs\control-demo.ru\control-demo.ru.crt'   # сертификат домена
-    CaFile    = 'C:\certs\control-demo.ru\ca.crt'                # корневой/промежуточный от УЦ
-    KeyFile   = 'C:\certs\control-demo.ru\control-demo.ru.key'   # закрытый ключ (без пароля)
+    Domain    = 'controldemo.ru'
+    CertFile  = 'C:\certs\controldemo.ru\controldemo.ru.crt'   # сертификат домена
+    CaFile    = 'C:\certs\controldemo.ru\ca.crt'                # корневой/промежуточный от УЦ
+    KeyFile   = 'C:\certs\controldemo.ru\controldemo.ru.key'   # закрытый ключ (без пароля)
 }
 ```
 
 - [ ] **Step 2: `deploy.ps1`**
 
 ```powershell
-# Деплой публичного демо Control на VPS (control-demo.ru). Подробно — ASSEMBLE.md.
+# Деплой публичного демо Control на VPS (controldemo.ru). Подробно — ASSEMBLE.md.
 #   .\deploy.ps1               сборка -> push в GHCR -> пакет на VPS -> pull + up -d -> проверка
 #   .\deploy.ps1 -ResetDb      то же + сброс БД свежим сидом (25–40 мин)
 #   .\deploy.ps1 -ResetDbOnly  только сброс БД (перед показом)
@@ -1568,7 +1568,7 @@ Write-Host "Готово: https://$($cfg.Domain)"
 ````markdown
 # Демо-VPS: деплой (автор)
 
-Публичное демо Control — `https://control-demo.ru`, VPS `deploy@195.208.2.44` (1 ГБ ОЗУ, 1 ядро, 8,6 ГБ).
+Публичное демо Control — `https://controldemo.ru`, VPS `deploy@195.208.2.44` (1 ГБ ОЗУ, 1 ядро, 8,6 ГБ).
 `DemoMode=true` намеренно: открытые демо-аккаунты всех ролей. Живых данных нет (все ТПА «Нет связи»),
 история — из `seed/seed_demo.sql`, заканчивается моментом последнего сброса БД.
 
@@ -1605,7 +1605,7 @@ Write-Host "Готово: https://$($cfg.Domain)"
 
 1. Поднять `VERSION` (SemVer), закоммитить.
 2. `.\deploy\demo\deploy.ps1` — сборка, push `api:<VERSION>` и `latest`, копирование пакета, `pull` + `up -d`,
-   ожидание `https://control-demo.ru/health`, сверка образа, `docker image prune -f`.
+   ожидание `https://controldemo.ru/health`, сверка образа, `docker image prune -f`.
 
 ## Сброс БД перед показом
 
@@ -1723,10 +1723,10 @@ git commit -m "chore: replace root build/compose/seed with deploy/demo; bump 1.1
   (ключ, снос старого стека, файрвол, GHCR); сообщает вывод `df -h /`.
 - [ ] **Step 2:** пользователь создаёт `deploy/demo/deploy.local.psd1` и `~/wtctrl-demo/.env` (шаги 5–6);
   `.\deploy\demo\deploy.ps1 -Certs`.
-- [ ] **Step 3:** `.\deploy\demo\deploy.ps1 -ResetDb` → `Готово: https://control-demo.ru`.
+- [ ] **Step 3:** `.\deploy\demo\deploy.ps1 -ResetDb` → `Готово: https://controldemo.ru`.
 - [ ] **Step 4: Критерии готовности** (спека):
-  - `https://control-demo.ru` — валидный сертификат (`curl -sI https://control-demo.ru/health` без `-k` → 200);
-    `curl -sI http://control-demo.ru/` → 307 на https;
+  - `https://controldemo.ru` — валидный сертификат (`curl -sI https://controldemo.ru/health` без `-k` → 200);
+    `curl -sI http://controldemo.ru/` → 307 на https;
   - снаружи закрыты 5000/1883/9001: `Test-NetConnection 195.208.2.44 -Port 1883` → `TcpTestSucceeded : False`;
   - под логотипом `v1.18.0 · <дата> · демо-версия`; вход `admin / Admin123!`; отчёты за 30 суток заполнены;
   - с телефона под `adjuster`: 7 выданных заданий, камера QR-сканера включается, сценарий UC-5 до конца.

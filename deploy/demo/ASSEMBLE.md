@@ -1,6 +1,6 @@
 # Демо-VPS: деплой (автор)
 
-Публичное демо Control — `https://control-demo.ru`, VPS `deploy@195.208.2.44` (1 ГБ ОЗУ, 1 ядро, 8,6 ГБ).
+Публичное демо Control — `https://controldemo.ru`, VPS `deploy@195.208.2.44` (1 ГБ ОЗУ, 1 ядро, 8,6 ГБ).
 `DemoMode=true` намеренно: открытые демо-аккаунты всех ролей. Живых данных нет (все ТПА «Нет связи»),
 история — из `seed/seed_demo.sql`, заканчивается моментом последнего сброса БД.
 
@@ -58,7 +58,7 @@
 
 1. Поднять `VERSION` (SemVer), закоммитить.
 2. `.\deploy\demo\deploy.ps1` — сборка, push `api:<VERSION>` и `latest`, копирование пакета, `pull` + `up -d`,
-   ожидание `https://control-demo.ru/health`, сверка образа, `docker image prune -af` (удаляет все образы, которые
+   ожидание `https://controldemo.ru/health`, сверка образа, `docker image prune -af` (удаляет все образы, которые
    не использует ни один контейнер, — старые версии API не копятся).
 
 ## Сброс БД перед показом
