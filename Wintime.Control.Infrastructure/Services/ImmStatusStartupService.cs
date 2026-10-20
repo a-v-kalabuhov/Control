@@ -90,7 +90,8 @@ public class ImmStatusStartupService : IHostedService
                 }
                 else
                 {
-                    var timeoutSeconds = GetDeviceTimeoutSeconds(db, record.ImmId);
+                    // IImmCache при старте пуст — таймаут из шаблона (ITemplateCache заполнен раньше).
+                    var timeoutSeconds = DeviceTimeout.ForImm(db, _templateCache, record.ImmId);
                     var threshold = lastHeartbeat.Value.AddSeconds(2 * timeoutSeconds);
                     shouldClose = threshold <= DateTime.UtcNow;
                     closeTime = threshold;
@@ -137,29 +138,4 @@ public class ImmStatusStartupService : IHostedService
     /// </summary>
     /// <param name="cancellationToken">Токен отмены остановки хоста.</param>
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    /// <summary>
-    /// Возвращает таймаут устройства в секундах для указанного ТПА.
-    /// </summary>
-    /// <remarks>
-    /// На момент запуска <c>IImmCache</c> ещё пуст, поэтому таймаут берётся из
-    /// <see cref="ITemplateCache"/>, который заполняется раньше этого сервиса.
-    /// Если шаблон не найден, возвращается значение по умолчанию — 60 секунд.
-    /// </remarks>
-    /// <param name="db">Контекст базы данных для получения <c>TemplateId</c> ТПА.</param>
-    /// <param name="immId">Идентификатор ТПА.</param>
-    /// <returns>Таймаут устройства в секундах.</returns>
-    private int GetDeviceTimeoutSeconds(ControlDbContext db, Guid immId)
-    {
-        // IImmCache is empty at startup — use ITemplateCache (pre-loaded by TemplateCacheStartupService)
-        var templateId = db.Imms
-            .Where(i => i.Id == immId)
-            .Select(i => i.TemplateId)
-            .FirstOrDefault();
-
-        if (templateId == default)
-            return 60;
-
-        return _templateCache.GetById(templateId)?.DeviceTimeoutSeconds ?? 60;
-    }
 }

@@ -182,6 +182,23 @@ public class MemoryImmCacheTests
     }
 
     /// <summary>
+    /// Таймаут шаблона мог измениться (<c>device_timeout_seconds</c>) — <c>UpdateEntry</c>
+    /// существующей записи должен принять новый, а не держать значение с первого сообщения
+    /// до перезапуска API.
+    /// </summary>
+    [Fact]
+    public void UpdateEntry_ExistingEntry_TakesNewTimeout()
+    {
+        var cache = new MemoryImmCache();
+        var id = Guid.NewGuid();
+        cache.UpdateEntry(id, DateTime.UtcNow, 30, new Dictionary<string, string>());
+
+        cache.UpdateEntry(id, DateTime.UtcNow, 120, new Dictionary<string, string>());
+
+        cache.GetEntry(id)!.TimeoutSeconds.Should().Be(120);
+    }
+
+    /// <summary>
     /// После <c>UpdateEntry</c> поле <c>LastMessageAt</c> должно принять
     /// значение, переданное в вызове, — именно по нему отслеживается онлайн-статус.
     /// </summary>
