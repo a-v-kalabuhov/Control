@@ -298,10 +298,10 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         return client;
     }
 
-    private object MakeCreateRequest(Guid? immId = null) => new
+    private object MakeCreateRequest(Guid? immId = null, Guid? moldId = null) => new
     {
         immId = immId ?? _factory.TestImmId,
-        moldId = _factory.TestMoldId, productId = _factory.TestProductId,
+        moldId = moldId ?? _factory.TestMoldId, productId = _factory.TestProductId,
         planQuantity = 100,
         note = "Integration test task",
         personnelId = _factory.TestAdjusterId,
@@ -311,7 +311,10 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
 
     private async Task<Guid> CreateTaskAsync(HttpClient client, Guid? immId = null)
     {
-        var response = await client.PostAsJsonAsync("/api/tasks", MakeCreateRequest(immId));
+        // Свежая ПФ на каждое задание с явным ТПА: задания других тестов остаются в Setup/InProgress
+        // и иначе «занимают» общую ПФ → 409 moldBusy при старте наладки (PZP-07b).
+        var moldId = immId.HasValue ? await _factory.CreateFreshMoldAsync() : (Guid?)null;
+        var response = await client.PostAsJsonAsync("/api/tasks", MakeCreateRequest(immId, moldId));
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         return Guid.Parse(body.GetProperty("id").GetString()!);
