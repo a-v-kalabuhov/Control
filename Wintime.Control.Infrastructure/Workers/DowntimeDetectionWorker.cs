@@ -16,7 +16,7 @@ namespace Wintime.Control.Infrastructure.Workers;
 
 /// <summary>
 /// Фоновый сервис, который при активном задании InProgress автоматически создаёт
-/// запись простоя (Event типа Downtime), если ТПА дольше порога находится не в Auto,
+/// запись простоя (Event типа Downtime), если ТПА дольше порога находится не в Auto и не в Offline (обрыв связи — не простой, ADR-0021),
 /// и закрывает её при возврате в Auto. По образцу <see cref="ImmOfflineWorker"/>.
 /// </summary>
 public class DowntimeDetectionWorker : BackgroundService

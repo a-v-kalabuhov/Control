@@ -21,7 +21,7 @@ public class ImmEffectiveStatusTests
     [InlineData("Alarm",   ActiveTaskStatus.InProgress, true,  false, EffectiveStatus.Downtime)]    // открыт простой
     [InlineData("Offline", ActiveTaskStatus.InProgress, false, true,  EffectiveStatus.Offline)]     // нет связи важнее порога (ADR-0021)
     [InlineData("Offline", ActiveTaskStatus.InProgress, true,  false, EffectiveStatus.Offline)]     // нет связи важнее простоя (ADR-0021)
-    [InlineData("Offline", ActiveTaskStatus.InProgress, false, false, EffectiveStatus.Offline)]     // нет данных — не «работа» (ADR-0019)
+    [InlineData("Offline", ActiveTaskStatus.InProgress, false, false, EffectiveStatus.Offline)]     // нет данных — не «работа» (ADR-0019 → ADR-0021)
     [InlineData("Auto",    ActiveTaskStatus.None,        false, false, EffectiveStatus.Unplanned)]
     [InlineData("Offline", ActiveTaskStatus.None,        false, false, EffectiveStatus.Offline)]
     [InlineData("Idle",    ActiveTaskStatus.None,        false, false, EffectiveStatus.NoTask)]
