@@ -13,7 +13,8 @@ vi.mock('@/api/planning', () => ({
     getBoard: vi.fn(() => Promise.resolve({ data: {
       from: '2026-10-12T00:00:00Z', to: '2026-10-19T00:00:00Z', now: '2026-10-15T10:00:00Z',
       rows: [{ imm: { id: 'i1', name: 'ТПА-1', isActive: true }, tasks: [] }]
-    } }))
+    } })),
+    getConflicts: vi.fn(() => Promise.resolve({ data: { taskCount: 0, planCount: 0, deviationCount: 0, items: [] } }))
   }
 }))
 vi.mock('@/api/shifts', () => ({
@@ -182,5 +183,11 @@ describe('PlanningGanttView', () => {
 
       expect(w.findComponent(TaskDetailModal).props('task').planQuantity).toBe(1)
     })
+  })
+
+  it('загрузка доски обновляет и конфликты', async () => {
+    mountView()
+    await flushPromises()
+    expect(planningApi.getConflicts).toHaveBeenCalled()
   })
 })

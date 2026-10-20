@@ -48,4 +48,18 @@ describe('GanttTaskPair', () => {
     })
     expect(w.find('.pair').exists()).toBe(false)
   })
+
+  it('рамка конфликта плана и отклонения', () => {
+    const conflict = (kind) => ({ kind, resource: 'Imm', overlapSeconds: 600,
+      task: { id: 't1', moldName: 'ПФ-1' }, other: { id: 't2', moldName: 'ПФ-2' } })
+    const plan = mountPair({ ...overrunItem, conflicts: [conflict('Deviation'), conflict('Plan')] })
+    expect(plan.find('.pair').attributes('data-conflict')).toBe('Plan')
+    expect(plan.find('.pair').classes()).toContain('pair--conflict-plan')
+
+    const dev = mountPair({ ...overrunItem, conflicts: [conflict('Deviation')] })
+    expect(dev.find('.pair').classes()).toContain('pair--conflict-deviation')
+
+    const none = mountPair(overrunItem)
+    expect(none.find('.pair').attributes('data-conflict')).toBeUndefined()
+  })
 })
