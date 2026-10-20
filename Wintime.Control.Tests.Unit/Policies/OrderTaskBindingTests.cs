@@ -9,29 +9,22 @@ namespace Wintime.Control.Tests.Unit.Policies;
 
 public class OrderTaskBindingTests
 {
-    private static Order ActiveOrder(Guid productTypeId) =>
-        new() { Status = OrderStatus.Active, ProductTypeId = productTypeId, Quantity = 100, Number = "O-1" };
+    private static Order ActiveOrder(Guid productId) =>
+        new() { Status = OrderStatus.Active, ProductId = productId, Quantity = 100, Number = "O-1" };
 
     [Fact]
     public void EnsureCanBind_MatchingActive_DoesNotThrow()
     {
-        var pt = Guid.NewGuid();
-        var act = () => OrderTaskBinding.EnsureCanBind(ActiveOrder(pt), pt);
+        var p = Guid.NewGuid();
+        var act = () => OrderTaskBinding.EnsureCanBind(ActiveOrder(p), p);
         act.Should().NotThrow();
     }
 
     [Fact]
-    public void EnsureCanBind_ProductTypeMismatch_Throws()
+    public void EnsureCanBind_ProductMismatch_Throws()
     {
         var act = () => OrderTaskBinding.EnsureCanBind(ActiveOrder(Guid.NewGuid()), Guid.NewGuid());
-        act.Should().Throw<DomainException>();
-    }
-
-    [Fact]
-    public void EnsureCanBind_MoldWithoutType_Throws()
-    {
-        var act = () => OrderTaskBinding.EnsureCanBind(ActiveOrder(Guid.NewGuid()), null);
-        act.Should().Throw<DomainException>();
+        act.Should().Throw<DomainException>().WithMessage("Изделие задания не совпадает с изделием заказа");
     }
 
     [Theory]
@@ -39,9 +32,9 @@ public class OrderTaskBindingTests
     [InlineData(OrderStatus.Cancelled)]
     public void EnsureCanBind_NonActiveOrder_Throws(OrderStatus status)
     {
-        var pt = Guid.NewGuid();
-        var order = new Order { Status = status, ProductTypeId = pt, Quantity = 100, Number = "O-1" };
-        var act = () => OrderTaskBinding.EnsureCanBind(order, pt);
+        var p = Guid.NewGuid();
+        var order = new Order { Status = status, ProductId = p, Quantity = 100, Number = "O-1" };
+        var act = () => OrderTaskBinding.EnsureCanBind(order, p);
         act.Should().Throw<DomainException>();
     }
 }

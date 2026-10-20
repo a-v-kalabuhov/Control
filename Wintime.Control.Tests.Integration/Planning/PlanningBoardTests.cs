@@ -67,7 +67,7 @@ public class PlanningBoardTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = immId, MoldId = moldId, PlanQuantity = 100, PlannedFullCycleSeconds = 60,
+            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 100, PlannedFullCycleSeconds = 60,
             PlannedSetupMinutes = 30, Status = TaskStatus.Planned,
             PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow), PlannedSetupStartTime = new TimeOnly(10, 0)
         };

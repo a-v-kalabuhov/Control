@@ -79,7 +79,7 @@
             </template>
             <el-menu-item index="/dictionary/imm">ТПА</el-menu-item>
             <el-menu-item index="/dictionary/molds">Пресс-формы</el-menu-item>
-            <el-menu-item index="/dictionary/product-types">Изделия</el-menu-item>
+            <el-menu-item index="/dictionary/product-types">Типы изделий</el-menu-item>
             <el-menu-item index="/dictionary/personnel">Персонал</el-menu-item>
             <el-menu-item index="/dictionary/shifts">Смены</el-menu-item>
             <el-menu-item index="/dictionary/downtime-reasons">Причины простоев</el-menu-item>
@@ -169,11 +169,15 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
 import dayjs from 'dayjs'
-import { appVersion } from '@/utils/buildInfo'
+import { appVersionFor } from '@/utils/buildInfo'
+import { useAppInfoStore } from '@/stores/appInfo'
 
 const route = useRoute()
 const authStore = useAuthStore()
 const { canAccess } = usePermissions()
+
+const appInfo = useAppInfoStore()
+const appVersion = computed(() => appVersionFor(appInfo.demoMode))
 
 const sidebarCollapsed = ref(false)
 const currentTime = ref(dayjs().format('DD.MM.YYYY HH:mm'))
@@ -181,6 +185,7 @@ const currentTime = ref(dayjs().format('DD.MM.YYYY HH:mm'))
 // Обновление времени
 let timer = null
 onMounted(() => {
+  appInfo.load()
   timer = setInterval(() => {
     currentTime.value = dayjs().format('DD.MM.YYYY HH:mm')
   }, 1000)

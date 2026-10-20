@@ -30,7 +30,9 @@ public class MoldProductTypeTests : IClassFixture<IntegrationTestFactory>
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        var pt = new ProductType { Article = $"PT-{Guid.NewGuid():N}", Name = "Изд", IsActive = isActive };
+        var article = $"PT-{Guid.NewGuid():N}".ToUpperInvariant();
+        var pt = new ProductType { Article = article, Name = "Изд", IsActive = isActive };
+        pt.Products.Add(new Product { Article = "0", Name = "По умолчанию", FullArticle = article + ".0" });   // PZP-19
         db.ProductTypes.Add(pt);
         await db.SaveChangesAsync();
         return pt.Id;
@@ -87,7 +89,7 @@ public class MoldProductTypeTests : IClassFixture<IntegrationTestFactory>
             db.Molds.Add(mold);
             db.ShiftTasks.Add(new Core.Entities.ShiftTask
             {
-                ImmId = _factory.TestImmId, MoldId = mold.Id, PlanQuantity = 10,
+                ImmId = _factory.TestImmId, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 10,
                 Status = Core.Enums.TaskStatus.Planned, IssuedAt = DateTime.UtcNow
             });
             await db.SaveChangesAsync();
@@ -114,7 +116,8 @@ public class MoldProductTypeTests : IClassFixture<IntegrationTestFactory>
             db.Molds.Add(mold);
             db.ShiftTasks.Add(new Core.Entities.ShiftTask
             {
-                ImmId = _factory.TestImmId, MoldId = mold.Id, PlanQuantity = 10,
+                ImmId = _factory.TestImmId, MoldId = mold.Id,
+                ProductId = db.Products.Single(p => p.ProductTypeId == type1).Id, PlanQuantity = 10,
                 Status = Core.Enums.TaskStatus.Completed, IssuedAt = DateTime.UtcNow
             });
             await db.SaveChangesAsync();

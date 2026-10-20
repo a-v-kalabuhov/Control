@@ -30,6 +30,10 @@
         </div>
 
         <template v-if="mode === 'history'">
+          <el-button
+            size="small" data-test="shift-back" :disabled="!canShiftBack"
+            title="Сдвинуть период назад на треть" @click="shift(-1)"
+          >◀</el-button>
           <el-date-picker
             v-model="historyFrom" type="datetime" size="small"
             placeholder="Начало" format="YYYY-MM-DD HH:mm:ss" value-format="YYYY-MM-DDTHH:mm:ss"
@@ -38,6 +42,10 @@
             v-model="historyTo" type="datetime" size="small"
             placeholder="Конец" format="YYYY-MM-DD HH:mm:ss" value-format="YYYY-MM-DDTHH:mm:ss"
           />
+          <el-button
+            size="small" data-test="shift-forward" :disabled="!canShiftForward"
+            title="Сдвинуть период вперёд на треть" @click="shift(1)"
+          >▶</el-button>
           <el-button size="small" type="primary" @click="loadHistory">Показать</el-button>
         </template>
 
@@ -62,7 +70,7 @@
         <span class="text-sm text-gray-600">Сигналы:</span>
         <el-checkbox-group v-model="selected" @change="onSelectionChange">
           <el-checkbox v-for="s in availableSignals" :key="s.parameterName" :value="s.parameterName">
-            {{ s.parameterName }}
+            {{ signalLabel(s) }}
           </el-checkbox>
         </el-checkbox-group>
       </div>
@@ -80,6 +88,7 @@
         <SignalChart
           class="min-w-0 flex-1"
           :signal="sig"
+          :title="signalTitle(sig.parameterName)"
           :cycles="cycles"
           :segments="segments"
           :window-start-ms="windowStartMs"
@@ -90,6 +99,17 @@
           <el-button size="small" text :disabled="idx === orderedSignals.length - 1" @click="move(idx, 1)">▼</el-button>
         </div>
       </div>
+      <!-- Подушка — из циклов, не датчик шаблона; показываем, если коннектор её измеряет -->
+      <div v-if="hasCushion" class="flex items-start gap-2">
+        <CushionChart
+          class="min-w-0 flex-1"
+          :cycles="cycles"
+          :segments="segments"
+          :window-start-ms="windowStartMs"
+          :window-end-ms="windowEndMs"
+        />
+        <div class="w-8 shrink-0" />
+      </div>
     </div>
     <el-empty v-else description="Выберите сигнал для отображения" />
   </div>
@@ -99,10 +119,13 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import dayjs from 'dayjs'
 import SignalChart from '@/components/telemetry/SignalChart.vue'
+import CushionChart from '@/components/telemetry/CushionChart.vue'
 import { telemetryApi } from '@/api/telemetry'
 import { immApi } from '@/api/imm'
-import { mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
+import { shiftWindow } from '@/utils/telemetryWindow'
+import { mergeLivePoints, enforceMinOneSignal, signalLabel, buildCushionSeries } from '@/utils/telemetryChart'
 import { monitoringQueryWithImm, showBackToCard, isImmId } from '@/utils/monitoringNav'
 import { useAuthStore } from '@/stores/auth'
 import { jwtSubject } from '@/utils/jwt'
@@ -162,12 +185,21 @@ const windowStartMs = ref(Date.now() - 15 * 60000)
 const windowEndMs = ref(Date.now())
 
 let pollTimer = null
+let liveInFlight = null // маркер live-запроса в полёте: следующий тик пропускается, иначе его seq обесценит ответ
+let requestSeq = 0 // номер последнего запроса окна: применяется только ответ на последний
 let lastNonEmptySelection = [] // последний непустой выбор сигналов — для отката при попытке снять последний
+
+// Заголовок графика — то же читаемое название, что в фильтре датчиков
+function signalTitle(parameterName) {
+  return signalLabel(availableSignals.value.find(s => s.parameterName === parameterName) ?? { parameterName })
+}
 
 const orderedSignals = computed(() => {
   const byName = new Map(signalsData.value.map(s => [s.parameterName, s]))
   return order.value.map(n => byName.get(n)).filter(Boolean)
 })
+
+const hasCushion = computed(() => buildCushionSeries(cycles.value).length > 0)
 
 function toIsoUtc(ms) {
   return new Date(ms).toISOString()
@@ -182,6 +214,7 @@ function clearData() {
 
 async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null } = {}) {
   const reqImmId = immId.value
+  const seq = ++requestSeq
   if (!reqImmId || selected.value.length === 0) {
     clearData()
     return
@@ -193,7 +226,8 @@ async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null }
       parameters: selected.value,
       pointsFrom: pointsFromMs ? toIsoUtc(pointsFromMs) : undefined,
     })
-    if (reqImmId !== immId.value) return // ответ для прежнего ТПА — пользователь уже сменил выбор
+    // ответ устарел: пришёл позже более нового запроса или для прежнего ТПА
+    if (seq !== requestSeq || reqImmId !== immId.value) return
     truncated.value = data.truncated
     cycles.value = data.cycles
     segments.value = data.statusSegments
@@ -211,7 +245,7 @@ async function fetchWindow(fromMs, toMs, { append = false, pointsFromMs = null }
       signalsData.value = data.signals
     }
   } catch (e) {
-    if (reqImmId !== immId.value) return
+    if (seq !== requestSeq || reqImmId !== immId.value) return
     truncated.value = false
     const status = e?.response?.status
     if (status === 400) ElMessage.warning(e.response.data ?? 'Некорректный период')
@@ -240,15 +274,46 @@ async function loadHistory() {
   await fetchWindow(fromMs, toMs)
 }
 
+// ── Сдвиг окна истории ◀ / ▶ (треть окна, вправо — не дальше «сейчас») ──
+const PICKER_FORMAT = 'YYYY-MM-DDTHH:mm:ss' // = value-format полей периода
+
+function shiftedWindow(direction) {
+  if (!immId.value || !historyFrom.value || !historyTo.value) return null
+  // «Сейчас» с точностью до секунды: поля периода хранят время без миллисекунд
+  const nowMs = Math.floor(Date.now() / 1000) * 1000
+  return shiftWindow(
+    new Date(historyFrom.value).getTime(), new Date(historyTo.value).getTime(), direction, nowMs)
+}
+
+const canShiftBack = computed(() => shiftedWindow(-1) !== null)
+const canShiftForward = computed(() => shiftedWindow(1) !== null)
+
+function shift(direction) {
+  const next = shiftedWindow(direction)
+  if (!next) return
+  historyFrom.value = dayjs(next.fromMs).format(PICKER_FORMAT)
+  historyTo.value = dayjs(next.toMs).format(PICKER_FORMAT)
+  loadHistory()
+}
+
 // ── Live ──
 async function liveTick(initial = false) {
-  const now = Date.now()
-  windowEndMs.value = now
-  windowStartMs.value = now - livePeriodMin.value * 60000
-  // Окно всегда полное (from..now) — для циклов/статуса; точки телеметрии на приросте берём
-  // дельтой через pointsFrom (от последней полученной точки).
-  const pointsFromMs = initial ? null : Math.max(lastLoadedMs(), windowStartMs.value)
-  await fetchWindow(windowStartMs.value, now, { append: !initial, pointsFromMs })
+  // медленный ответ иначе отбрасывался бы каждым следующим тиком (requestSeq) — график замирал
+  if (liveInFlight) return
+  const token = {}
+  liveInFlight = token
+  try {
+    const now = Date.now()
+    windowEndMs.value = now
+    windowStartMs.value = now - livePeriodMin.value * 60000
+    // Окно всегда полное (from..now) — для циклов/статуса; точки телеметрии на приросте берём
+    // дельтой через pointsFrom (от последней полученной точки).
+    const pointsFromMs = initial ? null : Math.max(lastLoadedMs(), windowStartMs.value)
+    await fetchWindow(windowStartMs.value, now, { append: !initial, pointsFromMs })
+  } finally {
+    // отменённый stopLive запрос не снимает маркер уже нового live-тика
+    if (liveInFlight === token) liveInFlight = null
+  }
 }
 
 function lastLoadedMs() {
@@ -269,6 +334,8 @@ function startLive() {
 
 function stopLive() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  requestSeq++ // ответ live-запроса в полёте больше не нужен (смена режима/ТПА) — не применять
+  liveInFlight = null // иначе стартовый тик нового live пропустится из-за отменённого запроса
 }
 
 function restartLive() {

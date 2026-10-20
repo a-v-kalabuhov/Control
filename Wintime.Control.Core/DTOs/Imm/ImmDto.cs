@@ -17,6 +17,7 @@ public class ImmDto
     public DateTime? LastUpdate { get; set; }
     public Guid? CurrentTaskId { get; set; }
     public string? CurrentMoldName { get; set; }
+    public string? CurrentProductArticle { get; set; }
     public string? PersonnelName { get; set; }
     public int? PlanQuantity { get; set; }
     public int? ActualQuantity { get; set; }

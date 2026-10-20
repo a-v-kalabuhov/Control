@@ -27,6 +27,8 @@ public class TelemetryCycleDto
     public DateTime Start { get; set; }
     public DateTime? End { get; set; }
     public bool IsSuccessful { get; set; }
+    /// <summary>Подушка закрытого цикла (`ImmCycle.Cushion`, сырые единицы коннектора); null — цикл ещё открыт (пишется при закрытии) или не измерялась.</summary>
+    public decimal? Cushion { get; set; }
 }
 
 public class TelemetrySignalMetaDto

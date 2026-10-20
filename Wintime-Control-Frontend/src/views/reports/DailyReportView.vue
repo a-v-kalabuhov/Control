@@ -53,12 +53,29 @@
       </el-form>
     </el-card>
 
-    <!-- График Ганта -->
+    <!-- Диаграмма и таблица статусов -->
     <el-card class="mb-4" v-if="reportData?.immData?.length">
       <template #header>
-        <span class="font-semibold">{{ ganttTitle }}</span>
+        <div class="flex items-center justify-between">
+          <span class="font-semibold">{{ ganttTitle }}</span>
+          <el-button v-if="activeTab === 'chart'" size="small" data-test="reset-zoom" @click="ganttRef?.resetZoom?.()">
+            Сбросить масштаб
+          </el-button>
+        </div>
       </template>
-      <GanttChart :data="reportData.immData" :shifts="shifts" :date="filters.date" :shiftId="filters.shiftId" />
+      <el-tabs v-model="activeTab" @tab-change="onTabChange">
+        <el-tab-pane label="Диаграмма" name="chart">
+          <GanttChart ref="ganttRef" :data="reportData.immData" :shifts="shifts" :date="filters.date" :shiftId="filters.shiftId" @segment-click="onSegmentClick" />
+        </el-tab-pane>
+        <el-tab-pane label="Таблица статусов" name="table" lazy>
+          <StatusTimelineTable
+            ref="statusTableRef"
+            :data="reportData.immData"
+            :period-start="reportData.periodStart"
+            :period-end="reportData.periodEnd"
+          />
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <!-- Таблица -->
@@ -75,31 +92,23 @@
         <el-table-column prop="planQuantity" label="План" width="80" align="center" />
         <el-table-column prop="actualQuantity" label="Факт" width="80" align="center" />
         <el-table-column prop="cycleCount" label="Смыкания" width="90" align="center" />
-        <el-table-column label="Работа (ч)" width="100">
+        <el-table-column
+          v-for="k in HOUR_KEYS"
+          :key="k"
+          :label="`${EFFECTIVE_STATUS[k].label} (ч)`"
+          width="110"
+          align="right"
+        >
           <template #default="{ row }">
-            {{ (row.workTimeSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Наладка (ч)" width="100">
-          <template #default="{ row }">
-            {{ (row.setupSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Простой (ч)" width="100">
-          <template #default="{ row }">
-            {{ (row.downtimeSeconds / 3600).toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Ср. цикл (сек)" width="100" align="center">
-          <template #default="{ row }">
-            {{ row.avgCycleTime?.toFixed(1) ?? '—' }}
+            {{ toHours(row.seconds?.[k]) }}
           </template>
         </el-table-column>
         <el-table-column label="Эффективность" width="120">
           <template #default="{ row }">
-            <el-tag :type="getEfficiencyType(row.efficiency)">
-              {{ row.efficiency.toFixed(1) }}%
+            <el-tag v-if="row.efficiency != null" :type="getEfficiencyType(row.efficiency)" data-test="efficiency">
+              {{ formatEfficiency(row.efficiency) }}
             </el-tag>
+            <span v-else data-test="efficiency">—</span>
           </template>
         </el-table-column>
         <el-table-column label="Расход сырья (кг)" width="130">
@@ -123,14 +132,21 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useReportsStore } from '@/stores/reports'
 import { immApi } from '@/api/imm'
 import { shiftsApi } from '@/api/shifts'
 import GanttChart from '@/components/reports/GanttChart.vue'
+import StatusTimelineTable from '@/components/reports/StatusTimelineTable.vue'
+import { buildStatusRows, findEpisodeIndex } from '@/utils/statusRows'
 import dayjs from 'dayjs'
+import { toHours, formatEfficiency } from '@/utils/equipmentReport'
+import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveStatus'
+
+// Колонки часов — эффективные состояния (как в «Производительности»), «Нет данных» не показываем.
+const HOUR_KEYS = EFFECTIVE_STATUS_KEYS
 
 const router = useRouter()
 const reportsStore = useReportsStore()
@@ -141,6 +157,32 @@ const imms = ref([])
 const shifts = ref([])
 const reportData = ref(null)
 const loadedFilters = ref({ date: null, shiftId: null })
+
+// Вкладка сохраняется между «Сформировать»; по умолчанию — диаграмма.
+const activeTab = ref('chart')
+const ganttRef = ref(null)
+
+// Пока вкладка скрыта, ширина диаграммы могла измениться (resize окна) — пересчитать при показе.
+const onTabChange = (name) => {
+  if (name === 'chart') nextTick(() => ganttRef.value?.resize?.())
+}
+
+const statusTableRef = ref(null)
+
+// Клик по сегменту диаграммы — открыть таблицу статусов на его эпизоде.
+// Проверяем заранее: панель таблицы ленивая, до первого показа её компонента нет.
+const onSegmentClick = async ({ immId, start, end }) => {
+  const { immData, periodStart, periodEnd } = reportData.value ?? {}
+  const imm = immData?.find(i => i.immId === immId)
+  const rows = imm ? buildStatusRows(imm.timeline, periodStart, periodEnd) : []
+  if (findEpisodeIndex(rows, start, end) < 0) {
+    ElMessage.info('Эпизод вне периода отчёта')
+    return
+  }
+  activeTab.value = 'table'
+  await nextTick() // ленивая панель монтируется после переключения
+  await statusTableRef.value?.focusEpisode(immId, start, end)
+}
 
 const filters = reactive({
   date: dayjs().format('YYYY-MM-DD'),

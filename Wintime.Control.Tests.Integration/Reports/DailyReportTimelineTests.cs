@@ -49,7 +49,7 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
             };
             db.Imms.Add(imm);
 
-            var mold = new Mold { Name = "M1", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true };
+            var mold = new Mold { Name = "M1", FormId = $"FORM-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
             db.Molds.Add(mold);
             await db.SaveChangesAsync();
 
@@ -59,7 +59,7 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
 
             db.ShiftTasks.Add(new ShiftTask
             {
-                ImmId = imm.Id, MoldId = mold.Id, PlanQuantity = 100,
+                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100,
                 Status = TaskStatus.InProgress, SetupStartedAt = statusChangedAt,
                 StartedAt = statusChangedAt, CompletedAt = null
             });
@@ -74,6 +74,9 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
         var url = $"/api/reports/daily?date={today:yyyy-MM-dd}&immId={immId}";
         var resp = await client.GetAsync(url);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Средний цикл в отчёте не отдаётся: он смотрится по заданию (вкладка «Результаты выполнения»).
+        (await resp.Content.ReadAsStringAsync()).Should().NotContainEquivalentOf("avgCycleTime");
 
         var report = await resp.Content.ReadFromJsonAsync<DailyReportDto>();
         report.Should().NotBeNull();
@@ -90,6 +93,6 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
 
         // Отработанное время не должно быть раздуто проекцией в будущее.
         var maxExpectedWork = (int)(DateTime.UtcNow - statusChangedAt).TotalSeconds + 5;
-        item.WorkTimeSeconds.Should().BeLessThanOrEqualTo(maxExpectedWork);
+        item.Seconds[EffectiveStatus.Production].Should().BeLessThanOrEqualTo(maxExpectedWork);
     }
 }

@@ -4,6 +4,6 @@ public class TimelineItemDto
 {
     public DateTime Start { get; set; }
     public DateTime End   { get; set; }
-    /// <summary>work | setup | alarm | idle | offline</summary>
+    /// <summary>Ключ эффективного состояния: Production | Setup | Downtime | Unplanned | NoTask | Offline | NoData.</summary>
     public string Type    { get; set; } = string.Empty;
 }

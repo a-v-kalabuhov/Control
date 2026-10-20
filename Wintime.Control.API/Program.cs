@@ -174,6 +174,7 @@ builder.Services.AddScoped<IFactoryClock, FactoryClock>();
 builder.Services.AddScoped<IPlanningDefaultsService, PlanningDefaultsService>();
 builder.Services.AddScoped<IEffectiveStatusHistoryService, EffectiveStatusHistoryService>();
 builder.Services.AddScoped<IReleaseForecastService, ReleaseForecastService>();
+builder.Services.AddScoped<ITaskResultsService, TaskResultsService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IPdfReportService, PdfReportService>();

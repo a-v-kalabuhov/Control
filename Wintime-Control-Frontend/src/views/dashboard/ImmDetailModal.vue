@@ -60,8 +60,11 @@
           :tasks="tasks"
           :shift-start="shift.start"
           :shift-end="shift.end"
+          @task-click="openTask"
         />
-        <div class="mt-2 text-right text-xs text-gray-400">Наведите курсор на элемент для подробностей</div>
+        <div class="mt-2 text-right text-xs text-gray-400">
+          Наведите курсор на элемент для подробностей, нажмите на задание — откроется его карточка
+        </div>
       </div>
 
     </div>
@@ -74,6 +77,9 @@
         Обновить
       </el-button>
     </template>
+
+    <!-- Карточка задания из хронологии — только просмотр (append-to-body: поверх этого окна) -->
+    <TaskDetailModal v-model="taskCardVisible" :task="selectedTask" readonly append-to-body />
   </el-dialog>
 </template>
 
@@ -91,6 +97,7 @@ import { EFFECTIVE_STATUS, EFFECTIVE_STATUS_KEYS } from '@/constants/effectiveSt
 import { mergeTimelineTasks, plannedRangeForShift } from '@/utils/shiftTimeline'
 import ImmCard from '@/components/dashboard/ImmCard.vue'
 import ShiftTimeline from '@/components/dashboard/ShiftTimeline.vue'
+import TaskDetailModal from '@/views/tasks/TaskDetailModal.vue'
 
 const props = defineProps({
   immId:      { type: String, required: true },
@@ -118,6 +125,13 @@ const dashboardStore = useDashboardStore()
 const loading        = ref(false)
 const statusSegments = ref([])
 const tasks          = ref([])
+const selectedTask   = ref(null)
+const taskCardVisible = ref(false)
+
+function openTask(task) {
+  selectedTask.value = task
+  taskCardVisible.value = true
+}
 const shiftSchedule  = ref([])
 // shallowRef: содержимое объекта не оборачивается в Proxy,
 // иначе Date-арифметика (clampE - clampS) ломается и даёт NaN

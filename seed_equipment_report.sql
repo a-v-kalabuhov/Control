@@ -25,7 +25,7 @@ BEGIN
 END $$;
 
 TRUNCATE "ImmCycles", "ImmStatusHistory", "Events", "UnplannedRuns", "ShiftTasks", "Orders",
-         "Telemetry", "Molds", "ProductTypes", "Imms", "Templates", "DowntimeReasons", "Shifts",
+         "Telemetry", "Molds", "Products", "ProductTypes", "Imms", "Templates", "DowntimeReasons", "Shifts",
          "Users" CASCADE;
 
 -- ============================================================
@@ -46,6 +46,11 @@ SELECT ('e2000000-0000-0000-0000-0000000001' || lpad(n::text, 2, '0'))::uuid, 'A
 FROM (VALUES (1,'Крышка флип-топ 28 мм'),(2,'Колпачок 38 мм'),(3,'Корпус фильтра'),(4,'Ручка ведра'),
              (5,'Ведро 5 л'),(6,'Крышка ведра 5 л'),(7,'Ящик овощной'),(8,'Втулка d20'),
              (9,'Заглушка 20×20'),(10,'Шайба 8 мм')) AS v(n, name);
+
+-- Изделие по умолчанию каждого типа (PZP-19): часть артикула 0, полный артикул ART-1xx.0
+INSERT INTO "Products" ("Id","ProductTypeId","Article","Name","FullArticle","IsActive","CreatedAt")
+SELECT gen_random_uuid(), "Id", '0', 'По умолчанию', "Article" || '.0', true, '2026-01-01 00:00+00'
+FROM "ProductTypes";
 
 -- Пулы ПФ: ТПА-1 → ПФ 1–4, ТПА-2 → ПФ 5–7, ТПА-3 → ПФ 8–10
 INSERT INTO "Molds" ("Id","FormId","Name","Cavities","PartWeightGrams","RunnerWeightGrams","MaxResourceCycles",
@@ -209,11 +214,14 @@ BEGIN
       s_end  := cur + pg_temp.rmin(60, 180);
       r_end  := LEAST(s_end + pg_temp.rmin(16 * 60, 96 * 60), lim);
 
-      INSERT INTO "ShiftTasks" ("Id","ImmId","MoldId","PersonnelId","PlanQuantity","ActualQuantity","ActualMaterialWeightGrams",
+      INSERT INTO "ShiftTasks" ("Id","ImmId","MoldId","ProductId","PersonnelId","PlanQuantity","ActualQuantity","ActualMaterialWeightGrams",
                                 "Status","WorkMode","PlannedFullCycleSeconds","PlannedInjectionCycleSeconds","DefectQuantity",
                                 "PlannedDate","IssuedAt","SetupStartedAt","MoldVerifiedAt","StartedAt","CompletedAt","ClosedAt",
                                 "CreatedAt","UpdatedAt")
-      VALUES (v_task, v_imm, v_mold, v_adj, 0, 0, 0,
+      VALUES (v_task, v_imm, v_mold,
+              (SELECT p."Id" FROM "Products" p JOIN "Molds" m ON m."ProductTypeId" = p."ProductTypeId"
+               WHERE m."Id" = v_mold AND p."Article" = '0'),
+              v_adj, 0, 0, 0,
               CASE WHEN r_end < pg_temp.lt('2026-09-25 00:00') THEN 4 ELSE 3 END, 0,
               mold_ct[k], GREATEST(mold_ct[k] / 3, 1), 0,
               (cur AT TIME ZONE 'Europe/Moscow')::date, cur - interval '1 hour', cur, cur + interval '20 minutes', s_end, r_end,

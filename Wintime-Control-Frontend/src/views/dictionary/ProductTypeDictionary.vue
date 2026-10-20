@@ -2,12 +2,12 @@
   <div>
     <div class="mb-6 flex items-center justify-between">
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Справочник изделий</h2>
-        <p class="text-gray-600 mt-1">Номенклатура выпускаемых изделий</p>
+        <h2 class="text-2xl font-bold text-gray-800">Справочник типов изделий</h2>
+        <p class="text-gray-600 mt-1">Номенклатура: типы изделий и их изделия</p>
       </div>
       <el-button type="primary" @click="showCreateModal">
         <el-icon class="mr-1"><Plus /></el-icon>
-        Добавить изделие
+        Добавить тип изделия
       </el-button>
     </div>
 
@@ -28,9 +28,27 @@
       </el-form>
     </el-card>
 
-    <el-table :data="items" stripe style="width: 100%" v-loading="loading">
+    <el-table :data="items" stripe style="width: 100%" v-loading="loading" row-key="id">
+      <el-table-column type="expand">
+        <template #default="{ row }">
+          <el-table :data="row.products" size="small" class="m-2">
+            <el-table-column prop="fullArticle" label="Полный артикул" width="220" />
+            <el-table-column prop="name" label="Наименование" />
+            <el-table-column label="Статус" width="120" align="center">
+              <template #default="{ row: p }">
+                <el-tag :type="p.isActive ? 'success' : 'info'">{{ p.isActive ? 'Активно' : 'В архиве' }}</el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+      </el-table-column>
       <el-table-column prop="article" label="Артикул" width="200" />
       <el-table-column prop="name" label="Наименование" />
+      <el-table-column label="Изделия" width="110" align="center">
+        <template #default="{ row }">
+          <span class="products-count">{{ activeProducts(row).length }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="Статус" width="120" align="center">
         <template #default="{ row }">
           <el-tag :type="row.isActive ? 'success' : 'info'">
@@ -50,8 +68,8 @@
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editing ? 'Редактирование изделия' : 'Новое изделие'"
-      width="500px"
+      :title="editing ? 'Редактирование типа изделия' : 'Новый тип изделия'"
+      width="720px"
     >
       <el-form :model="form" label-width="140px" :rules="rules" ref="formRef">
         <el-form-item label="Артикул" prop="article" required>
@@ -61,18 +79,78 @@
           <el-input v-model="form.name" placeholder="Крышка 48мм" />
         </el-form-item>
       </el-form>
+
+      <div v-if="editing" class="mt-4">
+        <div class="mb-2 flex items-center justify-between">
+          <h3 class="font-semibold text-gray-800">Изделия</h3>
+          <el-button size="small" type="primary" @click="showProductModal">Добавить изделие</el-button>
+        </div>
+        <el-table :data="editing.products" size="small">
+          <el-table-column prop="article" label="Артикул" width="100" />
+          <el-table-column prop="fullArticle" label="Полный артикул" width="150" />
+          <el-table-column prop="name" label="Наименование" />
+          <el-table-column label="Статус" width="100" align="center">
+            <template #default="{ row: p }">
+              <el-tag :type="p.isActive ? 'success' : 'info'">{{ p.isActive ? 'Активно' : 'В архиве' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="Действия" width="240">
+            <template #default="{ row: p }">
+              <el-button size="small" @click="editProduct(p)">Ред.</el-button>
+              <el-button size="small" :type="p.isActive ? 'danger' : 'success'" @click="toggleProductArchive(p)">
+                {{ p.isActive ? 'В архив' : 'Вернуть' }}
+              </el-button>
+              <el-button v-if="!p.isUsed" class="product-delete" size="small" type="danger" plain @click="deleteProduct(p)">
+                Удалить
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
       <template #footer>
-        <el-button @click="dialogVisible = false">Отмена</el-button>
+        <el-button @click="dialogVisible = false">{{ editing ? 'Закрыть' : 'Отмена' }}</el-button>
         <el-button type="primary" @click="save" :loading="saving">Сохранить</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="productDialogVisible"
+      :title="editingProduct ? 'Редактирование изделия' : 'Новое изделие'"
+      width="460px"
+      append-to-body
+    >
+      <el-form :model="productForm" label-width="120px">
+        <el-form-item label="Артикул" required>
+          <div class="w-full">
+            <el-input v-model="productForm.article" placeholder="BLK" @input="onProductArticleInput" />
+            <div class="text-xs text-gray-500 mt-1">Полный артикул: {{ fullArticlePreview }}</div>
+          </div>
+        </el-form-item>
+        <el-form-item label="Наименование" required>
+          <el-input v-model="productForm.name" placeholder="Чёрный" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="productDialogVisible = false">Отмена</el-button>
+        <el-button type="primary" @click="saveProduct" :loading="savingProduct">Сохранить</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { productTypesApi } from '@/api/productTypes'
+import { activeProducts } from '@/utils/productLabel'
+import { apiErrorMessage } from '@/utils/apiError'
+
+// Текст ошибки сервера; нестроковое тело (ProblemDetails и т.п.) заменяется запасным текстом.
+function errText(error, fallback) {
+  const msg = apiErrorMessage(error, fallback)
+  return typeof msg === 'string' && msg ? msg : fallback
+}
 
 const loading = ref(false)
 const saving = ref(false)
@@ -81,6 +159,11 @@ const editing = ref(null)
 const formRef = ref(null)
 const items = ref([])
 
+const productDialogVisible = ref(false)
+const savingProduct = ref(false)
+const editingProduct = ref(null)
+const productForm = reactive({ article: '', name: '' })
+
 const filters = reactive({ search: '', isActive: null })
 const form = reactive({ article: '', name: '' })
 
@@ -88,6 +171,8 @@ const rules = {
   article: [{ required: true, message: 'Введите артикул', trigger: 'blur' }],
   name: [{ required: true, message: 'Введите наименование', trigger: 'blur' }]
 }
+
+const fullArticlePreview = computed(() => `${editing.value?.article ?? ''}.${productForm.article || '…'}`)
 
 onMounted(loadItems)
 
@@ -100,7 +185,7 @@ async function loadItems() {
     })
     items.value = data
   } catch {
-    ElMessage.error('Ошибка загрузки изделий')
+    ElMessage.error('Ошибка загрузки типов изделий')
   } finally {
     loading.value = false
   }
@@ -126,15 +211,17 @@ async function save() {
     try {
       if (editing.value) {
         await productTypesApi.update(editing.value.id, form)
-        ElMessage.success('Изделие обновлено')
+        ElMessage.success('Тип изделия обновлён')
+        dialogVisible.value = false
       } else {
-        await productTypesApi.create(form)
-        ElMessage.success('Изделие создано')
+        const { data } = await productTypesApi.create(form)
+        // Окно остаётся открытым в режиме редактирования: у типа уже есть изделие «0».
+        editing.value = data
+        ElMessage.success('Тип изделия создан')
       }
-      dialogVisible.value = false
       await loadItems()
     } catch (error) {
-      ElMessage.error(error.response?.data ?? 'Ошибка сохранения изделия')
+      ElMessage.error(errText(error, 'Ошибка сохранения типа изделия'))
     } finally {
       saving.value = false
     }
@@ -144,10 +231,98 @@ async function save() {
 async function toggleArchive(row) {
   try {
     await productTypesApi.update(row.id, { isActive: !row.isActive })
-    ElMessage.success(row.isActive ? 'Изделие в архиве' : 'Изделие возвращено')
+    ElMessage.success(row.isActive ? 'Тип изделия в архиве' : 'Тип изделия возвращён')
     await loadItems()
-  } catch {
-    ElMessage.error('Ошибка изменения статуса')
+  } catch (error) {
+    ElMessage.error(errText(error, 'Ошибка изменения статуса'))
   }
+}
+
+function onProductArticleInput() {
+  productForm.article = productForm.article.toUpperCase()
+}
+
+function showProductModal() {
+  editingProduct.value = null
+  Object.assign(productForm, { article: '', name: '' })
+  productDialogVisible.value = true
+}
+
+function editProduct(p) {
+  editingProduct.value = p
+  Object.assign(productForm, { article: p.article, name: p.name })
+  productDialogVisible.value = true
+}
+
+// Изменения изделий сохраняются сразу отдельными запросами, не по «Сохранить» типа.
+async function reloadEditing() {
+  const { data } = await productTypesApi.getById(editing.value.id)
+  editing.value = data
+  await loadItems()
+}
+
+// Перезагрузка после успешного сохранения: её сбой — не ошибка самого сохранения.
+async function safeReloadEditing() {
+  try {
+    await reloadEditing()
+  } catch {
+    ElMessage.error('Не удалось обновить данные типа')
+  }
+}
+
+async function saveProduct() {
+  const article = productForm.article.trim().toUpperCase()
+  const name = productForm.name.trim()
+  if (!article || !name) {
+    ElMessage.error('Введите артикул и наименование изделия')
+    return
+  }
+  savingProduct.value = true
+  try {
+    const typeId = editing.value.id
+    if (editingProduct.value) {
+      await productTypesApi.updateProduct(typeId, editingProduct.value.id, { article, name })
+      ElMessage.success('Изделие обновлено')
+    } else {
+      await productTypesApi.addProduct(typeId, { article, name })
+      ElMessage.success('Изделие добавлено')
+    }
+    productDialogVisible.value = false
+  } catch (error) {
+    ElMessage.error(errText(error, 'Ошибка сохранения изделия'))
+    return
+  } finally {
+    savingProduct.value = false
+  }
+  await safeReloadEditing()
+}
+
+async function toggleProductArchive(p) {
+  try {
+    await productTypesApi.updateProduct(editing.value.id, p.id, { isActive: !p.isActive })
+    ElMessage.success(p.isActive ? 'Изделие в архиве' : 'Изделие возвращено')
+  } catch (error) {
+    ElMessage.error(errText(error, 'Ошибка изменения статуса'))
+    return
+  }
+  await safeReloadEditing()
+}
+
+async function deleteProduct(p) {
+  try {
+    await ElMessageBox.confirm(`Удалить изделие ${p.fullArticle}?`, 'Подтверждение', {
+      confirmButtonText: 'Удалить', cancelButtonText: 'Отмена', type: 'warning'
+    })
+  } catch {
+    return
+  }
+  try {
+    await productTypesApi.deleteProduct(editing.value.id, p.id)
+    ElMessage.success('Изделие удалено')
+  } catch (error) {
+    ElMessage.error(errText(error, 'Ошибка удаления изделия'))
+    return
+  }
+  await safeReloadEditing()
 }
 </script>

@@ -24,7 +24,7 @@ public class StartTaskClosesEpisodeTests : IClassFixture<IntegrationTestFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var task = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, PlanQuantity = 100, Status = Wintime.Control.Core.Enums.TaskStatus.Issued, IssuedAt = DateTime.UtcNow, PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow) };
+            var task = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Status = Wintime.Control.Core.Enums.TaskStatus.Issued, IssuedAt = DateTime.UtcNow, PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow) };
             db.ShiftTasks.Add(task);
             var run = new UnplannedRun { ImmId = immId, StartTime = DateTime.UtcNow.AddMinutes(-10) };
             db.UnplannedRuns.Add(run);

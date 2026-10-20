@@ -77,3 +77,17 @@ export function mergeLivePoints(existing, incoming, windowStartMs) {
 export function enforceMinOneSignal(next, prev) {
   return (Array.isArray(next) && next.length > 0) ? next : prev
 }
+
+// Подпись датчика: читаемое название из шаблона ТПА (`name`); если не задано — поле `field`
+// (`parameterName`). `name` обязателен по docs/domain/template.md, но шаблон пока не проверяется (BL-44).
+export function signalLabel(signal) {
+  return signal?.name?.trim() || signal?.parameterName || ''
+}
+
+// Подушка по циклам (BL-45): точка на момент закрытия цикла. Открытые циклы и циклы без
+// измеренной подушки пропускаются — подушку коннектор отдаёт только в lastCycle.
+export function buildCushionSeries(cycles) {
+  return cycles
+    .filter(c => c.end && c.cushion !== null && c.cushion !== undefined)
+    .map(c => [new Date(c.end).getTime(), Number(c.cushion)])
+}

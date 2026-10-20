@@ -116,6 +116,20 @@
           </template>
         </el-table-column>
 
+        <el-table-column prop="productFullArticle" min-width="170">
+          <template #header>
+            <span class="col-header" @click="handleSort('productFullArticle')">
+              Изделие <span class="sort-icon">{{ sortIcon('productFullArticle') }}</span>
+            </span>
+          </template>
+          <template #default="{ row }">
+            <div>{{ row.productFullArticle }}</div>
+            <div v-if="productSecondary(row.productTypeName, row.productName)" class="text-xs text-gray-500">
+              {{ productSecondary(row.productTypeName, row.productName) }}
+            </div>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="personnelName" width="180">
           <template #header>
             <span class="col-header" @click="handleSort('personnelName')">
@@ -247,6 +261,7 @@ import TaskFormModal from './TaskFormModal.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
 import IssueTaskDialog from './IssueTaskDialog.vue'
 import { formatPlannedStart } from '@/utils/plannedStart'
+import { productSecondary } from '@/utils/productLabel'
 import dayjs from 'dayjs'
 
 const tasksStore = useTasksStore()

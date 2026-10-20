@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildStepSeries, resolveAxisKind, mergeLivePoints, enforceMinOneSignal } from '@/utils/telemetryChart'
+import { buildStepSeries, resolveAxisKind, mergeLivePoints, enforceMinOneSignal, signalLabel, buildCushionSeries } from '@/utils/telemetryChart'
 
 const t = (iso) => new Date(iso).getTime()
 
@@ -155,5 +155,36 @@ describe('enforceMinOneSignal', () => {
   it('не-массив/undefined откатывается на прежний', () => {
     expect(enforceMinOneSignal(undefined, ['a'])).toEqual(['a'])
     expect(enforceMinOneSignal(null, ['a'])).toEqual(['a'])
+  })
+})
+
+describe('signalLabel', () => {
+  it('читаемое название из шаблона (name)', () => {
+    expect(signalLabel({ parameterName: 'MoldClosed', name: 'Смыкание формы' })).toBe('Смыкание формы')
+  })
+
+  it('без name или с пустым name — field (parameterName)', () => {
+    expect(signalLabel({ parameterName: 'MoldClosed', name: '' })).toBe('MoldClosed')
+    expect(signalLabel({ parameterName: 'MoldClosed', name: '   ' })).toBe('MoldClosed')
+    expect(signalLabel({ parameterName: 'MoldClosed' })).toBe('MoldClosed')
+  })
+})
+
+describe('buildCushionSeries', () => {
+  it('точка на момент закрытия цикла; открытые и без подушки пропускаются', () => {
+    const cycles = [
+      { start: '2026-10-20T08:00:00Z', end: '2026-10-20T08:00:30Z', isSuccessful: true, cushion: 412.5 },
+      { start: '2026-10-20T08:00:40Z', end: '2026-10-20T08:01:10Z', isSuccessful: true, cushion: null },
+      { start: '2026-10-20T08:01:20Z', end: null, isSuccessful: true, cushion: null },
+      { start: '2026-10-20T08:02:00Z', end: '2026-10-20T08:02:30Z', isSuccessful: false, cushion: 0 },
+    ]
+    expect(buildCushionSeries(cycles)).toEqual([
+      [Date.parse('2026-10-20T08:00:30Z'), 412.5],
+      [Date.parse('2026-10-20T08:02:30Z'), 0],
+    ])
+  })
+
+  it('нет циклов — пустая серия', () => {
+    expect(buildCushionSeries([])).toEqual([])
   })
 })

@@ -20,14 +20,16 @@ public class TasksController : ControllerBase
     private readonly IEmulatorControlService _emulator;
     private readonly IFactoryClock _factoryClock;
     private readonly IPlanningDefaultsService _planningDefaults;
+    private readonly ITaskResultsService _taskResults;
 
     public TasksController(ControlDbContext context, IEmulatorControlService emulator, IFactoryClock factoryClock,
-                           IPlanningDefaultsService planningDefaults)
+                           IPlanningDefaultsService planningDefaults, ITaskResultsService taskResults)
     {
         _context = context;
         _emulator = emulator;
         _factoryClock = factoryClock;
         _planningDefaults = planningDefaults;
+        _taskResults = taskResults;
     }
 
     /// <summary>
@@ -49,14 +51,26 @@ public class TasksController : ControllerBase
         [FromQuery] DateOnly? plannedFrom = null,
         [FromQuery] DateOnly? plannedTo = null,
         [FromQuery] DateTime? activeFrom = null,
-        [FromQuery] DateTime? activeTo = null)
+        [FromQuery] DateTime? activeTo = null,
+        [FromQuery] string? search = null)
     {
         var query = _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
+            .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
             .Include(t => t.Order)
             .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = $"%{search.Trim()}%";
+            query = query.Where(t =>
+                EF.Functions.ILike(t.Imm.Name, pattern) ||
+                EF.Functions.ILike(t.Mold.Name, pattern) ||
+                EF.Functions.ILike(t.Product!.FullArticle, pattern) ||
+                EF.Functions.ILike(t.Product!.Name, pattern));
+        }
 
         bool activeFilter = activeFrom.HasValue || activeTo.HasValue;
 
@@ -104,7 +118,7 @@ public class TasksController : ControllerBase
     /// <summary>
     /// Мои задания — для текущего наладчика (по JWT): в работе, очередь по плановому началу, архив.
     /// </summary>
-    /// <param name="search">Фильтр по названию ТПА или пресс-формы (регистронезависимый).</param>
+    /// <param name="search">Фильтр по названию ТПА, пресс-формы, артикулу или названию изделия (регистронезависимый).</param>
     /// <param name="archivePage">Номер страницы архива (с 1).</param>
     /// <param name="archivePageSize">Размер страницы архива.</param>
     [HttpGet("my")]
@@ -124,6 +138,7 @@ public class TasksController : ControllerBase
         var baseQuery = _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
+            .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
             .Where(t => t.PersonnelId == userId)
             .Where(t => t.Status != Core.Enums.TaskStatus.Planned);
@@ -133,7 +148,9 @@ public class TasksController : ControllerBase
             var pattern = $"%{search.Trim()}%";
             baseQuery = baseQuery.Where(t =>
                 EF.Functions.ILike(t.Imm.Name, pattern) ||
-                EF.Functions.ILike(t.Mold.Name, pattern));
+                EF.Functions.ILike(t.Mold.Name, pattern) ||
+                EF.Functions.ILike(t.Product!.FullArticle, pattern) ||
+                EF.Functions.ILike(t.Product!.Name, pattern));
         }
 
         var schedule = await _factoryClock.GetScheduleAsync();
@@ -187,6 +204,7 @@ public class TasksController : ControllerBase
         var task = await _context.ShiftTasks
             .Include(t => t.Imm)
             .Include(t => t.Mold)
+            .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
             .Include(t => t.Order)
             .FirstOrDefaultAsync(t => t.Id == id);
@@ -198,24 +216,37 @@ public class TasksController : ControllerBase
         return Ok(task.ToDto(schedule));
     }
 
+    /// <summary>
+    /// Итоги выполнения задания по окну выпуска (вкладка «Результаты выполнения»): выпуск, средние
+    /// циклы против эталонов, время работы / простоев / без связи. Считается на лету.
+    /// </summary>
+    [HttpGet("{id:guid}/results")]
+    // Observer — только чтение: итоги задания из хронологии карточки ТПА на дашборде
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
+    public async Task<ActionResult<TaskResultsDto>> GetTaskResults(Guid id)
+    {
+        var results = await _taskResults.GetAsync(id, HttpContext.RequestAborted);
+        return results == null ? NotFound() : Ok(results);
+    }
+
     /// <summary>Наладчик существует, активен и имеет роль Adjuster (PZP-13).</summary>
     private Task<bool> IsActiveAdjusterAsync(string personnelId) =>
         _context.Users.AnyAsync(u => u.Id == personnelId && u.IsActive && u.Role == UserRole.Adjuster);
 
     /// <summary>
-    /// Ищет заказ по Id и проверяет правило привязки (PZP-05: активен, тип изделия совпадает
-    /// с типом ПФ задания). Общая последовательность для CreateTask и SetOrder (M4).
+    /// Ищет заказ по Id и проверяет правило привязки (PZP-05, PZP-19: активен, изделие задания
+    /// совпадает с изделием заказа). Общая последовательность для CreateTask и SetOrder (M4).
     /// Возвращает найденный заказ, либо готовый ActionResult ошибки (заказ не найден — 400;
     /// нарушение правила привязки — DomainException, отдаётся глобальным хендлером как 400).
     /// </summary>
     private async Task<(Order? Order, ActionResult? Error)> ResolveOrderForBindingAsync(
-        Guid orderId, Guid? moldProductTypeId)
+        Guid orderId, Guid taskProductId)
     {
         var order = await _context.Orders.FindAsync(orderId);
         if (order == null)
             return (null, BadRequest("Указан несуществующий заказ."));
 
-        Wintime.Control.Core.Policies.OrderTaskBinding.EnsureCanBind(order, moldProductTypeId);
+        Wintime.Control.Core.Policies.OrderTaskBinding.EnsureCanBind(order, taskProductId);
         return (order, null);
     }
 
@@ -234,6 +265,15 @@ public class TasksController : ControllerBase
             return BadRequest("Указана неактивная или несуществующая пресс-форма.");
         if (mold.ProductTypeId == null)
             return BadRequest("У пресс-формы не задан тип изделия.");
+        if (request.ProductId is null)
+            return BadRequest("Укажите изделие.");
+
+        var product = await _context.Products.Include(p => p.ProductType)
+            .FirstOrDefaultAsync(p => p.Id == request.ProductId.Value);
+        if (product == null)
+            return BadRequest("Указано несуществующее изделие.");
+        ProductSelection.EnsureSelectable(product);
+        ProductSelection.EnsureBelongsToMold(product, mold.ProductTypeId);
 
         // PZP-16: ТПА должен входить в список совместимых ПФ (пустой список — любой ТПА).
         if (!MoldImmCompatibility.IsCompatible(mold.CompatibleImms.Select(i => i.Id).ToList(), request.ImmId))
@@ -243,6 +283,7 @@ public class TasksController : ControllerBase
         {
             ImmId = request.ImmId,
             MoldId = request.MoldId,
+            ProductId = request.ProductId.Value,
             PersonnelId = string.IsNullOrWhiteSpace(request.PersonnelId) ? null : request.PersonnelId,
             PlanQuantity = request.PlanQuantity,
             Note = request.Note,
@@ -267,7 +308,7 @@ public class TasksController : ControllerBase
 
         if (request.OrderId.HasValue)
         {
-            var (order, error) = await ResolveOrderForBindingAsync(request.OrderId.Value, mold.ProductTypeId);
+            var (order, error) = await ResolveOrderForBindingAsync(request.OrderId.Value, request.ProductId.Value);
             if (error != null)
                 return error;
             task.OrderId = order!.Id;
@@ -277,6 +318,7 @@ public class TasksController : ControllerBase
             return BadRequest("Укажите активного наладчика");
 
         task.Mold = mold;
+        task.Product = product;
         _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
 
@@ -290,9 +332,20 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> UpdateTask(Guid id, [FromBody] UpdateTaskRequestDto request)
     {
-        var task = await _context.ShiftTasks.FindAsync(id);
+        var task = await _context.ShiftTasks.Include(t => t.Mold).FirstOrDefaultAsync(t => t.Id == id);
         if (task == null)
             return NotFound();
+
+        if (request.ProductId.HasValue && request.ProductId.Value != task.ProductId)
+        {
+            var product = await _context.Products.Include(p => p.ProductType)
+                .FirstOrDefaultAsync(p => p.Id == request.ProductId.Value);
+            if (product == null)
+                return BadRequest("Указано несуществующее изделие.");
+            ProductSelection.EnsureSelectable(product);
+            ProductSelection.EnsureBelongsToMold(product, task.Mold.ProductTypeId);
+            task.SetProduct(product.Id);   // статус и заказ — гард в сущности (ADR-0002)
+        }
 
         if (request.PlanQuantity.HasValue)
             task.SetPlanQuantity(request.PlanQuantity.Value);
@@ -520,12 +573,11 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> SetOrder(Guid id, [FromBody] SetOrderRequestDto request)
     {
         var task = await _context.ShiftTasks
-            .Include(t => t.Mold)
             .FirstOrDefaultAsync(t => t.Id == id);
         if (task == null)
             return NotFound();
 
-        var (_, error) = await ResolveOrderForBindingAsync(request.OrderId, task.Mold?.ProductTypeId);
+        var (_, error) = await ResolveOrderForBindingAsync(request.OrderId, task.ProductId);
         if (error != null)
             return error;
 

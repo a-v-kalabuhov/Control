@@ -29,10 +29,6 @@
           <span>Циклы</span>
           <span class="tabular-nums">{{ item.totalCycles }}</span>
         </div>
-        <div class="flex justify-between">
-          <span>Ср. цикл</span>
-          <span class="tabular-nums">{{ item.avgCycleSeconds > 0 ? `${item.avgCycleSeconds.toFixed(1)} с` : '—' }}</span>
-        </div>
       </div>
     </div>
   </el-card>

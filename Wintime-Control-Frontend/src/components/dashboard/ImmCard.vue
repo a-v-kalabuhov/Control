@@ -23,6 +23,10 @@
         </span>
       </div>
 
+      <div v-if="imm.currentProductArticle" class="text-sm text-gray-500 pl-6 truncate">
+        {{ imm.currentProductArticle }}
+      </div>
+
       <div class="flex items-center gap-2 text-sm" v-if="imm.currentMoldName">
         <el-icon class="text-gray-400"><User /></el-icon>
         <span class="text-gray-600">Наладчик:</span>

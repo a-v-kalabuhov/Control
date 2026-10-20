@@ -9,6 +9,7 @@ public class ShiftTask : BaseEntity
 {
     public Guid ImmId { get; set; }
     public Guid MoldId { get; set; }
+    public Guid ProductId { get; set; }   // изделие задания (PZP-19); принадлежит типу ПФ задания
     public string? PersonnelId { get; set; } // Ссылка на User.Id
     public int PlanQuantity { get; set; }
     public int ActualQuantity { get; set; }
@@ -74,6 +75,7 @@ public class ShiftTask : BaseEntity
     // Navigation
     public Imm Imm { get; set; } = null!;
     public Mold Mold { get; set; } = null!;
+    public Product? Product { get; set; }
     public User? Personnel { get; set; }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -309,6 +311,22 @@ public class ShiftTask : BaseEntity
 
         EnsureEditable();
         PlanQuantity = quantity;
+    }
+
+    /// <summary>
+    /// PZP-19: сменить изделие. Только в «Планируется» и только без заказа (изделие задаёт заказ);
+    /// неизменённое значение — no-op в любом статусе (форма шлёт поле при каждом сохранении).
+    /// Принадлежность изделия типу ПФ проверяет вызывающий код (ProductSelection).
+    /// </summary>
+    public void SetProduct(Guid productId)
+    {
+        if (productId == ProductId)
+            return;
+
+        EnsureEditable();
+        if (OrderId != null)
+            throw new DomainException("Изделие задания с заказом задаёт заказ");
+        ProductId = productId;
     }
 
     /// <summary>

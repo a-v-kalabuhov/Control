@@ -301,7 +301,7 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
     private object MakeCreateRequest(Guid? immId = null) => new
     {
         immId = immId ?? _factory.TestImmId,
-        moldId = _factory.TestMoldId,
+        moldId = _factory.TestMoldId, productId = _factory.TestProductId,
         planQuantity = 100,
         note = "Integration test task",
         personnelId = _factory.TestAdjusterId,

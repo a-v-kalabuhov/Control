@@ -37,13 +37,13 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        var mold = new Mold { Name = $"M-{Guid.NewGuid():N}", FormId = $"F-{Guid.NewGuid():N}", Cavities = 1, IsActive = true };
+        var mold = new Mold { Name = $"M-{Guid.NewGuid():N}", FormId = $"F-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
         db.Molds.Add(mold);
         await db.SaveChangesAsync();
 
         ShiftTask T(TaskStatus st, DateTime? setup, DateTime? started, DateTime? completed, DateTime? closed = null) => new()
         {
-            ImmId = immId, MoldId = mold.Id, PersonnelId = adjusterId, PlanQuantity = 10, Status = st,
+            ImmId = immId, MoldId = mold.Id, ProductId = _factory.TestProductId, PersonnelId = adjusterId, PlanQuantity = 10, Status = st,
             PlannedDate = DateOnly.FromDateTime(Day), IssuedAt = Day.AddDays(-2),
             SetupStartedAt = setup, StartedAt = started, CompletedAt = completed, ClosedAt = closed
         };

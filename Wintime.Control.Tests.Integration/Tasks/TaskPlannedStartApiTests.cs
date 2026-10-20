@@ -32,7 +32,7 @@ public class TaskPlannedStartApiTests : IClassFixture<IntegrationTestFactory>
     private object Body(DateOnly? date, string? time) => new
     {
         immId = _factory.TestImmId,
-        moldId = _factory.TestMoldId,
+        moldId = _factory.TestMoldId, productId = _factory.TestProductId,
         planQuantity = 10,
         plannedFullCycleSeconds = 30,
         plannedDate = date,
@@ -105,7 +105,7 @@ public class TaskPlannedStartApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10,
             Status = status, PlannedDate = date, PlannedSetupStartTime = time, PlannedFullCycleSeconds = 30
         };
         db.ShiftTasks.Add(task);

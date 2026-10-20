@@ -8,7 +8,7 @@ const H = 3600
 const item = (o = {}) => ({
   immId: '1', immName: 'ТПА-1', isActive: true,
   seconds: { Production: 20 * H, Setup: 0, Downtime: 0, Unplanned: 0, NoTask: 0, Offline: 0, NoData: 4 * H },
-  totalCycles: 1200, avgCycleSeconds: 35.25, efficiency: 100,
+  totalCycles: 1200, efficiency: 100,
   days: [], ...o
 })
 
@@ -27,12 +27,12 @@ describe('EquipmentImmRow', () => {
     expect(w.text()).toContain('20.0 ч')
     expect(w.text()).toContain('Нет данных')
     expect(w.text()).toContain('1200')
-    expect(w.text()).toContain('35.3 с')
+    expect(w.text()).not.toContain('Ср. цикл')   // средний по разным изделиям бессмыслен
     expect(w.text()).not.toContain('Архив')
   })
 
   it('архивный ТПА помечен бейджем, эффективность null → «—»', () => {
-    const w = mountRow(item({ isActive: false, efficiency: null, avgCycleSeconds: 0 }))
+    const w = mountRow(item({ isActive: false, efficiency: null }))
     expect(w.text()).toContain('Архив')
     expect(w.text()).toContain('Эффективность: —')
   })

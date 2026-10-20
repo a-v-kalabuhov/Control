@@ -48,9 +48,10 @@
             class="plan-block"
             :style="planStyle(bar)"
             :title="planTitle(bar.task)"
+            @click="emit('task-click', bar.task)"
           >
             <template v-if="!bar.layout.isMarker">
-              <div class="plan-name">{{ bar.task.moldName || 'Задание' }}</div>
+              <div class="plan-name">{{ barLabel(bar.task) }}</div>
               <div class="plan-marks">
                 <span
                   v-for="(m, i) in planMarks(bar.task)"
@@ -76,8 +77,9 @@
             class="task-block"
             :style="taskStyle(bar)"
             :title="taskTitle(bar.task)"
+            @click="emit('task-click', bar.task)"
           >
-            <div class="task-name">{{ bar.task.moldName || 'Задание' }}</div>
+            <div class="task-name">{{ barLabel(bar.task) }}</div>
             <div class="task-qty">{{ bar.task.actualQuantity }}&thinsp;/&thinsp;{{ bar.task.planQuantity }} шт</div>
           </div>
         </div>
@@ -100,6 +102,9 @@ const props = defineProps({
   shiftStart:     { type: Date, required: true },
   shiftEnd:       { type: Date, required: true },
 })
+
+// Клик по бару задания (план или факт) — родитель открывает карточку задания
+const emit = defineEmits(['task-click'])
 
 const TASK_COLORS = ['#3b82f6', '#7c3aed', '#0891b2', '#059669', '#d97706']
 
@@ -248,8 +253,13 @@ function segTitle(seg) {
   return `${getEffectiveStatusMeta(seg.effectiveStatus).label}\n${formatClock(start)} — ${formatClock(end)}\n${formatDuration(end - start)}`
 }
 
+// Подпись бара и первая строка подсказки: полный артикул изделия + ПФ (PZP-19).
+function barLabel(task) {
+  return [task.productFullArticle, task.moldName].filter(Boolean).join(' · ') || 'Задание'
+}
+
 function planTitle(task) {
-  return [task.moldName || 'Задание', ...planTooltipLines(task)].join('\n')
+  return [barLabel(task), ...planTooltipLines(task)].join('\n')
 }
 
 function taskTitle(task) {
@@ -257,7 +267,7 @@ function taskTitle(task) {
   const end   = new Date(task.completedAt ?? task.closedAt ?? now.value)
   const progress = task.planQuantity ? Math.round(task.actualQuantity / task.planQuantity * 100) : 0
   return [
-    task.moldName || 'Задание',
+    barLabel(task),
     `${formatClock(start)} — ${formatClock(end)} (${formatDuration(end - start)})`,
     task.startedAt ? `Наладка: ${formatClock(task.setupStartedAt)} — ${formatClock(task.startedAt)}` : (task.closedAt || task.completedAt) ? 'Закрыто во время наладки' : 'Идёт наладка',
     ...planTooltipLines(task),
@@ -351,6 +361,7 @@ function taskTitle(task) {
 
 .plan-block {
   position: absolute;
+  cursor: pointer;
   box-sizing: border-box;
   border: 1.5px dashed;
   border-radius: 5px;
@@ -390,6 +401,7 @@ function taskTitle(task) {
 
 .task-block {
   position: absolute;
+  cursor: pointer;
   box-sizing: border-box;
   border-radius: 5px;
   padding: 3px 8px;

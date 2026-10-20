@@ -20,7 +20,8 @@ public class ImmEffectiveStatusTests
     [InlineData("Manual",  ActiveTaskStatus.InProgress, false, true,  EffectiveStatus.Downtime)]   // порог пройден
     [InlineData("Alarm",   ActiveTaskStatus.InProgress, true,  false, EffectiveStatus.Downtime)]    // открыт простой
     [InlineData("Offline", ActiveTaskStatus.InProgress, false, true,  EffectiveStatus.Downtime)]    // offline дольше порога
-    [InlineData("Offline", ActiveTaskStatus.InProgress, false, false, EffectiveStatus.Production)]   // offline до порога (дребезг)
+    [InlineData("Offline", ActiveTaskStatus.InProgress, true,  false, EffectiveStatus.Downtime)]    // открыт простой
+    [InlineData("Offline", ActiveTaskStatus.InProgress, false, false, EffectiveStatus.Offline)]     // нет данных — не «работа» (ADR-0019)
     [InlineData("Auto",    ActiveTaskStatus.None,        false, false, EffectiveStatus.Unplanned)]
     [InlineData("Offline", ActiveTaskStatus.None,        false, false, EffectiveStatus.Offline)]
     [InlineData("Idle",    ActiveTaskStatus.None,        false, false, EffectiveStatus.NoTask)]

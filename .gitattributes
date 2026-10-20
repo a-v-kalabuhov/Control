@@ -3,3 +3,6 @@
 # on the customer PC, so this must hold regardless of core.autocrlf/platform.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Shell-скрипты деплоя выполняются на Linux-VPS — только LF, иначе bash падает на \r.
+*.sh text eol=lf

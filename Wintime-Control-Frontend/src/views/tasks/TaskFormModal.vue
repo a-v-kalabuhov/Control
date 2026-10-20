@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     :title="editingTask ? 'Редактирование задания' : 'Новое задание'"
-    width="700px"
+    width="960px"
     :close-on-click-modal="false"
     @closed="onClosed"
   >
@@ -10,206 +10,221 @@
       ref="formRef"
       :model="form" 
       :rules="rules" 
-      label-width="150px"
+      label-width="140px"
       label-position="left"
     >
-      <el-form-item label="Оборудование (ТПА)" prop="immId">
-        <el-select 
-          v-model="form.immId" 
-          placeholder="Выберите ТПА" 
-          class="w-full"
-          @focus="loadImms"
-          :disabled="editingTask"
-          :clearable="!editingTask"
-        >
-          <el-option
-            v-for="imm in availableImms"
-            :key="imm.id"
-            :label="`${imm.name} (${imm.manufacturer} ${imm.model})`"
-            :value="imm.id"
-            :disabled="!imm.isActive"
-          />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="Пресс-форма" prop="moldId">
-        <el-select 
-          v-model="form.moldId" 
-          placeholder="Выберите пресс-форму" 
-          class="w-full"
-          @focus="loadMolds"
-          :disabled="editingTask"
-          :clearable="!editingTask"
-          :no-data-text="moldNoDataText"
-          filterable
-        >
-          <el-option
-            v-for="mold in availableMolds"
-            :key="mold.id"
-            :label="`${mold.name} (${mold.cavities} гнёзд)`"
-            :value="mold.id"
-            :disabled="!mold.isActive"
+      <!-- Две колонки: поля попарно по смыслу, чтобы окно помещалось по высоте (FullHD) -->
+      <div class="grid grid-cols-2 gap-x-6">
+        <el-form-item label="ТПА" prop="immId">
+          <el-select 
+            v-model="form.immId" 
+            placeholder="Выберите ТПА" 
+            class="w-full"
+            @focus="loadImms"
+            :disabled="editingTask"
+            :clearable="!editingTask"
           >
-            <div class="flex justify-between items-center">
-              <span>{{ mold.name }}</span>
-              <el-tag size="small" type="info">{{ mold.cavities }} гнёзд</el-tag>
-            </div>
-          </el-option>
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="Заказ">
-        <el-select
-          v-model="form.orderId"
-          placeholder="Выберите заказ"
-          class="w-full"
-          filterable
-          :clearable="false"
-          :no-data-text="orderNoDataText"
-          :disabled="isRestricted || !!lockedOrder || !selectedProductTypeId"
-        >
-          <el-option
-            v-for="order in orderOptions"
-            :key="order.id"
-            :label="`${order.number}${order.productTypeArticle ? ' (' + order.productTypeArticle + ')' : ''}`"
-            :value="order.id"
-          />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="Наладчик" prop="personnelId">
-        <el-select 
-          v-model="form.personnelId" 
-          placeholder="Не назначен"
-          :clearable="!isLimitedEdit"
-          class="w-full"
-          @focus="loadPersonnel"
-          :disabled="isBufferOnlyEdit"
-          filterable
-        >
-          <el-option
-            v-for="person in personnel"
-            :key="person.id"
-            :label="person.fullName"
-            :value="person.id"
+            <el-option
+              v-for="imm in immOptions"
+              :key="imm.id"
+              :label="immLabel(imm)"
+              :value="imm.id"
+              :disabled="!imm.isActive"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Пресс-форма" prop="moldId">
+          <el-select 
+            v-model="form.moldId" 
+            placeholder="Выберите пресс-форму" 
+            class="w-full"
+            @focus="loadMolds"
+            :disabled="editingTask"
+            :clearable="!editingTask"
+            :no-data-text="moldNoDataText"
+            filterable
           >
-            <div class="flex justify-between items-center">
-              <span>{{ person.fullName }}</span>
-              <el-tag size="small">{{ person.qualification || 'Наладчик' }}</el-tag>
-            </div>
-          </el-option>
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="План (шт.)" prop="planQuantity">
-        <el-input-number 
-          v-model="form.planQuantity" 
-          data-test="plan-quantity"
-          :min="1" 
-          :max="1000000"
-          :disabled="isRestricted"
-          class="w-full"
-          controls-position="right"
-        />
-      </el-form-item>
-
-      <el-form-item label="Рабочий режим" prop="workMode">
-        <el-select v-model="form.workMode" class="w-full" :disabled="isRestricted">
-          <el-option label="Автомат" value="Auto" />
-          <el-option label="Полуавтомат" value="SemiAuto" />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="Полный цикл (сек.)" prop="plannedFullCycleSeconds" :required="isFullCycleRequired">
-        <el-input-number
-          v-model="form.plannedFullCycleSeconds"
-          :min="1"
-          :max="86400"
-          :disabled="isRestricted"
-          class="w-full"
-          controls-position="right"
-        />
-      </el-form-item>
-
-      <el-form-item label="Цикл литья (сек.)" prop="plannedInjectionCycleSeconds">
-        <el-input-number
-          v-model="form.plannedInjectionCycleSeconds"
-          :min="1"
-          :max="86400"
-          :disabled="isRestricted"
-          class="w-full"
-          controls-position="right"
-        />
-        <div class="text-xs text-gray-500 mt-1">Необязательно — нужен для анализа стабильности</div>
-      </el-form-item>
-
-      <el-form-item label="Норматив наладки, мин" prop="plannedSetupMinutes">
-        <el-input-number
-          v-model="form.plannedSetupMinutes"
-          data-test="setup-minutes" :value-on-clear="0"
-          :min="0" :max="1440" :step="5"
-          :disabled="isBufferOnlyEdit"
-          class="w-full"
-          controls-position="right"
-        />
-      </el-form-item>
-
-      <el-form-item label="Буфер выпуска, мин" prop="releaseBufferFixedMinutes">
-        <el-input-number
-          v-model="form.releaseBufferFixedMinutes"
-          data-test="buffer-fixed-minutes" :value-on-clear="0"
-          :min="0" :max="1440" :step="5"
-          class="w-full"
-          controls-position="right"
-        />
-      </el-form-item>
-
-      <el-form-item label="Буфер выпуска, % от выпуска" prop="releaseBufferPercent">
-        <el-input-number
-          v-model="form.releaseBufferPercent"
-          data-test="buffer-percent" :value-on-clear="0"
-          :min="0" :max="100"
-          class="w-full"
-          controls-position="right"
-        />
-        <div class="text-xs text-gray-500 mt-1" data-test="plan-preview">{{ planPreview }}</div>
-      </el-form-item>
-
-      <el-form-item label="Плановая дата" prop="plannedDate">
-        <el-date-picker
-          v-model="form.plannedDate"
-          type="date"
-          placeholder="Выберите дату"
-          format="DD.MM.YYYY"
-          value-format="YYYY-MM-DD"
-          :disabled-date="isPastDate"
-          :disabled="isBufferOnlyEdit"
-          class="w-full"
-        />
-      </el-form-item>
-
-      <el-form-item label="Время начала наладки" prop="plannedSetupStartTime">
-        <el-time-picker
-          v-model="form.plannedSetupStartTime"
-          placeholder="Не задано"
-          format="HH:mm"
-          value-format="HH:mm:ss"
-          clearable
-          :disabled="isBufferOnlyEdit"
-          class="w-full"
-        />
-        <div class="text-xs text-gray-500 mt-1">Необязательно. Пусто — задание начинается с начала смены</div>
-      </el-form-item>
-
-      <el-form-item label="Примечание">
-        <el-input
-          v-model="form.note"
-          type="textarea"
-          :rows="3"
-          :disabled="isRestricted"
-          placeholder="Дополнительная информация"
-        />
-      </el-form-item>
+            <el-option
+              v-for="mold in availableMolds"
+              :key="mold.id"
+              :label="`${mold.name} (${mold.cavities} гнёзд)`"
+              :value="mold.id"
+              :disabled="!mold.isActive"
+            >
+              <div class="flex justify-between items-center">
+                <span>{{ mold.name }}</span>
+                <el-tag size="small" type="info">{{ mold.cavities }} гнёзд</el-tag>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Изделие" prop="productId">
+          <el-select
+            v-model="form.productId"
+            placeholder="Выберите изделие"
+            class="w-full"
+            filterable
+            :disabled="isProductLocked || !form.moldId"
+            @focus="loadProductTypes"
+          >
+            <el-option
+              v-for="product in productOptions"
+              :key="product.id"
+              :label="[product.fullArticle, product.name].filter(Boolean).join(' — ')"
+              :value="product.id"
+              :disabled="!product.isActive"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Заказ">
+          <el-select
+            v-model="form.orderId"
+            placeholder="Выберите заказ"
+            class="w-full"
+            filterable
+            :clearable="false"
+            :no-data-text="orderNoDataText"
+            :disabled="isRestricted || !!lockedOrder || !form.productId"
+          >
+            <el-option
+              v-for="order in orderOptions"
+              :key="order.id"
+              :label="`${order.number}${order.productFullArticle ? ' (' + order.productFullArticle + ')' : ''}`"
+              :value="order.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Наладчик" prop="personnelId">
+          <el-select 
+            v-model="form.personnelId" 
+            placeholder="Не назначен"
+            :clearable="!isLimitedEdit"
+            class="w-full"
+            @focus="loadPersonnel"
+            :disabled="isBufferOnlyEdit"
+            filterable
+          >
+            <el-option
+              v-for="person in personnelOptions"
+              :key="person.id"
+              :label="person.fullName"
+              :value="person.id"
+              :disabled="person.notInList"
+            >
+              <div class="flex justify-between items-center">
+                <span>{{ person.fullName }}</span>
+                <el-tag size="small">{{ person.qualification || 'Наладчик' }}</el-tag>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="План (шт.)" prop="planQuantity">
+          <el-input-number 
+            v-model="form.planQuantity" 
+            data-test="plan-quantity"
+            :min="1" 
+            :max="1000000"
+            :disabled="isRestricted"
+            class="w-full"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="Рабочий режим" prop="workMode">
+          <el-select v-model="form.workMode" class="w-full" :disabled="isRestricted">
+            <el-option label="Автомат" value="Auto" />
+            <el-option label="Полуавтомат" value="SemiAuto" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Полный цикл, с" prop="plannedFullCycleSeconds" :required="isFullCycleRequired">
+          <el-input-number
+            v-model="form.plannedFullCycleSeconds"
+            :min="1"
+            :max="86400"
+            :disabled="isRestricted"
+            class="w-full"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="Цикл литья, с" prop="plannedInjectionCycleSeconds">
+          <el-input-number
+            v-model="form.plannedInjectionCycleSeconds"
+            :min="1"
+            :max="86400"
+            :disabled="isRestricted"
+            class="w-full"
+            controls-position="right"
+          />
+          <div class="text-xs text-gray-500 mt-1">Необязательно — нужен для анализа стабильности</div>
+        </el-form-item>
+        <el-form-item label="Плановая дата" prop="plannedDate">
+          <el-date-picker
+            v-model="form.plannedDate"
+            type="date"
+            placeholder="Выберите дату"
+            format="DD.MM.YYYY"
+            value-format="YYYY-MM-DD"
+            :disabled-date="isPastDate"
+            :disabled="isBufferOnlyEdit"
+            class="w-full"
+          />
+        </el-form-item>
+        <el-form-item label="Начало наладки" prop="plannedSetupStartTime">
+          <el-time-picker
+            v-model="form.plannedSetupStartTime"
+            placeholder="Не задано"
+            format="HH:mm"
+            value-format="HH:mm:ss"
+            clearable
+            :disabled="isBufferOnlyEdit"
+            class="w-full"
+          />
+          <div class="text-xs text-gray-500 mt-1">Необязательно. Пусто — задание начинается с начала смены</div>
+        </el-form-item>
+        <el-form-item label="Норматив наладки, мин" prop="plannedSetupMinutes">
+          <el-input-number
+            v-model="form.plannedSetupMinutes"
+            data-test="setup-minutes" :value-on-clear="0"
+            :min="0" :max="1440" :step="5"
+            :disabled="isBufferOnlyEdit"
+            class="w-full"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="Буфер выпуска">
+          <div class="flex items-center gap-2 w-full">
+            <el-form-item prop="releaseBufferFixedMinutes" label-width="0" class="buffer-part">
+              <el-input-number
+                v-model="form.releaseBufferFixedMinutes"
+                data-test="buffer-fixed-minutes" :value-on-clear="0"
+                :min="0" :max="1440" :step="5"
+                class="!w-24"
+                controls-position="right"
+              />
+            </el-form-item>
+            <span class="text-gray-500">мин +</span>
+            <el-form-item prop="releaseBufferPercent" label-width="0" class="buffer-part">
+              <el-input-number
+                v-model="form.releaseBufferPercent"
+                data-test="buffer-percent" :value-on-clear="0"
+                :min="0" :max="100"
+                class="!w-24"
+                controls-position="right"
+              />
+            </el-form-item>
+            <span class="text-gray-500">%</span>
+          </div>
+          <div class="text-xs text-gray-500 mt-1" data-test="plan-preview">{{ planPreview }}</div>
+        </el-form-item>
+        <el-form-item label="Примечание" class="col-span-2">
+          <el-input
+            v-model="form.note"
+            type="textarea"
+            :rows="2"
+            :disabled="isRestricted"
+            placeholder="Дополнительная информация"
+          />
+        </el-form-item>
+      </div>
 
       <!-- Информация о пресс-форме (справочно) -->
       <el-alert
@@ -245,6 +260,8 @@ import { moldsApi } from '@/api/molds'
 import { personnelApi } from '@/api/personnel'
 import { tasksApi } from '@/api/tasks'
 import { ordersApi } from '@/api/orders'
+import { productTypesApi } from '@/api/productTypes'
+import { activeProducts } from '@/utils/productLabel'
 import { apiErrorMessage } from '@/utils/apiError'
 import { settingsApi } from '@/api/settings'
 import { isMoldCompatibleWithImm } from '@/utils/moldCompatibility'
@@ -260,7 +277,7 @@ const props = defineProps({
     default: null
   },
   // Заказ, из карточки которого открыли форму. Задан — заказ менять нельзя,
-  // а список ПФ ограничен его типом изделия (см. спеку 2026-07-27).
+  // а изделие подставлено из заказа, список ПФ ограничен его типом изделия (см. спеку 2026-07-27, PZP-19).
   // Взаимоисключим с task: lockedOrder — только для создания нового задания,
   // при редактировании существующего (task задан) заказ через этот проп не подставляется.
   lockedOrder: {
@@ -281,6 +298,7 @@ const loading = ref(false)
 const editingTask = ref(null)
 const imms = ref([])
 const molds = ref([])
+const productTypes = ref([])
 const personnel = ref([])
 const orderOptions = ref([])
 const initialOrderId = ref(null)
@@ -288,6 +306,7 @@ const initialOrderId = ref(null)
 const form = reactive({
   immId: '',
   moldId: '',
+  productId: null,
   personnelId: null,
   planQuantity: 1000,
   plannedDate: null,
@@ -306,6 +325,7 @@ const rules = {
   plannedDate: [{ required: true, message: 'Укажите плановую дату', trigger: 'change' }],
   immId: [{ required: true, message: 'Выберите ТПА', trigger: 'change' }],
   moldId: [{ required: true, message: 'Выберите пресс-форму', trigger: 'change' }],
+  productId: [{ required: true, message: 'Выберите изделие', trigger: 'change' }],
   planQuantity: [
     { required: true, message: 'Введите план', trigger: 'blur' },
     { type: 'number', min: 1, message: 'План должен быть больше 0', trigger: 'blur' }
@@ -391,6 +411,35 @@ const loadPlanningDefaults = async () => {
 
 const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productTypeId || null)
 
+// Опция-заглушка изделия, которого нет в активном списке (архивное у задания, изделие заказа до выбора ПФ),
+// — иначе el-select выведет сырой GUID. source — задание или заказ с полями productId/productFullArticle.
+const withFallbackProduct = (list, source, isActive) => {
+  if (!source?.productId || list.some(p => p.id === source.productId)) return list
+  return [...list, {
+    id: source.productId,
+    fullArticle: source.productFullArticle || source.productId,
+    name: source.productName,
+    isActive
+  }]
+}
+
+// PZP-19: изделия берём из типа выбранной ПФ
+const productOptions = computed(() => {
+  const type = productTypes.value.find(t => t.id === selectedProductTypeId.value)
+  const list = activeProducts(type)
+  // Текущее (архивное) изделие редактируемого задания показываем по артикулу из задания
+  if (editingTask.value) return withFallbackProduct(list, editingTask.value, false)
+  // Изделие заказа известно сразу, а список появляется только после выбора ПФ
+  if (props.lockedOrder) return withFallbackProduct(list, props.lockedOrder, true)
+  return list
+})
+
+// Изделие диктует заказ (из карточки заказа или уже привязанный); править его можно только в «Планируется»
+const isProductLocked = computed(() =>
+  !!props.lockedOrder || (!!editingTask.value && (editingTask.value.status !== 'Planned' || !!editingTask.value.orderId)))
+
+const selectedProduct = computed(() => productOptions.value.find(p => p.id === form.productId) || null)
+
 // PZP-16: при создании выбор ПФ и ТПА фильтруется по совместимости (пустой список ПФ — любой ТПА).
 // При редактировании ТПА и ПФ заблокированы — фильтр не применяем, иначе ПФ «несовместимого»
 // задания выпала бы из опций и селект показал бы сырой ID.
@@ -411,28 +460,50 @@ const availableImms = computed(() => {
   return imms.value.filter(imm => isMoldCompatibleWithImm(selectedMoldInfo.value, imm.id))
 })
 
+// Текущее значение задания, которого нет в списке (архивный ТПА/наладчик или список ещё грузится),
+// показываем по названию из задания — иначе el-select выводит голый id.
+const immOptions = computed(() => {
+  const task = editingTask.value
+  if (!task?.immId || availableImms.value.some(i => i.id === task.immId)) return availableImms.value
+  return [...availableImms.value, { id: task.immId, name: task.immName || task.immId, isActive: false }]
+})
+
+const personnelOptions = computed(() => {
+  const task = editingTask.value
+  if (!task?.personnelId || personnel.value.some(p => p.id === task.personnelId)) return personnel.value
+  return [...personnel.value, { id: task.personnelId, fullName: task.personnelName || task.personnelId, notInList: true }]
+})
+
+const immLabel = (imm) => {
+  const model = [imm.manufacturer, imm.model].filter(Boolean).join(' ')
+  return model ? `${imm.name} (${model})` : imm.name
+}
+
 // Пустой список ПФ — не сбой: нет форм типа изделия заказа и/или совместимых с ТПА;
 // без обоих условий остаётся стандартный текст Element Plus.
 const moldNoDataText = computed(() => {
   const byImm = filterByCompatibility.value && !!form.immId
   if (props.lockedOrder) {
     if (byImm) return 'Нет пресс-форм этого типа изделия, совместимых с этим ТПА'
-    const article = props.lockedOrder.productTypeArticle
-    return `Нет активных пресс-форм для типа изделия ${article || 'заказа'}`
+    const article = props.lockedOrder.productFullArticle
+    return `Нет активных пресс-форм для изделия ${article || 'заказа'}`
   }
   return byImm ? 'Нет пресс-форм, совместимых с этим ТПА' : undefined
 })
 
-// Заказы подбираются по типу изделия выбранной ПФ (селект без ПФ заблокирован).
+// Заказы подбираются по выбранному изделию (селект без изделия заблокирован).
 const orderNoDataText = computed(() => {
-  const article = selectedMoldInfo.value?.productTypeArticle
-  return `Нет активных заказов на изделие ${article || 'выбранной пресс-формы'}`
+  const article = selectedProduct.value?.fullArticle
+  return article
+    ? `Нет активных заказов на изделие ${article}`
+    : 'Нет активных заказов на выбранное изделие'
 })
 
 const resetForm = () => {
   Object.assign(form, {
     immId: '',
     moldId: '',
+    productId: props.lockedOrder?.productId ?? null,
     personnelId: null,
     planQuantity: 1000,
     plannedDate: null,
@@ -450,14 +521,14 @@ const resetForm = () => {
   initialOrderId.value = null
 }
 
-const loadOrdersForProductType = async (productTypeId) => {
-  if (!productTypeId) {
+const loadOrdersForProduct = async (productId) => {
+  if (!productId) {
     orderOptions.value = []
     form.orderId = null
     return
   }
   try {
-    const response = await ordersApi.getList({ status: 'Active', productTypeId })
+    const response = await ordersApi.getList({ status: 'Active', productId })
     orderOptions.value = response.data
     if (form.orderId && !orderOptions.value.some(o => o.id === form.orderId)) {
       form.orderId = null
@@ -467,10 +538,27 @@ const loadOrdersForProductType = async (productTypeId) => {
   }
 }
 
-watch(selectedProductTypeId, (productTypeId) => {
+watch(() => form.productId, (productId) => {
   // При заблокированном заказе список заказов не нужен, а вызов затёр бы form.orderId.
   if (props.lockedOrder) return
-  loadOrdersForProductType(productTypeId)
+  loadOrdersForProduct(productId)
+})
+
+// Автоподстановка изделия по ПФ. Типы могут загрузиться позже ПФ — следим за обоими.
+watch([selectedProductTypeId, productTypes], ([typeId]) => {
+  if (props.lockedOrder) {
+    form.productId = props.lockedOrder.productId
+    return
+  }
+  // При редактировании изделие задания не трогаем
+  if (editingTask.value) return
+  if (typeId && productTypes.value.length === 0) {
+    loadProductTypes()
+    return
+  }
+  if (!productOptions.value.some(p => p.id === form.productId)) {
+    form.productId = productOptions.value.length === 1 ? productOptions.value[0].id : null
+  }
 })
 
 const loadMolds = async () => {
@@ -483,6 +571,16 @@ const loadMolds = async () => {
   }
 }
 
+async function loadProductTypes() {
+  if (productTypes.value.length > 0) return
+  try {
+    const response = await productTypesApi.getList({ isActive: true })
+    productTypes.value = response.data
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки изделий')
+  }
+}
+
 // Единственная опция селекта — сам заказ: отдельный запрос не нужен,
 // карточка заказа уже передала всё для отображения.
 const applyLockedOrder = () => {
@@ -492,9 +590,11 @@ const applyLockedOrder = () => {
   if (props.task) return
   orderOptions.value = [props.lockedOrder]
   form.orderId = props.lockedOrder.id
+  form.productId = props.lockedOrder.productId
   // Список ПФ фильтруется по типу изделия заказа, поэтому нужен сразу,
   // не дожидаясь @focus на селекте.
   loadMolds()
+  loadProductTypes()
 }
 
 watch(() => props.lockedOrder, applyLockedOrder, { immediate: true })
@@ -510,6 +610,7 @@ const populateForm = (task) => {
   Object.assign(form, {
     immId: task.immId,
     moldId: task.moldId,
+    productId: task.productId ?? null,
     personnelId: task.personnelId ?? null,
     planQuantity: task.planQuantity,
     plannedDate: task.plannedDate,
@@ -528,6 +629,10 @@ const populateForm = (task) => {
   // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
   // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
   loadMolds()
+  loadProductTypes()
+  // То же для ТПА (селект задизейблен) и наладчика: без списков селекты показывают id.
+  loadImms()
+  loadPersonnel()
 }
 
 watch(() => props.task, (newTask) => {
@@ -554,7 +659,8 @@ watch(() => props.modelValue, (isVisible) => {
   }
 })
 
-const loadImms = async () => {
+// function, а не стрелка: populateForm вызывает её из watch(immediate) раньше этой строки
+async function loadImms() {
   if (imms.value.length > 0) return
   try {
     const response = await immApi.getList({ isActive: true })
@@ -564,7 +670,7 @@ const loadImms = async () => {
   }
 }
 
-const loadPersonnel = async () => {
+async function loadPersonnel() {
   if (personnel.value.length > 0) return
   try {
     const response = await personnelApi.getList({ isActive: true, role: 'Adjuster' })
@@ -616,3 +722,9 @@ const onClosed = () => {
   resetForm()
 }
 </script>
+<style scoped>
+/* Части поля «Буфер выпуска» — вложенные el-form-item ради проверки каждого числа, без своего отступа снизу */
+.buffer-part {
+  margin-bottom: 0;
+}
+</style>

@@ -42,24 +42,24 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
         return client;
     }
 
-    private async Task<Guid> CreateOrderAsync(HttpClient client, Guid productTypeId, string number = "ORD-TB")
+    private async Task<Guid> CreateOrderAsync(HttpClient client, Guid productId, string number = "ORD-TB")
     {
         var response = await client.PostAsJsonAsync("/api/orders", new CreateOrderRequestDto
         {
             Number = number, OrderDate = DateTime.UtcNow.Date, DueDate = DateTime.UtcNow.Date.AddDays(3),
-            ProductTypeId = productTypeId, Quantity = 100
+            ProductId = productId, Quantity = 100
         });
         var dto = await response.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         return dto!.Id;
     }
 
-    private async Task<Guid> CreateIssuedTaskAsync(Guid moldId)
+    private async Task<Guid> CreateIssuedTaskAsync(Guid moldId, Guid productId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var t = new ShiftTask
         {
-            ImmId = _factory.TestImmId, MoldId = moldId, PlanQuantity = 50,
+            ImmId = _factory.TestImmId, MoldId = moldId, ProductId = productId, PlanQuantity = 50,
             Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow
         };
         db.ShiftTasks.Add(t);
@@ -67,28 +67,28 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
         return t.Id;
     }
 
-    private async Task<Guid> CreateOtherProductTypeMoldAsync()
+    // ПФ другого типа изделия и изделие по умолчанию этого типа (PZP-19).
+    private async Task<(Guid MoldId, Guid ProductId)> CreateOtherProductTypeMoldAsync()
     {
+        var (otherTypeId, otherProductId) = await _factory.CreateProductTypeAsync();
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        var otherPt = new ProductType { Article = $"OTHER-{Guid.NewGuid():N}"[..16], Name = "Other", IsActive = true };
-        db.ProductTypes.Add(otherPt);
         var mold = new Mold
         {
             Name = "Other Mold (task-order-binding)", FormId = $"OM-{Guid.NewGuid():N}",
-            Cavities = 1, IsActive = true, ProductTypeId = otherPt.Id
+            Cavities = 1, IsActive = true, ProductTypeId = otherTypeId
         };
         db.Molds.Add(mold);
         await db.SaveChangesAsync();
-        return mold.Id;
+        return (mold.Id, otherProductId);
     }
 
     [Fact]
     public async Task SetOrder_HappyPath_Returns200_AndPersistsOrderId()
     {
         var client = await ManagerClientAsync();
-        var orderId = await CreateOrderAsync(client, _factory.TestProductTypeId, "ORD-SO-OK");
-        var taskId = await CreateIssuedTaskAsync(_factory.TestMoldId);
+        var orderId = await CreateOrderAsync(client, _factory.TestProductId, "ORD-SO-OK");
+        var taskId = await CreateIssuedTaskAsync(_factory.TestMoldId, _factory.TestProductId);
 
         var response = await client.PostAsJsonAsync($"/api/tasks/{taskId}/set-order", new SetOrderRequestDto { OrderId = orderId });
 
@@ -100,12 +100,12 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task SetOrder_ProductTypeMismatch_Returns400()
+    public async Task SetOrder_ProductMismatch_Returns400()
     {
         var client = await ManagerClientAsync();
-        var otherMoldId = await CreateOtherProductTypeMoldAsync();
-        var orderId = await CreateOrderAsync(client, _factory.TestProductTypeId, "ORD-SO-MISMATCH");
-        var taskId = await CreateIssuedTaskAsync(otherMoldId);
+        var (otherMoldId, otherProductId) = await CreateOtherProductTypeMoldAsync();
+        var orderId = await CreateOrderAsync(client, _factory.TestProductId, "ORD-SO-MISMATCH");
+        var taskId = await CreateIssuedTaskAsync(otherMoldId, otherProductId);
 
         var response = await client.PostAsJsonAsync($"/api/tasks/{taskId}/set-order", new SetOrderRequestDto { OrderId = orderId });
 
@@ -120,11 +120,11 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
     public async Task CreateTask_WithMatchingOrderId_Returns201_AndSetsOrderId()
     {
         var client = await ManagerClientAsync();
-        var orderId = await CreateOrderAsync(client, _factory.TestProductTypeId, "ORD-CT-OK");
+        var orderId = await CreateOrderAsync(client, _factory.TestProductId, "ORD-CT-OK");
 
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10,
             PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             OrderId = orderId, PlannedFullCycleSeconds = 30
         });
@@ -142,12 +142,12 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
     public async Task CreateTask_WithMismatchedOrderId_Returns400()
     {
         var client = await ManagerClientAsync();
-        var otherMoldId = await CreateOtherProductTypeMoldAsync();
-        var orderId = await CreateOrderAsync(client, _factory.TestProductTypeId, "ORD-CT-MISMATCH");
+        var (otherMoldId, otherProductId) = await CreateOtherProductTypeMoldAsync();
+        var orderId = await CreateOrderAsync(client, _factory.TestProductId, "ORD-CT-MISMATCH");
 
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
-            ImmId = _factory.TestImmId, MoldId = otherMoldId, PlanQuantity = 10,
+            ImmId = _factory.TestImmId, MoldId = otherMoldId, ProductId = otherProductId, PlanQuantity = 10,
             PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             OrderId = orderId, PlannedFullCycleSeconds = 30
         });
@@ -162,7 +162,7 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
 
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, PlanQuantity = 10,
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10,
             PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
             OrderId = Guid.NewGuid(), PlannedFullCycleSeconds = 30
         });

@@ -87,7 +87,7 @@ public class PlanningController : ControllerBase
             items.Add(new BoardTaskDto
             {
                 Task = dto,
-                ProductArticle = t.Mold?.ProductType?.Article,
+                ProductArticle = t.Product?.FullArticle,
                 Plan = timing.Plan,
                 Fact = timing.Fact,
                 BufferRemainingSeconds = timing.BufferRemainingSeconds,
@@ -121,6 +121,7 @@ public class PlanningController : ControllerBase
         .AsNoTracking()
         .Include(t => t.Imm)
         .Include(t => t.Mold).ThenInclude(m => m.ProductType)
+        .Include(t => t.Product)
         .Include(t => t.Personnel)
         .Include(t => t.Order);
 

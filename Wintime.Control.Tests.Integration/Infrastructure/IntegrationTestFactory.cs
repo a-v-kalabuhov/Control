@@ -29,6 +29,7 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
     public string TestAdjusterId { get; private set; } = string.Empty;
     public Guid TestMoldId { get; } = Guid.NewGuid();
     public Guid TestProductTypeId { get; } = Guid.NewGuid();
+    public Guid TestProductId { get; } = Guid.NewGuid();   // изделие «0» типа TestProductTypeId (PZP-19)
     public Guid TestTemplateId { get; } = Guid.NewGuid();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -143,6 +144,19 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
             });
         }
 
+        if (!db.Products.Any(p => p.Id == TestProductId))
+        {
+            db.Products.Add(new Product
+            {
+                Id            = TestProductId,
+                ProductTypeId = TestProductTypeId,
+                Article       = "0",
+                Name          = "По умолчанию",
+                FullArticle   = "TYPE-TEST.0",
+                IsActive      = true
+            });
+        }
+
         if (!db.Molds.Any(m => m.Id == TestMoldId))
         {
             db.Molds.Add(new Mold
@@ -179,6 +193,20 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
         });
         await db.SaveChangesAsync();
         return immId;
+    }
+
+    /// <summary>Тип изделия + изделие по умолчанию напрямую в БД (минуя API). Возвращает (typeId, productId).</summary>
+    public async Task<(Guid TypeId, Guid ProductId)> CreateProductTypeAsync(string? article = null, bool isActive = true)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var a = article ?? $"PT-{Guid.NewGuid():N}".ToUpperInvariant();
+        var pt = new ProductType { Article = a, Name = "Тип " + a, IsActive = isActive };
+        var p = new Product { ProductTypeId = pt.Id, Article = "0", Name = "По умолчанию", FullArticle = a + ".0" };
+        pt.Products.Add(p);
+        db.ProductTypes.Add(pt);
+        await db.SaveChangesAsync();
+        return (pt.Id, p.Id);
     }
 
     private static async Task EnsureUserAsync(

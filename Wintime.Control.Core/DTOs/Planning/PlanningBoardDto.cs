@@ -30,7 +30,7 @@ public class BoardImmDto
 public class BoardTaskDto
 {
     public TaskDto Task { get; set; } = null!;
-    /// <summary>Артикул изделия (<c>Mold.ProductType.Article</c>) для подписи бара; null — у ПФ нет типа.</summary>
+    /// <summary>Полный артикул изделия задания (<c>Product.FullArticle</c>, ADR-0020) для подписи бара.</summary>
     public string? ProductArticle { get; set; }
     public BoardPlan Plan { get; set; } = null!;
     public BoardFact Fact { get; set; } = null!;

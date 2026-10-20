@@ -37,7 +37,7 @@
       <el-table-column label="Завершить до" width="130">
         <template #default="{ row }">{{ formatDate(row.dueDate) }}</template>
       </el-table-column>
-      <el-table-column prop="productTypeArticle" label="Изделие" />
+      <el-table-column prop="productFullArticle" label="Изделие" />
       <el-table-column prop="quantity" label="Заказано" width="110" align="center" />
       <el-table-column label="Прогресс" width="200">
         <template #default="{ row }">
@@ -132,6 +132,23 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="Изделие" prop="productId" required>
+          <el-select
+            v-model="form.productId"
+            filterable
+            placeholder="Выберите изделие"
+            class="w-full"
+            :disabled="!form.productTypeId"
+          >
+            <el-option
+              v-for="p in productOptions"
+              :key="p.id"
+              :label="`${p.fullArticle} — ${p.name}`"
+              :value="p.id"
+              :disabled="!p.isActive"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="Количество" prop="quantity" required>
           <el-input-number v-model="form.quantity" :min="1" class="w-full" controls-position="right" />
         </el-form-item>
@@ -148,7 +165,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
@@ -157,6 +174,7 @@ import { productTypesApi } from '@/api/productTypes'
 import { ORDER_STATUS_KEYS, getOrderStatusMeta } from '@/constants/orderStatus'
 import OrderDetailModal from '@/components/orders/OrderDetailModal.vue'
 import { apiErrorMessage } from '@/utils/apiError'
+import { activeProducts } from '@/utils/productLabel'
 
 const authStore = useAuthStore()
 // Observer — только чтение (PZP-07a); запись защищена на бэкенде
@@ -168,6 +186,7 @@ const dialogVisible = ref(false)
 const showDetail = ref(false)
 const selectedOrderId = ref(null)
 const editingId = ref(null)
+const editingRow = ref(null)
 const formRef = ref(null)
 const orders = ref([])
 const productTypes = ref([])
@@ -179,6 +198,7 @@ const form = reactive({
   orderDate: '',
   dueDate: '',
   productTypeId: null,
+  productId: null,
   quantity: 1,
   note: ''
 })
@@ -187,15 +207,49 @@ const rules = {
   number: [{ required: true, message: 'Введите номер заказа', trigger: 'blur' }],
   dueDate: [{ required: true, message: 'Укажите, до какой даты завершить заказ', trigger: 'change' }],
   productTypeId: [{ required: true, message: 'Выберите тип изделия', trigger: 'change' }],
+  productId: [{ required: true, message: 'Выберите изделие', trigger: 'change' }],
   quantity: [{ required: true, message: 'Укажите количество', trigger: 'change' }]
 }
+
+// Изделия выбранного типа: только активные (архивные нельзя назначить в новый заказ).
+// При редактировании изделие заказа могло быть архивировано позже — добавляем его
+// отдельной неактивной опцией, иначе select покажет сырой GUID.
+const productOptions = computed(() => {
+  const list = activeProducts(productTypes.value.find((t) => t.id === form.productTypeId))
+  const row = editingRow.value
+  if (row?.productId && form.productId === row.productId && !list.some((p) => p.id === row.productId)) {
+    return [
+      ...list,
+      {
+        id: row.productId,
+        fullArticle: row.productFullArticle || row.productId,
+        name: row.productName,
+        isActive: false
+      }
+    ]
+  }
+  return list
+})
+
+// При открытии на редактирование тип и изделие выставляются разом — watch не должен сбросить изделие.
+let populating = false
+
+watch(() => form.productTypeId, (id, old) => {
+  if (populating) return
+  if (id !== old) form.productId = null
+  const list = productOptions.value
+  if (list.length === 1) form.productId = list[0].id
+})
 
 onMounted(loadOrders)
 
 // Сбрасываем режим редактирования при закрытии модалки (крестик/Esc/клик вне окна),
 // чтобы следующее открытие «Создать заказ» не унаследовало editingId.
 watch(dialogVisible, (visible) => {
-  if (!visible) editingId.value = null
+  if (!visible) {
+    editingId.value = null
+    editingRow.value = null
+  }
 })
 
 function progressPercentage(row) {
@@ -235,21 +289,26 @@ async function loadProductTypes() {
 
 function showCreateModal() {
   editingId.value = null
-  Object.assign(form, { number: '', orderDate: '', dueDate: '', productTypeId: null, quantity: 1, note: '' })
+  editingRow.value = null
+  Object.assign(form, { number: '', orderDate: '', dueDate: '', productTypeId: null, productId: null, quantity: 1, note: '' })
   dialogVisible.value = true
   loadProductTypes()
 }
 
 function editItem(row) {
   editingId.value = row.id
+  editingRow.value = row
+  populating = true
   Object.assign(form, {
     number: row.number ?? '',
     orderDate: row.orderDate ?? '',
     dueDate: row.dueDate ?? '',
     productTypeId: row.productTypeId ?? null,
+    productId: row.productId ?? null,
     quantity: row.quantity ?? 1,
     note: row.note ?? ''
   })
+  nextTick(() => { populating = false })
   dialogVisible.value = true
   loadProductTypes()
 }
@@ -261,7 +320,9 @@ async function save() {
     saving.value = true
     try {
       // Пустая дата — null (а не ''), иначе бэкенд не разберёт DateTime?
-      const payload = { ...form, orderDate: form.orderDate || null }
+      // Тип нужен только для выбора изделия — на бэкенд уходит productId
+      const { productTypeId, ...rest } = form
+      const payload = { ...rest, orderDate: form.orderDate || null }
       if (editingId.value) {
         // null в orderDate для update значит «не менять» — очистку передаём явно
         await ordersApi.update(editingId.value, { ...payload, clearOrderDate: !payload.orderDate })

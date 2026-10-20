@@ -1,8 +1,8 @@
 <template>
   <div>
     <div ref="chartRef" class="w-full h-96"></div>
-    <div class="flex gap-5 justify-center mt-3 text-sm text-gray-600">
-      <div v-for="item in legend" :key="item.type" class="flex items-center gap-1.5">
+    <div class="flex flex-wrap gap-5 justify-center mt-3 text-sm text-gray-600">
+      <div v-for="item in legend" :key="item.type" data-test="legend-item" class="flex items-center gap-1.5">
         <span class="inline-block w-4 h-4 rounded" :style="{ background: item.color }"></span>
         {{ item.label }}
       </div>
@@ -14,6 +14,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
 import dayjs from 'dayjs'
+import { REPORT_STATUS, REPORT_STATUS_KEYS } from '@/constants/effectiveStatus'
 
 const props = defineProps({
   data: {
@@ -34,30 +35,15 @@ const props = defineProps({
   }
 })
 
+const emit = defineEmits(['segment-click'])
+
 const chartRef = ref(null)
 let chart = null
 
-const colorMap = {
-  work:    '#67c23a',
-  setup:   '#409eff',
-  alarm:   '#f56c6c',
-  idle:    '#e6a23c',
-  offline: '#909399'
-}
+// Цвета и подписи — общая палитра эффективных состояний (как карточка ТПА и «Производительность»).
+const statusMeta = (type) => REPORT_STATUS[type] ?? REPORT_STATUS.NoData
 
-const typeLabels = {
-  work:    'Работа',
-  setup:   'Наладка',
-  alarm:   'Авария',
-  idle:    'Простой',
-  offline: 'Нет связи'
-}
-
-const legend = Object.entries(colorMap).map(([type, color]) => ({
-  type,
-  color,
-  label: typeLabels[type]
-}))
+const legend = REPORT_STATUS_KEYS.map(type => ({ type, color: REPORT_STATUS[type].hex, label: REPORT_STATUS[type].label }))
 
 // Разбираем время смены (HH:mm) в timestamp для заданной даты.
 // Если endTime <= startTime — смена переходит через полночь, сдвигаем на +1 день.
@@ -149,6 +135,13 @@ const initChart = () => {
   chart?.dispose()
   chart = echarts.init(chartRef.value)
 
+  // Клик по сегменту — показать его эпизод в таблице статусов (вкладка отчёта).
+  chart.on('click', (params) => {
+    if (params.seriesType !== 'custom') return
+    const [, start, end, , immId] = params.value
+    emit('segment-click', { immId, start, end })
+  })
+
   const immNames = props.data.map(i => i.immName)
 
   const seriesData = []
@@ -158,7 +151,8 @@ const initChart = () => {
         imm.immName,
         dayjs(t.start).valueOf(),
         dayjs(t.end).valueOf(),
-        t.type
+        t.type,
+        imm.immId
       ])
     })
   })
@@ -175,23 +169,35 @@ const initChart = () => {
         const m = Math.floor((totalSec % 3600) / 60)
         const s = totalSec % 60
         const duration = [h && `${h} ч.`, m && `${m} мин.`, (!h && !m) || s ? `${s} сек.` : ''].filter(Boolean).join(' ')
-        return `${name}<br/>${typeLabels[type] ?? type}<br/>${dayjs(start).format('HH:mm:ss')} — ${dayjs(end).format('HH:mm:ss')} (${duration})`
+        return `${name}<br/>${statusMeta(type).label}<br/>${dayjs(start).format('HH:mm:ss')} — ${dayjs(end).format('HH:mm:ss')} (${duration})<br/><span style="color:#9ca3af">Клик — показать в таблице</span>`
       }
     },
     grid: {
       left: '3%',
       right: '4%',
-      bottom: '3%',
+      bottom: 48, // место под ползунок масштаба
       top: '5%',
       containLabel: true
     },
+    // Масштаб по времени: ползунок под осью + колесо мыши/перетаскивание по диаграмме.
+    // filterMode 'none' — сегмент, частично попавший в окно, не пропадает (его обрезает renderItem).
+    dataZoom: [
+      {
+        type: 'slider', xAxisIndex: 0, filterMode: 'none', minValueSpan: 60 * 1000,
+        bottom: 8, height: 20, labelFormatter: (value) => dayjs(value).format('HH:mm:ss')
+      },
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none', minValueSpan: 60 * 1000 }
+    ],
     xAxis: {
       type: 'time',
       min: axisMin ?? undefined,
       max: axisMax ?? undefined,
-      minInterval: 3600 * 1000,
       axisLabel: {
-        formatter: (value) => dayjs(value).format('HH:mm')
+        // Подпись по уровню деления: при сильном приближении — до секунд, полночь — время, не дата.
+        formatter: {
+          year: '{HH}:{mm}', month: '{HH}:{mm}', day: '{HH}:{mm}',
+          hour: '{HH}:{mm}', minute: '{HH}:{mm}', second: '{HH}:{mm}:{ss}', millisecond: '{HH}:{mm}:{ss}'
+        }
       },
       splitLine: { show: false }
     },
@@ -229,9 +235,10 @@ const initChart = () => {
 
           return {
             type: 'rect',
+            cursor: 'pointer',
             shape,
             style: api.style({
-              fill: colorMap[type] ?? colorMap.offline
+              fill: statusMeta(type).hex
             })
           }
         },
@@ -249,14 +256,22 @@ const initChart = () => {
   chart.setOption(option)
 }
 
+// Одна и та же функция для add/removeEventListener — иначе обработчик не снимается.
+const onResize = () => chart?.resize()
+
+// Сброс масштаба к полному периоду (кнопка «Сбросить масштаб» в отчёте).
+const resetZoom = () => chart?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })
+
+defineExpose({ resetZoom, resize: onResize })
+
 onMounted(() => {
   initChart()
-  window.addEventListener('resize', () => chart?.resize())
+  window.addEventListener('resize', onResize)
 })
 
 onUnmounted(() => {
   chart?.dispose()
-  window.removeEventListener('resize', () => chart?.resize())
+  window.removeEventListener('resize', onResize)
 })
 
 watch(() => props.data, () => {

@@ -87,3 +87,104 @@ describe('TaskDetailModal — план задания (PZP-14)', () => {
     expect(cellText(wrapper, 'Плановое окончание')).toBe('—')
   })
 })
+
+describe('TaskDetailModal — вкладки', () => {
+  it('по умолчанию «Данные задания»; «Результаты выполнения» монтируют вкладку итогов с id задания', async () => {
+    const wrapper = mount(TaskDetailModal, {
+      props: { modelValue: true, task: { id: 't1', status: 'InProgress' } },
+      global: {
+        plugins: [ElementPlus, createPinia()],
+        stubs: { TaskResultsTab: { name: 'TaskResultsTab', props: ['taskId'], template: '<div class="results-stub" />' } }
+      },
+      attachTo: document.body
+    })
+    await flushPromises()
+
+    const tabs = wrapper.findAll('.el-tabs__item').map(t => t.text())
+    expect(tabs).toEqual(['Данные задания', 'Результаты выполнения'])
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)
+
+    await wrapper.findAll('.el-tabs__item')[1].trigger('click')
+    await flushPromises()
+
+    const tab = wrapper.findComponent({ name: 'TaskResultsTab' })
+    expect(tab.exists()).toBe(true)
+    expect(tab.props('taskId')).toBe('t1')
+
+    await wrapper.setProps({ task: { id: 't2', status: 'Completed' } })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)   // сброс на «Данные задания»
+  })
+
+  it('закрытие снаружи (modelValue=false) сбрасывает вкладку на «Данные задания»', async () => {
+    const task = { id: 't1', status: 'InProgress' }
+    const wrapper = mount(TaskDetailModal, {
+      props: { modelValue: true, task },
+      global: {
+        plugins: [ElementPlus, createPinia()],
+        stubs: { TaskResultsTab: { name: 'TaskResultsTab', props: ['taskId'], template: '<div class="results-stub" />' } }
+      },
+      attachTo: document.body
+    })
+    await flushPromises()
+    await wrapper.findAll('.el-tabs__item')[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(true)
+
+    await wrapper.setProps({ modelValue: false })
+    await flushPromises()
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'TaskResultsTab' }).exists()).toBe(false)
+  })
+})
+
+describe('TaskDetailModal — только чтение', () => {
+  it('readonly: нет кнопок действий и поля причины закрытия, вкладки на месте', async () => {
+    setActivePinia(createPinia())
+    const { useAuthStore } = await import('@/stores/auth')
+    useAuthStore().userRole = 'Manager'   // у менеджера без readonly были бы «Редактировать», «Закрыть задание» и поле причины
+    const wrapper = mount(TaskDetailModal, {
+      props: { modelValue: true, task: { id: 't1', status: 'InProgress', planQuantity: 10, actualQuantity: 1 }, readonly: true },
+      global: { plugins: [ElementPlus], stubs: { TaskResultsTab: true } },
+      attachTo: document.body
+    })
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button').map(b => b.text())
+    for (const label of ['Редактировать', 'Выдать', 'Завершить', 'Закрыть задание']) {
+      expect(buttons).not.toContain(label)
+    }
+    expect(buttons).toContain('Назад')
+    expect(wrapper.find('textarea').exists()).toBe(false)
+    expect(wrapper.findAll('.el-tabs__item').map(t => t.text())).toEqual(['Данные задания', 'Результаты выполнения'])
+    wrapper.unmount()
+  })
+})
+
+describe('TaskDetailModal — заказ', () => {
+  const cellText = (wrapper, label) => {
+    const cells = wrapper.findAll('.el-descriptions__cell')
+    const idx = cells.findIndex(c => c.text() === label)
+    return idx >= 0 ? cells[idx + 1].text() : undefined
+  }
+
+  it('показывает номер и дату заказа', async () => {
+    const wrapper = mountModal({ id: 't1', status: 'Planned', orderId: 'o1', orderNumber: 'ORD-77', orderDate: '2026-10-01T00:00:00Z' })
+    await flushPromises()
+
+    expect(cellText(wrapper, 'Заказ')).toBe(`ORD-77 от ${dayjs('2026-10-01T00:00:00Z').format('DD.MM.YYYY')}`)
+  })
+
+  it('заказ без даты — только номер; без заказа — прочерк', async () => {
+    const noDate = mountModal({ id: 't1', status: 'Planned', orderId: 'o1', orderNumber: 'ORD-78', orderDate: null })
+    await flushPromises()
+    expect(cellText(noDate, 'Заказ')).toBe('ORD-78')
+    noDate.unmount()
+
+    const none = mountModal({ id: 't2', status: 'Planned', orderId: null, orderNumber: null })
+    await flushPromises()
+    expect(cellText(none, 'Заказ')).toBe('—')
+  })
+})

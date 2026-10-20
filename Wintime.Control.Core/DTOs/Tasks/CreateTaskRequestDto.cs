@@ -6,6 +6,9 @@ public class CreateTaskRequestDto
 {
     public Guid ImmId { get; set; }
     public Guid MoldId { get; set; }
+
+    /// <summary>Изделие задания (PZP-19). Обязательно (null → 400); принадлежит типу ПФ.</summary>
+    public Guid? ProductId { get; set; }
     public Guid? OrderId { get; set; }
     public string? PersonnelId { get; set; }
     public int PlanQuantity { get; set; }

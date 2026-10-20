@@ -485,7 +485,7 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<DateTime?>("OrderDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("ProductTypeId")
+                    b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Quantity")
@@ -498,7 +498,7 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasIndex("Number");
 
-                    b.HasIndex("ProductTypeId");
+                    b.HasIndex("ProductId");
 
                     b.ToTable("Orders", (string)null);
                 });
@@ -546,6 +546,43 @@ namespace Wintime.Control.Infrastructure.Migrations
                             ReleaseBufferPercent = 0,
                             SetupMinutes = 0
                         });
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.Product", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Article")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FullArticle")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProductTypeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FullArticle")
+                        .IsUnique();
+
+                    b.HasIndex("ProductTypeId");
+
+                    b.ToTable("Products", (string)null);
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ProductType", b =>
@@ -672,6 +709,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<TimeOnly?>("PlannedSetupStartTime")
                         .HasColumnType("time without time zone");
 
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("ReleaseBufferFixedMinutes")
                         .HasColumnType("integer");
 
@@ -702,6 +742,8 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.HasIndex("OrderId");
 
                     b.HasIndex("PersonnelId");
+
+                    b.HasIndex("ProductId");
 
                     b.ToTable("ShiftTasks", null, t =>
                         {
@@ -1069,13 +1111,13 @@ namespace Wintime.Control.Infrastructure.Migrations
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Order", b =>
                 {
-                    b.HasOne("Wintime.Control.Core.Entities.ProductType", "ProductType")
+                    b.HasOne("Wintime.Control.Core.Entities.Product", "Product")
                         .WithMany()
-                        .HasForeignKey("ProductTypeId")
+                        .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("ProductType");
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.PlanningDefaults", b =>
@@ -1084,6 +1126,17 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("UpdatedById")
                         .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.Product", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.ProductType", "ProductType")
+                        .WithMany("Products")
+                        .HasForeignKey("ProductTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProductType");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
@@ -1110,6 +1163,12 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .HasForeignKey("PersonnelId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("Wintime.Control.Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Imm");
 
                     b.Navigation("Mold");
@@ -1117,6 +1176,8 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("Personnel");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Telemetry", b =>
@@ -1175,6 +1236,8 @@ namespace Wintime.Control.Infrastructure.Migrations
             modelBuilder.Entity("Wintime.Control.Core.Entities.ProductType", b =>
                 {
                     b.Navigation("Molds");
+
+                    b.Navigation("Products");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Template", b =>
