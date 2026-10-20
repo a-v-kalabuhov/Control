@@ -16,6 +16,12 @@ public static class ImmEffectiveStatus
                                  bool hasOpenDowntime, bool thresholdPassed)
     {
         var mode = ImmMode.Normalize(rawMode);
+
+        // Нет данных — нет ни «Работы», ни «Простоя», ни «Наладки» (ADR-0021, заменяет ADR-0019):
+        // «Нет связи» доминирует над заданием, открытым простоем и порогом.
+        if (mode == OfflineMode)
+            return EffectiveStatus.Offline;
+
         var isAuto = mode == ImmMode.Auto;
 
         if (task == ActiveTaskStatus.Setup)
@@ -25,16 +31,10 @@ public static class ImmEffectiveStatus
         {
             if (isAuto) return EffectiveStatus.Production;
             if (hasOpenDowntime || thresholdPassed) return EffectiveStatus.Downtime;
-            // Без простоя нет данных — не «Работа» (ADR-0019): иначе сбой сервера, при котором
-            // воркер не завёл простой, превращает весь период без связи в выработку.
-            return mode == OfflineMode
-                ? EffectiveStatus.Offline
-                : EffectiveStatus.Production; // до порога — «Stopped» растворён в Работу
+            return EffectiveStatus.Production; // до порога — «Stopped» растворён в Работу
         }
 
         // task == None
-        if (isAuto) return EffectiveStatus.Unplanned;
-        if (mode == OfflineMode) return EffectiveStatus.Offline;
-        return EffectiveStatus.NoTask;
+        return isAuto ? EffectiveStatus.Unplanned : EffectiveStatus.NoTask;
     }
 }

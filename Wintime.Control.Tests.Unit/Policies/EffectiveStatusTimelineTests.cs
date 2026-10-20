@@ -140,4 +140,43 @@ public class EffectiveStatusTimelineTests
         result.Should().ContainSingle();
         result[0].EffectiveStatus.Should().Be(EffectiveStatus.Offline);
     }
+
+    [Fact]
+    public void Build_OfflineInsideOpenDowntime_IsOffline()
+    {
+        // ПЗП 19→20.10: ТПА стоял (простой открыт), потом пропала связь. Простой в журнале
+        // продолжается, но период без связи — «Нет связи», а не «Простой» (ADR-0021).
+        var raw = new[]
+        {
+            new RawSegment(ImmStatus.Idle,    M(0),  M(20)),
+            new RawSegment(ImmStatus.Offline, M(20), M(50)),
+            new RawSegment(ImmStatus.Auto,    M(50), M(60)),
+        };
+        var tasks = new[] { new TaskInterval(ActiveTaskStatus.InProgress, M(0), M(60)) };
+        var downtimes = new[] { new Interval(M(0), M(50)) };
+
+        var result = EffectiveStatusTimeline.Build(raw, tasks, downtimes, M(0), M(60));
+
+        result.Should().HaveCount(3);
+        result[0].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Downtime,   M(0),  M(20)));
+        result[1].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Offline,    M(20), M(50)));
+        result[2].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Production, M(50), M(60)));
+    }
+
+    [Fact]
+    public void Build_OfflineDuringSetup_IsOffline()
+    {
+        var raw = new[]
+        {
+            new RawSegment(ImmStatus.Manual,  M(0),  M(30)),
+            new RawSegment(ImmStatus.Offline, M(30), M(60)),
+        };
+        var tasks = new[] { new TaskInterval(ActiveTaskStatus.Setup, M(0), M(60)) };
+
+        var result = EffectiveStatusTimeline.Build(raw, tasks, System.Array.Empty<Interval>(), M(0), M(60));
+
+        result.Should().HaveCount(2);
+        result[0].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Setup,   M(0),  M(30)));
+        result[1].Should().BeEquivalentTo(new EffectiveSegment(EffectiveStatus.Offline, M(30), M(60)));
+    }
 }
