@@ -25,8 +25,8 @@ public static class TaskOccupancy
     public static IReadOnlyList<OccupancySegment> Build(DateTime plannedStartUtc, TaskPlan plan, OccupancyFacts facts,
                                                         ReleaseForecastResult? forecast, DateTime nowUtc)
     {
-        var setup = TimeSpan.FromSeconds(plan.SetupSeconds);
-        var release = TimeSpan.FromSeconds(plan.ReleaseSeconds ?? 0);
+        var setup = Span(plan.SetupSeconds);
+        var release = Span(plan.ReleaseSeconds ?? 0);
         var planEnd = plan.PlannedEndAt ?? Add(plannedStartUtc, setup);
         var segments = new List<OccupancySegment>(2);
 
@@ -64,7 +64,12 @@ public static class TaskOccupancy
             segments.Add(new OccupancySegment(kind, start, end));
     }
 
+    // Секунды → TimeSpan без исключения: абсурдные плановые значения упираются в TimeSpan.MaxValue.
+    private static TimeSpan Span(long seconds) =>
+        seconds >= TimeSpan.MaxValue.Ticks / TimeSpan.TicksPerSecond ? TimeSpan.MaxValue : TimeSpan.FromSeconds(seconds);
+
     // Защита от выхода за DateTime.MaxValue на абсурдных планах.
+    // DateTime.MaxValue - at не переполняется: at не превышает MaxValue.
     private static DateTime Add(DateTime at, TimeSpan span) =>
         span >= DateTime.MaxValue - at ? DateTime.MaxValue : at + span;
 }
