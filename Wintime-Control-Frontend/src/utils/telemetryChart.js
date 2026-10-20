@@ -83,3 +83,11 @@ export function enforceMinOneSignal(next, prev) {
 export function signalLabel(signal) {
   return signal?.name?.trim() || signal?.parameterName || ''
 }
+
+// Подушка по циклам (BL-45): точка на момент закрытия цикла. Открытые циклы и циклы без
+// измеренной подушки пропускаются — подушку коннектор отдаёт только в lastCycle.
+export function buildCushionSeries(cycles) {
+  return cycles
+    .filter(c => c.end && c.cushion !== null && c.cushion !== undefined)
+    .map(c => [new Date(c.end).getTime(), Number(c.cushion)])
+}

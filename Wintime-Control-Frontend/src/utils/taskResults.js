@@ -22,3 +22,9 @@ export function formatDeviation(pct) {
   if (pct < 0) return `−${Math.abs(pct)} %`
   return '0 %'
 }
+
+// Подушка — в сырых единицах коннектора (единица не известна), поэтому без подписи.
+export function formatCushion(v) {
+  if (v === null || v === undefined) return '—'
+  return Number(v).toFixed(1)
+}

@@ -55,6 +55,13 @@
           </tr>
         </tbody>
       </table>
+      <div v-if="results.cycles.avgCushion != null" data-test="cushion" class="text-sm -mt-4 mb-6 flex justify-between">
+        <span>Подушка</span>
+        <span class="tabular-nums">
+          ср. {{ formatCushion(results.cycles.avgCushion) }}
+          <span class="text-gray-500">(мин {{ formatCushion(results.cycles.minCushion) }} · макс {{ formatCushion(results.cycles.maxCushion) }})</span>
+        </span>
+      </div>
 
       <h4 class="font-semibold text-gray-700 mb-2">Время выпуска</h4>
       <div class="text-sm">
@@ -87,7 +94,7 @@ import dayjs from 'dayjs'
 import { tasksApi } from '@/api/tasks'
 import { EFFECTIVE_STATUS } from '@/constants/effectiveStatus'
 import { formatDuration } from '@/utils/taskPlan'
-import { formatSeconds, sharePercent, deviationPercent, formatDeviation } from '@/utils/taskResults'
+import { formatSeconds, sharePercent, deviationPercent, formatDeviation, formatCushion } from '@/utils/taskResults'
 
 const props = defineProps({
   taskId: { type: String, required: true }

@@ -21,7 +21,8 @@ const completed = () => ({
   },
   cycles: {
     count: 567, avgInjectionSeconds: 12.84, plannedInjectionSeconds: 55,
-    avgFullCycleSeconds: 66, plannedFullCycleSeconds: 60
+    avgFullCycleSeconds: 66, plannedFullCycleSeconds: 60,
+    avgCushion: 410.25, minCushion: 400, maxCushion: 420
   },
   time: { windowSeconds: 3600, productionSeconds: 1800, downtimeSeconds: 1200, downtimeCount: 4, offlineSeconds: 600 }
 })
@@ -90,6 +91,27 @@ describe('TaskResultsTab', () => {
     expect(full).toContain('+10 %')
     expect(w.find('[data-test="cycle-full"] [data-test="deviation"]').classes()).toContain('text-red-600')
     expect(rowText(w, 'cycles-header')).toContain('567')
+  })
+
+  it('подушка: среднее, мин и макс', async () => {
+    tasksApi.getResults.mockResolvedValue({ data: completed() })
+    const w = mountTab()
+    await flushPromises()
+
+    const text = rowText(w, 'cushion')
+    expect(text).toContain('410.3')
+    expect(text).toContain('мин 400.0')
+    expect(text).toContain('макс 420.0')
+  })
+
+  it('подушка не измерялась — строки нет', async () => {
+    const data = completed()
+    data.cycles.avgCushion = data.cycles.minCushion = data.cycles.maxCushion = null
+    tasksApi.getResults.mockResolvedValue({ data })
+    const w = mountTab()
+    await flushPromises()
+
+    expect(w.find('[data-test="cushion"]').exists()).toBe(false)
   })
 
   it('нет среднего или эталона — «—»', async () => {

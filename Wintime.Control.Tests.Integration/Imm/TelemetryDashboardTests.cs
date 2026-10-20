@@ -34,7 +34,7 @@ public class TelemetryDashboardTests : IClassFixture<IntegrationTestFactory>
         db.ImmCycles.Add(new ImmCycle
         {
             ImmId = imm.Id, StartTime = from.AddMinutes(1), EndTime = from.AddMinutes(2),
-            DurationSeconds = 60, IsSuccessful = true, Cavities = 1
+            DurationSeconds = 60, IsSuccessful = true, Cavities = 1, Cushion = 412.5m
         });
         await db.SaveChangesAsync();
         return imm.Id;
@@ -67,6 +67,7 @@ public class TelemetryDashboardTests : IClassFixture<IntegrationTestFactory>
         dto.Signals[0].Type.Should().Be("float");
         dto.Signals[0].Points.Should().HaveCount(2);
         dto.Cycles.Should().ContainSingle();
+        dto.Cycles[0].Cushion.Should().Be(412.5m);
         dto.Truncated.Should().BeFalse();
     }
 
