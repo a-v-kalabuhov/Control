@@ -25,7 +25,7 @@ const iso = (local) => new Date(local).toISOString()
 // Страница в режиме «История» с заданными полями периода; вызовы API до этого момента сброшены.
 async function mountHistory(from, to) {
   const w = mount(TelemetryDashboardView, {
-    global: { plugins: [ElementPlus], stubs: { SignalChart: true, 'el-date-picker': true, ArrowLeft: true } }
+    global: { plugins: [ElementPlus], stubs: { SignalChart: true, CushionChart: true, 'el-date-picker': true, ArrowLeft: true } }
   })
   await flushPromises()
   w.vm.mode = 'history'
@@ -156,7 +156,7 @@ describe('TelemetryDashboardView — live-опрос', () => {
     let resolveLive
     telemetryApi.getDashboard.mockImplementationOnce(() => new Promise(r => { resolveLive = r }))
     const w = mount(TelemetryDashboardView, {
-      global: { plugins: [ElementPlus], stubs: { SignalChart: true, 'el-date-picker': true, ArrowLeft: true } }
+      global: { plugins: [ElementPlus], stubs: { SignalChart: true, CushionChart: true, 'el-date-picker': true, ArrowLeft: true } }
     })
     await tick()
     return { w, resolve: (d) => resolveLive(d) }
@@ -211,13 +211,51 @@ describe('TelemetryDashboardView — названия датчиков', () => {
 
   it('заголовок графика получает читаемое название датчика', async () => {
     const w = mount(TelemetryDashboardView, {
-      global: { plugins: [ElementPlus], stubs: { SignalChart: true, 'el-date-picker': true, ArrowLeft: true } }
+      global: { plugins: [ElementPlus], stubs: { SignalChart: true, CushionChart: true, 'el-date-picker': true, ArrowLeft: true } }
     })
     await flushPromises()
 
     const chart = w.findComponent({ name: 'SignalChart' })
     expect(chart.exists()).toBe(true)
     expect(chart.props('title')).toBe('Смыкание формы')
+    w.unmount()
+  })
+})
+
+describe('TelemetryDashboardView — подушка по циклам', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    immApi.getList.mockResolvedValue({ data: [{ id: IMM, name: 'ТПА-4', templateId: 't1' }] })
+    telemetryApi.getSignals.mockResolvedValue({ data: [{ parameterName: 'MoldClosed', name: 'Смыкание формы', type: 'boolean' }] })
+  })
+
+  const mountWith = async (cycles) => {
+    telemetryApi.getDashboard.mockResolvedValue({ data: {
+      signals: [{ parameterName: 'MoldClosed', type: 'boolean', points: [] }],
+      cycles, statusSegments: [], truncated: false
+    } })
+    const w = mount(TelemetryDashboardView, {
+      global: { plugins: [ElementPlus], stubs: { SignalChart: true, CushionChart: true, 'el-date-picker': true, ArrowLeft: true } }
+    })
+    await flushPromises()
+    return w
+  }
+
+  it('есть закрытые циклы с подушкой — график подушки получает циклы', async () => {
+    const cycles = [{ start: '2026-10-20T08:00:00Z', end: '2026-10-20T08:00:30Z', isSuccessful: true, cushion: 412.5 }]
+    const w = await mountWith(cycles)
+
+    const chart = w.findComponent({ name: 'CushionChart' })
+    expect(chart.exists()).toBe(true)
+    expect(chart.props('cycles')).toEqual(cycles)
+    w.unmount()
+  })
+
+  it('подушка не измеряется — графика нет', async () => {
+    const w = await mountWith([{ start: '2026-10-20T08:00:00Z', end: '2026-10-20T08:00:30Z', isSuccessful: true, cushion: null }])
+
+    expect(w.findComponent({ name: 'CushionChart' }).exists()).toBe(false)
     w.unmount()
   })
 })

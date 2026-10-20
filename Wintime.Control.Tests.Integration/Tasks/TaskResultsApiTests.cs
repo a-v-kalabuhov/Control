@@ -43,12 +43,12 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     private static ImmCycle Cycle(Guid immId, Guid? taskId, DateTime start, int durationS,
-        int? injectionMs, int? pauseMs, bool successful = true, bool closed = true) => new()
+        int? injectionMs, int? pauseMs, bool successful = true, bool closed = true, decimal? cushion = null) => new()
     {
         ImmId = immId, TaskId = taskId, StartTime = start,
         EndTime = closed ? start.AddSeconds(durationS) : null,
         DurationSeconds = closed ? durationS : 0, IsSuccessful = successful, Cavities = 2,
-        InjectionDurationMs = injectionMs, PauseDurationMs = pauseMs
+        InjectionDurationMs = injectionMs, PauseDurationMs = pauseMs, Cushion = cushion
     };
 
     private static Event Downtime(Guid immId, DateTime start, DateTime? end) => new()
@@ -155,14 +155,15 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
                 Downtime(immId, M(-20), M(5)),
                 Downtime(immId, M(35),  M(50)),
                 Downtime(immId, M(70),  M(80)));
-            // Закрытые успешные циклы задания: длит. 10/12/14 → 12; пауза 20/null/30 с → 25; литьё 8/9/10 → 9.
+            // Закрытые успешные циклы задания: длит. 10/12/14 → 12; пауза 20/null/30 с → 25; литьё 8/9/10 → 9;
+            // подушка 400/null/420 → ср. 410, мин 400, макс 420.
             db.ImmCycles.AddRange(
-                Cycle(immId, task.Id, M(51), 10, 8000,  20000),
+                Cycle(immId, task.Id, M(51), 10, 8000,  20000, cushion: 400m),
                 Cycle(immId, task.Id, M(52), 12, 9000,  null),
-                Cycle(immId, task.Id, M(53), 14, 10000, 30000),
-                Cycle(immId, task.Id, M(54), 99, 99000, 99000, closed: false),     // открытый
-                Cycle(immId, task.Id, M(55), 99, 99000, 99000, successful: false), // неуспешный
-                Cycle(immId, other.Id, M(-150), 99, 99000, 99000));                // чужое задание
+                Cycle(immId, task.Id, M(53), 14, 10000, 30000, cushion: 420m),
+                Cycle(immId, task.Id, M(54), 99, 99000, 99000, closed: false, cushion: 999m),     // открытый
+                Cycle(immId, task.Id, M(55), 99, 99000, 99000, successful: false, cushion: 999m), // неуспешный
+                Cycle(immId, other.Id, M(-150), 99, 99000, 99000, cushion: 999m));                // чужое задание
             await db.SaveChangesAsync();
             taskId = task.Id;
         }
@@ -187,6 +188,9 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
         result.Cycles.AvgFullCycleSeconds.Should().BeApproximately(12.0 + 25.0, 1e-6);
         result.Cycles.PlannedInjectionSeconds.Should().Be(55);
         result.Cycles.PlannedFullCycleSeconds.Should().Be(60);
+        result.Cycles.AvgCushion.Should().Be(410m);
+        result.Cycles.MinCushion.Should().Be(400m);
+        result.Cycles.MaxCushion.Should().Be(420m);
 
         // 0–5 простой (событие) · 5–10 работа · 10–30 нет связи · 30–35 работа (до порога) ·
         // 35–50 простой · 50–60 работа → по 20 мин каждого.
@@ -213,8 +217,8 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
             db.ShiftTasks.Add(task);
             await db.SaveChangesAsync();
             db.ImmCycles.AddRange(
-                Cycle(immId, task.Id, M(1), 10, 8000, 20000),
-                Cycle(immId, task.Id, M(2), 12, 9000, 20000));
+                Cycle(immId, task.Id, M(1), 10, 8000, 20000, cushion: 400m),
+                Cycle(immId, task.Id, M(2), 12, 9000, 20000, cushion: 410m));
             await db.SaveChangesAsync();
             taskId = task.Id;
         }
@@ -227,6 +231,9 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
         result.Cycles.AvgFullCycleSeconds.Should().BeNull();
         result.Cycles.PlannedFullCycleSeconds.Should().Be(60);
         result.Cycles.PlannedInjectionSeconds.Should().BeNull();
+        result.Cycles.AvgCushion.Should().BeNull();
+        result.Cycles.MinCushion.Should().BeNull();
+        result.Cycles.MaxCushion.Should().BeNull();
     }
 
     [Fact]
@@ -258,6 +265,8 @@ public class TaskResultsApiTests : IClassFixture<IntegrationTestFactory>
         result.Cycles!.Count.Should().Be(3);
         result.Cycles.AvgInjectionSeconds.Should().BeNull();
         result.Cycles.AvgFullCycleSeconds.Should().BeApproximately(10.0, 1e-6); // пауз нет → только длительность
+        result.Cycles.AvgCushion.Should().BeNull(); // подушка не измерялась
+        result.Cycles.MaxCushion.Should().BeNull();
     }
 
     [Fact]

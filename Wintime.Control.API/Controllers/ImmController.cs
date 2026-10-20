@@ -482,7 +482,7 @@ public class ImmController : ControllerBase
         var cycles = await _context.ImmCycles
             .Where(c => c.ImmId == id && c.StartTime < effectiveTo && (c.EndTime == null || c.EndTime > fromUtc))
             .OrderBy(c => c.StartTime)
-            .Select(c => new TelemetryCycleDto { Start = c.StartTime, End = c.EndTime, IsSuccessful = c.IsSuccessful })
+            .Select(c => new TelemetryCycleDto { Start = c.StartTime, End = c.EndTime, IsSuccessful = c.IsSuccessful, Cushion = c.Cushion })
             .ToListAsync();
 
         var inputs = (await _effectiveStatusHistory.GatherAsync(new[] { id }, fromUtc, toUtc, effectiveTo, HttpContext.RequestAborted))[id];

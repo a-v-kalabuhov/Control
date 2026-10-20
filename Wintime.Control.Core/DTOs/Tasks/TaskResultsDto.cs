@@ -40,6 +40,10 @@ public class TaskCycleResultsDto
     /// <summary>AVG(DurationSeconds) + AVG(PauseDurationMs)/1000 (ADR-0017); null — циклов меньше 3.</summary>
     public double? AvgFullCycleSeconds { get; set; }
     public int? PlannedFullCycleSeconds { get; set; }
+    /// <summary>Подушка по закрытым циклам (сырые единицы коннектора); null — циклов меньше 3 или подушка не измерялась.</summary>
+    public decimal? AvgCushion { get; set; }
+    public decimal? MinCushion { get; set; }
+    public decimal? MaxCushion { get; set; }
 }
 
 public class TaskTimeResultsDto

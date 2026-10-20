@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatSeconds, sharePercent, deviationPercent, formatDeviation } from '../taskResults'
+import { formatSeconds, sharePercent, deviationPercent, formatDeviation, formatCushion } from '../taskResults'
 
 describe('taskResults formatters', () => {
   it('formatSeconds: одна цифра после точки, null → «—»', () => {
@@ -28,5 +28,14 @@ describe('taskResults formatters', () => {
     expect(formatDeviation(10)).toBe('+10 %')
     expect(formatDeviation(0)).toBe('0 %')
     expect(formatDeviation(null)).toBe('—')
+  })
+})
+
+describe('formatCushion', () => {
+  it('одна цифра после запятой, без единицы; null — «—»', () => {
+    expect(formatCushion(412.46)).toBe('412.5')
+    expect(formatCushion(0)).toBe('0.0')
+    expect(formatCushion(null)).toBe('—')
+    expect(formatCushion(undefined)).toBe('—')
   })
 })

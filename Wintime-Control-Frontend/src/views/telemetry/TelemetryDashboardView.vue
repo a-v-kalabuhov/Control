@@ -99,6 +99,17 @@
           <el-button size="small" text :disabled="idx === orderedSignals.length - 1" @click="move(idx, 1)">▼</el-button>
         </div>
       </div>
+      <!-- Подушка — из циклов, не датчик шаблона; показываем, если коннектор её измеряет -->
+      <div v-if="hasCushion" class="flex items-start gap-2">
+        <CushionChart
+          class="min-w-0 flex-1"
+          :cycles="cycles"
+          :segments="segments"
+          :window-start-ms="windowStartMs"
+          :window-end-ms="windowEndMs"
+        />
+        <div class="w-8 shrink-0" />
+      </div>
     </div>
     <el-empty v-else description="Выберите сигнал для отображения" />
   </div>
@@ -110,10 +121,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import SignalChart from '@/components/telemetry/SignalChart.vue'
+import CushionChart from '@/components/telemetry/CushionChart.vue'
 import { telemetryApi } from '@/api/telemetry'
 import { immApi } from '@/api/imm'
 import { shiftWindow } from '@/utils/telemetryWindow'
-import { mergeLivePoints, enforceMinOneSignal, signalLabel } from '@/utils/telemetryChart'
+import { mergeLivePoints, enforceMinOneSignal, signalLabel, buildCushionSeries } from '@/utils/telemetryChart'
 import { monitoringQueryWithImm, showBackToCard, isImmId } from '@/utils/monitoringNav'
 import { useAuthStore } from '@/stores/auth'
 import { jwtSubject } from '@/utils/jwt'
@@ -186,6 +198,8 @@ const orderedSignals = computed(() => {
   const byName = new Map(signalsData.value.map(s => [s.parameterName, s]))
   return order.value.map(n => byName.get(n)).filter(Boolean)
 })
+
+const hasCushion = computed(() => buildCushionSeries(cycles.value).length > 0)
 
 function toIsoUtc(ms) {
   return new Date(ms).toISOString()

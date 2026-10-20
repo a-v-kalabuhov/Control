@@ -62,7 +62,10 @@ public class TaskResultsService : ITaskResultsService
                 AvgDuration = g.Average(c => (double)c.DurationSeconds),
                 // null-паузы (наладка, простой, порог) и неизмеренное литьё AVG пропускает — ADR-0017
                 AvgPauseMs = g.Average(c => (double?)c.PauseDurationMs),
-                AvgInjectionMs = g.Average(c => (double?)c.InjectionDurationMs)
+                AvgInjectionMs = g.Average(c => (double?)c.InjectionDurationMs),
+                AvgCushion = g.Average(c => c.Cushion),
+                MinCushion = g.Min(c => c.Cushion),
+                MaxCushion = g.Max(c => c.Cushion)
             })
             .FirstOrDefaultAsync(ct);
 
@@ -74,7 +77,10 @@ public class TaskResultsService : ITaskResultsService
             AvgInjectionSeconds = enough && agg!.AvgInjectionMs is double inj ? inj / 1000 : null,
             AvgFullCycleSeconds = enough ? agg!.AvgDuration + (agg.AvgPauseMs ?? 0) / 1000 : null,
             PlannedInjectionSeconds = plannedInjection,
-            PlannedFullCycleSeconds = plannedFull
+            PlannedFullCycleSeconds = plannedFull,
+            AvgCushion = enough ? agg!.AvgCushion : null,
+            MinCushion = enough ? agg!.MinCushion : null,
+            MaxCushion = enough ? agg!.MaxCushion : null
         };
     }
 
