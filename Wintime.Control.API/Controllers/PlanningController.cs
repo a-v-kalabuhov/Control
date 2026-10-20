@@ -23,14 +23,25 @@ public class PlanningController : ControllerBase
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
     private readonly IReleaseForecastService _releaseForecast;
+    private readonly IPlanConflictService _conflicts;
 
     public PlanningController(ControlDbContext context, IFactoryClock factoryClock,
-                              IReleaseForecastService releaseForecast)
+                              IReleaseForecastService releaseForecast, IPlanConflictService conflicts)
     {
         _context = context;
         _factoryClock = factoryClock;
         _releaseForecast = releaseForecast;
+        _conflicts = conflicts;
     }
+
+    /// <summary>
+    /// Конфликты плана (PZP-07b): пары незавершённых заданий на одном ТПА или с одной ПФ, пересечение которых
+    /// дольше порога. Подсвечивают, ничего не блокируют.
+    /// </summary>
+    [HttpGet("conflicts")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Observer}")]
+    public async Task<ActionResult<PlanConflictsDto>> GetConflicts(CancellationToken ct) =>
+        Ok(await _conflicts.GetAllAsync(DateTime.UtcNow, ct));
 
     /// <summary>
     /// План-график цеха (PZP-07a): активные ТПА (по названию) и архивные с заданиями в окне; задания,
