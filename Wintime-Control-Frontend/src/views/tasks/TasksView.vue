@@ -100,6 +100,17 @@
         @row-click="openDetail"
         class="cursor-pointer"
       >
+        <el-table-column width="40" align="center">
+          <template #default="{ row }">
+            <el-icon
+              v-if="conflictKindOf(row)"
+              :color="CONFLICT_KIND_COLORS[conflictKindOf(row)]"
+              :title="CONFLICT_KIND_LABELS[conflictKindOf(row)]"
+              data-test="task-conflict-icon"
+            ><WarningFilled /></el-icon>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="immName" width="150">
           <template #header>
             <span class="col-header" @click="handleSort('immName')">
@@ -241,6 +252,7 @@
       @issue="issueTask"
       @complete="completeTask"
       @close="closeTask"
+      @open-task="openTaskById"
     />
 
     <IssueTaskDialog v-model="issueDialogVisible" :task="issuingTask" />
@@ -263,6 +275,10 @@ import IssueTaskDialog from './IssueTaskDialog.vue'
 import { formatPlannedStart } from '@/utils/plannedStart'
 import { productSecondary } from '@/utils/productLabel'
 import dayjs from 'dayjs'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
+import { worstKind, CONFLICT_KIND_COLORS, CONFLICT_KIND_LABELS } from '@/utils/planConflicts'
+import { tasksApi } from '@/api/tasks'
+import { apiErrorMessage } from '@/utils/apiError'
 
 const tasksStore = useTasksStore()
 const authStore = useAuthStore()
@@ -272,6 +288,18 @@ const formModalVisible = ref(false)
 const detailModalVisible = ref(false)
 const editingTask = ref(null)
 const selectedTask = ref(null)
+
+const planConflicts = usePlanConflictsStore()
+const conflictKindOf = (task) => worstKind(planConflicts.forTask(task.id))
+
+const openTaskById = async (id) => {
+  try {
+    const { data } = await tasksApi.getById(id)
+    selectedTask.value = data
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, 'Не удалось открыть задание'))
+  }
+}
 
 const canCreate = computed(() => authStore.isManager || authStore.isAdmin)
 
