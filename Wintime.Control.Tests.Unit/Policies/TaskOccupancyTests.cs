@@ -109,6 +109,7 @@ public class TaskOccupancyTests
         var plan = new TaskPlan(1800, long.MaxValue / 2, 0, null);
         var result = TaskOccupancy.Build(Start, plan, new OccupancyFacts(TaskStatus.Issued, null), null, At(20));
         result.Should().ContainSingle().Which.Should().Be(new OccupancySegment(OccupancyKind.Forecast, At(30), DateTime.MaxValue));
+        result[0].End.Kind.Should().Be(DateTimeKind.Utc);
     }
 
     [Fact]
@@ -118,5 +119,6 @@ public class TaskOccupancyTests
         var result = TaskOccupancy.Build(Start, plan, new OccupancyFacts(TaskStatus.Setup, At(5)), null, At(25));
         result.Should().HaveCount(2);
         result[1].Should().Be(new OccupancySegment(OccupancyKind.Forecast, At(25), DateTime.MaxValue));
+        result[1].End.Kind.Should().Be(DateTimeKind.Utc);
     }
 }

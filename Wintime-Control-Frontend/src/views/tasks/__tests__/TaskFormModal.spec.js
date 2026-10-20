@@ -204,6 +204,31 @@ describe('TaskFormModal — заказ', () => {
     warning.mockRestore()
   })
 
+  it('конфликты не обновились — обычное сообщение об успехе, без предупреждения', async () => {
+    const { planningApi } = await import('@/api/planning')
+    tasksApi.create.mockResolvedValueOnce({ data: { id: 'new-1' } })
+    planningApi.getConflicts.mockRejectedValueOnce(new Error('net'))
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const success = vi.spyOn(ElMessage, 'success')
+
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(warning).not.toHaveBeenCalled()
+    expect(success).toHaveBeenCalledWith(expect.stringContaining('Задание создано'))
+    warning.mockRestore()
+    success.mockRestore()
+  })
+
   it('без изделия форма не отправляется', async () => {
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()

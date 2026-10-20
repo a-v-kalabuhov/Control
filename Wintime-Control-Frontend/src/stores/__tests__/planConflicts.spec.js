@@ -24,7 +24,7 @@ describe('planConflicts store', () => {
 
   it('load — кладёт ответ; forTask — пары задания', async () => {
     const store = usePlanConflictsStore()
-    await store.load()
+    expect(await store.load()).toBe(true)
     expect(store.taskCount).toBe(2)
     expect(store.forTask('b')).toHaveLength(1)
     expect(store.forTask('z')).toEqual([])
@@ -34,7 +34,7 @@ describe('planConflicts store', () => {
     const store = usePlanConflictsStore()
     await store.load()
     planningApi.getConflicts.mockRejectedValueOnce(new Error('net'))
-    await store.load()
+    expect(await store.load()).toBe(false)
     expect(store.taskCount).toBe(2)
   })
 

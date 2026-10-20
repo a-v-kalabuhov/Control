@@ -158,7 +158,8 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
 
         var client = await ManagerClientAsync();
 
-        // PZP-07b: legacy-лазейки нет — без эталона полного цикла правка режима отклоняется.
+        // PZP-07b: эталон полного цикла обязателен и при правке — задание без него не обновить,
+        // даже если меняется только режим.
         var resp = await client.PutAsJsonAsync($"/api/tasks/{id}", new { workMode = "SemiAuto" });
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

@@ -26,8 +26,10 @@ export const usePlanConflictsStore = defineStore('planConflicts', {
       try {
         const { data } = await planningApi.getConflicts()
         this.data = data
+        return true
       } catch {
         // Ошибка — остаётся последнее известное состояние; опрос продолжается, без сообщения раз в минуту
+        return false
       }
     },
 

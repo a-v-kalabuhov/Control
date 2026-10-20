@@ -685,8 +685,9 @@ const planConflicts = usePlanConflictsStore()
 
 // PZP-07b: сохранение не блокируется; если у задания есть конфликты — предупредить и отправить на план-график
 const notifySaved = async (taskId, successText) => {
-  await planConflicts.load()
-  const count = taskId ? planConflicts.forTask(taskId).length : 0
+  const refreshed = await planConflicts.load()
+  // Не удалось обновить конфликты — не показываем возможно устаревшее предупреждение
+  const count = refreshed && taskId ? planConflicts.forTask(taskId).length : 0
   if (count > 0) ElMessage.warning(`Задание сохранено. Конфликтов: ${count} — см. план-график цеха`)
   else ElMessage.success(successText)
 }

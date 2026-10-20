@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import { createPinia, setActivePinia } from 'pinia'
 import SettingsView from '../SettingsView.vue'
 
 vi.mock('@/api/settings', () => ({
@@ -13,14 +14,22 @@ vi.mock('@/api/settings', () => ({
   }
 }))
 
+vi.mock('@/api/planning', () => ({
+  planningApi: { getConflicts: vi.fn(() => Promise.resolve({ data: { taskCount: 0, items: [] } })) }
+}))
+
 import { settingsApi } from '@/api/settings'
+import { planningApi } from '@/api/planning'
 
 function mountView() {
   return mount(SettingsView, { global: { plugins: [ElementPlus] } })
 }
 
 describe('SettingsView — умолчания планирования', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+  })
 
   it('загружает умолчания с сервера', async () => {
     const wrapper = mountView()
@@ -44,6 +53,17 @@ describe('SettingsView — умолчания планирования', () => {
       setupMinutes: 120, releaseBufferFixedMinutes: 30, releaseBufferPercent: 10,
       conflictThresholdMinutes: 25
     })
+  })
+
+  it('после сохранения обновляет конфликты — порог действует сразу', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(planningApi.getConflicts).not.toHaveBeenCalled()
+
+    await wrapper.find('[data-test="save"]').trigger('click')
+    await flushPromises()
+
+    expect(planningApi.getConflicts).toHaveBeenCalledTimes(1)
   })
 
   it('поясняет, что уже созданные задания не меняются', async () => {

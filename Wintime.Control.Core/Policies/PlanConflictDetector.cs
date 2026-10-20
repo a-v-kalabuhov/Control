@@ -73,7 +73,7 @@ public static class PlanConflictDetector
 
             var kind = PlanOnly(a) && PlanOnly(b) ? ConflictKind.Plan : ConflictKind.Deviation;
             result.Add(new PlanConflict(a.TaskId, b.TaskId, resource, kind, first.Value, last.Value,
-                                        (long)Math.Floor(total.TotalSeconds)));
+                                        (long)Math.Ceiling(total.TotalSeconds)));
         }
     }
 

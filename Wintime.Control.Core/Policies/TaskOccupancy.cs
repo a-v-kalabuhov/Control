@@ -71,5 +71,5 @@ public static class TaskOccupancy
     // Защита от выхода за DateTime.MaxValue на абсурдных планах.
     // DateTime.MaxValue - at не переполняется: at не превышает MaxValue.
     private static DateTime Add(DateTime at, TimeSpan span) =>
-        span >= DateTime.MaxValue - at ? DateTime.MaxValue : at + span;
+        span >= DateTime.MaxValue - at ? DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc) : at + span;
 }

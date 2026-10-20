@@ -72,6 +72,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { settingsApi } from '@/api/settings'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
 import { apiErrorMessage } from '@/utils/apiError'
 
 const loading = ref(false)
@@ -108,6 +109,7 @@ const save = async () => {
       releaseBufferPercent: defaults.releaseBufferPercent,
       conflictThresholdMinutes: defaults.conflictThresholdMinutes
     })
+    usePlanConflictsStore().load() // порог действует сразу на все задания
     ElMessage.success('Настройки сохранены')
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, 'Ошибка сохранения настроек'))

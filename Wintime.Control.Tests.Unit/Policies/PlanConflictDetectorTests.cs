@@ -27,6 +27,16 @@ public class PlanConflictDetectorTests
     }
 
     [Fact]
+    public void Overlap_just_over_threshold_reports_seconds_above_threshold()
+    {
+        // 20 мин + 0,5 с: округление вниз показало бы ровно 1200 с, т.е. «не больше порога»
+        var a = Task(ImmA, MoldX, S(OccupancyKind.Plan, 0, 100));
+        var b = Task(ImmA, MoldY, new OccupancySegment(OccupancyKind.Plan, T0.AddMinutes(80).AddMilliseconds(-500), T0.AddMinutes(160)));
+
+        PlanConflictDetector.Detect(new[] { a, b }, Threshold).Single().OverlapSeconds.Should().Be(20 * 60 + 1);
+    }
+
+    [Fact]
     public void Overlap_equal_to_threshold_is_not_a_conflict()
     {
         var a = Task(ImmA, MoldX, S(OccupancyKind.Plan, 0, 100));
