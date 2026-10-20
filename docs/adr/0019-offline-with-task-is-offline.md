@@ -1,6 +1,6 @@
 # ADR-0019: «Нет связи» при задании в работе — это «Нет связи», а не «Работа»
 
-- **Статус:** Accepted
+- **Статус:** Superseded by [ADR-0021](0021-offline-dominates.md)
 - **Дата:** 2026-10-15
 - **Уточняет:** матрицу эффективного состояния из спеки
   `docs/superpowers/specs/2026-06-24-effective-status-dashboard-design.md` (строка 4); ADR-0006 не меняется.

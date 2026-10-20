@@ -46,7 +46,8 @@
 
 **Автоматические простои** детектирует фоновый `DowntimeDetectionWorker` (polling, по образцу
 `ImmOfflineWorker`): при активном задании `InProgress` любой не-`auto` режим (включая `Offline`)
-дольше глобального порога `DowntimeSettings.IdleThresholdSeconds` создаёт `Event(Downtime, IsAuto=true)`;
+дольше глобального порога `DowntimeSettings.IdleThresholdSeconds` создаёт `Event(Downtime, IsAuto=true)`
+*(Уточнено [ADR-0021](0021-offline-dominates.md): по `Offline` авто-простой не открывается.)*;
 возврат в `auto` или выход задания из `InProgress` закрывает его. `StartTime` бэкдейтится на
 реальное начало не-`auto` (из кеша статусов), поэтому период опроса влияет только на задержку
 обнаружения, а не на точность `DurationSeconds`. Воркер управляет только записями `IsAuto=true`;
