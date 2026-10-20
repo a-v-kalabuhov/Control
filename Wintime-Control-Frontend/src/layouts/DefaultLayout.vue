@@ -41,10 +41,11 @@
             <template #title>
               <el-icon><Calendar /></el-icon>
               <span>Планирование</span>
+              <PlanConflictsBadge />
             </template>
             <el-menu-item index="/orders">Заказы</el-menu-item>
             <el-menu-item index="/tasks">Задания</el-menu-item>
-            <el-menu-item index="/planning/gantt">План-график цеха</el-menu-item>
+            <el-menu-item index="/planning/gantt">План-график цеха <PlanConflictsBadge /></el-menu-item>
           </el-sub-menu>
 
           <!-- Журналы: простои и работа без задания (для Manager, Admin) -->
@@ -171,6 +172,8 @@ import { usePermissions } from '@/composables/usePermissions'
 import dayjs from 'dayjs'
 import { appVersionFor } from '@/utils/buildInfo'
 import { useAppInfoStore } from '@/stores/appInfo'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
+import PlanConflictsBadge from '@/components/planning/PlanConflictsBadge.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -179,6 +182,9 @@ const { canAccess } = usePermissions()
 const appInfo = useAppInfoStore()
 const appVersion = computed(() => appVersionFor(appInfo.demoMode))
 
+const planConflicts = usePlanConflictsStore()
+const watchesConflicts = canAccess(['Admin', 'Manager', 'Observer'])
+
 const sidebarCollapsed = ref(false)
 const currentTime = ref(dayjs().format('DD.MM.YYYY HH:mm'))
 
@@ -186,6 +192,7 @@ const currentTime = ref(dayjs().format('DD.MM.YYYY HH:mm'))
 let timer = null
 onMounted(() => {
   appInfo.load()
+  if (watchesConflicts) planConflicts.start()
   timer = setInterval(() => {
     currentTime.value = dayjs().format('DD.MM.YYYY HH:mm')
   }, 1000)
@@ -193,6 +200,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  planConflicts.stop()
 })
 
 const activeMenu = computed(() => route.path)
