@@ -84,12 +84,20 @@ public class ImmOfflineWorker : BackgroundService
             if (_statusCache.GetStatus(immId) == ImmStatus.Offline)
                 continue;
 
-            using var scope = _scopeFactory.CreateScope();
-            if (IsOnline(immId, nowUtc, scope))
-                continue;
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                if (IsOnline(immId, nowUtc, scope))
+                    continue;
 
-            var svc = scope.ServiceProvider.GetRequiredService<IImmStatusService>();
-            await svc.UpdateStatusAsync(immId, ImmStatus.Offline, nowUtc);
+                var svc = scope.ServiceProvider.GetRequiredService<IImmStatusService>();
+                await svc.UpdateStatusAsync(immId, ImmStatus.Offline, nowUtc);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Сбой по одному ТПА не должен задерживать Offline для остальных.
+                _logger.LogError(ex, "ImmOfflineWorker: обработка ТПА {ImmId} не удалась", immId);
+            }
         }
     }
 

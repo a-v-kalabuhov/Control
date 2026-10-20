@@ -111,6 +111,21 @@ public class ImmOfflineWorkerTests
     }
 
     [Fact]
+    public async Task RunOnce_InImmCacheWithoutStatus_LastMessageOlderThanTimeout_SetsOffline()
+    {
+        // Прежний единственный путь: ТПА известен только IImmCache (статус ещё не записан).
+        var h = Build(ImmStatus.Auto);
+        var otherImmId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        h.ImmCache.UpdateEntry(otherImmId, now.AddSeconds(-(TemplateTimeoutSeconds + 1)), TemplateTimeoutSeconds,
+            new Dictionary<string, string>());
+
+        await h.Worker.RunOnceAsync(now, CancellationToken.None);
+
+        h.StatusCache.GetStatus(otherImmId).Should().Be(ImmStatus.Offline);
+    }
+
+    [Fact]
     public async Task RunOnce_AlreadyOffline_WritesNothing()
     {
         var h = Build(ImmStatus.Offline);
