@@ -3,6 +3,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Infrastructure.Services;
 
 namespace Wintime.Control.Infrastructure.Workers;
 
@@ -11,17 +13,20 @@ namespace Wintime.Control.Infrastructure.Workers;
 /// оборудование в статус <c>Offline</c>, если оно перестало выходить на связь.
 /// </summary>
 /// <remarks>
-/// Каждые 5 секунд опрашивает <see cref="IImmCache"/>. Если ТПА помечен как
-/// недоступный (<c>IsOnline == false</c>), но в <see cref="IImmStatusCache"/>
-/// ещё не зафиксирован статус <c>Offline</c>, сервис записывает переход через
-/// <see cref="IImmStatusService.UpdateStatusAsync"/>.
+/// Каждые 5 секунд проверяет все ТПА, известные кешу статусов или <see cref="IImmCache"/>,
+/// со статусом не <c>Offline</c>. Молчание считается от последнего MQTT-сообщения, а если
+/// после старта API сообщений не было — от старта воркера: статус, восстановленный из БД
+/// <c>ImmStatusStartupService</c>, при молчащем коннекторе иначе застывал бы навсегда.
+/// Переход записывается через <see cref="IImmStatusService.UpdateStatusAsync"/>.
 /// </remarks>
 public class ImmOfflineWorker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IImmCache _immCache;
     private readonly IImmStatusCache _statusCache;
+    private readonly ITemplateCache _templateCache;
     private readonly ILogger<ImmOfflineWorker> _logger;
+    private readonly DateTime _watchStartedAtUtc = DateTime.UtcNow;
 
     /// <summary>
     /// Инициализирует новый экземпляр <see cref="ImmOfflineWorker"/>.
@@ -29,16 +34,19 @@ public class ImmOfflineWorker : BackgroundService
     /// <param name="scopeFactory">Фабрика DI-скоупов для получения скоупированных сервисов.</param>
     /// <param name="immCache">Кеш состояния подключения ТПА (singleton).</param>
     /// <param name="statusCache">Кеш актуальных статусов ТПА (singleton).</param>
+    /// <param name="templateCache">Кеш шаблонов — таймаут для ТПА без сообщений после старта.</param>
     /// <param name="logger">Логгер сервиса.</param>
     public ImmOfflineWorker(
         IServiceScopeFactory scopeFactory,
         IImmCache immCache,
         IImmStatusCache statusCache,
+        ITemplateCache templateCache,
         ILogger<ImmOfflineWorker> logger)
     {
         _scopeFactory = scopeFactory;
         _immCache = immCache;
         _statusCache = statusCache;
+        _templateCache = templateCache;
         _logger = logger;
     }
 
@@ -55,26 +63,53 @@ public class ImmOfflineWorker : BackgroundService
 
             try
             {
-                var entries = _immCache.GetAll();
-                foreach (var entry in entries)
-                {
-                    var isOnline = entry.IsOnline;
-                    if (!isOnline)
-                    {
-                        var status = _statusCache.GetStatus(entry.ImmId);
-                        if (status != ImmStatus.Offline)
-                        {
-                            using var scope = _scopeFactory.CreateScope();
-                            var svc = scope.ServiceProvider.GetRequiredService<IImmStatusService>();
-                            await svc.UpdateStatusAsync(entry.ImmId, ImmStatus.Offline, DateTime.UtcNow);
-                        }
-                    }
-                }
+                await RunOnceAsync(DateTime.UtcNow, stoppingToken);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "ImmOfflineWorker iteration failed");
             }
         }
+    }
+
+    /// <summary>Один проход проверки на момент <paramref name="nowUtc"/>. Выделен для тестируемости.</summary>
+    internal async Task RunOnceAsync(DateTime nowUtc, CancellationToken ct)
+    {
+        var immIds = _statusCache.GetAll().Select(s => s.ImmId)
+            .Union(_immCache.GetAll().Select(e => e.ImmId));
+
+        foreach (var immId in immIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_statusCache.GetStatus(immId) == ImmStatus.Offline)
+                continue;
+
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                if (IsOnline(immId, nowUtc, scope))
+                    continue;
+
+                var svc = scope.ServiceProvider.GetRequiredService<IImmStatusService>();
+                await svc.UpdateStatusAsync(immId, ImmStatus.Offline, nowUtc);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Сбой по одному ТПА не должен задерживать Offline для остальных.
+                _logger.LogError(ex, "ImmOfflineWorker: обработка ТПА {ImmId} не удалась", immId);
+            }
+        }
+    }
+
+    private bool IsOnline(Guid immId, DateTime nowUtc, IServiceScope scope)
+    {
+        var entry = _immCache.GetEntry(immId);
+        if (entry is not null && entry.LastMessageAt != DateTime.MinValue)
+            return entry.IsOnlineAt(nowUtc);
+
+        // Сообщений после старта не было — отсчёт от старта воркера, таймаут из шаблона.
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var timeoutSeconds = DeviceTimeout.ForImm(db, _templateCache, immId);
+        return (nowUtc - _watchStartedAtUtc).TotalSeconds < timeoutSeconds;
     }
 }

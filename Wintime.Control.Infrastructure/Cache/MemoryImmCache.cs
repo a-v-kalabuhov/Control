@@ -26,7 +26,12 @@ public sealed class MemoryImmCache : IImmCache
         => _cache.AddOrUpdate(
             immId,
             _ => new ImmCacheEntry(immId, messageAt, timeoutSeconds, sensorValues),
-            (_, existing) => existing with { LastMessageAt = messageAt, SensorValues = sensorValues });
+            (_, existing) => existing with
+            {
+                LastMessageAt = messageAt,
+                TimeoutSeconds = timeoutSeconds, // таймаут шаблона мог измениться — без перезапуска API
+                SensorValues = sensorValues
+            });
 
     public void UpdateLastCycle(Guid immId, CompletedCycleSnapshot lastCycle)
     {
