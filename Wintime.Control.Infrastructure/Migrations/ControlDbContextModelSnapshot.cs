@@ -508,6 +508,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("integer");
 
+                    b.Property<int>("ConflictThresholdMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<int>("ReleaseBufferFixedMinutes")
                         .HasColumnType("integer");
 
@@ -529,6 +532,8 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.ToTable("PlanningDefaults", null, t =>
                         {
+                            t.HasCheckConstraint("CK_PlanningDefaults_ConflictThresholdMinutes", "\"ConflictThresholdMinutes\" BETWEEN 0 AND 1440");
+
                             t.HasCheckConstraint("CK_PlanningDefaults_ReleaseBufferFixedMinutes", "\"ReleaseBufferFixedMinutes\" BETWEEN 0 AND 1440");
 
                             t.HasCheckConstraint("CK_PlanningDefaults_ReleaseBufferPercent", "\"ReleaseBufferPercent\" BETWEEN 0 AND 100");
@@ -542,6 +547,7 @@ namespace Wintime.Control.Infrastructure.Migrations
                         new
                         {
                             Id = 1,
+                            ConflictThresholdMinutes = 20,
                             ReleaseBufferFixedMinutes = 0,
                             ReleaseBufferPercent = 0,
                             SetupMinutes = 0

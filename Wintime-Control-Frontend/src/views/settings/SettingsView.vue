@@ -41,6 +41,26 @@
       </el-form>
     </el-card>
 
+    <el-card class="mb-6">
+      <template #header>
+        <span class="font-semibold">Конфликты плана</span>
+      </template>
+      <p class="text-sm text-gray-600 mb-4">
+        Пересечение двух заданий по ТПА или пресс-форме не дольше порога конфликтом не считается.
+        Действует сразу для всех заданий.
+      </p>
+      <el-form :model="defaults" label-width="340px" label-position="left">
+        <el-form-item label="Порог конфликта, мин">
+          <el-input-number
+            v-model="defaults.conflictThresholdMinutes"
+            data-test="conflict-threshold" :value-on-clear="0"
+            :min="0" :max="1440" :step="5"
+            controls-position="right"
+          />
+        </el-form-item>
+      </el-form>
+    </el-card>
+
     <div class="flex justify-end gap-4">
       <el-button @click="load">Отмена</el-button>
       <el-button type="primary" data-test="save" :loading="saving" @click="save">Сохранить</el-button>
@@ -60,7 +80,8 @@ const saving = ref(false)
 const defaults = reactive({
   setupMinutes: 0,
   releaseBufferFixedMinutes: 0,
-  releaseBufferPercent: 0
+  releaseBufferPercent: 0,
+  conflictThresholdMinutes: 20
 })
 
 const load = async () => {
@@ -70,6 +91,7 @@ const load = async () => {
     defaults.setupMinutes = data.setupMinutes
     defaults.releaseBufferFixedMinutes = data.releaseBufferFixedMinutes
     defaults.releaseBufferPercent = data.releaseBufferPercent
+    defaults.conflictThresholdMinutes = data.conflictThresholdMinutes
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, 'Ошибка загрузки настроек'))
   } finally {
@@ -83,7 +105,8 @@ const save = async () => {
     await settingsApi.updatePlanningDefaults({
       setupMinutes: defaults.setupMinutes,
       releaseBufferFixedMinutes: defaults.releaseBufferFixedMinutes,
-      releaseBufferPercent: defaults.releaseBufferPercent
+      releaseBufferPercent: defaults.releaseBufferPercent,
+      conflictThresholdMinutes: defaults.conflictThresholdMinutes
     })
     ElMessage.success('Настройки сохранены')
   } catch (error) {

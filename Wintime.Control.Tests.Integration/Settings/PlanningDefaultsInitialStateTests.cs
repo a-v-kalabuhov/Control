@@ -26,6 +26,7 @@ public class PlanningDefaultsInitialStateTests : IClassFixture<IntegrationTestFa
         d.GetProperty("setupMinutes").GetInt32().Should().Be(0);
         d.GetProperty("releaseBufferFixedMinutes").GetInt32().Should().Be(0);
         d.GetProperty("releaseBufferPercent").GetInt32().Should().Be(0);
+        d.GetProperty("conflictThresholdMinutes").GetInt32().Should().Be(20);
         d.GetProperty("updatedAt").ValueKind.Should().Be(JsonValueKind.Null);
     }
 }

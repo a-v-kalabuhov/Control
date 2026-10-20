@@ -7,7 +7,7 @@ import SettingsView from '../SettingsView.vue'
 vi.mock('@/api/settings', () => ({
   settingsApi: {
     getPlanningDefaults: vi.fn(() => Promise.resolve({ data: {
-      setupMinutes: 90, releaseBufferFixedMinutes: 30, releaseBufferPercent: 10, updatedAt: null
+      setupMinutes: 90, releaseBufferFixedMinutes: 30, releaseBufferPercent: 10, conflictThresholdMinutes: 25, updatedAt: null
     } })),
     updatePlanningDefaults: vi.fn(() => Promise.resolve({ data: {} }))
   }
@@ -32,7 +32,7 @@ describe('SettingsView — умолчания планирования', () => {
     expect(wrapper.find('[data-test="buffer-percent"] input').element.value).toBe('10')
   })
 
-  it('«Сохранить» отправляет только три значения', async () => {
+  it('«Сохранить» отправляет четыре значения', async () => {
     const wrapper = mountView()
     await flushPromises()
     wrapper.vm.defaults.setupMinutes = 120
@@ -41,7 +41,8 @@ describe('SettingsView — умолчания планирования', () => {
     await flushPromises()
 
     expect(settingsApi.updatePlanningDefaults).toHaveBeenCalledWith({
-      setupMinutes: 120, releaseBufferFixedMinutes: 30, releaseBufferPercent: 10
+      setupMinutes: 120, releaseBufferFixedMinutes: 30, releaseBufferPercent: 10,
+      conflictThresholdMinutes: 25
     })
   })
 
@@ -50,5 +51,18 @@ describe('SettingsView — умолчания планирования', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Уже созданные задания не меняются')
+  })
+
+  it('показывает и сохраняет порог конфликта', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-test="conflict-threshold"] input').element.value).toBe('25')
+
+    wrapper.vm.defaults.conflictThresholdMinutes = 40
+    await wrapper.find('[data-test="save"]').trigger('click')
+    await flushPromises()
+
+    expect(settingsApi.updatePlanningDefaults).toHaveBeenCalledWith(
+      expect.objectContaining({ conflictThresholdMinutes: 40 }))
   })
 })
