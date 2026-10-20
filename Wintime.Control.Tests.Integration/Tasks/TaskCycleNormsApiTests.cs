@@ -136,7 +136,7 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task UpdateTask_LegacyTaskWithoutFullCycle_SavesWithoutRequiringCycle()
+    public async Task UpdateTask_TaskWithoutFullCycle_RequiresCycle()
     {
         Guid id;
         using (var scope = _factory.Services.CreateScope())
@@ -158,17 +158,8 @@ public class TaskCycleNormsApiTests : IClassFixture<IntegrationTestFactory>
 
         var client = await ManagerClientAsync();
 
-        // workMode обязательно передаём, чтобы cycleFieldsTouched == true в контроллере
-        // и SetCycleNorms реально вызвался. plannedFullCycleSeconds намеренно не передаём —
-        // fallback возьмёт текущее (null) значение legacy-задания, и требуется, чтобы
-        // requireFullCycle: false пропустил это без ошибки. plannedInjectionCycleSeconds
-        // не передаём — доменный метод законно запретит эталон цикла литья без эталона
-        // полного цикла, что смазало бы смысл теста.
-        var resp = await client.PutAsJsonAsync($"/api/tasks/{id}", new { workMode = "SemiAuto", note = "легаси-задание" });
-        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var after = await client.GetFromJsonAsync<JsonElement>($"/api/tasks/{id}", JsonOptions);
-        after.GetProperty("plannedFullCycleSeconds").ValueKind.Should().Be(JsonValueKind.Null);
-        after.GetProperty("workMode").GetString().Should().Be("SemiAuto");
+        // PZP-07b: legacy-лазейки нет — без эталона полного цикла правка режима отклоняется.
+        var resp = await client.PutAsJsonAsync($"/api/tasks/{id}", new { workMode = "SemiAuto" });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }

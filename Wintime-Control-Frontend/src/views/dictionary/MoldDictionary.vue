@@ -220,6 +220,7 @@ import { productTypesApi } from '@/api/productTypes'
 import { immApi } from '@/api/imm'
 import { immOptionLabel, formatCompatibleImms } from '@/utils/moldCompatibility'
 import QrCodeDialog from '@/components/common/QrCodeDialog.vue'
+import { apiErrorMessage } from '@/utils/apiError'
 import dayjs from 'dayjs'
 
 const loading = ref(false)
@@ -424,7 +425,7 @@ const deleteMold = async (mold) => {
     await loadMolds()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('Ошибка удаления пресс-формы')
+      ElMessage.error(apiErrorMessage(error, 'Ошибка удаления пресс-формы'))
     }
   }
 }

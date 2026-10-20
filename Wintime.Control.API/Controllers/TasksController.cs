@@ -368,14 +368,13 @@ public class TasksController : ControllerBase
                                || request.PlannedInjectionCycleSeconds.HasValue;
         if (cycleFieldsTouched)
         {
-            // Не переданные поля сохраняют текущее значение задания.
-            // requireFullCycle: false — legacy-задание без эталона можно сохранить,
-            // не вынуждая менеджера выдумывать цифру задним числом.
+            // Не переданные поля сохраняют текущее значение задания. Эталон полного цикла обязателен
+            // (PZP-07b: без него не посчитать план, отрезки и конфликты).
             task.SetCycleNorms(
                 request.WorkMode ?? task.WorkMode,
                 request.PlannedFullCycleSeconds ?? task.PlannedFullCycleSeconds,
                 request.PlannedInjectionCycleSeconds ?? task.PlannedInjectionCycleSeconds,
-                requireFullCycle: false);
+                requireFullCycle: true);
         }
         if (request.PlannedSetupMinutes.HasValue)
             task.SetSetupNorm(request.PlannedSetupMinutes.Value);

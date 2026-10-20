@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.DTOs.Mold;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
 
@@ -87,6 +88,9 @@ public class MoldsController : ControllerBase
         if (await _context.Molds.AnyAsync(m => m.FormId == formId))
             return Conflict($"Артикул '{formId}' уже используется.");
 
+        if (request.Cavities < 1)
+            return BadRequest("Количество гнёзд должно быть не меньше 1.");
+
         if (request.ProductTypeId == null)
             return BadRequest("Не указан тип изделия.");
         var productType = await _context.ProductTypes.FindAsync(request.ProductTypeId.Value);
@@ -132,6 +136,23 @@ public class MoldsController : ControllerBase
         var mold = await _context.Molds.Include(m => m.CompatibleImms).FirstOrDefaultAsync(m => m.Id == id);
         if (mold == null)
             return NotFound();
+
+        if (request.Cavities is < 1)
+            return BadRequest("Количество гнёзд должно быть не меньше 1.");
+
+        // PZP-07b: в архив — только ПФ без незавершённых заданий.
+        if (request.IsActive == false && mold.IsActive)
+        {
+            var open = await _context.ShiftTasks
+                .Where(t => t.MoldId == id && OpenTaskStatuses.All.Contains(t.Status))
+                .OrderBy(t => t.PlannedDate)
+                .Select(t => new { t.PlannedDate, ImmName = t.Imm.Name })
+                .Take(5)
+                .ToListAsync();
+            if (open.Count > 0)
+                return BadRequest("Нельзя перевести пресс-форму в архив: есть незавершённые задания — "
+                    + string.Join(", ", open.Select(o => $"ТПА «{o.ImmName}» на {o.PlannedDate:dd.MM.yyyy}")) + ".");
+        }
 
         if (request.FormId != null)
         {

@@ -309,6 +309,20 @@ public class ImmController : ControllerBase
             imm.ConnectorAlias = request.ConnectorAlias;
         if (request.CommissioningDate.HasValue)
             imm.CommissioningDate = DateTime.SpecifyKind(request.CommissioningDate.Value.Date, DateTimeKind.Utc);
+        // PZP-07b: в архив — только ТПА без незавершённых заданий.
+        if (request.IsActive == false && imm.IsActive)
+        {
+            var open = await _context.ShiftTasks
+                .Where(t => t.ImmId == id && OpenTaskStatuses.All.Contains(t.Status))
+                .OrderBy(t => t.PlannedDate)
+                .Select(t => new { t.PlannedDate, MoldName = t.Mold.Name })
+                .Take(5)
+                .ToListAsync();
+            if (open.Count > 0)
+                return BadRequest("Нельзя перевести ТПА в архив: есть незавершённые задания — "
+                    + string.Join(", ", open.Select(o => $"ПФ «{o.MoldName}» на {o.PlannedDate:dd.MM.yyyy}")) + ".");
+        }
+
         if (request.IsActive.HasValue)
             imm.IsActive = request.IsActive.Value;
 
