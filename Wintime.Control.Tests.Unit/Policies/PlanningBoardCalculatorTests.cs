@@ -49,15 +49,42 @@ public class PlanningBoardCalculatorTests
     }
 
     [Fact]
-    public void Setup_past_planned_setup_end_lags_without_forecast_or_remaining()
+    public void Setup_past_norm_lags_and_forecasts_release_from_now_plus_delay()
     {
+        // наладка с 10:10, сейчас 10:45 (35 > 30) → прогноз 10:45 + 10 + 60 = 11:55
         var r = PlanningBoardCalculator.Build(Start, Plan, Facts(TaskStatus.Setup, setupStarted: At(10)),
             new ReleaseForecastResult(100m, At(200)), At(45));
 
         r.SetupLagSeconds.Should().Be(15 * 60);
-        r.Fact.Should().Be(new BoardFact(At(10), null, null, null));
+        r.Fact.Should().Be(new BoardFact(At(10), null, null, At(115)));
         r.BufferRemainingSeconds.Should().BeNull();
         r.OverdueNotStartedSeconds.Should().BeNull();
+    }
+
+    [Fact]
+    public void Setup_within_norm_forecasts_release_from_actual_setup_start()
+    {
+        var r = PlanningBoardCalculator.Build(Start, Plan, Facts(TaskStatus.Setup, setupStarted: At(0)), null, At(20));
+
+        r.Fact.Should().Be(new BoardFact(At(0), null, null, At(90)));
+    }
+
+    [Fact]
+    public void Issued_overdue_forecast_starts_after_expected_delay()
+    {
+        var r = PlanningBoardCalculator.Build(Start, Plan, Facts(TaskStatus.Issued), null, At(20));
+
+        r.Fact.Should().Be(new BoardFact(null, null, null, At(120), At(30)));
+        r.OverdueNotStartedSeconds.Should().Be(20 * 60);
+    }
+
+    [Fact]
+    public void Issued_before_start_and_planned_have_no_forecast()
+    {
+        PlanningBoardCalculator.Build(Start, Plan, Facts(TaskStatus.Issued), null, At(-10)).Fact
+            .Should().Be(new BoardFact(null, null, null, null));
+        PlanningBoardCalculator.Build(Start, Plan, Facts(TaskStatus.Planned), null, At(20)).Fact
+            .Should().Be(new BoardFact(null, null, null, null));
     }
 
     [Fact]

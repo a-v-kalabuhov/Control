@@ -61,6 +61,7 @@ public class PlanningController : ControllerBase
             return BadRequest($"Период не может быть длиннее {MaxBoardDays} суток");
 
         var now = DateTime.UtcNow;
+        var conflicts = await _conflicts.GetAllAsync(now, ct);
         var schedule = await _factoryClock.GetScheduleAsync(ct);
 
         // План не хранится: в EF грубый отбор по плановой дате завода с запасом,
@@ -103,7 +104,8 @@ public class PlanningController : ControllerBase
                 Fact = timing.Fact,
                 BufferRemainingSeconds = timing.BufferRemainingSeconds,
                 OverdueNotStartedSeconds = timing.OverdueNotStartedSeconds,
-                SetupLagSeconds = timing.SetupLagSeconds
+                SetupLagSeconds = timing.SetupLagSeconds,
+                Conflicts = conflicts.Items.Where(c => c.Task.Id == t.Id || c.Other.Id == t.Id).ToList()
             });
         }
 

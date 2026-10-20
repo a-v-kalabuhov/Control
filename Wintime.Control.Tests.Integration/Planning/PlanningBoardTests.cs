@@ -206,4 +206,39 @@ public class PlanningBoardTests : IClassFixture<IntegrationTestFactory>
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public async Task Board_items_carry_conflicts_of_the_task()
+    {
+        var immId = await _factory.CreateFreshImmAsync();
+        var day = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(2);
+        var a = await SeedTaskAsync(immId, await SeedMoldAsync(), t => t.PlannedDate = day);
+        var b = await SeedTaskAsync(immId, await SeedMoldAsync(), t =>
+        {
+            t.PlannedDate = day;
+            t.PlannedSetupStartTime = new TimeOnly(10, 30);
+        });
+
+        var board = await GetBoardAsync(DateTime.UtcNow, DateTime.UtcNow.AddDays(5));
+
+        var row = board.Rows.Single(r => r.Imm.Id == immId);
+        row.Tasks.Single(t => t.Task.Id == a).Conflicts.Should().ContainSingle(c => c.Other.Id == b || c.Task.Id == b);
+        row.Tasks.Single(t => t.Task.Id == b).Conflicts.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Setup_task_has_forecast_on_board()
+    {
+        var immId = await _factory.CreateFreshImmAsync();
+        var taskId = await SeedTaskAsync(immId, await SeedMoldAsync(), t =>
+        {
+            t.Status = TaskStatus.Setup;
+            t.SetupStartedAt = DateTime.UtcNow.AddMinutes(-10);
+        });
+
+        var board = await GetBoardAsync(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1));
+
+        var item = board.Rows.Single(r => r.Imm.Id == immId).Tasks.Single(t => t.Task.Id == taskId);
+        item.Fact.ForecastEnd.Should().BeCloseTo(item.Fact.SetupStart!.Value.AddMinutes(30 + 50), TimeSpan.FromSeconds(1));
+    }
 }
