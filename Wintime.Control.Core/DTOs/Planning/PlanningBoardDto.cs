@@ -37,4 +37,6 @@ public class BoardTaskDto
     public long? BufferRemainingSeconds { get; set; }
     public long? OverdueNotStartedSeconds { get; set; }
     public long? SetupLagSeconds { get; set; }
+    /// <summary>Конфликты плана с участием задания (PZP-07b): задание — <c>Task</c> или <c>Other</c> пары.</summary>
+    public List<PlanConflictDto> Conflicts { get; set; } = new();
 }

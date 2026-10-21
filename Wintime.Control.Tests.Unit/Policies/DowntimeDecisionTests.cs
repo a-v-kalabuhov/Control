@@ -49,14 +49,41 @@ public class DowntimeDecisionTests
     }
 
     [Fact]
-    public void Offline_InProgress_PastThreshold_Opens()
+    public void Offline_InProgress_PastThreshold_DoesNotOpen()
     {
-        var since = Now.AddSeconds(-200);
+        // Обрыв связи — не простой: мы не знаем, что с ТПА (ADR-0021).
+        var since = Now.AddHours(-23);
+        var r = DowntimeDecision.Evaluate(
+            ImmStatus.Offline, since, Now, ActiveTaskStatus.InProgress, Started.AddDays(-1),
+            false, false, 120);
+
+        r.Action.Should().Be(DowntimeAction.None);
+    }
+
+    [Fact]
+    public void Offline_WithOpenAutoDowntime_KeepsItOpen()
+    {
+        // ТПА стоял, простой открыт, потом пропала связь: остановка была реальной,
+        // обрыв её не отменяет — простой закрывается только возвратом в Auto (ADR-0021).
+        var since = Now.AddSeconds(-600);
         var r = DowntimeDecision.Evaluate(
             ImmStatus.Offline, since, Now, ActiveTaskStatus.InProgress, Started,
+            hasOpenAutoDowntime: true, hasOpenManualDowntime: false, thresholdSeconds: 120);
+
+        r.Action.Should().Be(DowntimeAction.None);
+    }
+
+    [Fact]
+    public void AfterReconnect_IdlePastThreshold_OpensAtIdleSince()
+    {
+        // Связь вернулась в Idle: порог считается от момента нового статуса, а не от обрыва.
+        var idleSince = Now.AddSeconds(-200);
+        var r = DowntimeDecision.Evaluate(
+            ImmStatus.Idle, idleSince, Now, ActiveTaskStatus.InProgress, Started,
             false, false, 120);
 
         r.Action.Should().Be(DowntimeAction.Open);
+        r.At.Should().Be(idleSince);
     }
 
     [Fact]

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
+import { nextTick } from 'vue'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
@@ -186,5 +188,29 @@ describe('TaskDetailModal — заказ', () => {
     const none = mountModal({ id: 't2', status: 'Planned', orderId: null, orderNumber: null })
     await flushPromises()
     expect(cellText(none, 'Заказ')).toBe('—')
+  })
+})
+
+describe('TaskDetailModal — конфликты (PZP-07b)', () => {
+  const items = [{ kind: 'Plan', resource: 'Imm', overlapSeconds: 3000,
+    task: { id: 't1', productArticle: 'A1.0', moldName: 'ПФ-1', immName: 'ТПА-1' },
+    other: { id: 't2', productArticle: 'A2.0', moldName: 'ПФ-2', immName: 'ТПА-1' } }]
+
+  it('показывает блок конфликтов, клик по строке — open-task с другим заданием', async () => {
+    const wrapper = mountModal({ id: 't1', status: 'Planned' })
+    usePlanConflictsStore().data = { taskCount: 2, planCount: 1, deviationCount: 0, items }
+    await nextTick()
+
+    const block = wrapper.find('[data-test="task-conflicts"]')
+    expect(block.text()).toContain('Конфликт плана по ТПА с «A2.0 · ПФ-2 · ТПА-1», пересечение 50м')
+    await block.find('[data-test="task-conflict-row"]').trigger('click')
+    expect(wrapper.emitted('open-task')[0]).toEqual(['t2'])
+  })
+
+  it('нет конфликтов — нет блока', async () => {
+    const wrapper = mountModal({ id: 't9', status: 'Planned' })
+    usePlanConflictsStore().data = { taskCount: 2, planCount: 1, deviationCount: 0, items }
+    await nextTick()
+    expect(wrapper.find('[data-test="task-conflicts"]').exists()).toBe(false)
   })
 })

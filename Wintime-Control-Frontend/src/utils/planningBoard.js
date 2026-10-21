@@ -1,6 +1,7 @@
 // План-график цеха (PZP-07a): геометрия Гантта. Время — в поясе браузера.
 import { formatClock, formatDuration, assignLanes } from './shiftTimeline'
 import { TASK_STATUS_LABELS } from '@/constants/taskStatus'
+import { conflictLine } from './planConflicts'
 
 export const SCALES = ['day', 'week', 'month']
 export const SCALE_LABELS = { day: 'Сутки', week: 'Неделя', month: 'Месяц' }
@@ -113,7 +114,7 @@ export function boardSegments(item, now) {
   const fact = []
   if (f.setupStart) fact.push(seg('setup', f.setupStart, f.setupEnd ?? n))
   if (task.startedAt) fact.push(seg('release', task.startedAt, f.releaseEnd ?? n))
-  if (f.forecastEnd) fact.push(seg('forecast', n, f.forecastEnd))
+  if (f.forecastEnd) fact.push(seg('forecast', f.forecastStart ?? n, f.forecastEnd))
   const r = item.bufferRemainingSeconds
   if (r != null && p.bufferEnd) {
     const releaseFinish = task.status === 'InProgress' ? (f.forecastEnd ?? n) : f.releaseEnd
@@ -193,5 +194,6 @@ export function tooltipLines(item) {
   const r = item.bufferRemainingSeconds
   if (r != null) lines.push(r >= 0 ? `Остаток буфера: ${formatDuration(r * 1000)}` : `Перерасход: ${formatDuration(-r * 1000)}`)
   for (const m of boardMarks(item)) if (!m.text.startsWith('перерасход')) lines.push(m.text)
+  for (const c of item.conflicts ?? []) lines.push(conflictLine(c, task.id))
   return lines
 }

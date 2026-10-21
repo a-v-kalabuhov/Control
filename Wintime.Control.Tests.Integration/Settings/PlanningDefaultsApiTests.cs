@@ -78,4 +78,30 @@ public class PlanningDefaultsApiTests : IClassFixture<IntegrationTestFactory>
             new { setupMinutes = 1, releaseBufferFixedMinutes = 1, releaseBufferPercent = 1 }))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
+
+    [Fact]
+    public async Task Put_sets_conflict_threshold_and_omitting_it_keeps_value()
+    {
+        var client = await ClientAsync("test_manager", "Manager123!");
+
+        var r1 = await client.PutAsJsonAsync(Url,
+            new { setupMinutes = 0, releaseBufferFixedMinutes = 0, releaseBufferPercent = 0, conflictThresholdMinutes = 35 });
+        r1.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var r2 = await client.PutAsJsonAsync(Url,
+            new { setupMinutes = 5, releaseBufferFixedMinutes = 0, releaseBufferPercent = 0 });
+        var body = await r2.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("conflictThresholdMinutes").GetInt32().Should().Be(35);
+    }
+
+    [Fact]
+    public async Task Put_conflict_threshold_out_of_range_is_400()
+    {
+        var client = await ClientAsync("test_manager", "Manager123!");
+
+        var resp = await client.PutAsJsonAsync(Url,
+            new { setupMinutes = 0, releaseBufferFixedMinutes = 0, releaseBufferPercent = 0, conflictThresholdMinutes = 2000 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }

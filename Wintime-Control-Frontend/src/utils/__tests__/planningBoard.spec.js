@@ -217,3 +217,28 @@ describe('подписи', () => {
     expect(lines).toContain('Перерасход: 40м')
   })
 })
+
+describe('PZP-07b: прогноз Issued и строки конфликтов', () => {
+  const MIN = 60_000
+  const T0 = new Date(2026, 9, 15, 10, 0).getTime()
+  const at = (m) => new Date(T0 + m * MIN).toISOString()
+  const issued = {
+    task: { id: 't1', status: 'Issued', moldName: 'ПФ-1', immName: 'ТПА-1', planQuantity: 100, plannedSetupMinutes: 30 },
+    productArticle: 'A1.0',
+    plan: { setupStart: at(0), setupEnd: at(30), releaseEnd: at(90), bufferEnd: at(100) },
+    fact: { setupStart: null, setupEnd: null, releaseEnd: null, forecastEnd: at(120), forecastStart: at(30) },
+    bufferRemainingSeconds: null, overdueNotStartedSeconds: 1200, setupLagSeconds: null,
+    conflicts: [{ kind: 'Deviation', resource: 'Imm', overlapSeconds: 2400,
+      task: { id: 't0', productArticle: 'A0.0', moldName: 'ПФ-0', immName: 'ТПА-1' },
+      other: { id: 't1', productArticle: 'A1.0', moldName: 'ПФ-1', immName: 'ТПА-1' } }]
+  }
+
+  it('прогноз Issued начинается с forecastStart, а не с «сейчас»', () => {
+    const { fact } = boardSegments(issued, new Date(T0 + 20 * MIN))
+    expect(fact).toEqual([{ kind: 'forecast', start: T0 + 30 * MIN, end: T0 + 120 * MIN }])
+  })
+
+  it('тултип содержит строку конфликта', () => {
+    expect(tooltipLines(issued)).toContain('Конфликт отклонения по ТПА с «A0.0 · ПФ-0 · ТПА-1», пересечение 40м')
+  })
+})

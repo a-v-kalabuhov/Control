@@ -41,10 +41,11 @@
             <template #title>
               <el-icon><Calendar /></el-icon>
               <span>Планирование</span>
+              <PlanConflictsBadge />
             </template>
             <el-menu-item index="/orders">Заказы</el-menu-item>
             <el-menu-item index="/tasks">Задания</el-menu-item>
-            <el-menu-item index="/planning/gantt">План-график цеха</el-menu-item>
+            <el-menu-item index="/planning/gantt">План-график цеха <PlanConflictsBadge /></el-menu-item>
           </el-sub-menu>
 
           <!-- Журналы: простои и работа без задания (для Manager, Admin) -->
@@ -164,13 +165,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
 import dayjs from 'dayjs'
 import { appVersionFor } from '@/utils/buildInfo'
 import { useAppInfoStore } from '@/stores/appInfo'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
+import PlanConflictsBadge from '@/components/planning/PlanConflictsBadge.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -178,6 +181,12 @@ const { canAccess } = usePermissions()
 
 const appInfo = useAppInfoStore()
 const appVersion = computed(() => appVersionFor(appInfo.demoMode))
+
+const planConflicts = usePlanConflictsStore()
+// Реактивно: после перезагрузки страницы пользователь восстанавливается асинхронно (App.vue),
+// поэтому разовая проверка роли при setup не сработает.
+const watchesConflicts = computed(() => canAccess(['Admin', 'Manager', 'Observer']))
+watch(watchesConflicts, (on) => (on ? planConflicts.start() : planConflicts.stop()), { immediate: true })
 
 const sidebarCollapsed = ref(false)
 const currentTime = ref(dayjs().format('DD.MM.YYYY HH:mm'))
@@ -193,6 +202,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  planConflicts.stop()
 })
 
 const activeMenu = computed(() => route.path)

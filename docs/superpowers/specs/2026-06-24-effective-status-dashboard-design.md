@@ -108,6 +108,8 @@ public static class ImmEffectiveStatus
 
 Нормализация `rawMode` через существующий `ImmMode.Normalize`. Порядок приоритетов:
 
+> **Уточнено ADR-0021:** сырой `Offline` проверяется первым и всегда даёт `Offline` («Нет связи») — доминирует над наладкой, простоем и порогом; строки ниже действуют для не-`Offline` режимов.
+
 | # | Условие | Результат |
 |---|---|---|
 | 1 | `task == Setup` | `Setup` (наладка доминирует над сигналом) |
@@ -118,8 +120,8 @@ public static class ImmEffectiveStatus
 | 6 | `task == None` && `mode == Offline` | `Offline` |
 | 7 | `task == None` && иначе (Idle/Manual/Alarm) | `NoTask` |
 
-Следствия: `Offline` как пользовательское состояние возникает только при `None`+нет связи; при
-`InProgress`+Offline дольше порога — `Downtime` (согласуется с авто-простоями воркера). `Alarm`
+Следствия: `Offline` как пользовательское состояние возникает только при `None`+нет связи *(заменено ADR-0021: `Offline` → всегда «Нет связи»)*; при
+`InProgress`+Offline дольше порога — `Downtime` (согласуется с авто-простоями воркера) *(заменено ADR-0021: `Offline` → всегда «Нет связи»)*. `Alarm`
 растворяется (строки 3/4/7). Существующий `ActiveTaskStatusMap.From(TaskStatus?)` проецирует статус
 задания в `ActiveTaskStatus`.
 

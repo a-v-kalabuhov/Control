@@ -7,7 +7,7 @@ using Wintime.Control.Core.Interfaces;
 
 namespace Wintime.Control.API.Controllers;
 
-/// <summary>Настройки приложения (ADR-0015). Сейчас — только умолчания планирования (PZP-14).</summary>
+/// <summary>Настройки приложения (ADR-0015). Сейчас — умолчания планирования (PZP-14) и порог конфликта (PZP-07b).</summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "ManagerOrAdmin")]
@@ -29,7 +29,8 @@ public class SettingsController : ControllerBase
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var saved = await _planningDefaults.UpdateAsync(
-            request.SetupMinutes, request.ReleaseBufferFixedMinutes, request.ReleaseBufferPercent, userId);
+            request.SetupMinutes, request.ReleaseBufferFixedMinutes, request.ReleaseBufferPercent, userId,
+            request.ConflictThresholdMinutes);
         return Ok(ToDto(saved));
     }
 
@@ -38,6 +39,7 @@ public class SettingsController : ControllerBase
         SetupMinutes = d.SetupMinutes,
         ReleaseBufferFixedMinutes = d.ReleaseBufferFixedMinutes,
         ReleaseBufferPercent = d.ReleaseBufferPercent,
+        ConflictThresholdMinutes = d.ConflictThresholdMinutes,
         UpdatedAt = d.UpdatedAt
     };
 }

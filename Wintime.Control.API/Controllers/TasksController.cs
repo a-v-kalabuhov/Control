@@ -368,14 +368,13 @@ public class TasksController : ControllerBase
                                || request.PlannedInjectionCycleSeconds.HasValue;
         if (cycleFieldsTouched)
         {
-            // Не переданные поля сохраняют текущее значение задания.
-            // requireFullCycle: false — legacy-задание без эталона можно сохранить,
-            // не вынуждая менеджера выдумывать цифру задним числом.
+            // Не переданные поля сохраняют текущее значение задания. Эталон полного цикла обязателен
+            // (PZP-07b: без него не посчитать план, отрезки и конфликты).
             task.SetCycleNorms(
                 request.WorkMode ?? task.WorkMode,
                 request.PlannedFullCycleSeconds ?? task.PlannedFullCycleSeconds,
                 request.PlannedInjectionCycleSeconds ?? task.PlannedInjectionCycleSeconds,
-                requireFullCycle: false);
+                requireFullCycle: true);
         }
         if (request.PlannedSetupMinutes.HasValue)
             task.SetSetupNorm(request.PlannedSetupMinutes.Value);
@@ -439,7 +438,10 @@ public class TasksController : ControllerBase
     /// </summary>
     [HttpPost("{id:guid}/start")]
     [Authorize(Roles = $"{Roles.Adjuster}")]
-    public async Task<IActionResult> StartTask(Guid id)
+    public async Task<IActionResult> StartTask(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)]
+        StartTaskRequestDto? request)
     {
         var task = await _context.ShiftTasks.FindAsync(id);
         if (task == null)
@@ -453,6 +455,23 @@ public class TasksController : ControllerBase
             (t.Status == Core.Enums.TaskStatus.Setup || t.Status == Core.Enums.TaskStatus.InProgress));
         if (hasActiveTask)
             return BadRequest("На этом ТПА уже есть активное задание. Сначала завершите текущее задание.");
+
+        // PZP-07b: ПФ сейчас в наладке/выпуске на другом ТПА — не запрет, а предупреждение с подтверждением.
+        // Журнал таких событий для руководителя — BL-47.
+        if (task.Status == Core.Enums.TaskStatus.Issued && request?.ConfirmMoldBusy != true)
+        {
+            var busy = await _context.ShiftTasks
+                .Where(t => t.Id != task.Id && t.MoldId == task.MoldId && t.ImmId != task.ImmId &&
+                            (t.Status == Core.Enums.TaskStatus.Setup || t.Status == Core.Enums.TaskStatus.InProgress))
+                .Select(t => new { t.Id, ImmName = t.Imm.Name })
+                .FirstOrDefaultAsync();
+            if (busy != null)
+                return Conflict(new
+                {
+                    message = $"Пресс-форма сейчас используется на ТПА «{busy.ImmName}»",
+                    moldBusy = new { immName = busy.ImmName, taskId = busy.Id }
+                });
+        }
 
         task.StartSetup();
 

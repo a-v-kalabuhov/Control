@@ -17,6 +17,8 @@
       </div>
     </div>
 
+    <PlanConflictsBanner @select="openConflictTask" />
+
     <el-card v-loading="loading && !board" class="overflow-x-auto">
       <GanttBoard
         v-if="board"
@@ -32,6 +34,7 @@
     <TaskDetailModal
       v-model="detailVisible"
       :task="selectedTask"
+      @open-task="openTaskById"
       @edit="editTask"
       @issue="issueTask"
       @close="closeTask"
@@ -44,11 +47,14 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import PlanConflictsBanner from '@/components/planning/PlanConflictsBanner.vue'
 import GanttBoard from '@/components/planning/GanttBoard.vue'
 import TaskDetailModal from '@/views/tasks/TaskDetailModal.vue'
 import TaskFormModal from '@/views/tasks/TaskFormModal.vue'
 import IssueTaskDialog from '@/views/tasks/IssueTaskDialog.vue'
 import { planningApi } from '@/api/planning'
+import { tasksApi } from '@/api/tasks'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useTasksStore } from '@/stores/tasks'
 import { apiErrorMessage } from '@/utils/apiError'
@@ -59,6 +65,7 @@ const REFRESH_MS = 60_000
 
 const dashboardStore = useDashboardStore()
 const tasksStore = useTasksStore()
+const planConflicts = usePlanConflictsStore()
 
 const scale = ref('week')
 const anchor = ref(new Date())
@@ -86,6 +93,7 @@ async function load() {
     board.value = data
     now.value = new Date(data.now)
     refreshSelectedTask(data)
+    planConflicts.load()
   } catch (error) {
     if (seq !== loadSeq) return
     // Последняя загруженная доска остаётся на экране, таймер продолжает попытки
@@ -134,6 +142,21 @@ function refreshSelectedTask(data) {
 function openDetail(task) {
   selectedTask.value = task
   detailVisible.value = true
+}
+
+// Строка баннера → период планового начала задания (масштаб тот же) и его карточка
+async function openConflictTask(taskRef) {
+  anchor.value = new Date(taskRef.plannedStartAt)
+  await openTaskById(taskRef.id)
+}
+
+async function openTaskById(id) {
+  try {
+    const { data } = await tasksApi.getById(id)
+    openDetail(data)
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, 'Не удалось открыть задание'))
+  }
 }
 
 function editTask(task) {

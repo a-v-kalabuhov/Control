@@ -17,6 +17,12 @@ public static class PlanningNormLimits
             throw new DomainException("Норматив наладки должен быть от 0 до 1440 минут");
     }
 
+    public static void EnsureConflictThreshold(int minutes)
+    {
+        if (minutes is < 0 or > MaxMinutes)
+            throw new DomainException("Порог конфликта должен быть от 0 до 1440 минут");
+    }
+
     public static void EnsureBuffer(int fixedMinutes, int percent)
     {
         if (fixedMinutes is < 0 or > MaxMinutes)

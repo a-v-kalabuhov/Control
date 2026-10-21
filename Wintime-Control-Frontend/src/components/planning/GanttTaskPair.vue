@@ -1,7 +1,8 @@
 <template>
   <div
     v-if="layout"
-    class="pair"
+    :class="['pair', conflictKind && `pair--conflict-${conflictKind.toLowerCase()}`]"
+    :data-conflict="conflictKind || undefined"
     :style="{ left: layout.box.leftPct + '%', width: layout.box.widthPct + '%', '--c': color }"
     :title="title"
     @click="$emit('select', item.task)"
@@ -35,6 +36,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { worstKind } from '@/utils/planConflicts'
 import { pairLayout, boardMarks, planLabel, tooltipLines, GANTT_STATUS_COLORS } from '@/utils/planningBoard'
 
 const props = defineProps({
@@ -47,6 +49,7 @@ defineEmits(['select'])
 
 const layout = computed(() => pairLayout(props.item, props.from, props.to, props.now))
 const color = computed(() => GANTT_STATUS_COLORS[props.item.task.status] ?? '#909399')
+const conflictKind = computed(() => worstKind(props.item.conflicts))
 const marks = computed(() => boardMarks(props.item))
 const planMarks = computed(() => marks.value.filter(m => m.row === 'plan'))
 const factMarks = computed(() => marks.value.filter(m => m.row === 'fact'))
@@ -55,6 +58,10 @@ const title = computed(() => tooltipLines(props.item).join('\n'))
 </script>
 
 <style scoped>
+/* Конфликты плана (PZP-07b): красная рамка — конфликт плана, оранжевая — отклонения */
+.pair--conflict-plan { outline: 2px solid #f56c6c; outline-offset: 1px; border-radius: 2px; }
+.pair--conflict-deviation { outline: 2px solid #e6a23c; outline-offset: 1px; border-radius: 2px; }
+
 .pair {
   position: absolute;
   min-width: 3px;
