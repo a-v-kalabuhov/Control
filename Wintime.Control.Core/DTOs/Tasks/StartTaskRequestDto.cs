@@ -1,7 +1,7 @@
 namespace Wintime.Control.Core.DTOs.Tasks;
 
+/// <summary>Начать наладку (PZP-07b): <c>ConfirmMoldBusy</c> — наладчик подтвердил, что ПФ занята на другом ТПА.</summary>
 public class StartTaskRequestDto
 {
-    public string MoldQr { get; set; } = string.Empty;
-    public string ImmQr { get; set; } = string.Empty;
+    public bool ConfirmMoldBusy { get; set; }
 }

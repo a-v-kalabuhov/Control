@@ -45,4 +45,35 @@ public class PlanningDefaultsTests
         d.SetupMinutes.Should().Be(0);
         d.UpdatedAt.Should().BeNull();
     }
+
+    [Fact]
+    public void Conflict_threshold_defaults_to_20_minutes()
+    {
+        new PlanningDefaults().ConflictThresholdMinutes.Should().Be(20);
+    }
+
+    [Fact]
+    public void Update_sets_conflict_threshold_when_given()
+    {
+        var d = new PlanningDefaults();
+        d.Update(0, 0, 0, "u", DateTime.UtcNow, conflictThresholdMinutes: 45);
+        d.ConflictThresholdMinutes.Should().Be(45);
+    }
+
+    [Fact]
+    public void Update_keeps_conflict_threshold_when_omitted()
+    {
+        var d = new PlanningDefaults();
+        d.Update(10, 0, 0, "u", DateTime.UtcNow);
+        d.ConflictThresholdMinutes.Should().Be(20);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(1441)]
+    public void Update_rejects_conflict_threshold_out_of_range(int minutes)
+    {
+        var act = () => new PlanningDefaults().Update(0, 0, 0, "u", DateTime.UtcNow, conflictThresholdMinutes: minutes);
+        act.Should().Throw<DomainException>().WithMessage("*Порог конфликта*");
+    }
 }

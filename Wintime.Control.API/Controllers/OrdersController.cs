@@ -12,7 +12,7 @@ namespace Wintime.Control.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+[Authorize]
 public class OrdersController : ControllerBase
 {
     private readonly ControlDbContext _context;
@@ -78,6 +78,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<OrderDto>>> GetList(
         [FromQuery] OrderStatus? status = null,
         [FromQuery] string? search = null,
@@ -101,6 +102,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Observer}")]
     public async Task<ActionResult<OrderDetailsDto>> GetById(Guid id)
     {
         var order = await _context.Orders
@@ -125,6 +127,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<OrderDto>> Create([FromBody] CreateOrderRequestDto request)
     {
         if (string.IsNullOrWhiteSpace(request.Number))
@@ -157,6 +160,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateOrderRequestDto request)
     {
         var order = await _context.Orders.FindAsync(id);
@@ -202,6 +206,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/complete")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> Complete(Guid id)
     {
         var order = await _context.Orders.FindAsync(id);
@@ -214,6 +219,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/cancel")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> Cancel(Guid id)
     {
         var order = await _context.Orders.FindAsync(id);
@@ -225,6 +231,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/reopen")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> Reopen(Guid id)
     {
         var order = await _context.Orders.FindAsync(id);
@@ -236,6 +243,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/tasks")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> AttachTask(Guid id, [FromBody] AttachTaskRequestDto request)
     {
         var order = await _context.Orders.FindAsync(id);
@@ -253,6 +261,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/tasks/{taskId:guid}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> DetachTask(Guid id, Guid taskId)
     {
         var task = await _context.ShiftTasks.FirstOrDefaultAsync(t => t.Id == taskId && t.OrderId == id);

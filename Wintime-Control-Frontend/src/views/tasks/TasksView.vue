@@ -100,6 +100,17 @@
         @row-click="openDetail"
         class="cursor-pointer"
       >
+        <el-table-column width="40" align="center">
+          <template #default="{ row }">
+            <el-icon
+              v-if="conflictKindOf(row)"
+              :color="CONFLICT_KIND_COLORS[conflictKindOf(row)]"
+              :title="CONFLICT_KIND_LABELS[conflictKindOf(row)]"
+              data-test="task-conflict-icon"
+            ><WarningFilled /></el-icon>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="immName" width="150">
           <template #header>
             <span class="col-header" @click="handleSort('immName')">
@@ -241,6 +252,7 @@
       @issue="issueTask"
       @complete="completeTask"
       @close="closeTask"
+      @open-task="openTaskById"
     />
 
     <IssueTaskDialog v-model="issueDialogVisible" :task="issuingTask" />
@@ -253,8 +265,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useTasksStore } from '@/stores/tasks'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
-import { immApi } from '@/api/imm'
-import { moldsApi } from '@/api/molds'
+import { archivedTaskRefs } from '@/utils/taskIssueCheck'
 import TaskFilters from '@/components/tasks/TaskFilters.vue'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskProgress from '@/components/tasks/TaskProgress.vue'
@@ -264,6 +275,10 @@ import IssueTaskDialog from './IssueTaskDialog.vue'
 import { formatPlannedStart } from '@/utils/plannedStart'
 import { productSecondary } from '@/utils/productLabel'
 import dayjs from 'dayjs'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
+import { worstKind, CONFLICT_KIND_COLORS, CONFLICT_KIND_LABELS } from '@/utils/planConflicts'
+import { tasksApi } from '@/api/tasks'
+import { apiErrorMessage } from '@/utils/apiError'
 
 const tasksStore = useTasksStore()
 const authStore = useAuthStore()
@@ -273,6 +288,18 @@ const formModalVisible = ref(false)
 const detailModalVisible = ref(false)
 const editingTask = ref(null)
 const selectedTask = ref(null)
+
+const planConflicts = usePlanConflictsStore()
+const conflictKindOf = (task) => worstKind(planConflicts.forTask(task.id))
+
+const openTaskById = async (id) => {
+  try {
+    const { data } = await tasksApi.getById(id)
+    selectedTask.value = data
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, 'Не удалось открыть задание'))
+  }
+}
 
 const canCreate = computed(() => authStore.isManager || authStore.isAdmin)
 
@@ -480,21 +507,14 @@ const canIssueTask = (task) => {
 }
 
 const issueTask = async (task) => {
-  // Параллельно проверяем актуальность ТПА и пресс-формы; наладчик выбирается в диалоге из активных
-  const checks = [immApi.getById(task.immId), moldsApi.getById(task.moldId)]
-
-  let results
+  // Наладчик выбирается в диалоге из активных; здесь — актуальность ТПА и пресс-формы
+  let inactive
   try {
-    results = await Promise.all(checks)
+    inactive = await archivedTaskRefs(task)
   } catch {
     ElMessage.error('Не удалось проверить актуальность данных задания')
     return
   }
-
-  const [immRes, moldRes] = results
-  const inactive = []
-  if (!immRes.data.isActive)        inactive.push(`ТПА «${task.immName}»`)
-  if (!moldRes.data.isActive)       inactive.push(`пресс-форма «${task.moldName}»`)
 
   if (inactive.length > 0) {
     ElMessage.warning(`Переведено в архив: ${inactive.join(', ')}. Отредактируйте задание перед выдачей.`)

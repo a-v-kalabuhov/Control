@@ -263,6 +263,7 @@ import { ordersApi } from '@/api/orders'
 import { productTypesApi } from '@/api/productTypes'
 import { activeProducts } from '@/utils/productLabel'
 import { apiErrorMessage } from '@/utils/apiError'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
 import { settingsApi } from '@/api/settings'
 import { isMoldCompatibleWithImm } from '@/utils/moldCompatibility'
 import { calcTaskPlan, formatDuration } from '@/utils/taskPlan'
@@ -680,6 +681,17 @@ async function loadPersonnel() {
   }
 }
 
+const planConflicts = usePlanConflictsStore()
+
+// PZP-07b: сохранение не блокируется; если у задания есть конфликты — предупредить и отправить на план-график
+const notifySaved = async (taskId, successText) => {
+  const refreshed = await planConflicts.load()
+  // Не удалось обновить конфликты — не показываем возможно устаревшее предупреждение
+  const count = refreshed && taskId ? planConflicts.forTask(taskId).length : 0
+  if (count > 0) ElMessage.warning(`Задание сохранено. Конфликтов: ${count} — см. план-график цеха`)
+  else ElMessage.success(successText)
+}
+
 const handleSubmit = async () => {
   if (!formRef.value) return
 
@@ -701,10 +713,11 @@ const handleSubmit = async () => {
         if (form.orderId && form.orderId !== initialOrderId.value) {
           await ordersApi.setTaskOrder(editingTask.value.id, form.orderId)
         }
-        ElMessage.success('Задание обновлено')
+        await notifySaved(editingTask.value.id, 'Задание обновлено')
       } else {
-        await tasksApi.create({ ...form, personnelId: form.personnelId || null })
-        ElMessage.success('Задание создано в статусе «Планируется». Чтобы наладчик его увидел, нажмите «Выдать»')
+        const { data: created } = await tasksApi.create({ ...form, personnelId: form.personnelId || null })
+        await notifySaved(created?.id,
+          'Задание создано в статусе «Планируется». Чтобы наладчик его увидел, нажмите «Выдать»')
       }
 
       visible.value = false

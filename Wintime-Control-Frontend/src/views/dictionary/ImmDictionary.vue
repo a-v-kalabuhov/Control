@@ -131,6 +131,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { immApi } from '@/api/imm'
 import { templatesApi } from '@/api/templates'
 import QrCodeDialog from '@/components/common/QrCodeDialog.vue'
+import { apiErrorMessage } from '@/utils/apiError'
 import dayjs from 'dayjs'
 
 const loading = ref(false)
@@ -273,7 +274,7 @@ const deleteImm = async (imm) => {
     await loadImms()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('Ошибка удаления ТПА')
+      ElMessage.error(apiErrorMessage(error, 'Ошибка удаления ТПА'))
     }
   }
 }
