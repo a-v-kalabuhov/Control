@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessageBox } from 'element-plus'
 import MobileTasksView from '../MobileTasksView.vue'
 
 const task = {
@@ -177,5 +177,48 @@ describe('MobileTasksView — очередь по плановому начал�
     expect(text).not.toContain('Текущая смена')
     expect(mobileApi.getMyTasks).toHaveBeenCalledWith(expect.not.objectContaining({ boundary: expect.anything() }))
     vi.useRealTimers()
+  })
+})
+
+describe('MobileTasksView — пресс-форма занята на другом ТПА', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  const mountView = () => mount(MobileTasksView, {
+    global: { plugins: [createPinia(), ElementPlus], stubs: { QrScanner: true } }
+  })
+
+  it('409 moldBusy → подтверждение → повтор с confirmMoldBusy', async () => {
+    mobileApi.startSetup
+      .mockRejectedValueOnce({ response: { status: 409, data: {
+        message: 'Пресс-форма сейчас используется на ТПА «ТПА-2»', moldBusy: { immName: 'ТПА-2', taskId: 'x' } } } })
+      .mockResolvedValueOnce({ data: {} })
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.startTask({ id: 't1' })
+    await flushPromises()
+
+    expect(confirm.mock.calls[0][0]).toContain('ТПА «ТПА-2»')
+    expect(mobileApi.startSetup).toHaveBeenNthCalledWith(1, 't1')
+    expect(mobileApi.startSetup).toHaveBeenNthCalledWith(2, 't1', true)
+    confirm.mockRestore()
+  })
+
+  it('отмена подтверждения — наладка не начинается', async () => {
+    mobileApi.startSetup.mockRejectedValueOnce({ response: { status: 409, data: {
+      message: 'Пресс-форма сейчас используется на ТПА «ТПА-2»', moldBusy: { immName: 'ТПА-2', taskId: 'x' } } } })
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.startTask({ id: 't1' })
+    await flushPromises()
+
+    expect(mobileApi.startSetup).toHaveBeenCalledTimes(1)
+    confirm.mockRestore()
   })
 })

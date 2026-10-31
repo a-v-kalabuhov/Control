@@ -27,7 +27,7 @@ const routes = [
         name: 'Tasks',
         component: () => import('@/views/tasks/TasksView.vue'),
         meta: {
-          roles: ['Admin', 'Manager'],
+          roles: ['Admin', 'Manager', 'Observer'],
           title: 'Задания'
         }
       },
@@ -53,7 +53,14 @@ const routes = [
         path: 'orders',
         name: 'orders',
         component: () => import('@/views/OrdersView.vue'),
-        meta: { roles: ['Admin', 'Manager'], title: 'Заказы' }
+        meta: { roles: ['Admin', 'Manager', 'Observer'], title: 'Заказы' }
+      },
+      {
+        // План-график цеха (PZP-07a): Гантт загрузки ТПА; Observer — только чтение
+        path: 'planning/gantt',
+        name: 'PlanningGantt',
+        component: () => import('@/views/planning/PlanningGanttView.vue'),
+        meta: { roles: ['Admin', 'Manager', 'Observer'], title: 'План-график цеха' }
       },
       {
         // Мониторинг телеметрии; ТПА — в query: ?imm=<id>[&from=card]

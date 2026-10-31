@@ -15,10 +15,11 @@ public class PlanningDefaultsService : IPlanningDefaultsService
         _db.PlanningDefaults.SingleAsync(d => d.Id == PlanningDefaults.SingletonId, ct);
 
     public async Task<PlanningDefaults> UpdateAsync(int setupMinutes, int bufferFixedMinutes, int bufferPercent,
-                                                    string? userId, CancellationToken ct = default)
+                                                    string? userId, int? conflictThresholdMinutes = null,
+                                                    CancellationToken ct = default)
     {
         var defaults = await GetAsync(ct);
-        defaults.Update(setupMinutes, bufferFixedMinutes, bufferPercent, userId, DateTime.UtcNow);
+        defaults.Update(setupMinutes, bufferFixedMinutes, bufferPercent, userId, DateTime.UtcNow, conflictThresholdMinutes);
         await _db.SaveChangesAsync(ct);
         return defaults;
     }

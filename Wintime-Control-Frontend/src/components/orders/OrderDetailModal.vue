@@ -22,7 +22,7 @@
 
       <div class="flex justify-between items-center mb-2">
         <span class="font-semibold">Задания</span>
-        <div class="flex gap-2">
+        <div v-if="canEdit" class="flex gap-2">
           <!-- el-tooltip не получает события от disabled-кнопки — нужна обёртка -->
           <el-tooltip
             :disabled="isOrderActive"
@@ -61,7 +61,7 @@
         <el-table-column label="Статус" width="120">
           <template #default="{ row }">{{ row.status }}</template>
         </el-table-column>
-        <el-table-column label="" width="110" fixed="right">
+        <el-table-column v-if="canEdit" label="" width="110" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="danger" @click="detach(row)">Отвязать</el-button>
           </template>
@@ -104,6 +104,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
+import { useAuthStore } from '@/stores/auth'
 import { ordersApi } from '@/api/orders'
 import { tasksApi } from '@/api/tasks'
 import { getOrderStatusMeta } from '@/constants/orderStatus'
@@ -130,6 +131,10 @@ const attachLoading = ref(false)
 const attachableTasks = ref([])
 const selectedTaskId = ref(null)
 const taskFormVisible = ref(false)
+
+const authStore = useAuthStore()
+// Observer — только чтение (PZP-07a)
+const canEdit = computed(() => authStore.isManager || authStore.isAdmin)
 
 const visible = computed({
   get: () => props.modelValue,

@@ -8,5 +8,6 @@ public interface IPlanningDefaultsService
     Task<PlanningDefaults> GetAsync(CancellationToken ct = default);
 
     Task<PlanningDefaults> UpdateAsync(int setupMinutes, int bufferFixedMinutes, int bufferPercent,
-                                       string? userId, CancellationToken ct = default);
+                                       string? userId, int? conflictThresholdMinutes = null,
+                                       CancellationToken ct = default);
 }

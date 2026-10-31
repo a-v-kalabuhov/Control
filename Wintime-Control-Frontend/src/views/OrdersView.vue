@@ -5,7 +5,7 @@
         <h2 class="text-2xl font-bold text-gray-800">Заказы</h2>
         <p class="text-gray-600 mt-1">Учёт производственных заказов и прогресса их выполнения</p>
       </div>
-      <el-button type="primary" @click="showCreateModal">
+      <el-button v-if="canEdit" type="primary" @click="showCreateModal">
         <el-icon class="mr-1"><Plus /></el-icon>
         Создать заказ
       </el-button>
@@ -59,30 +59,32 @@
         <template #default="{ row }">
           <div class="order-actions">
             <el-button size="small" @click="openOrder(row)">Открыть</el-button>
-            <el-button size="small" @click="editItem(row)">Редактировать</el-button>
-            <el-button
-              size="small"
-              type="success"
-              :disabled="row.goodQuantity < row.quantity"
-              @click="completeOrder(row)"
-            >
-              Завершить
-            </el-button>
-            <el-button
-              v-if="row.status !== 'Active'"
-              size="small"
-              @click="reopenOrder(row)"
-            >
-              Возобновить
-            </el-button>
-            <el-button
-              v-else
-              size="small"
-              type="danger"
-              @click="cancelOrder(row)"
-            >
-              Отменить
-            </el-button>
+            <template v-if="canEdit">
+              <el-button size="small" @click="editItem(row)">Редактировать</el-button>
+              <el-button
+                size="small"
+                type="success"
+                :disabled="row.goodQuantity < row.quantity"
+                @click="completeOrder(row)"
+              >
+                Завершить
+              </el-button>
+              <el-button
+                v-if="row.status !== 'Active'"
+                size="small"
+                @click="reopenOrder(row)"
+              >
+                Возобновить
+              </el-button>
+              <el-button
+                v-else
+                size="small"
+                type="danger"
+                @click="cancelOrder(row)"
+              >
+                Отменить
+              </el-button>
+            </template>
           </div>
         </template>
       </el-table-column>
@@ -164,6 +166,7 @@
 
 <script setup>
 import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import { ordersApi } from '@/api/orders'
@@ -172,6 +175,10 @@ import { ORDER_STATUS_KEYS, getOrderStatusMeta } from '@/constants/orderStatus'
 import OrderDetailModal from '@/components/orders/OrderDetailModal.vue'
 import { apiErrorMessage } from '@/utils/apiError'
 import { activeProducts } from '@/utils/productLabel'
+
+const authStore = useAuthStore()
+// Observer — только чтение (PZP-07a); запись защищена на бэкенде
+const canEdit = computed(() => authStore.isManager || authStore.isAdmin)
 
 const loading = ref(false)
 const saving = ref(false)

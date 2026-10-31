@@ -12,8 +12,11 @@ export const mobileApi = {
   },
 
   // Начать наладку (Issued → Setup)
-  startSetup(id) {
-    return apiClient.post(`/tasks/${id}/start`)
+  // confirmMoldBusy — наладчик подтвердил, что ПФ занята на другом ТПА (PZP-07b)
+  startSetup(id, confirmMoldBusy = false) {
+    return confirmMoldBusy
+      ? apiClient.post(`/tasks/${id}/start`, { confirmMoldBusy: true })
+      : apiClient.post(`/tasks/${id}/start`)
   },
 
   // Завершить наладку (Setup → InProgress)

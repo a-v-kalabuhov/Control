@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
+import { createPinia, setActivePinia } from 'pinia'
 import TaskFormModal from '../TaskFormModal.vue'
 
 vi.mock('@/api/imm', () => ({
@@ -47,6 +48,9 @@ vi.mock('@/api/productTypes', () => ({
     ] }))
   }
 }))
+vi.mock('@/api/planning', () => ({
+  planningApi: { getConflicts: vi.fn(() => Promise.resolve({ data: { taskCount: 0, planCount: 0, deviationCount: 0, items: [] } })) }
+}))
 vi.mock('@/api/settings', () => ({
   settingsApi: {
     getPlanningDefaults: vi.fn(() => Promise.resolve({ data: {
@@ -62,6 +66,7 @@ import { ordersApi } from '@/api/orders'
 import { settingsApi } from '@/api/settings'
 
 function mountModal(props = {}) {
+  setActivePinia(createPinia())
   return mount(TaskFormModal, {
     props: { modelValue: true, task: null, ...props },
     global: {
@@ -174,6 +179,54 @@ describe('TaskFormModal — заказ', () => {
     await flushPromises()
 
     expect(tasksApi.create).toHaveBeenCalledWith(expect.objectContaining({ productId: 'p-X0' }))
+  })
+
+  it('после создания с конфликтами — предупреждение с числом конфликтов', async () => {
+    const { planningApi } = await import('@/api/planning')
+    tasksApi.create.mockResolvedValueOnce({ data: { id: 'new-1' } })
+    planningApi.getConflicts.mockResolvedValueOnce({ data: { taskCount: 2, planCount: 1, deviationCount: 0, items: [
+      { kind: 'Plan', resource: 'Imm', overlapSeconds: 600, task: { id: 'new-1' }, other: { id: 'x' } }] } })
+    const warning = vi.spyOn(ElMessage, 'warning')
+
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('Конфликтов: 1'))
+    warning.mockRestore()
+  })
+
+  it('конфликты не обновились — обычное сообщение об успехе, без предупреждения', async () => {
+    const { planningApi } = await import('@/api/planning')
+    tasksApi.create.mockResolvedValueOnce({ data: { id: 'new-1' } })
+    planningApi.getConflicts.mockRejectedValueOnce(new Error('net'))
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const success = vi.spyOn(ElMessage, 'success')
+
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    wrapper.vm.form.immId = 'imm-1'
+    wrapper.vm.form.planQuantity = 10
+    wrapper.vm.form.plannedFullCycleSeconds = 60
+    wrapper.vm.form.plannedDate = '2099-01-01'
+    await flushPromises()
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(warning).not.toHaveBeenCalled()
+    expect(success).toHaveBeenCalledWith(expect.stringContaining('Задание создано'))
+    warning.mockRestore()
+    success.mockRestore()
   })
 
   it('без изделия форма не отправляется', async () => {

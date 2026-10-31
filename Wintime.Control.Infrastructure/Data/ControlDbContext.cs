@@ -200,8 +200,9 @@ public class ControlDbContext : IdentityDbContext<User>
                 t.HasCheckConstraint("CK_PlanningDefaults_SetupMinutes", "\"SetupMinutes\" BETWEEN 0 AND 1440");
                 t.HasCheckConstraint("CK_PlanningDefaults_ReleaseBufferFixedMinutes", "\"ReleaseBufferFixedMinutes\" BETWEEN 0 AND 1440");
                 t.HasCheckConstraint("CK_PlanningDefaults_ReleaseBufferPercent", "\"ReleaseBufferPercent\" BETWEEN 0 AND 100");
+                t.HasCheckConstraint("CK_PlanningDefaults_ConflictThresholdMinutes", "\"ConflictThresholdMinutes\" BETWEEN 0 AND 1440");
             });
-            entity.HasData(new PlanningDefaults { Id = 1 });
+            entity.HasData(new PlanningDefaults { Id = 1, ConflictThresholdMinutes = Core.Entities.PlanningDefaults.DefaultConflictThresholdMinutes });
         });
 
         // Конфигурация UnplannedRun (PZP-04)

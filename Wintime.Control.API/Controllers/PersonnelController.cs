@@ -25,7 +25,7 @@ public class PersonnelController : ControllerBase
     /// Список персонала
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<PersonnelDto>>> GetPersonnelList(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? role = null)
@@ -39,13 +39,16 @@ public class PersonnelController : ControllerBase
 
         var users = await query.ToListAsync();
 
+        // Observer читает список только ради фильтра «Наладчик» (PZP-07a) — логины ему не отдаём.
+        var showLogin = !User.IsInRole(Roles.Observer);
+
         var dtos = users.Select(u => new PersonnelDto
         {
             Id = u.Id,
             EmployeeId = u.EmployeeId,
             FullName = u.FullName,
             Qualification = u.Qualification,
-            Login = u.UserName,
+            Login = showLogin ? u.UserName : null,
             Role = u.Role.ToString(),
             IsActive = u.IsActive
         }).ToList();

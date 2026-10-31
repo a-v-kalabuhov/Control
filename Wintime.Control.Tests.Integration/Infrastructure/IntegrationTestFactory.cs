@@ -195,6 +195,24 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
         return immId;
     }
 
+    /// <summary>
+    /// Создаёт новую ПФ с уникальным Id. Нужна тестам, которые доводят задания до Setup/InProgress:
+    /// общая <see cref="TestMoldId"/> иначе «занята» заданием другого теста (PZP-07b, 409 moldBusy).
+    /// </summary>
+    public async Task<Guid> CreateFreshMoldAsync()
+    {
+        var moldId = Guid.NewGuid();
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        db.Molds.Add(new Mold
+        {
+            Id = moldId, Name = $"Mold-{moldId:N}", FormId = $"FORM-{moldId:N}",
+            Cavities = 1, IsActive = true, ProductTypeId = TestProductTypeId
+        });
+        await db.SaveChangesAsync();
+        return moldId;
+    }
+
     /// <summary>Тип изделия + изделие по умолчанию напрямую в БД (минуя API). Возвращает (typeId, productId).</summary>
     public async Task<(Guid TypeId, Guid ProductId)> CreateProductTypeAsync(string? article = null, bool isActive = true)
     {

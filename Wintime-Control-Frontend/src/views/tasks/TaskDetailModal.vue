@@ -102,6 +102,25 @@
             />
           </el-card>
 
+          <!-- Конфликты плана (PZP-07b): подсветка, ничего не блокирует -->
+          <el-card v-if="taskConflicts.length" class="mb-6" data-test="task-conflicts">
+            <template #header>
+              <span class="font-semibold">Конфликты</span>
+            </template>
+            <ul class="space-y-1">
+              <li
+                v-for="(c, i) in taskConflicts"
+                :key="i"
+                data-test="task-conflict-row"
+                :class="readonly ? '' : 'cursor-pointer hover:underline'"
+                :style="{ color: CONFLICT_KIND_COLORS[c.kind] }"
+                @click="!readonly && $emit('open-task', otherSide(c, task.id).id)"
+              >
+                {{ conflictLine(c, task.id) }}
+              </li>
+            </ul>
+          </el-card>
+
           <!-- Примечания -->
           <el-card v-if="task?.note">
             <template #header>
@@ -156,6 +175,8 @@ import TaskResultsTab from '@/components/tasks/TaskResultsTab.vue'
 import { formatPlannedStart } from '@/utils/plannedStart'
 import dayjs from 'dayjs'
 import { formatDuration } from '@/utils/taskPlan'
+import { usePlanConflictsStore } from '@/stores/planConflicts'
+import { conflictLine, otherSide, CONFLICT_KIND_COLORS } from '@/utils/planConflicts'
 import { productSecondary } from '@/utils/productLabel'
 
 const props = defineProps({
@@ -179,7 +200,10 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'edit', 'issue', 'complete', 'close'])
+const emit = defineEmits(['update:modelValue', 'edit', 'issue', 'complete', 'close', 'open-task'])
+
+const planConflicts = usePlanConflictsStore()
+const taskConflicts = computed(() => (props.task?.id ? planConflicts.forTask(props.task.id) : []))
 
 const authStore = useAuthStore()
 const loading = ref(false)

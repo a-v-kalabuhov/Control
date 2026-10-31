@@ -223,6 +223,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useMobileStore } from '@/stores/mobile'
 import { mobileApi } from '@/api/mobile'
+import { apiErrorMessage } from '@/utils/apiError'
 import MobileTaskCard from '@/components/mobile/MobileTaskCard.vue'
 import MobileTaskDetailView from './MobileTaskDetailView.vue'
 import QrScanner from '@/components/mobile/QrScanner.vue'
@@ -262,14 +263,29 @@ const openTaskDetail = (task) => {
   detailVisible.value = true
 }
 
+// PZP-07b: ПФ занята на другом ТПА — предупреждение с подтверждением, не запрет
+const startSetupConfirmingMold = async (taskId) => {
+  try {
+    await mobileApi.startSetup(taskId)
+  } catch (error) {
+    const data = error?.response?.status === 409 ? error.response.data : null
+    if (!data?.moldBusy) throw error
+    await ElMessageBox.confirm(`${data.message}. Всё равно начать наладку?`, 'Пресс-форма занята', {
+      type: 'warning', confirmButtonText: 'Начать', cancelButtonText: 'Отмена'
+    })
+    await mobileApi.startSetup(taskId, true)
+  }
+}
+
 const startTask = async (task) => {
   try {
-    await mobileApi.startSetup(task.id)
+    await startSetupConfirmingMold(task.id)
     ElMessage.success('Наладка начата')
     await loadTasks()
     detailVisible.value = false
   } catch (error) {
-    ElMessage.error(error.response?.data ?? 'Ошибка начала наладки')
+    if (error === 'cancel') return
+    ElMessage.error(apiErrorMessage(error, 'Ошибка начала наладки'))
   }
 }
 
