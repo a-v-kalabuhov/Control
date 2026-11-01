@@ -116,6 +116,20 @@ const routes = [
             meta: { roles: ['Admin', 'Manager'], title: 'Справочник изделий' }
           },
           {
+            path: 'plastics',
+            name: 'DictionaryPlastics',
+            component: () => import('@/views/dictionary/MaterialDictionary.vue'),
+            props: { materialType: 'Plastic' },
+            meta: { roles: ['Admin', 'Manager'], title: 'Справочник пластиков' }
+          },
+          {
+            path: 'colorants',
+            name: 'DictionaryColorants',
+            component: () => import('@/views/dictionary/MaterialDictionary.vue'),
+            props: { materialType: 'Colorant' },
+            meta: { roles: ['Admin', 'Manager'], title: 'Справочник красителей' }
+          },
+          {
             path: 'personnel',
             name: 'DictionaryPersonnel',
             component: () => import('@/views/dictionary/PersonnelDictionary.vue'),
