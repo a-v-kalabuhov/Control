@@ -60,6 +60,25 @@ describe('MaterialDictionary (PZP-22)', () => {
     expect(materialsApi.getList).toHaveBeenCalledWith(expect.objectContaining({ type: 'Colorant' }))
   })
 
+  it('колонка «Цвет» пуста у пластика без цвета (не подставляет наименование)', async () => {
+    materialsApi.getList.mockResolvedValue({ data: [plastic] })
+    const w = mountView('Plastic')
+    await flushPromises()
+    expect(w.text()).toContain('Полипропилен')
+    expect(w.text()).not.toContain('Полипропилен ·')
+    const cells = w.findAll('tbody tr')[0].findAll('td')
+    expect(cells[3].text()).toBe('')
+  })
+
+  it('колонка «Цвет» красителя: наименование · код', async () => {
+    const colorant = { ...plastic, id: 'c1', type: 'Colorant', article: 'C-01', name: 'Мастербатч',
+      colorName: 'Чёрный', colorCode: 'RAL 9005' }
+    materialsApi.getList.mockResolvedValue({ data: [colorant] })
+    const w = mountView('Colorant')
+    await flushPromises()
+    expect(w.text()).toContain('Чёрный · RAL 9005')
+  })
+
   it('кнопка «Удалить» только у неиспользованных', async () => {
     const w = mountView()
     await flushPromises()

@@ -75,6 +75,15 @@ public class MaterialsControllerTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Create_WithoutType_Returns400()
+    {
+        var client = await ManagerAsync();
+        var resp = await client.PostAsJsonAsync("/api/materials", new { article = Uniq("pp"), name = Uniq("Полипропилен") });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("тип");
+    }
+
+    [Fact]
     public async Task Create_DuplicateArticle_DifferentCase_Returns409()
     {
         var client = await ManagerAsync();

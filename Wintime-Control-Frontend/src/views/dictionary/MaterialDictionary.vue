@@ -33,7 +33,7 @@
       <el-table-column prop="name" label="Наименование" />
       <el-table-column prop="manufacturer" label="Производитель" width="200" />
       <el-table-column label="Цвет" width="220">
-        <template #default="{ row }">{{ colorLabel(row) }}</template>
+        <template #default="{ row }">{{ rowColorLabel(row) }}</template>
       </el-table-column>
       <el-table-column label="Статус" width="120" align="center">
         <template #default="{ row }">
@@ -72,7 +72,7 @@
           <SuggestInput
             v-model="form.colorName"
             :fetch="fetchColors"
-            :item-label="colorLabel"
+            :item-label="suggestionColorLabel"
             :item-value="c => c.name"
             placeholder="Наименование"
             @select="onColorSelect"
@@ -139,10 +139,14 @@ onMounted(loadItems)
 // Переход «Пластики» ↔ «Красители» переиспользует экземпляр компонента — перезагрузить список.
 watch(() => props.materialType, loadItems)
 
-function colorLabel(c) {
-  const name = c.colorName ?? c.name
-  const code = c.colorCode ?? c.code
-  return [name, code].filter(Boolean).join(' · ')
+// Строка таблицы: только цвет материала (наименование материала сюда не подставляется).
+function rowColorLabel(row) {
+  return [row.colorName, row.colorCode].filter(Boolean).join(' · ')
+}
+
+// Подсказка цвета: { name, code }.
+function suggestionColorLabel(c) {
+  return [c.name, c.code].filter(Boolean).join(' · ')
 }
 
 async function loadItems() {

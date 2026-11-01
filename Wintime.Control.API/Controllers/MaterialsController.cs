@@ -43,8 +43,8 @@ public class MaterialsController : ControllerBase
         if (byArticle != null)
             return $"Артикул {f.Article} уже есть у материала «{byArticle.Name}» ({label}).";
 
-        var manufacturerKey = (f.Manufacturer ?? string.Empty).ToLower();
-        var nameKey = f.Name.ToLower();
+        var manufacturerKey = (f.Manufacturer ?? string.Empty).ToLowerInvariant();
+        var nameKey = f.Name.ToLowerInvariant();
         var byName = await _context.Materials.FirstOrDefaultAsync(m => m.Type == type && m.Id != exceptId
             && (m.Manufacturer ?? string.Empty).ToLower() == manufacturerKey && m.Name.ToLower() == nameKey);
         if (byName == null)
@@ -99,20 +99,22 @@ public class MaterialsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<MaterialDto>> Create([FromBody] CreateMaterialRequestDto request)
     {
-        if (!Enum.IsDefined(request.Type))
+        if (request.Type is null)
+            return BadRequest("Укажите тип материала.");
+        if (!Enum.IsDefined(request.Type.Value))
             return BadRequest("Неизвестный тип материала.");
         var f = MaterialRules.Normalize(request.Article, request.Name, request.Manufacturer,
             request.ColorName, request.ColorCode, request.Comment);
-        var error = MaterialRules.Validate(request.Type, f);
+        var error = MaterialRules.Validate(request.Type.Value, f);
         if (error != null)
             return BadRequest(error);
-        var conflict = await UniquenessConflictAsync(request.Type, f, null);
+        var conflict = await UniquenessConflictAsync(request.Type.Value, f, null);
         if (conflict != null)
             return Conflict(conflict);
 
         var m = new Material
         {
-            Type = request.Type, Article = f.Article, Name = f.Name, Manufacturer = f.Manufacturer,
+            Type = request.Type.Value, Article = f.Article, Name = f.Name, Manufacturer = f.Manufacturer,
             ColorName = f.ColorName, ColorCode = f.ColorCode, Comment = f.Comment
         };
         _context.Materials.Add(m);
