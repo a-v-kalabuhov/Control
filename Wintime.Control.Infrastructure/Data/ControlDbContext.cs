@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Policies;
 
 namespace Wintime.Control.Infrastructure.Data;
 
@@ -28,6 +29,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<UnplannedRun> UnplannedRuns { get; set; }
     public DbSet<Order> Orders { get; set; }
     public DbSet<PlanningDefaults> PlanningDefaults { get; set; }
+    public DbSet<Material> Materials { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -96,6 +98,23 @@ public class ControlDbContext : IdentityDbContext<User>
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.FullArticle).IsUnique();
             entity.ToTable("Products");
+        });
+
+        // Конфигурация Material (PZP-22): уникальность внутри типа.
+        // Регистронезависимый индекс (Type, lower(coalesce(Manufacturer,'')), lower(Name)) — на выражении,
+        // EF его не моделирует, создаётся сырым SQL в миграции AddMaterials.
+        builder.Entity<Material>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Article).HasMaxLength(MaterialRules.ArticleMaxLength).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(MaterialRules.NameMaxLength).IsRequired();
+            entity.Property(e => e.Manufacturer).HasMaxLength(MaterialRules.ManufacturerMaxLength);
+            entity.Property(e => e.ColorName).HasMaxLength(MaterialRules.ColorNameMaxLength);
+            entity.Property(e => e.ColorCode).HasMaxLength(MaterialRules.ColorCodeMaxLength);
+            entity.Property(e => e.Comment).HasMaxLength(MaterialRules.CommentMaxLength);
+            entity.HasIndex(e => new { e.Type, e.Article }).IsUnique();
+            entity.HasIndex(e => new { e.Type, e.IsActive });
+            entity.ToTable("Materials");
         });
 
         // Конфигурация Task
