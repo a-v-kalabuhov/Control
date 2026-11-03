@@ -421,6 +421,41 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
+    /// BL-36: заменить материал ингредиента копии рецепта. Только активный материал того же типа;
+    /// статус задания не проверяется — замена разрешена в любом статусе, включая завершённые.
+    /// Выбор исходного материала возвращает строку к исходному (RecipeEdited сбрасывается).
+    /// </summary>
+    [HttpPut("{id:guid}/recipe/{ingredientId:guid}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<TaskDto>> ReplaceRecipeIngredient(
+        Guid id, Guid ingredientId, [FromBody] ReplaceRecipeIngredientRequestDto request)
+    {
+        var task = await _context.ShiftTasks
+            .Include(t => t.Imm)
+            .Include(t => t.Mold)
+            .Include(t => t.Product).ThenInclude(p => p!.ProductType)
+            .Include(t => t.Personnel)
+            .Include(t => t.Order)
+            .Include(t => t.RecipeIngredients).ThenInclude(i => i.Material)
+            .Include(t => t.RecipeIngredients).ThenInclude(i => i.OriginalMaterial)
+            .FirstOrDefaultAsync(t => t.Id == id);
+        if (task == null)
+            return NotFound();
+        if (task.RecipeIngredients.All(i => i.Id != ingredientId))
+            return NotFound();
+
+        var material = await _context.Materials.FirstOrDefaultAsync(m => m.Id == request.MaterialId);
+        if (material == null)
+            return NotFound("Материал не найден.");
+
+        task.ReplaceIngredient(ingredientId, material);
+        await _context.SaveChangesAsync();
+
+        var schedule = await _factoryClock.GetScheduleAsync();
+        return Ok(task.ToDto(schedule));
+    }
+
+    /// <summary>
     /// Выдать задание («Планируется» → «Выдано»)
     /// </summary>
     [HttpPost("{id:guid}/issue")]

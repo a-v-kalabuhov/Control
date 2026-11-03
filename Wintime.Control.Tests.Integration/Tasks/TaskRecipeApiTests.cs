@@ -176,4 +176,94 @@ public class TaskRecipeApiTests : IClassFixture<IntegrationTestFactory>
         reread.RecipeIngredients.Should().ContainSingle().Which.MaterialId.Should().Be(b);
         reread.RecipeEdited.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task ReplaceIngredient_Manager_Returns200AndMarksEdited()
+    {
+        var c = await ManagerAsync();
+        var (typeId, productId, moldId, a, b) = await ArrangeAsync(c);
+        (await PutRecipeAsync(c, typeId, productId, (a, 100m))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var task = await CreateTaskAsync(c, _factory.TestImmId, moldId, productId);
+        var row = task.RecipeIngredients.Single();
+
+        var resp = await c.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{row.Id}", new { materialId = b });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+        var dto = (await resp.Content.ReadFromJsonAsync<TaskDto>(JsonOptions))!;
+        dto.RecipeEdited.Should().BeTrue();
+        dto.RecipeIngredients.Single().MaterialId.Should().Be(b);
+        dto.RecipeIngredients.Single().OriginalMaterialId.Should().Be(a);
+        dto.RecipeIngredients.Single().OriginalMaterialArticle.Should().NotBeNullOrEmpty();
+
+        // Копия сохранилась в БД, не только в ответе.
+        var reread = (await c.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", JsonOptions))!;
+        reread.RecipeIngredients.Single().MaterialId.Should().Be(b);
+    }
+
+    [Fact]
+    public async Task ReplaceIngredient_BackToOriginal_ResetsEdited()
+    {
+        var c = await ManagerAsync();
+        var (typeId, productId, moldId, a, b) = await ArrangeAsync(c);
+        (await PutRecipeAsync(c, typeId, productId, (a, 100m))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var task = await CreateTaskAsync(c, _factory.TestImmId, moldId, productId);
+        var row = task.RecipeIngredients.Single();
+        (await c.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{row.Id}", new { materialId = b }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resp = await c.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{row.Id}", new { materialId = a });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = (await resp.Content.ReadFromJsonAsync<TaskDto>(JsonOptions))!;
+        dto.RecipeEdited.Should().BeFalse();
+        dto.RecipeIngredients.Single().MaterialId.Should().Be(a);
+    }
+
+    [Fact]
+    public async Task ReplaceIngredient_Adjuster_Returns403()
+    {
+        var manager = await ManagerAsync();
+        var (typeId, productId, moldId, a, b) = await ArrangeAsync(manager);
+        (await PutRecipeAsync(manager, typeId, productId, (a, 100m))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var task = await CreateTaskAsync(manager, _factory.TestImmId, moldId, productId);
+        var row = task.RecipeIngredients.Single();
+        var adjuster = _factory.CreateClient();
+        AuthHelper.SetBearerToken(adjuster, (await AuthHelper.GetTokenAsync(adjuster, "test_adjuster", "Adjuster123!"))!);
+
+        var resp = await adjuster.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{row.Id}", new { materialId = b });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task ReplaceIngredient_OtherType_Returns400()
+    {
+        var c = await ManagerAsync();
+        var (typeId, productId, moldId, a, _) = await ArrangeAsync(c);
+        (await PutRecipeAsync(c, typeId, productId, (a, 100m))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var task = await CreateTaskAsync(c, _factory.TestImmId, moldId, productId);
+        var row = task.RecipeIngredients.Single();
+        var colorant = await NewMaterialAsync(c, MaterialType.Colorant);
+
+        var resp = await c.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{row.Id}", new { materialId = colorant });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ReplaceIngredient_UnknownIngredientOrMaterial_Returns404()
+    {
+        var c = await ManagerAsync();
+        var (typeId, productId, moldId, a, b) = await ArrangeAsync(c);
+        (await PutRecipeAsync(c, typeId, productId, (a, 100m))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var task = await CreateTaskAsync(c, _factory.TestImmId, moldId, productId);
+        var row = task.RecipeIngredients.Single();
+
+        (await c.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{Guid.NewGuid()}", new { materialId = b }))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await c.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{row.Id}", new { materialId = Guid.NewGuid() }))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await c.PutAsJsonAsync($"/api/tasks/{Guid.NewGuid()}/recipe/{row.Id}", new { materialId = b }))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
 }
