@@ -21,5 +21,9 @@ export const productTypesApi = {
   },
   deleteProduct(typeId, productId) {
     return apiClient.delete(`/producttypes/${typeId}/products/${productId}`)
+  },
+  // BL-36: заменить рецепт изделия целиком (порядок массива = порядок строк рецепта)
+  setRecipe(typeId, productId, ingredients) {
+    return apiClient.put(`/producttypes/${typeId}/products/${productId}/recipe`, { ingredients })
   }
 }

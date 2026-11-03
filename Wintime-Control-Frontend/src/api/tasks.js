@@ -54,5 +54,10 @@ export const tasksApi = {
   // Удалить задание (отмена)
   delete(id) {
     return apiClient.delete(`/tasks/${id}`)
+  },
+
+  // BL-36: заменить материал ингредиента копии рецепта (любой статус задания)
+  replaceRecipeIngredient(id, ingredientId, materialId) {
+    return apiClient.put(`/tasks/${id}/recipe/${ingredientId}`, { materialId })
   }
 }
