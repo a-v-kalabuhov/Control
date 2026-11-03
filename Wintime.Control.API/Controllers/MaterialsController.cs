@@ -29,10 +29,28 @@ public class MaterialsController : ControllerBase
         IsActive = m.IsActive, IsUsed = usedIds.Contains(m.Id)
     };
 
-    // Материалы из набора, на которые есть ссылки. Ссылающихся таблиц пока нет —
-    // BL-36 добавит рецепты изделий и копии рецептов в заданиях (включая архивные).
-    private Task<HashSet<Guid>> UsedMaterialIdsAsync(IReadOnlyCollection<Guid> materialIds) =>
-        Task.FromResult(new HashSet<Guid>());
+    // Материалы из набора, на которые есть ссылки: рецепты изделий, текущий материал копии
+    // в задании и исходный материал заменённой строки (BL-36). Архивные изделия и закрытые
+    // задания учитываются — история ссылку не отпускает, материал только уходит в архив.
+    private async Task<HashSet<Guid>> UsedMaterialIdsAsync(IReadOnlyCollection<Guid> materialIds)
+    {
+        if (materialIds.Count == 0)
+            return new HashSet<Guid>();
+
+        var inProductRecipes = await _context.ProductRecipeIngredients
+            .Where(i => materialIds.Contains(i.MaterialId))
+            .Select(i => i.MaterialId).Distinct().ToListAsync();
+
+        var currentInTasks = await _context.ShiftTaskRecipeIngredients
+            .Where(i => materialIds.Contains(i.MaterialId))
+            .Select(i => i.MaterialId).Distinct().ToListAsync();
+
+        var originalInTasks = await _context.ShiftTaskRecipeIngredients
+            .Where(i => materialIds.Contains(i.OriginalMaterialId))
+            .Select(i => i.OriginalMaterialId).Distinct().ToListAsync();
+
+        return inProductRecipes.Concat(currentInTasks).Concat(originalInTasks).ToHashSet();
+    }
 
     // Уникальность внутри типа без учёта регистра (артикул уже в верхнем регистре).
     private async Task<string?> UniquenessConflictAsync(MaterialType type, MaterialFields f, Guid? exceptId)
