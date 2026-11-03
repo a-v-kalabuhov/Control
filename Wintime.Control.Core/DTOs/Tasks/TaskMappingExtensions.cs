@@ -59,6 +59,24 @@ public static class TaskMappingExtensions
             PlannedReleaseSeconds = plan.ReleaseSeconds,
             PlannedReleaseBufferSeconds = plan.BufferSeconds,
             PlannedEndAt = plan.PlannedEndAt,
+            // BL-36: копия рецепта. Навигации материалов загружаются Include в контроллерах;
+            // без них маппинг не падает, но строки будут без артикула.
+            RecipeIngredients = t.RecipeIngredients
+                .OrderBy(i => i.SortOrder)
+                .Select(i => new TaskRecipeIngredientDto
+                {
+                    Id = i.Id,
+                    MaterialId = i.MaterialId,
+                    MaterialType = i.Material != null ? i.Material.Type : default,
+                    MaterialArticle = i.Material?.Article ?? string.Empty,
+                    MaterialName = i.Material?.Name ?? string.Empty,
+                    OriginalMaterialId = i.OriginalMaterialId,
+                    OriginalMaterialArticle = i.OriginalMaterial?.Article ?? string.Empty,
+                    OriginalMaterialName = i.OriginalMaterial?.Name ?? string.Empty,
+                    Percent = i.Percent
+                })
+                .ToList(),
+            RecipeEdited = t.RecipeEdited,
             CreatedAt = t.CreatedAt,
             UpdatedAt = t.UpdatedAt
         };

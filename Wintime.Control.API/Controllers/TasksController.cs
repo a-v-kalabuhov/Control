@@ -59,6 +59,8 @@ public class TasksController : ControllerBase
             .Include(t => t.Mold)
             .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
+            .Include(t => t.RecipeIngredients).ThenInclude(i => i.Material)
+            .Include(t => t.RecipeIngredients).ThenInclude(i => i.OriginalMaterial)
             .Include(t => t.Order)
             .AsQueryable();
 
@@ -140,6 +142,8 @@ public class TasksController : ControllerBase
             .Include(t => t.Mold)
             .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
+            .Include(t => t.RecipeIngredients).ThenInclude(i => i.Material)
+            .Include(t => t.RecipeIngredients).ThenInclude(i => i.OriginalMaterial)
             .Where(t => t.PersonnelId == userId)
             .Where(t => t.Status != Core.Enums.TaskStatus.Planned);
 
@@ -206,6 +210,8 @@ public class TasksController : ControllerBase
             .Include(t => t.Mold)
             .Include(t => t.Product).ThenInclude(p => p!.ProductType)
             .Include(t => t.Personnel)
+            .Include(t => t.RecipeIngredients).ThenInclude(i => i.Material)
+            .Include(t => t.RecipeIngredients).ThenInclude(i => i.OriginalMaterial)
             .Include(t => t.Order)
             .FirstOrDefaultAsync(t => t.Id == id);
 
@@ -269,6 +275,7 @@ public class TasksController : ControllerBase
             return BadRequest("Укажите изделие.");
 
         var product = await _context.Products.Include(p => p.ProductType)
+            .Include(p => p.RecipeIngredients).ThenInclude(i => i.Material)
             .FirstOrDefaultAsync(p => p.Id == request.ProductId.Value);
         if (product == null)
             return BadRequest("Указано несуществующее изделие.");
@@ -319,6 +326,7 @@ public class TasksController : ControllerBase
 
         task.Mold = mold;
         task.Product = product;
+        task.ApplyRecipe(product.RecipeIngredients);   // BL-36: копия рецепта изделия
         _context.ShiftTasks.Add(task);
         await _context.SaveChangesAsync();
 
@@ -332,19 +340,25 @@ public class TasksController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> UpdateTask(Guid id, [FromBody] UpdateTaskRequestDto request)
     {
-        var task = await _context.ShiftTasks.Include(t => t.Mold).FirstOrDefaultAsync(t => t.Id == id);
+        var task = await _context.ShiftTasks.Include(t => t.Mold)
+            .Include(t => t.RecipeIngredients)
+            .FirstOrDefaultAsync(t => t.Id == id);
         if (task == null)
             return NotFound();
 
         if (request.ProductId.HasValue && request.ProductId.Value != task.ProductId)
         {
             var product = await _context.Products.Include(p => p.ProductType)
+                .Include(p => p.RecipeIngredients).ThenInclude(i => i.Material)
                 .FirstOrDefaultAsync(p => p.Id == request.ProductId.Value);
             if (product == null)
                 return BadRequest("Указано несуществующее изделие.");
             ProductSelection.EnsureSelectable(product);
             ProductSelection.EnsureBelongsToMold(product, task.Mold.ProductTypeId);
-            task.SetProduct(product.Id);   // статус и заказ — гард в сущности (ADR-0002)
+            // BL-36: смена изделия перезаписывает копию рецепта; тот же продукт — no-op.
+            // статус и заказ — гард в сущности (ADR-0002)
+            if (task.SetProduct(product.Id))
+                task.ApplyRecipe(product.RecipeIngredients);
         }
 
         if (request.PlanQuantity.HasValue)
