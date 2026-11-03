@@ -78,6 +78,9 @@ public class ShiftTask : BaseEntity
     public Product? Product { get; set; }
     public User? Personnel { get; set; }
 
+    // Копия рецепта изделия на момент создания/смены изделия (BL-36).
+    public List<ShiftTaskRecipeIngredient> RecipeIngredients { get; set; } = new();
+
     // ─────────────────────────────────────────────────────────────────────────
     // Конечный автомат жизненного цикла задания:
     //   Planned → Issued → Setup → InProgress → Completed → Closed

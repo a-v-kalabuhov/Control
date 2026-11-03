@@ -12,4 +12,5 @@ public class Product : BaseEntity
     public string Name { get; set; } = string.Empty;        // наименование изделия
     public string FullArticle { get; set; } = string.Empty; // хранимый, пересчитывается при правке артикулов
     public bool IsActive { get; set; } = true;              // архивный флаг
+    public List<ProductRecipeIngredient> RecipeIngredients { get; set; } = new();   // рецепт (BL-36)
 }
