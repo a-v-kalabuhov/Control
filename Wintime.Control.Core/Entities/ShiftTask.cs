@@ -319,17 +319,20 @@ public class ShiftTask : BaseEntity
     /// <summary>
     /// PZP-19: сменить изделие. Только в «Планируется» и только без заказа (изделие задаёт заказ);
     /// неизменённое значение — no-op в любом статусе (форма шлёт поле при каждом сохранении).
+    /// Возвращает <c>true</c>, если изделие реально сменилось: вызывающий по этому признаку
+    /// перезаписывает копию рецепта (BL-36).
     /// Принадлежность изделия типу ПФ проверяет вызывающий код (ProductSelection).
     /// </summary>
-    public void SetProduct(Guid productId)
+    public bool SetProduct(Guid productId)
     {
         if (productId == ProductId)
-            return;
+            return false;
 
         EnsureEditable();
         if (OrderId != null)
             throw new DomainException("Изделие задания с заказом задаёт заказ");
         ProductId = productId;
+        return true;
     }
 
     /// <summary>
@@ -345,6 +348,67 @@ public class ShiftTask : BaseEntity
 
         EnsureEditable();
         Note = note;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Рецепт задания (BL-36): копия рецепта изделия, сделанная при создании или
+    // смене изделия. Строки не добавляются и не удаляются вручную, процент не
+    // правится — только замена материала на материал того же типа, в любом статусе.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// «Рецепт правился вручную» — хотя бы одна строка указывает не на исходный материал.
+    /// Не хранится: замена туда и обратно правкой не считается.
+    /// </summary>
+    public bool RecipeEdited => RecipeIngredients.Any(i => i.MaterialId != i.OriginalMaterialId);
+
+    /// <summary>
+    /// BL-36: перезаписать копию рецептом изделия. Вызывается при создании задания
+    /// и при реальной смене изделия; нет рецепта у изделия — копия пустая.
+    /// Требует загруженной навигации <see cref="ProductRecipeIngredient.Material"/> —
+    /// она же становится копией, поэтому И Include рецепта, и ThenInclude материала обязательны.
+    /// </summary>
+    public void ApplyRecipe(IEnumerable<ProductRecipeIngredient> productIngredients)
+    {
+        RecipeIngredients.Clear();
+        var order = 0;
+        foreach (var ingredient in productIngredients.OrderBy(i => i.SortOrder))
+        {
+            var material = ingredient.Material
+                           ?? throw new InvalidOperationException("Материал рецепта изделия не загружен.");
+            RecipeIngredients.Add(new ShiftTaskRecipeIngredient
+            {
+                MaterialId = material.Id,
+                Material = material,
+                OriginalMaterialId = material.Id,
+                OriginalMaterial = material,
+                Percent = ingredient.Percent,
+                SortOrder = order++
+            });
+        }
+    }
+
+    /// <summary>
+    /// BL-36: заменить материал строки копии. Только материал того же типа и активный;
+    /// статус задания не проверяется — замена разрешена в любом статусе (даже после закрытия).
+    /// Выбор исходного материала возвращает строку к исходному состоянию.
+    /// Требует загруженной навигации <see cref="ShiftTaskRecipeIngredient.Material"/>.
+    /// </summary>
+    public void ReplaceIngredient(Guid ingredientId, Material newMaterial)
+    {
+        var row = RecipeIngredients.FirstOrDefault(i => i.Id == ingredientId)
+                  ?? throw new DomainException("Строка рецепта не найдена.");
+        var current = row.Material
+                      ?? throw new InvalidOperationException("Материал строки рецепта не загружен.");
+
+        if (!newMaterial.IsActive)
+            throw new DomainException("Архивный материал нельзя выбрать ингредиентом рецепта.");
+        if (newMaterial.Type != current.Type)
+            throw new DomainException(
+                $"Можно выбрать только {MaterialRules.TypeLabel(current.Type)} — как у текущего ингредиента.");
+
+        row.MaterialId = newMaterial.Id;
+        row.Material = newMaterial;
     }
 
     /// <summary>
