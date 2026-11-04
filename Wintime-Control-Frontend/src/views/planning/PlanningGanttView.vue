@@ -38,7 +38,7 @@
       @edit="editTask"
       @issue="issueTask"
       @close="closeTask"
-      @recipe-changed="task => (selectedTask = task)"
+      @recipe-changed="onRecipeChanged"
     />
     <TaskFormModal v-model="formVisible" :task="editingTask" @success="load" />
     <IssueTaskDialog v-model="issueVisible" :task="issuingTask" @issued="load" />
@@ -143,6 +143,11 @@ function refreshSelectedTask(data) {
 function openDetail(task) {
   selectedTask.value = task
   detailVisible.value = true
+}
+
+async function onRecipeChanged(task) {
+  selectedTask.value = task
+  await load()
 }
 
 // Строка баннера → период планового начала задания (масштаб тот же) и его карточка

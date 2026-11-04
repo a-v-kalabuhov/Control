@@ -4,6 +4,7 @@
     title="Замена ингредиента"
     width="560px"
     :close-on-click-modal="false"
+    append-to-body
   >
     <div class="text-sm text-gray-600 mb-3">
       Строка: <span class="font-medium">{{ ingredient?.materialArticle }} — {{ ingredient?.materialName }}

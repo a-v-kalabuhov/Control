@@ -5,6 +5,8 @@ import ElementPlus, { ElMessageBox } from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import TaskFormModal from '../TaskFormModal.vue'
 import { ordersApi } from '@/api/orders'
+import { moldsApi } from '@/api/molds'
+import { productTypesApi } from '@/api/productTypes'
 
 vi.mock('@/api/imm', () => ({ immApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) } }))
 vi.mock('@/api/molds', () => ({
@@ -39,7 +41,8 @@ vi.mock('@/api/productTypes', () => ({
         ] }
       ]
     }
-  ] })) }
+  ] })),
+  getById: vi.fn() }
 }))
 vi.mock('@/api/planning', () => ({
   planningApi: { getConflicts: vi.fn(() => Promise.resolve({ data: { taskCount: 0, planCount: 0, deviationCount: 0, items: [] } })) }
@@ -187,6 +190,59 @@ describe('TaskFormModal — рецепт (BL-36)', () => {
     expect(wrapper.vm.recipeText).toBe('PP-ARCH — 100 %')
     expect(document.body.textContent).toContain('Рецепт изделия')
     expect(document.body.textContent).toContain('PP-ARCH — 100 %')
+  })
+
+  it('показывает рецепт изделия из архивного типа текущего задания', async () => {
+    const archivedType = {
+      id: 'pt-archived', article: 'OLD', name: 'Архивный тип', isActive: false,
+      products: [{ id: 'p-old', article: '0', fullArticle: 'OLD.0', name: 'Старое изделие', isActive: false, recipe: [
+        { materialId: 'pp-old', materialType: 'Plastic', materialArticle: 'PP-OLD', materialName: 'Старый пластик', materialIsActive: false, percent: 100 }
+      ] }]
+    }
+    moldsApi.getList.mockResolvedValueOnce({ data: [
+      { id: 'mold-old', name: 'Старая форма', cavities: 2, isActive: false, productTypeId: 'pt-archived' }
+    ] })
+    productTypesApi.getList.mockResolvedValueOnce({ data: [] })
+    productTypesApi.getById.mockResolvedValueOnce({ data: archivedType })
+    const wrapper = mountModal({
+      ...editedTask,
+      moldId: 'mold-old',
+      productId: 'p-old',
+      productFullArticle: 'OLD.0',
+      productName: 'Старое изделие',
+      recipeEdited: false
+    })
+    await flushPromises()
+
+    expect(productTypesApi.getById).toHaveBeenCalledWith('pt-archived')
+    expect(wrapper.vm.selectedProductRecipe).toHaveLength(1)
+    expect(wrapper.vm.recipeText).toBe('PP-OLD — 100 %')
+    expect(document.body.textContent).toContain('Рецепт изделия')
+    expect(document.body.textContent).toContain('PP-OLD — 100 %')
+  })
+
+  it('при двух запросах заказов одного изделия поздний старый ответ не перезаписывает новый', async () => {
+    const oldOrder = { id: 'order-old', number: 'OLD', productId: 'p-X0' }
+    const newOrder = { id: 'order-new', number: 'NEW', productId: 'p-X0' }
+    let resolveOlder
+    let resolveNewer
+    ordersApi.getList
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOlder = resolve }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveNewer = resolve }))
+    const wrapper = mountModal({ ...editedTask, orderId: newOrder.id, recipeEdited: false })
+    await flushPromises()
+
+    const newerRequest = wrapper.vm.loadOrdersForProduct('p-X0')
+    resolveNewer({ data: [newOrder] })
+    await newerRequest
+    await flushPromises()
+    expect(wrapper.vm.orderOptions).toEqual([newOrder])
+    expect(wrapper.vm.form.orderId).toBe(newOrder.id)
+
+    resolveOlder({ data: [oldOrder] })
+    await flushPromises()
+    expect(wrapper.vm.orderOptions).toEqual([newOrder])
+    expect(wrapper.vm.form.orderId).toBe(newOrder.id)
   })
 
   it('после отмены обновляет заказы, если исходный ответ пришёл при выбранном новом изделии', async () => {

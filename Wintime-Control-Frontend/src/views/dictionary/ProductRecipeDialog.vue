@@ -4,6 +4,7 @@
     :title="title"
     width="760px"
     :close-on-click-modal="false"
+    append-to-body
   >
     <el-table :data="rows" size="small" empty-text="Рецепт не задан">
       <el-table-column label="Тип" width="120">
@@ -81,7 +82,7 @@ import { ElMessage } from 'element-plus'
 import { productTypesApi } from '@/api/productTypes'
 import { materialsApi } from '@/api/materials'
 import { apiErrorMessage } from '@/utils/apiError'
-import { materialTypeLabel, plasticSum, formatPercent } from '@/utils/recipe'
+import { materialTypeLabel, plasticSum, formatPercent, isRecipeSumOk } from '@/utils/recipe'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -126,7 +127,7 @@ const selectedRows = computed(() => rows.value.filter(r => r.materialId))
 const noPlastic = computed(() =>
   selectedRows.value.length > 0 && !selectedRows.value.some(r => r.materialType === 'Plastic'))
 
-const sumIsOk = computed(() => plasticSum(rows.value) === 100)
+const sumIsOk = computed(() => isRecipeSumOk(rows.value))
 const sumText = computed(() => {
   const sum = plasticSum(rows.value)
   const base = `Пластики: ${formatPercent(sum)} %`
@@ -194,20 +195,28 @@ function addRow() {
   rows.value.push({ materialId: null, materialType: null, percent: 10 })
 }
 
+let saveGeneration = 0
+
 async function save() {
   if (!canSave.value) return
+  const generation = ++saveGeneration
+  const typeId = props.typeId
+  const productId = props.product.id
   saving.value = true
   try {
     const ingredients = selectedRows.value
       .map(r => ({ materialId: r.materialId, percent: Number(r.percent) }))
-    await productTypesApi.setRecipe(props.typeId, props.product.id, ingredients)
+    await productTypesApi.setRecipe(typeId, productId, ingredients)
     ElMessage.success('Рецепт сохранён')
-    emit('saved')
-    visible.value = false
+    // Пока запрос шёл, диалог могли закрыть и открыть для другого изделия.
+    if (props.modelValue && props.typeId === typeId && props.product?.id === productId) {
+      emit('saved')
+      visible.value = false
+    }
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, 'Ошибка сохранения рецепта'))
   } finally {
-    saving.value = false
+    if (generation === saveGeneration) saving.value = false
   }
 }
 </script>

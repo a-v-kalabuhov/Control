@@ -309,6 +309,7 @@ const editingTask = ref(null)
 const imms = ref([])
 const molds = ref([])
 const productTypes = ref([])
+const editingProductType = ref(null)
 const personnel = ref([])
 const orderOptions = ref([])
 const initialOrderId = ref(null)
@@ -425,8 +426,8 @@ const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productType
 // — иначе el-select выведет сырой GUID. source — задание или заказ с полями productId/productFullArticle.
 const withFallbackProduct = (list, source, isActive) => {
   if (!source?.productId || list.some(p => p.id === source.productId)) return list
-  const matchingProduct = productTypes.value
-    .flatMap(type => type.products ?? [])
+  const matchingProduct = [...productTypes.value, editingProductType.value]
+    .flatMap(type => type?.products ?? [])
     .find(p => p.id === source.productId)
   return [...list, {
     id: source.productId,
@@ -540,9 +541,12 @@ const resetForm = () => {
   })
   orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
   initialOrderId.value = null
+  editingProductType.value = null
 }
 
+let orderLoadGeneration = 0
 const loadOrdersForProduct = async (productId) => {
+  const generation = ++orderLoadGeneration
   if (!productId) {
     orderOptions.value = []
     form.orderId = null
@@ -550,13 +554,14 @@ const loadOrdersForProduct = async (productId) => {
   }
   try {
     const response = await ordersApi.getList({ status: 'Active', productId })
-    // Пока запрос шёл, изделие могли сменить или вернуть после отмены подтверждения.
-    if (form.productId !== productId) return
+    // Применяем только последний запрос для всё ещё выбранного изделия.
+    if (generation !== orderLoadGeneration || form.productId !== productId) return
     orderOptions.value = response.data
     if (form.orderId && !orderOptions.value.some(o => o.id === form.orderId)) {
       form.orderId = null
     }
   } catch (error) {
+    if (generation !== orderLoadGeneration || form.productId !== productId) return
     ElMessage.error('Ошибка загрузки заказов')
   }
 }
@@ -631,6 +636,20 @@ async function loadProductTypes() {
   }
 }
 
+// У редактируемого задания тип может быть архивным и отсутствовать в активном списке.
+// Держим его отдельно: в режиме создания архивный тип не становится источником новых опций.
+async function loadEditingProductTypeFallback() {
+  const typeId = selectedProductTypeId.value
+  if (!editingTask.value || !typeId || productTypes.value.some(t => t.id === typeId)) return
+  try {
+    const response = await productTypesApi.getById(typeId)
+    if (!editingTask.value || selectedProductTypeId.value !== typeId) return
+    editingProductType.value = response.data
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки изделий')
+  }
+}
+
 // Единственная опция селекта — сам заказ: отдельный запрос не нужен,
 // карточка заказа уже передала всё для отображения.
 const applyLockedOrder = () => {
@@ -657,6 +676,7 @@ const isPastDate = (date) => {
 
 const populateForm = (task) => {
   editingTask.value = task
+  editingProductType.value = null
   Object.assign(form, {
     immId: task.immId,
     moldId: task.moldId,
@@ -678,8 +698,7 @@ const populateForm = (task) => {
   // В режиме редактирования селект ПФ задизейблен и никогда не получает
   // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
   // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
-  loadMolds()
-  loadProductTypes()
+  Promise.all([loadMolds(), loadProductTypes()]).then(loadEditingProductTypeFallback)
   // То же для ТПА (селект задизейблен) и наладчика: без списков селекты показывают id.
   loadImms()
   loadPersonnel()

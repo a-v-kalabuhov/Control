@@ -5,6 +5,7 @@ import ElementPlus from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import TaskDetailModal from '../TaskDetailModal.vue'
+import ReplaceIngredientDialog from '../ReplaceIngredientDialog.vue'
 
 vi.mock('@/api/materials', () => ({
   materialsApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) }
@@ -78,6 +79,14 @@ describe('TaskDetailModal — рецепт (BL-36)', () => {
     await flushPromises()
 
     expect(document.body.querySelectorAll('.recipe-replace')).toHaveLength(0)
+  })
+
+  it('вложенный диалог замены ингредиента рендерится в body', async () => {
+    const wrapper = mountModal({ id: 'task-1', status: 'Planned', recipeIngredients: recipe, recipeEdited: false })
+    await flushPromises()
+
+    const dialog = wrapper.findComponent(ReplaceIngredientDialog).findComponent({ name: 'ElDialog' })
+    expect(dialog.props('appendToBody')).toBe(true)
   })
 
   it('сумма пластиков ≠ 100 % выделена красным', async () => {

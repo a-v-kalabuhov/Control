@@ -72,11 +72,32 @@ describe('ProductRecipeDialog', () => {
     expect(options).toContain('cr-1')
   })
 
+  it('пустой рецепт не помечается предупреждением о сумме', () => {
+    const wrapper = mountDialog([])
+    expect(wrapper.vm.sumIsOk).toBe(true)
+    expect(wrapper.vm.sumText).not.toContain('отличается от 100 %')
+  })
+
+  it('сумма 33.33 + 33.33 + 33.34 считается равной 100 %', () => {
+    const wrapper = mountDialog([
+      { ...fullRecipe[0], percent: 33.33 },
+      { ...fullRecipe[1], percent: 33.33 },
+      { materialId: 'pp-3', materialType: 'Plastic', materialArticle: 'PP-3', materialName: 'Полипропилен 3', materialIsActive: true, percent: 33.34 }
+    ])
+    expect(wrapper.vm.sumIsOk).toBe(true)
+    expect(wrapper.vm.sumText).not.toContain('отличается от 100 %')
+  })
+
   it('сумма пластиков ≠ 100 % — красный итог, сохранение не блокируется', () => {
     const wrapper = mountDialog([fullRecipe[0]])
     expect(wrapper.vm.sumText).toContain('Пластики: 60 %')
     expect(wrapper.vm.sumIsOk).toBe(false)
     expect(wrapper.vm.canSave).toBe(true)
+  })
+
+  it('вложенный диалог рецепта рендерится в body', () => {
+    const wrapper = mountDialog(fullRecipe)
+    expect(wrapper.findComponent({ name: 'ElDialog' }).props('appendToBody')).toBe(true)
   })
 
   it('непустой рецепт без пластика — сохранение заблокировано', () => {
@@ -97,6 +118,30 @@ describe('ProductRecipeDialog', () => {
       { materialId: 'pp-2', percent: 40 }
     ])
     expect(wrapper.emitted('saved')).toBeTruthy()
+    expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([false])
+  })
+
+  it('поздний ответ сохранения не закрывает диалог другого изделия', async () => {
+    let resolveSave
+    productTypesApi.setRecipe.mockImplementationOnce(() => new Promise(resolve => { resolveSave = resolve }))
+    const wrapper = mountDialog(fullRecipe)
+    await nextTick()
+    document.body.querySelector('.recipe-save').click()
+    await nextTick()
+
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({
+      modelValue: true,
+      typeId: 'type-2',
+      product: { id: 'prod-2', fullArticle: 'OTHER.0', name: 'Другое изделие', recipe: [] }
+    })
+    resolveSave({ data: {} })
+    await flushPromises()
+
+    expect(wrapper.emitted('saved')).toBeFalsy()
+    expect(wrapper.emitted('update:modelValue') ?? []).not.toContainEqual([false])
+    expect(wrapper.vm.saving).toBe(false)
+    expect(wrapper.props('product').id).toBe('prod-2')
   })
 
   it('архивный материал строки помечен и остаётся при сохранении', async () => {
