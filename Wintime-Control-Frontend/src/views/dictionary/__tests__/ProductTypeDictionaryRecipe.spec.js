@@ -91,5 +91,28 @@ describe('ProductTypeDictionary — рецепт (BL-36)', () => {
     await flushPromises()
 
     expect(productTypesApi.getById).toHaveBeenCalled()
+    expect(wrapper.vm.editing.products).toEqual([])
+  })
+
+  it('поздний ответ перечитывания не перезаписывает другой открытый тип', async () => {
+    let resolveReload
+    productTypesApi.getById.mockImplementationOnce(() => new Promise(resolve => {
+      resolveReload = resolve
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    const typeA = wrapper.vm.items[0]
+    const typeB = { id: 'type-2', article: 'B', name: 'Другой тип', isActive: true, products: [] }
+    wrapper.vm.editItem(typeA)
+    const reload = wrapper.vm.onRecipeSaved()
+    wrapper.vm.editItem(typeB)
+
+    resolveReload({ data: { ...typeA, name: 'Поздний ответ A' } })
+    await reload
+    await flushPromises()
+
+    expect(wrapper.vm.editing.id).toBe('type-2')
+    expect(wrapper.vm.editing.name).toBe('Другой тип')
   })
 })

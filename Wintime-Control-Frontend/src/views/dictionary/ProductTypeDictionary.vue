@@ -300,8 +300,11 @@ function editProduct(p) {
 
 // Изменения изделий сохраняются сразу отдельными запросами, не по «Сохранить» типа.
 async function reloadEditing() {
-  const { data } = await productTypesApi.getById(editing.value.id)
-  editing.value = data
+  const editingId = editing.value.id
+  const { data } = await productTypesApi.getById(editingId)
+  if (editing.value?.id === editingId) {
+    editing.value = data
+  }
   await loadItems()
 }
 
