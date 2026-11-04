@@ -253,6 +253,7 @@
       @complete="completeTask"
       @close="closeTask"
       @open-task="openTaskById"
+      @recipe-changed="onRecipeChanged"
     />
 
     <IssueTaskDialog v-model="issueDialogVisible" :task="issuingTask" />
@@ -288,6 +289,12 @@ const formModalVisible = ref(false)
 const detailModalVisible = ref(false)
 const editingTask = ref(null)
 const selectedTask = ref(null)
+
+// BL-36: замена ингредиента вернула обновлённое задание — карточка и список показывают новое.
+function onRecipeChanged(taskDto) {
+  selectedTask.value = taskDto
+  loadTasks()
+}
 
 const planConflicts = usePlanConflictsStore()
 const conflictKindOf = (task) => worstKind(planConflicts.forTask(task.id))

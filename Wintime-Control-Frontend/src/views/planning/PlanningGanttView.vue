@@ -38,6 +38,7 @@
       @edit="editTask"
       @issue="issueTask"
       @close="closeTask"
+      @recipe-changed="task => (selectedTask = task)"
     />
     <TaskFormModal v-model="formVisible" :task="editingTask" @success="load" />
     <IssueTaskDialog v-model="issueVisible" :task="issuingTask" @issued="load" />
