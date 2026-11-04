@@ -590,6 +590,7 @@ watch(() => form.productId, async (newId, oldId) => {
     orderOptions.value = previousOrderOptions
     await nextTick()
     revertingProduct = false
+    if (!props.lockedOrder) loadOrdersForProduct(oldId)
   }
 })
 

@@ -157,6 +157,7 @@ describe('TaskFormModal — рецепт (BL-36)', () => {
     ordersApi.getList
       .mockResolvedValueOnce({ data: [orderA] })
       .mockImplementationOnce(() => responseB)
+      .mockResolvedValueOnce({ data: [orderA] })
     vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
     const wrapper = mountModal({ ...editedTask, orderId: orderA.id })
     await flushPromises()
@@ -169,7 +170,7 @@ describe('TaskFormModal — рецепт (BL-36)', () => {
     expect(wrapper.vm.form.productId).toBe('p-X0')
     expect(wrapper.vm.form.orderId).toBe(orderA.id)
     expect(wrapper.vm.orderOptions).toEqual([orderA])
-    expect(ordersApi.getList).toHaveBeenCalledTimes(2)
+    expect(ordersApi.getList).toHaveBeenCalledTimes(3)
   })
 
   it('показывает рецепт архивного изделия текущего задания', async () => {
@@ -186,5 +187,47 @@ describe('TaskFormModal — рецепт (BL-36)', () => {
     expect(wrapper.vm.recipeText).toBe('PP-ARCH — 100 %')
     expect(document.body.textContent).toContain('Рецепт изделия')
     expect(document.body.textContent).toContain('PP-ARCH — 100 %')
+  })
+
+  it('после отмены обновляет заказы, если исходный ответ пришёл при выбранном новом изделии', async () => {
+    const orderA = { id: 'order-A', number: 'A-1', productId: 'p-X0' }
+    const orderB = { id: 'order-B', number: 'B-1', productId: 'p-XB' }
+    let resolveInitialA
+    let resolveB
+    let resolveRefreshedA
+    let rejectConfirmation
+    const initialResponseA = new Promise(resolve => { resolveInitialA = resolve })
+    const responseB = new Promise(resolve => { resolveB = resolve })
+    const refreshedResponseA = new Promise(resolve => { resolveRefreshedA = resolve })
+    ordersApi.getList
+      .mockImplementationOnce(() => initialResponseA)
+      .mockImplementationOnce(() => responseB)
+      .mockImplementationOnce(() => refreshedResponseA)
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockImplementation(() =>
+      new Promise((_, reject) => { rejectConfirmation = reject }))
+    const wrapper = mountModal({ ...editedTask, orderId: orderA.id })
+    await flushPromises()
+
+    wrapper.vm.form.productId = 'p-XB'
+    await flushPromises()
+    resolveInitialA({ data: [orderA] })
+    await flushPromises()
+    expect(wrapper.vm.orderOptions).toEqual([])
+
+    rejectConfirmation('cancel')
+    await flushPromises()
+
+    expect(wrapper.vm.form.productId).toBe('p-X0')
+    expect(wrapper.vm.form.orderId).toBe(orderA.id)
+    expect(ordersApi.getList).toHaveBeenCalledTimes(3)
+    expect(confirm).toHaveBeenCalledTimes(1)
+
+    resolveRefreshedA({ data: [orderA] })
+    await flushPromises()
+    resolveB({ data: [orderB] })
+    await flushPromises()
+
+    expect(wrapper.vm.orderOptions).toEqual([orderA])
+    expect(wrapper.vm.form.orderId).toBe(orderA.id)
   })
 })
