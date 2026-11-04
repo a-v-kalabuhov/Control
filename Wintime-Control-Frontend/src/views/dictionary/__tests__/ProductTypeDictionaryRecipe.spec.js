@@ -87,11 +87,42 @@ describe('ProductTypeDictionary — рецепт (BL-36)', () => {
     await flushPromises()
 
     wrapper.vm.editItem(wrapper.vm.items[0])
-    await wrapper.vm.onRecipeSaved()
+    await wrapper.vm.onRecipeSaved({ typeId: 'type-1', productId: 'p-1' })
     await flushPromises()
 
     expect(productTypesApi.getById).toHaveBeenCalled()
     expect(wrapper.vm.editing.products).toEqual([])
+  })
+
+  it('фоновое сохранение A обновляет список и не трогает открытый редактор B', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const typeB = { id: 'type-2', article: 'B', name: 'Другой тип', isActive: true, products: [] }
+    wrapper.vm.editItem(typeB)
+    const listCalls = productTypesApi.getList.mock.calls.length
+    await wrapper.vm.onRecipeSaved({ typeId: 'type-1', productId: 'p-1' })
+    await flushPromises()
+
+    expect(productTypesApi.getList).toHaveBeenCalledTimes(listCalls + 1)
+    expect(productTypesApi.getById).not.toHaveBeenCalled()
+    expect(wrapper.vm.editing).toStrictEqual(typeB)
+    expect(wrapper.vm.dialogVisible).toBe(true)
+  })
+
+  it('фоновое сохранение при закрытом редакторе обновляет список', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.editing = null
+    wrapper.vm.dialogVisible = false
+    const listCalls = productTypesApi.getList.mock.calls.length
+    await wrapper.vm.onRecipeSaved({ typeId: 'type-1', productId: 'p-1' })
+    await flushPromises()
+
+    expect(productTypesApi.getList).toHaveBeenCalledTimes(listCalls + 1)
+    expect(productTypesApi.getById).not.toHaveBeenCalled()
+    expect(wrapper.vm.editing).toBeNull()
   })
 
   it('поздний ответ перечитывания не перезаписывает другой открытый тип', async () => {
@@ -105,7 +136,7 @@ describe('ProductTypeDictionary — рецепт (BL-36)', () => {
     const typeA = wrapper.vm.items[0]
     const typeB = { id: 'type-2', article: 'B', name: 'Другой тип', isActive: true, products: [] }
     wrapper.vm.editItem(typeA)
-    const reload = wrapper.vm.onRecipeSaved()
+    const reload = wrapper.vm.onRecipeSaved({ typeId: 'type-1', productId: 'p-1' })
     wrapper.vm.editItem(typeB)
 
     resolveReload({ data: { ...typeA, name: 'Поздний ответ A' } })

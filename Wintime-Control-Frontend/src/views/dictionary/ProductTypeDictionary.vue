@@ -199,8 +199,13 @@ function openRecipe(product) {
   recipeDialogVisible.value = true
 }
 
-async function onRecipeSaved() {
-  await safeReloadEditing()
+async function onRecipeSaved(context) {
+  if (editing.value?.id === context.typeId) {
+    await safeReloadEditing()
+    return
+  }
+  // Сохранение могло завершиться после закрытия A или открытия B: обновляем только список.
+  await loadItems()
 }
 
 const productDialogVisible = ref(false)

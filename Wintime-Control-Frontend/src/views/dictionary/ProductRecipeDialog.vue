@@ -208,9 +208,9 @@ async function save() {
       .map(r => ({ materialId: r.materialId, percent: Number(r.percent) }))
     await productTypesApi.setRecipe(typeId, productId, ingredients)
     ElMessage.success('Рецепт сохранён')
+    emit('saved', { typeId, productId })
     // Пока запрос шёл, диалог могли закрыть и открыть для другого изделия.
     if (props.modelValue && props.typeId === typeId && props.product?.id === productId) {
-      emit('saved')
       visible.value = false
     }
   } catch (error) {

@@ -117,7 +117,7 @@ describe('ProductRecipeDialog', () => {
       { materialId: 'pp-1', percent: 60 },
       { materialId: 'pp-2', percent: 40 }
     ])
-    expect(wrapper.emitted('saved')).toBeTruthy()
+    expect(wrapper.emitted('saved')).toEqual([[{ typeId: 'type-1', productId: 'prod-1' }]])
     expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([false])
   })
 
@@ -138,7 +138,7 @@ describe('ProductRecipeDialog', () => {
     resolveSave({ data: {} })
     await flushPromises()
 
-    expect(wrapper.emitted('saved')).toBeFalsy()
+    expect(wrapper.emitted('saved')).toEqual([[{ typeId: 'type-1', productId: 'prod-1' }]])
     expect(wrapper.emitted('update:modelValue') ?? []).not.toContainEqual([false])
     expect(wrapper.vm.saving).toBe(false)
     expect(wrapper.props('product').id).toBe('prod-2')
