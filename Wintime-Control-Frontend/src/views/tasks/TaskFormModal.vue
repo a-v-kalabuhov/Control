@@ -76,6 +76,14 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="selectedProductRecipe.length" label="Рецепт изделия" :span="2">
+          <div class="flex items-start gap-2">
+            <span class="text-sm">{{ recipeText }}</span>
+            <el-tooltip v-if="!recipeSumOk" :content="recipeSumHintText">
+              <el-tag type="danger" size="small">≠ 100 %</el-tag>
+            </el-tooltip>
+          </div>
+        </el-form-item>
         <el-form-item label="Заказ">
           <el-select
             v-model="form.orderId"
@@ -253,8 +261,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { immApi } from '@/api/imm'
 import { moldsApi } from '@/api/molds'
 import { personnelApi } from '@/api/personnel'
@@ -267,6 +275,7 @@ import { usePlanConflictsStore } from '@/stores/planConflicts'
 import { settingsApi } from '@/api/settings'
 import { isMoldCompatibleWithImm } from '@/utils/moldCompatibility'
 import { calcTaskPlan, formatDuration } from '@/utils/taskPlan'
+import { formatRecipe, isRecipeSumOk, recipeSumHint, plasticSum, formatPercent } from '@/utils/recipe'
 
 const props = defineProps({
   modelValue: {
@@ -441,6 +450,13 @@ const isProductLocked = computed(() =>
 
 const selectedProduct = computed(() => productOptions.value.find(p => p.id === form.productId) || null)
 
+// BL-36: рецепт выбранного изделия — только для чтения в форме.
+const selectedProductRecipe = computed(() => selectedProduct.value?.recipe ?? [])
+const recipeText = computed(() => formatRecipe(selectedProductRecipe.value) || '—')
+const recipeSumOk = computed(() => isRecipeSumOk(selectedProductRecipe.value))
+const recipeSumHintText = computed(() =>
+  `Сумма пластиков: ${formatPercent(plasticSum(selectedProductRecipe.value))} % (должно быть 100 %)`)
+
 // PZP-16: при создании выбор ПФ и ТПА фильтруется по совместимости (пустой список ПФ — любой ТПА).
 // При редактировании ТПА и ПФ заблокированы — фильтр не применяем, иначе ПФ «несовместимого»
 // задания выпала бы из опций и селект показал бы сырой ID.
@@ -543,6 +559,27 @@ watch(() => form.productId, (productId) => {
   // При заблокированном заказе список заказов не нужен, а вызов затёр бы form.orderId.
   if (props.lockedOrder) return
   loadOrdersForProduct(productId)
+})
+
+// BL-36: у задания с правленой копией рецепта смена изделия очистит правку —
+// спрашиваем подтверждение (проверяет только фронт, сервер перезаписывает молча).
+let revertingProduct = false
+watch(() => form.productId, async (newId, oldId) => {
+  if (revertingProduct) return
+  if (!props.task?.recipeEdited) return
+  if (!newId || !oldId || newId === oldId) return
+  try {
+    await ElMessageBox.confirm(
+      'Рецепт в задании был изменён. При смене изделия изменения будут очищены. Хотите выбрать новое изделие?',
+      'Смена изделия',
+      { confirmButtonText: 'Да', cancelButtonText: 'Нет', type: 'warning' }
+    )
+  } catch {
+    revertingProduct = true
+    form.productId = oldId
+    await nextTick()
+    revertingProduct = false
+  }
 })
 
 // Автоподстановка изделия по ПФ. Типы могут загрузиться позже ПФ — следим за обоими.
