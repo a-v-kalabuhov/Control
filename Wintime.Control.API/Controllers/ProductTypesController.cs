@@ -21,7 +21,19 @@ public class ProductTypesController : ControllerBase
     private static ProductDto ToDto(Product p, ISet<Guid> usedIds) => new()
     {
         Id = p.Id, Article = p.Article, FullArticle = p.FullArticle, Name = p.Name,
-        IsActive = p.IsActive, IsUsed = usedIds.Contains(p.Id)
+        IsActive = p.IsActive, IsUsed = usedIds.Contains(p.Id),
+        Recipe = p.RecipeIngredients
+            .OrderBy(i => i.SortOrder)
+            .Select(i => new RecipeIngredientDto
+            {
+                MaterialId = i.MaterialId,
+                MaterialType = i.Material != null ? i.Material.Type : default,
+                MaterialArticle = i.Material?.Article ?? string.Empty,
+                MaterialName = i.Material?.Name ?? string.Empty,
+                MaterialIsActive = i.Material?.IsActive ?? false,
+                Percent = i.Percent
+            })
+            .ToList()
     };
 
     private static ProductTypeDto ToDto(ProductType t, ISet<Guid> usedIds) => new()
@@ -77,7 +89,9 @@ public class ProductTypesController : ControllerBase
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
     {
-        var query = _context.ProductTypes.Include(t => t.Products).AsQueryable();
+        var query = _context.ProductTypes
+            .Include(t => t.Products).ThenInclude(p => p.RecipeIngredients).ThenInclude(i => i.Material)
+            .AsQueryable();
 
         if (isActive.HasValue)
             query = query.Where(p => p.IsActive == isActive.Value);
@@ -97,7 +111,9 @@ public class ProductTypesController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<ProductTypeDto>> GetById(Guid id)
     {
-        var pt = await _context.ProductTypes.Include(t => t.Products).FirstOrDefaultAsync(t => t.Id == id);
+        var pt = await _context.ProductTypes
+            .Include(t => t.Products).ThenInclude(p => p.RecipeIngredients).ThenInclude(i => i.Material)
+            .FirstOrDefaultAsync(t => t.Id == id);
         if (pt == null)
             return NotFound();
         var usedIds = await UsedProductIdsAsync(pt.Products.Select(p => p.Id).ToList());
@@ -255,6 +271,45 @@ public class ProductTypesController : ControllerBase
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateException e) when (IsUniqueViolation(e)) { return Conflict("Артикул уже используется."); }
         return NoContent();
+    }
+
+    /// <summary>
+    /// BL-36: заменить рецепт изделия целиком. Порядок массива = <c>SortOrder</c>;
+    /// пустой массив очищает рецепт. Сумма пластиков ≠ 100 % — не ошибка (предупреждение в UI).
+    /// Правка рецепта архивного изделия разрешена.
+    /// </summary>
+    [HttpPut("{id:guid}/products/{productId:guid}/recipe")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<ProductDto>> SetProductRecipe(
+        Guid id, Guid productId, [FromBody] SetProductRecipeRequestDto request)
+    {
+        // Текущие строки рецепта нужны: SetRecipe согласует их по материалу (иначе дубль по уникальному индексу).
+        var product = await _context.Products.Include(p => p.RecipeIngredients)
+            .FirstOrDefaultAsync(p => p.Id == productId && p.ProductTypeId == id);
+        if (product == null)
+            return NotFound();
+
+        var ingredients = request.Ingredients ?? new List<RecipeIngredientInputDto>();
+        var materialIds = ingredients.Select(i => i.MaterialId).ToList();
+        var materials = materialIds.Count == 0
+            ? new List<Material>()
+            : await _context.Materials.Where(m => materialIds.Contains(m.Id)).ToListAsync();
+
+        var rows = new List<RecipeRow>();
+        foreach (var item in ingredients)
+        {
+            var material = materials.FirstOrDefault(m => m.Id == item.MaterialId);
+            if (material == null)
+                return NotFound("Материал не найден.");
+            rows.Add(new RecipeRow(material.Id, material.Type, material.IsActive, item.Percent));
+        }
+
+        var existing = product.RecipeIngredients.Select(i => i.MaterialId).ToHashSet();
+        product.SetRecipe(rows, existing);
+        await _context.SaveChangesAsync();
+
+        // Материалы уже отслеживаются контекстом — навигации новых строк проставлены fix-up-ом.
+        return Ok(ToDto(product, await UsedProductIdsAsync(new[] { productId })));
     }
 
     /// <summary>

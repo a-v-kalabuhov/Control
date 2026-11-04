@@ -26,6 +26,18 @@
             {{ productSecondary(task?.productTypeName, task?.productName) }}
           </div>
         </el-descriptions-item>
+        <el-descriptions-item label="Рецепт">
+          <template v-if="task?.recipeIngredients?.length">
+            <div
+              v-for="row in task.recipeIngredients"
+              :key="row.id"
+              :class="recipeSumOk ? 'text-base' : 'text-base text-red-600'"
+            >
+              {{ row.materialArticle }} — {{ formatPercent(row.percent) }} %
+            </div>
+          </template>
+          <span v-else>—</span>
+        </el-descriptions-item>
         <el-descriptions-item label="План">
           <div class="text-xl font-bold text-primary-600">{{ task?.planQuantity }} шт</div>
         </el-descriptions-item>
@@ -221,6 +233,7 @@ import { useAuthStore } from '@/stores/auth'
 import MobileStatusBadge from '@/components/mobile/MobileStatusBadge.vue'
 import { formatDuration } from '@/utils/taskPlan'
 import { productSecondary } from '@/utils/productLabel'
+import { formatPercent, isRecipeSumOk } from '@/utils/recipe'
 import dayjs from 'dayjs'
 
 const props = defineProps({
@@ -266,6 +279,8 @@ const progressColor = computed(() => {
   if (progressPercent.value >= 50) return 'text-yellow-600'
   return 'text-red-600'
 })
+
+const recipeSumOk = computed(() => isRecipeSumOk(props.task?.recipeIngredients ?? []))
 
 const canClose = computed(() => {
   return ['Completed', 'InProgress'].includes(props.task?.status) && 

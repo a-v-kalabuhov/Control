@@ -30,6 +30,8 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<Order> Orders { get; set; }
     public DbSet<PlanningDefaults> PlanningDefaults { get; set; }
     public DbSet<Material> Materials { get; set; }
+    public DbSet<ProductRecipeIngredient> ProductRecipeIngredients { get; set; }
+    public DbSet<ShiftTaskRecipeIngredient> ShiftTaskRecipeIngredients { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -115,6 +117,41 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.HasIndex(e => new { e.Type, e.Article }).IsUnique();
             entity.HasIndex(e => new { e.Type, e.IsActive });
             entity.ToTable("Materials");
+        });
+
+        // BL-36: рецепт изделия — строки-проценты. Cascade нужен для физического удаления
+        // изделия без ссылок (исключение мягкого удаления); материал из рецепта не удаляют.
+        builder.Entity<ProductRecipeIngredient>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // BaseEntity присваивает Guid в конструкторе, поэтому без ValueGeneratedNever EF
+            // считает строку, добавленную в коллекцию загруженного изделия, «изменённой» (UPDATE).
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.HasOne(e => e.Product).WithMany(p => p.RecipeIngredients)
+                  .HasForeignKey(e => e.ProductId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Material).WithMany()
+                  .HasForeignKey(e => e.MaterialId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.Percent).HasColumnType("numeric(5,2)");
+            entity.HasIndex(e => new { e.ProductId, e.MaterialId }).IsUnique();
+            entity.ToTable("ProductRecipeIngredients");
+        });
+
+        // BL-36: копия рецепта в задании. OriginalMaterialId — материал изделия на момент
+        // копирования (аналитика, паспорт партии BL-27); Restrict на оба материала.
+        builder.Entity<ShiftTaskRecipeIngredient>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // См. комментарий выше: тот же Guid-в-конструкторе, тот же риск UPDATE вместо INSERT.
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.HasOne(e => e.ShiftTask).WithMany(t => t.RecipeIngredients)
+                  .HasForeignKey(e => e.ShiftTaskId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Material).WithMany()
+                  .HasForeignKey(e => e.MaterialId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.OriginalMaterial).WithMany()
+                  .HasForeignKey(e => e.OriginalMaterialId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.Percent).HasColumnType("numeric(5,2)");
+            entity.HasIndex(e => new { e.ShiftTaskId, e.MaterialId }).IsUnique();
+            entity.ToTable("ShiftTaskRecipeIngredients");
         });
 
         // Конфигурация Task

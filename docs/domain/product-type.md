@@ -49,3 +49,4 @@
   пространство артикулов; заменяет [ADR-0007](../adr/0007-product-type-catalog.md)
 - Спека: `docs/superpowers/specs/2026-10-18-pzp-19-product-articles-design.md`
 - Сущности домена: [`mold.md`](mold.md), [`shift-task.md`](shift-task.md)
+- Рецепт изделия: [`recipe.md`](recipe.md)

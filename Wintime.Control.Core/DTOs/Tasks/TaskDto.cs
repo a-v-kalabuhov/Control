@@ -52,6 +52,9 @@ public class TaskDto
     public long? PlannedReleaseBufferSeconds { get; set; }
     /// <summary>Плановое окончание (начало + наладка + выпуск + буфер), UTC; null — нет эталона/гнёзд.</summary>
     public DateTime? PlannedEndAt { get; set; }
+    // Рецепт задания (BL-36): копия рецепта изделия + признак ручной правки (не хранится)
+    public List<TaskRecipeIngredientDto> RecipeIngredients { get; set; } = new();
+    public bool RecipeEdited { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

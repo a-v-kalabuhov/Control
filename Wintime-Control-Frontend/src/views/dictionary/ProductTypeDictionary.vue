@@ -34,6 +34,16 @@
           <el-table :data="row.products" size="small" class="m-2">
             <el-table-column prop="fullArticle" label="Полный артикул" width="220" />
             <el-table-column prop="name" label="Наименование" />
+            <el-table-column label="Рецепт" min-width="260">
+              <template #default="{ row: p }">
+                <div class="flex items-start gap-1">
+                  <span class="whitespace-normal">{{ recipeText(p) }}</span>
+                  <el-tooltip v-if="!recipeSumOk(p)" :content="recipeSumHint(p.recipe)">
+                    <el-tag type="danger" size="small">≠ 100 %</el-tag>
+                  </el-tooltip>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column label="Статус" width="120" align="center">
               <template #default="{ row: p }">
                 <el-tag :type="p.isActive ? 'success' : 'info'">{{ p.isActive ? 'Активно' : 'В архиве' }}</el-tag>
@@ -94,8 +104,9 @@
               <el-tag :type="p.isActive ? 'success' : 'info'">{{ p.isActive ? 'Активно' : 'В архиве' }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="Действия" width="240">
+          <el-table-column label="Действия" width="320">
             <template #default="{ row: p }">
+              <el-button class="product-recipe" size="small" @click="openRecipe(p)">Рецепт</el-button>
               <el-button size="small" @click="editProduct(p)">Ред.</el-button>
               <el-button size="small" :type="p.isActive ? 'danger' : 'success'" @click="toggleProductArchive(p)">
                 {{ p.isActive ? 'В архив' : 'Вернуть' }}
@@ -106,6 +117,12 @@
             </template>
           </el-table-column>
         </el-table>
+        <ProductRecipeDialog
+          v-model="recipeDialogVisible"
+          :type-id="editing?.id"
+          :product="recipeProduct"
+          @saved="onRecipeSaved"
+        />
       </div>
 
       <template #footer>
@@ -145,6 +162,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { productTypesApi } from '@/api/productTypes'
 import { activeProducts } from '@/utils/productLabel'
 import { apiErrorMessage } from '@/utils/apiError'
+import ProductRecipeDialog from './ProductRecipeDialog.vue'
+import { formatRecipe, isRecipeSumOk, recipeSumHint as recipeSumHintText } from '@/utils/recipe'
 
 // Текст ошибки сервера; нестроковое тело (ProblemDetails и т.п.) заменяется запасным текстом.
 function errText(error, fallback) {
@@ -158,6 +177,36 @@ const dialogVisible = ref(false)
 const editing = ref(null)
 const formRef = ref(null)
 const items = ref([])
+
+// BL-36: рецепт изделия — отдельный диалог; после сохранения перечитываем тип.
+const recipeDialogVisible = ref(false)
+const recipeProduct = ref(null)
+
+function recipeText(product) {
+  return formatRecipe(product?.recipe) || '—'
+}
+
+function recipeSumOk(product) {
+  return isRecipeSumOk(product?.recipe)
+}
+
+function recipeSumHint(productRecipe) {
+  return recipeSumHintText(productRecipe)
+}
+
+function openRecipe(product) {
+  recipeProduct.value = product
+  recipeDialogVisible.value = true
+}
+
+async function onRecipeSaved(context) {
+  if (editing.value?.id === context.typeId) {
+    await safeReloadEditing()
+    return
+  }
+  // Сохранение могло завершиться после закрытия A или открытия B: обновляем только список.
+  await loadItems()
+}
 
 const productDialogVisible = ref(false)
 const savingProduct = ref(false)
@@ -256,8 +305,11 @@ function editProduct(p) {
 
 // Изменения изделий сохраняются сразу отдельными запросами, не по «Сохранить» типа.
 async function reloadEditing() {
-  const { data } = await productTypesApi.getById(editing.value.id)
-  editing.value = data
+  const editingId = editing.value.id
+  const { data } = await productTypesApi.getById(editingId)
+  if (editing.value?.id === editingId) {
+    editing.value = data
+  }
   await loadItems()
 }
 

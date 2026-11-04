@@ -65,6 +65,7 @@
 - ✅ [`mold.md`](mold.md) — Пресс-форма (`Mold`): гнёздность, ресурс, ТО, совместимые ТПА
 - ✅ [`product-type.md`](product-type.md) — Тип изделия и изделие (`ProductType`, `Product`): артикулы, архив, удаление
 - ✅ [`material.md`](material.md) — Материал (`Material`): пластики и красители, уникальность внутри типа, удаление
+- ✅ [`recipe.md`](recipe.md) — Рецепт изделия и копия в задании (`ProductRecipeIngredient`, `ShiftTaskRecipeIngredient`)
 - 🔲 `imm-cycle.md` — Цикл (`ImmCycle`): снапшот `Cavities`, `IsSuccessful`, привязка к заданию
 - 🔲 `event.md` — Событие/Простой (`Event` + `DowntimeReason`): ручные и авто-простои
 - 🔲 `imm-status.md` — Статусы ТПА и эффективное состояние (сводит сырой режим + статус задания)

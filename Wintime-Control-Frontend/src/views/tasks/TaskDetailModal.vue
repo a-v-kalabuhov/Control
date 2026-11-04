@@ -91,6 +91,48 @@
             </el-descriptions-item>
           </el-descriptions>
 
+          <!-- Рецепт задания (BL-36): копия рецепта изделия + замена материала менеджером -->
+          <el-card class="mb-6">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <span class="font-semibold">Рецепт</span>
+                <el-tag v-if="task?.recipeEdited" size="small" type="warning">изменён вручную</el-tag>
+              </div>
+            </template>
+            <div v-if="!task?.recipeIngredients?.length" class="text-gray-500">Рецепт не задан</div>
+            <template v-else>
+              <el-table :data="task.recipeIngredients" size="small">
+                <el-table-column label="Тип" width="120">
+                  <template #default="{ row }">{{ materialTypeLabel(row.materialType) }}</template>
+                </el-table-column>
+                <el-table-column label="Материал">
+                  <template #default="{ row }">
+                    <div>{{ row.materialArticle }} — {{ row.materialName }}</div>
+                    <div v-if="row.materialId !== row.originalMaterialId" class="text-sm text-gray-500">
+                      было: {{ row.originalMaterialArticle }} — {{ row.originalMaterialName }}
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="%" width="90" align="right">
+                  <template #default="{ row }">{{ formatPercent(row.percent) }}</template>
+                </el-table-column>
+                <el-table-column v-if="canReplaceIngredient" width="120">
+                  <template #default="{ row }">
+                    <el-button class="recipe-replace" size="small" @click="openReplace(row)">Заменить</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div class="recipe-sum mt-2 text-sm" :class="recipeSumClass">{{ recipeSumText }}</div>
+            </template>
+          </el-card>
+
+          <ReplaceIngredientDialog
+            v-model="replaceVisible"
+            :task="task"
+            :ingredient="replaceRow"
+            @replaced="onReplaced"
+          />
+
           <!-- Прогресс -->
           <el-card class="mb-6">
             <template #header>
@@ -178,6 +220,8 @@ import { formatDuration } from '@/utils/taskPlan'
 import { usePlanConflictsStore } from '@/stores/planConflicts'
 import { conflictLine, otherSide, CONFLICT_KIND_COLORS } from '@/utils/planConflicts'
 import { productSecondary } from '@/utils/productLabel'
+import ReplaceIngredientDialog from './ReplaceIngredientDialog.vue'
+import { materialTypeLabel, plasticSum, formatPercent, isRecipeSumOk, recipeSumHint } from '@/utils/recipe'
 
 const props = defineProps({
   modelValue: {
@@ -200,7 +244,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'edit', 'issue', 'complete', 'close', 'open-task'])
+const emit = defineEmits(['update:modelValue', 'edit', 'issue', 'complete', 'close', 'open-task', 'recipe-changed'])
 
 const planConflicts = usePlanConflictsStore()
 const taskConflicts = computed(() => (props.task?.id ? planConflicts.forTask(props.task.id) : []))
@@ -209,6 +253,31 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const closeReasonInput = ref('')
 const activeTab = ref('data')
+
+// BL-36: замена ингредиента копии рецепта — диалог, обновление приходит ответом TaskDto.
+const replaceVisible = ref(false)
+const replaceRow = ref(null)
+
+const canReplaceIngredient = computed(() =>
+  !props.readonly && !!props.task && (authStore.isManager || authStore.isAdmin))
+
+const recipeSumText = computed(() => {
+  const rows = props.task?.recipeIngredients ?? []
+  const base = `Пластики: ${formatPercent(plasticSum(rows))} %`
+  return isRecipeSumOk(rows) ? base : `${base} — ${recipeSumHint(rows)}`
+})
+
+const recipeSumClass = computed(() =>
+  isRecipeSumOk(props.task?.recipeIngredients ?? []) ? 'text-gray-500' : 'text-red-600 font-medium')
+
+function openReplace(row) {
+  replaceRow.value = row
+  replaceVisible.value = true
+}
+
+function onReplaced(dto) {
+  emit('recipe-changed', dto)
+}
 
 const visible = computed({
   get: () => props.modelValue,

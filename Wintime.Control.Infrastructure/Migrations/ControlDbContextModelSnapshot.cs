@@ -642,6 +642,36 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.ToTable("Products", (string)null);
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ProductRecipeIngredient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Percent")
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialId");
+
+                    b.HasIndex("ProductId", "MaterialId")
+                        .IsUnique();
+
+                    b.ToTable("ProductRecipeIngredients", (string)null);
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ProductType", b =>
                 {
                     b.Property<Guid>("Id")
@@ -810,6 +840,41 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_ShiftTasks_ReleaseBufferPercent", "\"ReleaseBufferPercent\" BETWEEN 0 AND 100");
                         });
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTaskRecipeIngredient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OriginalMaterialId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Percent")
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<Guid>("ShiftTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialId");
+
+                    b.HasIndex("OriginalMaterialId");
+
+                    b.HasIndex("ShiftTaskId", "MaterialId")
+                        .IsUnique();
+
+                    b.ToTable("ShiftTaskRecipeIngredients", (string)null);
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Telemetry", b =>
@@ -1196,6 +1261,25 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("ProductType");
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ProductRecipeIngredient", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.Product", "Product")
+                        .WithMany("RecipeIngredients")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
                 {
                     b.HasOne("Wintime.Control.Core.Entities.Imm", "Imm")
@@ -1235,6 +1319,33 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Personnel");
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTaskRecipeIngredient", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.Material", "OriginalMaterial")
+                        .WithMany()
+                        .HasForeignKey("OriginalMaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftTask", "ShiftTask")
+                        .WithMany("RecipeIngredients")
+                        .HasForeignKey("ShiftTaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("OriginalMaterial");
+
+                    b.Navigation("ShiftTask");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Telemetry", b =>
@@ -1290,11 +1401,21 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Tasks");
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.Product", b =>
+                {
+                    b.Navigation("RecipeIngredients");
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ProductType", b =>
                 {
                     b.Navigation("Molds");
 
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
+                {
+                    b.Navigation("RecipeIngredients");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.Template", b =>

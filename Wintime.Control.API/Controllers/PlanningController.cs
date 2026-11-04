@@ -136,7 +136,9 @@ public class PlanningController : ControllerBase
         .Include(t => t.Mold).ThenInclude(m => m.ProductType)
         .Include(t => t.Product)
         .Include(t => t.Personnel)
-        .Include(t => t.Order);
+        .Include(t => t.Order)
+        .Include(t => t.RecipeIngredients).ThenInclude(i => i.Material)
+        .Include(t => t.RecipeIngredients).ThenInclude(i => i.OriginalMaterial);
 
     // Биндер DateTime (AdjustToUniversal): ISO с «Z»/смещением даёт Kind=Utc, без суффикса — Unspecified (= UTC).
     // Ветка Local — страховка.

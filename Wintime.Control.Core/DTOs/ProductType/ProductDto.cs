@@ -8,4 +8,5 @@ public class ProductDto
     public string Name { get; set; } = string.Empty;
     public bool IsActive { get; set; }
     public bool IsUsed { get; set; }                         // есть в заказах/заданиях — удалить нельзя
+    public List<RecipeIngredientDto> Recipe { get; set; } = new();   // рецепт изделия (BL-36)
 }

@@ -128,6 +128,54 @@ describe('PlanningGanttView', () => {
       await flushPromises()
     }
 
+    it('замена ингредиента обновляет карточку и доску, игнорируя более старую загрузку', async () => {
+      const staleTask = { id: 't1', recipeIngredients: [{ id: 'old' }] }
+      const replacedTask = { id: 't1', recipeIngredients: [{ id: 'new' }] }
+      const pending = []
+      planningApi.getBoard.mockImplementation(() => new Promise(resolve => pending.push(resolve)))
+      const w = mountWithStubbedBoard()
+      await flushPromises()
+      pending[0](boardWithTask(staleTask))
+      await flushPromises()
+      await openCard(w, staleTask)
+
+      vi.advanceTimersByTime(60_000)
+      await flushPromises()
+      expect(pending).toHaveLength(2)
+      w.findComponent(TaskDetailModal).vm.$emit('recipe-changed', replacedTask)
+      await flushPromises()
+
+      expect(w.findComponent(TaskDetailModal).props('task')).toEqual(replacedTask)
+      expect(pending).toHaveLength(3)
+      pending[2](boardWithTask(replacedTask))
+      await flushPromises()
+      pending[1](boardWithTask(staleTask))
+      await flushPromises()
+
+      expect(w.findComponent(TaskDetailModal).props('task')).toEqual(replacedTask)
+      const board = w.findComponent(GanttBoard).props('board')
+      expect(board.rows[0].tasks[0].task).toEqual(replacedTask)
+
+      w.findComponent(TaskDetailModal).vm.$emit('update:modelValue', false)
+      await flushPromises()
+      await openCard(w, w.findComponent(GanttBoard).props('board').rows[0].tasks[0].task)
+      expect(w.findComponent(TaskDetailModal).props('task')).toEqual(replacedTask)
+    })
+
+    it('поздний ответ замены старого задания не переключает открытую карточку нового', async () => {
+      const taskA = { id: 'task-a', planQuantity: 1 }
+      const taskB = { id: 'task-b', planQuantity: 2 }
+      const w = mountWithStubbedBoard()
+      await flushPromises()
+      await openCard(w, taskA)
+      await openCard(w, taskB)
+
+      w.findComponent(TaskDetailModal).vm.$emit('recipe-changed', { id: 'task-a', planQuantity: 3 })
+      await flushPromises()
+
+      expect(w.findComponent(TaskDetailModal).props('task')).toEqual(taskB)
+    })
+
     it('неудачное закрытие оставляет карточку открытой и не перезагружает доску', async () => {
       planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWithTask({ id: 't1', planQuantity: 1 })))
       const w = mountWithStubbedBoard()

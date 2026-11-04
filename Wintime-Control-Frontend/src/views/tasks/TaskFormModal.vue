@@ -76,6 +76,14 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="selectedProductRecipe.length" label="Рецепт изделия" :span="2">
+          <div class="flex items-start gap-2">
+            <span class="text-sm">{{ recipeText }}</span>
+            <el-tooltip v-if="!recipeSumOk" :content="recipeSumHintText">
+              <el-tag type="danger" size="small">≠ 100 %</el-tag>
+            </el-tooltip>
+          </div>
+        </el-form-item>
         <el-form-item label="Заказ">
           <el-select
             v-model="form.orderId"
@@ -253,8 +261,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { immApi } from '@/api/imm'
 import { moldsApi } from '@/api/molds'
 import { personnelApi } from '@/api/personnel'
@@ -267,6 +275,7 @@ import { usePlanConflictsStore } from '@/stores/planConflicts'
 import { settingsApi } from '@/api/settings'
 import { isMoldCompatibleWithImm } from '@/utils/moldCompatibility'
 import { calcTaskPlan, formatDuration } from '@/utils/taskPlan'
+import { formatRecipe, isRecipeSumOk, recipeSumHint, plasticSum, formatPercent } from '@/utils/recipe'
 
 const props = defineProps({
   modelValue: {
@@ -300,6 +309,7 @@ const editingTask = ref(null)
 const imms = ref([])
 const molds = ref([])
 const productTypes = ref([])
+const editingProductType = ref(null)
 const personnel = ref([])
 const orderOptions = ref([])
 const initialOrderId = ref(null)
@@ -416,11 +426,15 @@ const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productType
 // — иначе el-select выведет сырой GUID. source — задание или заказ с полями productId/productFullArticle.
 const withFallbackProduct = (list, source, isActive) => {
   if (!source?.productId || list.some(p => p.id === source.productId)) return list
+  const matchingProduct = [...productTypes.value, editingProductType.value]
+    .flatMap(type => type?.products ?? [])
+    .find(p => p.id === source.productId)
   return [...list, {
     id: source.productId,
     fullArticle: source.productFullArticle || source.productId,
     name: source.productName,
-    isActive
+    isActive,
+    recipe: matchingProduct?.recipe
   }]
 }
 
@@ -440,6 +454,13 @@ const isProductLocked = computed(() =>
   !!props.lockedOrder || (!!editingTask.value && (editingTask.value.status !== 'Planned' || !!editingTask.value.orderId)))
 
 const selectedProduct = computed(() => productOptions.value.find(p => p.id === form.productId) || null)
+
+// BL-36: рецепт выбранного изделия — только для чтения в форме.
+const selectedProductRecipe = computed(() => selectedProduct.value?.recipe ?? [])
+const recipeText = computed(() => formatRecipe(selectedProductRecipe.value) || '—')
+const recipeSumOk = computed(() => isRecipeSumOk(selectedProductRecipe.value))
+const recipeSumHintText = computed(() =>
+  `Сумма пластиков: ${formatPercent(plasticSum(selectedProductRecipe.value))} % (должно быть 100 %)`)
 
 // PZP-16: при создании выбор ПФ и ТПА фильтруется по совместимости (пустой список ПФ — любой ТПА).
 // При редактировании ТПА и ПФ заблокированы — фильтр не применяем, иначе ПФ «несовместимого»
@@ -520,9 +541,12 @@ const resetForm = () => {
   })
   orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
   initialOrderId.value = null
+  editingProductType.value = null
 }
 
+let orderLoadGeneration = 0
 const loadOrdersForProduct = async (productId) => {
+  const generation = ++orderLoadGeneration
   if (!productId) {
     orderOptions.value = []
     form.orderId = null
@@ -530,19 +554,49 @@ const loadOrdersForProduct = async (productId) => {
   }
   try {
     const response = await ordersApi.getList({ status: 'Active', productId })
+    // Применяем только последний запрос для всё ещё выбранного изделия.
+    if (generation !== orderLoadGeneration || form.productId !== productId) return
     orderOptions.value = response.data
     if (form.orderId && !orderOptions.value.some(o => o.id === form.orderId)) {
       form.orderId = null
     }
   } catch (error) {
+    if (generation !== orderLoadGeneration || form.productId !== productId) return
     ElMessage.error('Ошибка загрузки заказов')
   }
 }
 
 watch(() => form.productId, (productId) => {
+  if (revertingProduct) return
   // При заблокированном заказе список заказов не нужен, а вызов затёр бы form.orderId.
   if (props.lockedOrder) return
   loadOrdersForProduct(productId)
+})
+
+// BL-36: у задания с правленой копией рецепта смена изделия очистит правку —
+// спрашиваем подтверждение (проверяет только фронт, сервер перезаписывает молча).
+let revertingProduct = false
+watch(() => form.productId, async (newId, oldId) => {
+  if (revertingProduct) return
+  if (!props.task?.recipeEdited) return
+  if (!newId || !oldId || newId === oldId) return
+  const previousOrderId = form.orderId
+  const previousOrderOptions = [...orderOptions.value]
+  try {
+    await ElMessageBox.confirm(
+      'Рецепт в задании был изменён. При смене изделия изменения будут очищены. Хотите выбрать новое изделие?',
+      'Смена изделия',
+      { confirmButtonText: 'Да', cancelButtonText: 'Нет', type: 'warning' }
+    )
+  } catch {
+    revertingProduct = true
+    form.productId = oldId
+    form.orderId = previousOrderId
+    orderOptions.value = previousOrderOptions
+    await nextTick()
+    revertingProduct = false
+    if (!props.lockedOrder) loadOrdersForProduct(oldId)
+  }
 })
 
 // Автоподстановка изделия по ПФ. Типы могут загрузиться позже ПФ — следим за обоими.
@@ -582,6 +636,20 @@ async function loadProductTypes() {
   }
 }
 
+// У редактируемого задания тип может быть архивным и отсутствовать в активном списке.
+// Держим его отдельно: в режиме создания архивный тип не становится источником новых опций.
+async function loadEditingProductTypeFallback() {
+  const typeId = selectedProductTypeId.value
+  if (!editingTask.value || !typeId || productTypes.value.some(t => t.id === typeId)) return
+  try {
+    const response = await productTypesApi.getById(typeId)
+    if (!editingTask.value || selectedProductTypeId.value !== typeId) return
+    editingProductType.value = response.data
+  } catch (error) {
+    ElMessage.error('Ошибка загрузки изделий')
+  }
+}
+
 // Единственная опция селекта — сам заказ: отдельный запрос не нужен,
 // карточка заказа уже передала всё для отображения.
 const applyLockedOrder = () => {
@@ -608,6 +676,7 @@ const isPastDate = (date) => {
 
 const populateForm = (task) => {
   editingTask.value = task
+  editingProductType.value = null
   Object.assign(form, {
     immId: task.immId,
     moldId: task.moldId,
@@ -629,8 +698,7 @@ const populateForm = (task) => {
   // В режиме редактирования селект ПФ задизейблен и никогда не получает
   // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
   // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
-  loadMolds()
-  loadProductTypes()
+  Promise.all([loadMolds(), loadProductTypes()]).then(loadEditingProductTypeFallback)
   // То же для ТПА (селект задизейблен) и наладчика: без списков селекты показывают id.
   loadImms()
   loadPersonnel()
