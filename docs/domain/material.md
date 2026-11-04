@@ -40,3 +40,4 @@
 
 - Спека: `docs/superpowers/specs/2026-11-01-pzp-22-materials-design.md`
 - Сущности домена: [`product-type.md`](product-type.md)
+- Рецепты: [`recipe.md`](recipe.md) — материал как ингредиент рецепта; ссылку не отпускает, только архив
