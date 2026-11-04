@@ -4,6 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElMessageBox } from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import TaskFormModal from '../TaskFormModal.vue'
+import { ordersApi } from '@/api/orders'
 
 vi.mock('@/api/imm', () => ({ immApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) } }))
 vi.mock('@/api/molds', () => ({
@@ -32,6 +33,9 @@ vi.mock('@/api/productTypes', () => ({
         ] },
         { id: 'p-XB', article: 'BLK', fullArticle: 'ART-X.BLK', name: 'Чёрный', isActive: true, recipe: [
           { materialId: 'pp-2', materialType: 'Plastic', materialArticle: 'PP-2', materialName: 'Полипропилен 2', materialIsActive: true, percent: 98 }
+        ] },
+        { id: 'p-XA', article: 'ARCH', fullArticle: 'ART-X.ARCH', name: 'Архивное', isActive: false, recipe: [
+          { materialId: 'pp-arch', materialType: 'Plastic', materialArticle: 'PP-ARCH', materialName: 'Архивный пластик', materialIsActive: false, percent: 100 }
         ] }
       ]
     }
@@ -143,5 +147,44 @@ describe('TaskFormModal — рецепт (BL-36)', () => {
     await flushPromises()
 
     expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('отмена смены изделия сохраняет заказ и игнорирует поздний ответ для нового изделия', async () => {
+    const orderA = { id: 'order-A', number: 'A-1', productId: 'p-X0' }
+    const orderB = { id: 'order-B', number: 'B-1', productId: 'p-XB' }
+    let resolveB
+    const responseB = new Promise(resolve => { resolveB = resolve })
+    ordersApi.getList
+      .mockResolvedValueOnce({ data: [orderA] })
+      .mockImplementationOnce(() => responseB)
+    vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
+    const wrapper = mountModal({ ...editedTask, orderId: orderA.id })
+    await flushPromises()
+
+    wrapper.vm.form.productId = 'p-XB'
+    await flushPromises()
+    resolveB({ data: [orderB] })
+    await flushPromises()
+
+    expect(wrapper.vm.form.productId).toBe('p-X0')
+    expect(wrapper.vm.form.orderId).toBe(orderA.id)
+    expect(wrapper.vm.orderOptions).toEqual([orderA])
+    expect(ordersApi.getList).toHaveBeenCalledTimes(2)
+  })
+
+  it('показывает рецепт архивного изделия текущего задания', async () => {
+    const wrapper = mountModal({
+      ...editedTask,
+      productId: 'p-XA',
+      productFullArticle: 'ART-X.ARCH',
+      productName: 'Архивное',
+      recipeEdited: false
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.selectedProductRecipe).toHaveLength(1)
+    expect(wrapper.vm.recipeText).toBe('PP-ARCH — 100 %')
+    expect(document.body.textContent).toContain('Рецепт изделия')
+    expect(document.body.textContent).toContain('PP-ARCH — 100 %')
   })
 })

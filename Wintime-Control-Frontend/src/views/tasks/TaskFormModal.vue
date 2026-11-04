@@ -425,11 +425,15 @@ const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productType
 // — иначе el-select выведет сырой GUID. source — задание или заказ с полями productId/productFullArticle.
 const withFallbackProduct = (list, source, isActive) => {
   if (!source?.productId || list.some(p => p.id === source.productId)) return list
+  const matchingProduct = productTypes.value
+    .flatMap(type => type.products ?? [])
+    .find(p => p.id === source.productId)
   return [...list, {
     id: source.productId,
     fullArticle: source.productFullArticle || source.productId,
     name: source.productName,
-    isActive
+    isActive,
+    recipe: matchingProduct?.recipe
   }]
 }
 
@@ -546,6 +550,8 @@ const loadOrdersForProduct = async (productId) => {
   }
   try {
     const response = await ordersApi.getList({ status: 'Active', productId })
+    // Пока запрос шёл, изделие могли сменить или вернуть после отмены подтверждения.
+    if (form.productId !== productId) return
     orderOptions.value = response.data
     if (form.orderId && !orderOptions.value.some(o => o.id === form.orderId)) {
       form.orderId = null
@@ -556,6 +562,7 @@ const loadOrdersForProduct = async (productId) => {
 }
 
 watch(() => form.productId, (productId) => {
+  if (revertingProduct) return
   // При заблокированном заказе список заказов не нужен, а вызов затёр бы form.orderId.
   if (props.lockedOrder) return
   loadOrdersForProduct(productId)
@@ -568,6 +575,8 @@ watch(() => form.productId, async (newId, oldId) => {
   if (revertingProduct) return
   if (!props.task?.recipeEdited) return
   if (!newId || !oldId || newId === oldId) return
+  const previousOrderId = form.orderId
+  const previousOrderOptions = [...orderOptions.value]
   try {
     await ElMessageBox.confirm(
       'Рецепт в задании был изменён. При смене изделия изменения будут очищены. Хотите выбрать новое изделие?',
@@ -577,6 +586,8 @@ watch(() => form.productId, async (newId, oldId) => {
   } catch {
     revertingProduct = true
     form.productId = oldId
+    form.orderId = previousOrderId
+    orderOptions.value = previousOrderOptions
     await nextTick()
     revertingProduct = false
   }
