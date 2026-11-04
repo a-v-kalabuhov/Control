@@ -59,6 +59,33 @@ public class ShiftTaskRecipeTests
     }
 
     [Fact]
+    public void ApplyRecipe_ReusesRowsByCurrentMaterial_AndResetsManualEdit()
+    {
+        var original = Plastic("ORIGINAL");
+        var removed = Plastic("REMOVED");
+        var shared = Plastic("SHARED");
+        var added = Plastic("ADDED");
+        var task = new ShiftTask();
+        task.ApplyRecipe(new[] { Row(original, 60m, 0), Row(removed, 40m, 1) });
+        var reused = task.RecipeIngredients.Single(i => i.MaterialId == original.Id);
+        task.ReplaceIngredient(reused.Id, shared);
+        task.RecipeEdited.Should().BeTrue();
+
+        task.ApplyRecipe(new[] { Row(added, 25m, 0), Row(shared, 75m, 1) });
+
+        task.RecipeIngredients.Select(i => i.MaterialId).Should().BeEquivalentTo(new[] { added.Id, shared.Id });
+        task.RecipeIngredients.Single(i => i.MaterialId == shared.Id).Should().BeSameAs(reused);
+        reused.OriginalMaterialId.Should().Be(shared.Id);
+        reused.OriginalMaterial.Should().BeSameAs(shared);
+        reused.Material.Should().BeSameAs(shared);
+        reused.Percent.Should().Be(75m);
+        reused.SortOrder.Should().Be(1);
+        task.RecipeIngredients.OrderBy(i => i.SortOrder).Select(i => i.MaterialId).Should().Equal(added.Id, shared.Id);
+        task.RecipeIngredients.Select(i => i.SortOrder).Should().BeEquivalentTo(new[] { 0, 1 });
+        task.RecipeEdited.Should().BeFalse();
+    }
+
+    [Fact]
     public void ApplyRecipe_Empty_ClearsCopy()
     {
         var task = new ShiftTask();

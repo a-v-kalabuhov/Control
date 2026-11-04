@@ -160,6 +160,44 @@ public class TaskRecipeApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task UpdateTask_ProductChangeWithSharedMaterial_ReusesRowAndOverwritesManualEdit()
+    {
+        var c = await ManagerAsync();
+        var (typeId, firstProduct, moldId, original, removed) = await ArrangeAsync(c);
+        var shared = await NewMaterialAsync(c, MaterialType.Plastic);
+        var added = await NewMaterialAsync(c, MaterialType.Plastic);
+        (await PutRecipeAsync(c, typeId, firstProduct, (original, 60m), (removed, 40m)))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var secondResp = await c.PostAsJsonAsync($"/api/producttypes/{typeId}/products",
+            new CreateProductRequestDto { Article = "B", Name = "Второе" });
+        secondResp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var second = (await secondResp.Content.ReadFromJsonAsync<ProductDto>(JsonOptions))!;
+        (await PutRecipeAsync(c, typeId, second.Id, (added, 25m), (shared, 75m)))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var task = await CreateTaskAsync(c, _factory.TestImmId, moldId, firstProduct);
+        var editedRow = task.RecipeIngredients.Single(i => i.MaterialId == original);
+        (await c.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{editedRow.Id}", new { materialId = shared }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resp = await c.PutAsJsonAsync($"/api/tasks/{task.Id}", new { productId = second.Id });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent, await resp.Content.ReadAsStringAsync());
+        var reread = (await c.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", JsonOptions))!;
+        reread.RecipeIngredients.Should().HaveCount(2);
+        reread.RecipeIngredients.Select(i => i.MaterialId).Should().BeEquivalentTo(new[] { added, shared });
+        var retained = reread.RecipeIngredients.Single(i => i.MaterialId == shared);
+        retained.Id.Should().Be(editedRow.Id);
+        retained.Percent.Should().Be(75m);
+        retained.OriginalMaterialId.Should().Be(shared);
+        var newRow = reread.RecipeIngredients.Single(i => i.MaterialId == added);
+        newRow.Percent.Should().Be(25m);
+        newRow.OriginalMaterialId.Should().Be(added);
+        reread.RecipeEdited.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task UpdateTask_SameProduct_KeepsEditedCopy()
     {
         var c = await ManagerAsync();

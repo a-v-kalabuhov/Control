@@ -365,26 +365,44 @@ public class ShiftTask : BaseEntity
     /// <summary>
     /// BL-36: перезаписать копию рецептом изделия. Вызывается при создании задания
     /// и при реальной смене изделия; нет рецепта у изделия — копия пустая.
+    /// Строки согласуются по текущему материалу: общие строки обновляются, а не пересоздаются,
+    /// чтобы удаление и вставка не пересеклись на уникальном индексе (ShiftTaskId, MaterialId).
     /// Требует загруженной навигации <see cref="ProductRecipeIngredient.Material"/> —
     /// она же становится копией, поэтому И Include рецепта, и ThenInclude материала обязательны.
     /// </summary>
     public void ApplyRecipe(IEnumerable<ProductRecipeIngredient> productIngredients)
     {
-        RecipeIngredients.Clear();
-        var order = 0;
-        foreach (var ingredient in productIngredients.OrderBy(i => i.SortOrder))
+        var rows = productIngredients.OrderBy(i => i.SortOrder).ToList();
+        var keep = rows.Select(i => i.MaterialId).ToHashSet();
+        RecipeIngredients.RemoveAll(i => !keep.Contains(i.MaterialId));
+
+        for (var index = 0; index < rows.Count; index++)
         {
+            var ingredient = rows[index];
             var material = ingredient.Material
                            ?? throw new InvalidOperationException("Материал рецепта изделия не загружен.");
-            RecipeIngredients.Add(new ShiftTaskRecipeIngredient
+            var existing = RecipeIngredients.FirstOrDefault(i => i.MaterialId == ingredient.MaterialId);
+            if (existing == null)
             {
-                MaterialId = material.Id,
-                Material = material,
-                OriginalMaterialId = material.Id,
-                OriginalMaterial = material,
-                Percent = ingredient.Percent,
-                SortOrder = order++
-            });
+                RecipeIngredients.Add(new ShiftTaskRecipeIngredient
+                {
+                    MaterialId = material.Id,
+                    Material = material,
+                    OriginalMaterialId = material.Id,
+                    OriginalMaterial = material,
+                    Percent = ingredient.Percent,
+                    SortOrder = index
+                });
+            }
+            else
+            {
+                existing.MaterialId = material.Id;
+                existing.Material = material;
+                existing.OriginalMaterialId = material.Id;
+                existing.OriginalMaterial = material;
+                existing.Percent = ingredient.Percent;
+                existing.SortOrder = index;
+            }
         }
     }
 
