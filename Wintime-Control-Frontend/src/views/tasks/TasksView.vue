@@ -292,7 +292,7 @@ const selectedTask = ref(null)
 
 // BL-36: замена ингредиента вернула обновлённое задание — карточка и список показывают новое.
 function onRecipeChanged(taskDto) {
-  selectedTask.value = taskDto
+  if (selectedTask.value?.id === taskDto.id) selectedTask.value = taskDto
   loadTasks()
 }
 

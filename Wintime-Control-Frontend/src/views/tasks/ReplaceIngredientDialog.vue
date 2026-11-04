@@ -63,14 +63,28 @@ const materialId = ref(null)
 const materials = ref([])
 const loading = ref(false)
 const saving = ref(false)
+let contextVersion = 0
+let loadRequest = 0
+let saveRequest = 0
 
-watch(() => [props.modelValue, props.ingredient], () => {
-  if (props.modelValue) materialId.value = null
+watch(() => [props.modelValue, props.task?.id, props.ingredient?.id], () => {
+  contextVersion++
+  loadRequest++
+  saveRequest++
+  materialId.value = null
+  materials.value = []
+  loading.value = false
+  saving.value = false
 })
 
 // Материалы того же типа, что и текущий ингредиент; исходный помечен «(исходный)».
 const options = computed(() => {
-  const list = materials.value.filter(m => m.type === props.ingredient?.materialType)
+  const usedByOtherRows = new Set((props.task?.recipeIngredients ?? [])
+    .filter(i => i.id !== props.ingredient?.id)
+    .map(i => i.materialId))
+  const list = materials.value.filter(m =>
+    m.type === props.ingredient?.materialType &&
+    (m.id === props.ingredient?.materialId || !usedByOtherRows.has(m.id)))
   const originalId = props.ingredient?.originalMaterialId
   return list.map(m => ({ ...m, isOriginal: m.id === originalId }))
 })
@@ -81,31 +95,44 @@ function label(m) {
 }
 
 async function loadMaterials() {
+  const request = ++loadRequest
+  const version = contextVersion
+  const taskId = props.task?.id
+  const ingredientId = props.ingredient?.id
+  const materialType = props.ingredient?.materialType
+  const isCurrent = () => request === loadRequest && version === contextVersion &&
+    taskId === props.task?.id && ingredientId === props.ingredient?.id
+
   loading.value = true
   try {
-    const { data } = await materialsApi.getList({
-      type: props.ingredient?.materialType,
-      isActive: true
-    })
-    materials.value = data
+    const { data } = await materialsApi.getList({ type: materialType, isActive: true })
+    if (isCurrent()) materials.value = data
   } catch {
-    ElMessage.error('Ошибка загрузки материалов')
+    if (isCurrent()) ElMessage.error('Ошибка загрузки материалов')
   } finally {
-    loading.value = false
+    if (isCurrent()) loading.value = false
   }
 }
 
 async function save() {
   if (!materialId.value) return
+  const request = ++saveRequest
+  const version = contextVersion
+  const taskId = props.task?.id
+  const ingredientId = props.ingredient?.id
+  const selectedMaterialId = materialId.value
+  const isCurrent = () => request === saveRequest && version === contextVersion &&
+    taskId === props.task?.id && ingredientId === props.ingredient?.id
+
   saving.value = true
   try {
-    const { data } = await tasksApi.replaceRecipeIngredient(props.task.id, props.ingredient.id, materialId.value)
+    const { data } = await tasksApi.replaceRecipeIngredient(taskId, ingredientId, selectedMaterialId)
     emit('replaced', data)
-    visible.value = false
+    if (isCurrent()) visible.value = false
   } catch (error) {
-    ElMessage.error(apiErrorMessage(error, 'Ошибка замены материала'))
+    if (isCurrent()) ElMessage.error(apiErrorMessage(error, 'Ошибка замены материала'))
   } finally {
-    saving.value = false
+    if (isCurrent()) saving.value = false
   }
 }
 </script>

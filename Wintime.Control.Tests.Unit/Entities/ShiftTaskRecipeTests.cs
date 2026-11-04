@@ -137,6 +137,39 @@ public class ShiftTaskRecipeTests
     }
 
     [Fact]
+    public void ReplaceIngredient_MaterialAlreadyUsedByAnotherRow_ThrowsAndKeepsCopyUnchanged()
+    {
+        var a = Plastic("A");
+        var b = Plastic("B");
+        var task = new ShiftTask();
+        task.ApplyRecipe(new[] { Row(a, 60m, 0), Row(b, 40m, 1) });
+        var first = task.RecipeIngredients.Single(i => i.MaterialId == a.Id);
+        var second = task.RecipeIngredients.Single(i => i.MaterialId == b.Id);
+
+        FluentActions.Invoking(() => task.ReplaceIngredient(first.Id, b))
+            .Should().Throw<DomainException>().WithMessage("*уже используется*");
+
+        first.MaterialId.Should().Be(a.Id);
+        first.Material.Should().BeSameAs(a);
+        second.MaterialId.Should().Be(b.Id);
+        task.RecipeEdited.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ReplaceIngredient_SameMaterial_IsNoOp()
+    {
+        var plastic = Plastic();
+        var task = new ShiftTask();
+        task.ApplyRecipe(new[] { Row(plastic, 100m, 0) });
+        var row = task.RecipeIngredients.Single();
+
+        FluentActions.Invoking(() => task.ReplaceIngredient(row.Id, plastic)).Should().NotThrow();
+
+        row.MaterialId.Should().Be(plastic.Id);
+        task.RecipeEdited.Should().BeFalse();
+    }
+
+    [Fact]
     public void ReplaceIngredient_BackToOriginal_ResetsRecipeEdited()
     {
         var plastic = Plastic();

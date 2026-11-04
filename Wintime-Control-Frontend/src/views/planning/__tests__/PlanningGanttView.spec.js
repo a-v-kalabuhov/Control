@@ -162,6 +162,20 @@ describe('PlanningGanttView', () => {
       expect(w.findComponent(TaskDetailModal).props('task')).toEqual(replacedTask)
     })
 
+    it('поздний ответ замены старого задания не переключает открытую карточку нового', async () => {
+      const taskA = { id: 'task-a', planQuantity: 1 }
+      const taskB = { id: 'task-b', planQuantity: 2 }
+      const w = mountWithStubbedBoard()
+      await flushPromises()
+      await openCard(w, taskA)
+      await openCard(w, taskB)
+
+      w.findComponent(TaskDetailModal).vm.$emit('recipe-changed', { id: 'task-a', planQuantity: 3 })
+      await flushPromises()
+
+      expect(w.findComponent(TaskDetailModal).props('task')).toEqual(taskB)
+    })
+
     it('неудачное закрытие оставляет карточку открытой и не перезагружает доску', async () => {
       planningApi.getBoard.mockImplementation(() => Promise.resolve(boardWithTask({ id: 't1', planQuantity: 1 })))
       const w = mountWithStubbedBoard()

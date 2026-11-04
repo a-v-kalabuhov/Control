@@ -96,9 +96,10 @@ namespace Wintime.Control.Infrastructure.Migrations
                 column: "OriginalMaterialId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ShiftTaskRecipeIngredients_ShiftTaskId",
+                name: "IX_ShiftTaskRecipeIngredients_ShiftTaskId_MaterialId",
                 table: "ShiftTaskRecipeIngredients",
-                column: "ShiftTaskId");
+                columns: new[] { "ShiftTaskId", "MaterialId" },
+                unique: true);
         }
 
         /// <inheritdoc />

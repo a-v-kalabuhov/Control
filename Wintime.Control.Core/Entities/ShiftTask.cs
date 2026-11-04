@@ -406,6 +406,9 @@ public class ShiftTask : BaseEntity
         if (newMaterial.Type != current.Type)
             throw new DomainException(
                 $"Можно выбрать только {MaterialRules.TypeLabel(current.Type)} — как у текущего ингредиента.");
+        if (row.MaterialId != newMaterial.Id &&
+            RecipeIngredients.Any(i => i.Id != row.Id && i.MaterialId == newMaterial.Id))
+            throw new DomainException("Материал уже используется в другой строке рецепта задания.");
 
         row.MaterialId = newMaterial.Id;
         row.Material = newMaterial;

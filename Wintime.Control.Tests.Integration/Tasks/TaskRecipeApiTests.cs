@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.DTOs.Material;
 using Wintime.Control.Core.DTOs.ProductType;
@@ -198,6 +199,38 @@ public class TaskRecipeApiTests : IClassFixture<IntegrationTestFactory>
         // Копия сохранилась в БД, не только в ответе.
         var reread = (await c.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", JsonOptions))!;
         reread.RecipeIngredients.Single().MaterialId.Should().Be(b);
+    }
+
+    [Fact]
+    public async Task ReplaceIngredient_MaterialAlreadyUsedByAnotherRow_Returns400AndKeepsPersistedCopy()
+    {
+        var c = await ManagerAsync();
+        var (typeId, productId, moldId, a, b) = await ArrangeAsync(c);
+        (await PutRecipeAsync(c, typeId, productId, (a, 60m), (b, 40m))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var task = await CreateTaskAsync(c, _factory.TestImmId, moldId, productId);
+        var first = task.RecipeIngredients.Single(i => i.MaterialId == a);
+
+        var resp = await c.PutAsJsonAsync($"/api/tasks/{task.Id}/recipe/{first.Id}", new { materialId = b });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest, await resp.Content.ReadAsStringAsync());
+        var reread = (await c.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", JsonOptions))!;
+        reread.RecipeIngredients.Select(i => i.MaterialId).Should().BeEquivalentTo(new[] { a, b });
+        reread.RecipeIngredients.Should().OnlyContain(i => i.MaterialId == i.OriginalMaterialId);
+        reread.RecipeEdited.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TaskRecipe_CurrentMaterialPerTaskIndex_IsUnique()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var entityType = db.Model.FindEntityType(typeof(ShiftTaskRecipeIngredient))!;
+
+        var index = entityType.GetIndexes().Single(i =>
+            i.Properties.Select(p => p.Name).SequenceEqual(new[] { nameof(ShiftTaskRecipeIngredient.ShiftTaskId), nameof(ShiftTaskRecipeIngredient.MaterialId) }));
+
+        index.IsUnique.Should().BeTrue();
+        index.GetDatabaseName().Should().Be("IX_ShiftTaskRecipeIngredients_ShiftTaskId_MaterialId");
     }
 
     [Fact]

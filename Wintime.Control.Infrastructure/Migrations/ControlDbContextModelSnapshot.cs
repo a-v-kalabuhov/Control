@@ -871,7 +871,8 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasIndex("OriginalMaterialId");
 
-                    b.HasIndex("ShiftTaskId");
+                    b.HasIndex("ShiftTaskId", "MaterialId")
+                        .IsUnique();
 
                     b.ToTable("ShiftTaskRecipeIngredients", (string)null);
                 });

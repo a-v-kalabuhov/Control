@@ -150,6 +150,7 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.HasOne(e => e.OriginalMaterial).WithMany()
                   .HasForeignKey(e => e.OriginalMaterialId).OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.Percent).HasColumnType("numeric(5,2)");
+            entity.HasIndex(e => new { e.ShiftTaskId, e.MaterialId }).IsUnique();
             entity.ToTable("ShiftTaskRecipeIngredients");
         });
 

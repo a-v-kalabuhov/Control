@@ -146,7 +146,7 @@ function openDetail(task) {
 }
 
 async function onRecipeChanged(task) {
-  selectedTask.value = task
+  if (selectedTask.value?.id === task.id) selectedTask.value = task
   await load()
 }
 
