@@ -111,4 +111,36 @@ describe('ProductRecipeDialog', () => {
     await flushPromises()
     expect(productTypesApi.setRecipe).toHaveBeenCalledWith('type-1', 'prod-1', [{ materialId: 'old-1', percent: 100 }])
   })
+
+  it('добавленная, но не выбранная строка не блокирует сохранение пустого рецепта', async () => {
+    const wrapper = mountDialog([])
+    await nextTick()
+    document.body.querySelector('.recipe-add').click()
+    await nextTick()
+
+    expect(wrapper.vm.canSave).toBe(true)
+    document.body.querySelector('.recipe-save').click()
+    await flushPromises()
+    expect(productTypesApi.setRecipe).toHaveBeenCalledWith('type-1', 'prod-1', [])
+  })
+
+  it('выбранный материал с percent null нельзя сохранить', async () => {
+    const wrapper = mountDialog([{ ...fullRecipe[0], percent: null }])
+    await nextTick()
+
+    expect(wrapper.vm.canSave).toBe(false)
+    document.body.querySelector('.recipe-save').click()
+    await flushPromises()
+    expect(productTypesApi.setRecipe).not.toHaveBeenCalled()
+  })
+
+  it.each([0, 100.01, 33.333, Number.NaN])('не сохраняет невалидный процент %s', async percent => {
+    const wrapper = mountDialog([{ ...fullRecipe[0], percent }])
+    await nextTick()
+
+    expect(wrapper.vm.canSave).toBe(false)
+    document.body.querySelector('.recipe-save').click()
+    await flushPromises()
+    expect(productTypesApi.setRecipe).not.toHaveBeenCalled()
+  })
 })

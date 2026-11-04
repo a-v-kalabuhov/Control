@@ -121,8 +121,10 @@ watch(() => [props.modelValue, props.product], () => {
 
 const canAddRow = computed(() => rows.value.length < MAX_ROWS)
 
+const selectedRows = computed(() => rows.value.filter(r => r.materialId))
+
 const noPlastic = computed(() =>
-  rows.value.length > 0 && !rows.value.some(r => r.materialType === 'Plastic'))
+  selectedRows.value.length > 0 && !selectedRows.value.some(r => r.materialType === 'Plastic'))
 
 const sumIsOk = computed(() => plasticSum(rows.value) === 100)
 const sumText = computed(() => {
@@ -132,7 +134,14 @@ const sumText = computed(() => {
 })
 const sumClass = computed(() => (sumIsOk.value ? 'text-gray-500' : 'text-red-600 font-medium'))
 
-const canSave = computed(() => !noPlastic.value)
+function isValidPercent(value) {
+  return typeof value === 'number' && Number.isFinite(value) &&
+    value >= 0.01 && value <= 100 &&
+    Math.abs(value * 100 - Math.round(value * 100)) < 1e-8
+}
+
+const hasInvalidPercent = computed(() => selectedRows.value.some(r => !isValidPercent(r.percent)))
+const canSave = computed(() => !noPlastic.value && !hasInvalidPercent.value)
 
 async function loadMaterials() {
   if (materials.value.length > 0) return
@@ -189,8 +198,7 @@ async function save() {
   if (!canSave.value) return
   saving.value = true
   try {
-    const ingredients = rows.value
-      .filter(r => r.materialId)
+    const ingredients = selectedRows.value
       .map(r => ({ materialId: r.materialId, percent: Number(r.percent) }))
     await productTypesApi.setRecipe(props.typeId, props.product.id, ingredients)
     ElMessage.success('Рецепт сохранён')
