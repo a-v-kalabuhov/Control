@@ -42,7 +42,7 @@ public class TaskOutputHandler : ICycleHandler
             return;
 
         task.ActualQuantity += cycle.Cavities;
-        task.ActualMaterialWeightGrams += cycle.Cavities * task.Mold.PartWeightGrams + task.Mold.RunnerWeightGrams;
+        task.ActualMaterialWeightGrams += cycle.Cavities * task.PartWeightGrams + task.Mold.RunnerWeightGrams;
         if (task.ActualQuantity >= task.PlanQuantity)
             await _emulator.SetModeAsync(cycle.ImmId.ToString(), "idle", ct);
 

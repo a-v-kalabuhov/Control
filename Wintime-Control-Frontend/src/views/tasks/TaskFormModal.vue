@@ -109,7 +109,7 @@
             :clearable="!isLimitedEdit"
             class="w-full"
             @focus="loadPersonnel"
-            :disabled="isBufferOnlyEdit"
+            :disabled="isBufferOnlyEdit || isWeightOnlyEdit"
             filterable
           >
             <el-option
@@ -137,6 +137,16 @@
             controls-position="right"
           />
         </el-form-item>
+        <el-form-item label="Вес детали, г" prop="partWeightGrams">
+          <el-input-number
+            v-model="form.partWeightGrams"
+            data-test="part-weight"
+            :min="0" :precision="2" :step="0.1" :value-on-clear="0"
+            @update:model-value="partWeightCustomized = true"
+            class="w-full"
+            controls-position="right"
+          />
+        </el-form-item>
         <el-form-item label="Рабочий режим" prop="workMode">
           <el-select v-model="form.workMode" class="w-full" :disabled="isRestricted">
             <el-option label="Автомат" value="Auto" />
@@ -156,6 +166,7 @@
         <el-form-item label="Цикл литья, с" prop="plannedInjectionCycleSeconds">
           <el-input-number
             v-model="form.plannedInjectionCycleSeconds"
+            @update:model-value="injectionCycleCustomized = true"
             :min="1"
             :max="86400"
             :disabled="isRestricted"
@@ -172,7 +183,7 @@
             format="DD.MM.YYYY"
             value-format="YYYY-MM-DD"
             :disabled-date="isPastDate"
-            :disabled="isBufferOnlyEdit"
+            :disabled="isBufferOnlyEdit || isWeightOnlyEdit"
             class="w-full"
           />
         </el-form-item>
@@ -183,7 +194,7 @@
             format="HH:mm"
             value-format="HH:mm:ss"
             clearable
-            :disabled="isBufferOnlyEdit"
+            :disabled="isBufferOnlyEdit || isWeightOnlyEdit"
             class="w-full"
           />
           <div class="text-xs text-gray-500 mt-1">Необязательно. Пусто — задание начинается с начала смены</div>
@@ -193,7 +204,7 @@
             v-model="form.plannedSetupMinutes"
             data-test="setup-minutes" :value-on-clear="0"
             :min="0" :max="1440" :step="5"
-            :disabled="isBufferOnlyEdit"
+            :disabled="isBufferOnlyEdit || isWeightOnlyEdit"
             class="w-full"
             controls-position="right"
           />
@@ -204,7 +215,7 @@
               <el-input-number
                 v-model="form.releaseBufferFixedMinutes"
                 data-test="buffer-fixed-minutes" :value-on-clear="0"
-                :min="0" :max="1440" :step="5"
+                :min="0" :max="1440" :step="5" :disabled="isWeightOnlyEdit"
                 class="!w-24"
                 controls-position="right"
               />
@@ -214,7 +225,7 @@
               <el-input-number
                 v-model="form.releaseBufferPercent"
                 data-test="buffer-percent" :value-on-clear="0"
-                :min="0" :max="100"
+                :min="0" :max="100" :disabled="isWeightOnlyEdit"
                 class="!w-24"
                 controls-position="right"
               />
@@ -244,7 +255,6 @@
       >
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div><span class="text-gray-500">Гнёздность:</span> {{ selectedMoldInfo.cavities }}</div>
-          <div><span class="text-gray-500">Вес детали:</span> {{ selectedMoldInfo.partWeightGrams }} г</div>
           <div><span class="text-gray-500">Вес литника:</span> {{ selectedMoldInfo.runnerWeightGrams }} г</div>
           <div><span class="text-gray-500">Ресурс:</span> {{ selectedMoldInfo.remainingResource }} / {{ selectedMoldInfo.maxResourceCycles }}</div>
         </div>
@@ -320,6 +330,7 @@ const form = reactive({
   productId: null,
   personnelId: null,
   planQuantity: 1000,
+  partWeightGrams: 0,
   plannedDate: null,
   plannedSetupStartTime: null,
   note: '',
@@ -332,6 +343,10 @@ const form = reactive({
   releaseBufferPercent: 0
 })
 
+// Признаки ручного ввода отдельно от значения: 0 — валидный вес, null — валидный цикл.
+const partWeightCustomized = ref(false)
+const injectionCycleCustomized = ref(false)
+
 const rules = {
   plannedDate: [{ required: true, message: 'Укажите плановую дату', trigger: 'change' }],
   immId: [{ required: true, message: 'Выберите ТПА', trigger: 'change' }],
@@ -340,6 +355,10 @@ const rules = {
   planQuantity: [
     { required: true, message: 'Введите план', trigger: 'blur' },
     { type: 'number', min: 1, message: 'План должен быть больше 0', trigger: 'blur' }
+  ],
+  partWeightGrams: [
+    { required: true, message: 'Укажите вес детали', trigger: 'blur' },
+    { type: 'number', min: 0, message: 'Вес не может быть отрицательным', trigger: 'blur' }
   ],
   plannedFullCycleSeconds: [
     {
@@ -382,8 +401,10 @@ const isFullCycleRequired = computed(() => {
 const isLimitedEdit = computed(() => editingTask.value?.status === 'Issued')
 // PZP-14: после начала наладки и до завершения выпуска правится только буфер выпуска
 const isBufferOnlyEdit = computed(() => ['Setup', 'InProgress'].includes(editingTask.value?.status))
-// Поля, закрытые и в «Выдано», и в режиме «только буфер»
-const isRestricted = computed(() => isLimitedEdit.value || isBufferOnlyEdit.value)
+// PZP-24: после завершения менеджер может исправить только вес детали
+const isWeightOnlyEdit = computed(() => ['Completed', 'Closed'].includes(editingTask.value?.status))
+// Поля, закрытые во всех ограниченных режимах редактирования
+const isRestricted = computed(() => isLimitedEdit.value || isBufferOnlyEdit.value || isWeightOnlyEdit.value)
 
 const selectedMoldInfo = computed(() => {
   if (!form.moldId) return null
@@ -528,6 +549,7 @@ const resetForm = () => {
     productId: props.lockedOrder?.productId ?? null,
     personnelId: null,
     planQuantity: 1000,
+    partWeightGrams: 0,
     plannedDate: null,
     plannedSetupStartTime: null,
     note: '',
@@ -540,6 +562,8 @@ const resetForm = () => {
     releaseBufferPercent: 0
   })
   orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
+  partWeightCustomized.value = false
+  injectionCycleCustomized.value = false
   initialOrderId.value = null
   editingProductType.value = null
 }
@@ -591,11 +615,56 @@ watch(() => form.productId, async (newId, oldId) => {
   } catch {
     revertingProduct = true
     form.productId = oldId
+    form.partWeightGrams = props.task.partWeightGrams ?? 0
+    form.plannedInjectionCycleSeconds = props.task.plannedInjectionCycleSeconds ?? null
+    partWeightCustomized.value = false
+    injectionCycleCustomized.value = false
     form.orderId = previousOrderId
     orderOptions.value = previousOrderOptions
     await nextTick()
     revertingProduct = false
     if (!props.lockedOrder) loadOrdersForProduct(oldId)
+  }
+})
+
+// PZP-24: выбранное изделие даёт вес и эталон цикла литья только при выборе/смене.
+// При открытии редактирования значения задания — снапшоты и не перезаписываются справочником.
+watch(selectedProduct, (product, previousProduct) => {
+  if (revertingProduct) return
+  if (!product) {
+    if (!editingTask.value) {
+      form.partWeightGrams = 0
+      form.plannedInjectionCycleSeconds = null
+      partWeightCustomized.value = false
+      injectionCycleCustomized.value = false
+    }
+    return
+  }
+  if (editingTask.value && product.id === editingTask.value.productId) {
+    if (previousProduct && previousProduct.id !== product.id) {
+      form.partWeightGrams = editingTask.value.partWeightGrams ?? 0
+      form.plannedInjectionCycleSeconds = editingTask.value.plannedInjectionCycleSeconds ?? null
+      partWeightCustomized.value = false
+      injectionCycleCustomized.value = false
+    }
+    return
+  }
+  if (previousProduct && previousProduct.id !== product.id) {
+    form.partWeightGrams = product.partWeightGrams ?? 0
+    form.plannedInjectionCycleSeconds = product.plannedInjectionCycleSeconds ?? null
+    partWeightCustomized.value = false
+    injectionCycleCustomized.value = false
+    return
+  }
+  // Первый/отложенный автовыбор не затирает значения, уже введённые менеджером.
+  // Сравнение ловит и прямое присвоение form.* (без DOM-события), флаги — явный ввод 0/null.
+  if (form.partWeightGrams !== (previousProduct?.partWeightGrams ?? 0)) partWeightCustomized.value = true
+  if (form.plannedInjectionCycleSeconds !== (previousProduct?.plannedInjectionCycleSeconds ?? null)) {
+    injectionCycleCustomized.value = true
+  }
+  if (!partWeightCustomized.value) form.partWeightGrams = product.partWeightGrams ?? 0
+  if (!injectionCycleCustomized.value) {
+    form.plannedInjectionCycleSeconds = product.plannedInjectionCycleSeconds ?? null
   }
 })
 
@@ -683,6 +752,7 @@ const populateForm = (task) => {
     productId: task.productId ?? null,
     personnelId: task.personnelId ?? null,
     planQuantity: task.planQuantity,
+    partWeightGrams: task.partWeightGrams ?? 0,
     plannedDate: task.plannedDate,
     plannedSetupStartTime: task.plannedSetupStartTime ?? null,
     note: task.note || '',
@@ -695,6 +765,8 @@ const populateForm = (task) => {
     releaseBufferPercent: task.releaseBufferPercent ?? 0
   })
   initialOrderId.value = task.orderId || null
+  partWeightCustomized.value = false
+  injectionCycleCustomized.value = false
   // В режиме редактирования селект ПФ задизейблен и никогда не получает
   // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
   // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
@@ -773,6 +845,8 @@ const handleSubmit = async () => {
         // (ordersApi.setTaskOrder, tasksApi.setPersonnel).
         const { orderId, personnelId, ...updatePayload } = form
         updatePayload.clearPlannedSetupStartTime = !form.plannedSetupStartTime
+        updatePayload.clearPlannedInjectionCycleSeconds = form.plannedInjectionCycleSeconds === null
+          || form.plannedInjectionCycleSeconds === undefined
         // Наладчика меняем первым: его отказ не должен оставить частично сохранённое задание.
         if ((personnelId || null) !== (editingTask.value.personnelId || null)) {
           await tasksApi.setPersonnel(editingTask.value.id, personnelId || null)

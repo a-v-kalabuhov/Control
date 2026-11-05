@@ -14,6 +14,9 @@ public class ShiftTask : BaseEntity
     public int PlanQuantity { get; set; }
     public int ActualQuantity { get; set; }
     public decimal ActualMaterialWeightGrams { get; set; }
+
+    /// <summary>Вес одной детали, граммы. Копия веса изделия; правится менеджером в любом статусе (PZP-24).</summary>
+    public decimal PartWeightGrams { get; set; }
     public Wintime.Control.Core.Enums.TaskStatus Status { get; set; } = Wintime.Control.Core.Enums.TaskStatus.Planned;
     public string? Note { get; set; }
     public string? CloseReason { get; set; }
@@ -299,6 +302,14 @@ public class ShiftTask : BaseEntity
         WorkMode = workMode;
         PlannedFullCycleSeconds = fullCycleSeconds;
         PlannedInjectionCycleSeconds = injectionCycleSeconds;
+    }
+
+    /// <summary>PZP-24: изменить вес детали. Разрешено в любом статусе, включая архивные задания.</summary>
+    public void SetPartWeight(decimal weightGrams)
+    {
+        if (weightGrams < 0)
+            throw new DomainException("Вес детали должен быть неотрицательным");
+        PartWeightGrams = weightGrams;
     }
 
     /// <summary>

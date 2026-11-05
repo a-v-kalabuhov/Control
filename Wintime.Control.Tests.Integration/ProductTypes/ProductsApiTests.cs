@@ -67,6 +67,25 @@ public class ProductsApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task AddProduct_StoresPartWeightAndInjectionCycle()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+
+        var r = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products",
+            new CreateProductRequestDto
+            {
+                Article = "BLK", Name = "Чёрный", PartWeightGrams = 12.5m,
+                PlannedInjectionCycleSeconds = 20
+            });
+
+        r.StatusCode.Should().Be(HttpStatusCode.Created);
+        var p = await r.Content.ReadFromJsonAsync<ProductDto>();
+        p!.PartWeightGrams.Should().Be(12.5m);
+        p.PlannedInjectionCycleSeconds.Should().Be(20);
+    }
+
+    [Fact]
     public async Task AddProduct_ReturnsCreatedWithFullArticle()
     {
         var c = await ClientAsync();
@@ -77,6 +96,45 @@ public class ProductsApiTests : IClassFixture<IntegrationTestFactory>
         r.StatusCode.Should().Be(HttpStatusCode.Created);
         var p = await r.Content.ReadFromJsonAsync<ProductDto>();
         p!.FullArticle.Should().Be($"{a}.BLK");
+    }
+
+    [Fact]
+    public async Task UpdateProduct_ChangesWeightAndClearsInjectionCycle()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        var created = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products",
+            new CreateProductRequestDto
+            {
+                Article = "BLK", Name = "Чёрный", PartWeightGrams = 12.5m,
+                PlannedInjectionCycleSeconds = 20
+            });
+        var p = await created.Content.ReadFromJsonAsync<ProductDto>();
+
+        var put = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{p!.Id}",
+            new UpdateProductRequestDto
+            {
+                PartWeightGrams = 14.25m, ClearPlannedInjectionCycleSeconds = true
+            });
+
+        put.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var updated = (await GetTypeAsync(c, t.Id)).Products.Single(x => x.Id == p.Id);
+        updated.PartWeightGrams.Should().Be(14.25m);
+        updated.PlannedInjectionCycleSeconds.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(-1, 20)]
+    [InlineData(12.5, 0)]
+    public async Task AddProduct_InvalidWeightOrInjectionCycle_BadRequest(double weight, int cycle)
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+
+        var r = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products",
+            new { Article = "BLK", Name = "Чёрный", PartWeightGrams = weight, PlannedInjectionCycleSeconds = cycle });
+
+        r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]

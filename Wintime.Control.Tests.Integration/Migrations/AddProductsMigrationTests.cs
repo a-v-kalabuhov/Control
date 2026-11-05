@@ -65,6 +65,9 @@ VALUES (gen_random_uuid(),0,0,now(),0,'{ImmId}','{MoldId}',100,current_date,0,0,
         var (migrator, target) = await MigrateToPreviousAndSeedAsync(db, $"'{TypeId}'");
 
         await migrator.MigrateAsync(target);
+        // Текущая EF-модель содержит поля более поздних миграций (PZP-22/24):
+        // применяем их перед чтением через check-контекст, иначе SELECT обращается к ещё отсутствующим колонкам.
+        await migrator.MigrateAsync();
 
         await using var check = NewContext();
         (await check.ProductTypes.SingleAsync()).Article.Should().Be("ABC");   // 'abc ' нормализован

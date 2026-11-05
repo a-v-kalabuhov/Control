@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -72,6 +73,65 @@ public class MoldProductTypeTests : IClassFixture<IntegrationTestFactory>
         var dto = await resp.Content.ReadFromJsonAsync<MoldDto>();
         dto!.ProductTypeId.Should().Be(typeId);
         dto.ProductTypeName.Should().Be("Изд");
+    }
+
+    [Fact]
+    public async Task GetMold_ReturnsPartAndShotWeightPerProduct()
+    {
+        var client = await ManagerClientAsync();
+        var typeId = await SeedTypeAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var type = await db.ProductTypes.Include(t => t.Products).SingleAsync(t => t.Id == typeId);
+            type.Products.Single().PartWeightGrams = 10m;
+            db.Products.Add(new Product
+            {
+                ProductTypeId = typeId, Article = "BLK", Name = "Чёрный",
+                FullArticle = type.Article + ".BLK", PartWeightGrams = 12.5m
+            });
+            await db.SaveChangesAsync();
+        }
+        var request = NewMold(typeId);
+        request.Cavities = 2;
+        var created = await client.PostAsJsonAsync("/api/molds", request);
+        var mold = await created.Content.ReadFromJsonAsync<MoldDto>();
+
+        var response = await client.GetAsync($"/api/molds/{mold!.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = await response.Content.ReadFromJsonAsync<MoldDto>();
+        dto!.ProductWeights.Should().HaveCount(2);
+        dto.ProductWeights.Should().Contain(w => w.PartWeightGrams == 10m && w.ShotWeightGrams == 20m);
+        dto.ProductWeights.Should().Contain(w => w.PartWeightGrams == 12.5m && w.ShotWeightGrams == 25m);
+    }
+
+    [Fact]
+    public async Task GetMold_ShotWeightOverflow_ReturnsNullInsteadOfError()
+    {
+        var client = await ManagerClientAsync();
+        var typeId = await SeedTypeAsync();
+        Guid moldId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var product = await db.Products.SingleAsync(p => p.ProductTypeId == typeId);
+            product.PartWeightGrams = decimal.MaxValue;
+            var mold = new Mold
+            {
+                Name = "Переполнение", FormId = $"PF-{Guid.NewGuid():N}", Cavities = 2, ProductTypeId = typeId
+            };
+            db.Molds.Add(mold);
+            await db.SaveChangesAsync();
+            moldId = mold.Id;
+        }
+
+        var response = await client.GetAsync($"/api/molds/{moldId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("productWeights")[0].GetProperty("shotWeightGrams").ValueKind
+            .Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

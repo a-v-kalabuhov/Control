@@ -33,10 +33,10 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
         return report!.ImmData.Should().ContainSingle().Subject;
     }
 
-    private Mold NewMold(string name, int cavities, decimal part, decimal runner) => new()
+    private Mold NewMold(string name, int cavities, decimal runner) => new()
     {
         Name = name, FormId = $"F-{Guid.NewGuid():N}", Cavities = cavities,
-        PartWeightGrams = part, RunnerWeightGrams = runner, IsActive = true,
+        RunnerWeightGrams = runner, IsActive = true,
         ProductTypeId = _factory.TestProductTypeId
     };
 
@@ -48,7 +48,7 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var mold = NewMold($"ПФ-3сут-{Guid.NewGuid():N}", 2, 10, 4);
+            var mold = NewMold($"ПФ-3сут-{Guid.NewGuid():N}", 2, 4);
             db.Molds.Add(mold);
             await db.SaveChangesAsync();
             // Выпуск: d1 11:00Z → d3 11:00Z (48 ч), норма 60 с × 2 гнезда = 120 шт/ч
@@ -79,8 +79,8 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var mold1 = NewMold($"ПФ-A-{Guid.NewGuid():N}", 2, 10, 4);
-            var mold2 = NewMold($"ПФ-B-{Guid.NewGuid():N}", 1, 5, 1);
+            var mold1 = NewMold($"ПФ-A-{Guid.NewGuid():N}", 2, 4);
+            var mold2 = NewMold($"ПФ-B-{Guid.NewGuid():N}", 1, 1);
             db.Molds.AddRange(mold1, mold2);
             await db.SaveChangesAsync();
             mold1Name = mold1.Name; mold2Name = mold2.Name;
@@ -89,14 +89,14 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
             var t1 = new ShiftTask
             {
                 ImmId = immId, MoldId = mold1.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, PlannedFullCycleSeconds = 60,
-                Status = TaskStatus.Completed, PlannedDate = DateOnly.FromDateTime(d),
+                PartWeightGrams = 10, Status = TaskStatus.Completed, PlannedDate = DateOnly.FromDateTime(d),
                 SetupStartedAt = d.AddHours(7), StartedAt = d.AddHours(8), CompletedAt = d.AddHours(10)
             };
             // Задание 2: выпуск 12:00–13:00, норма 30 с × 1 гнездо → 120
             var t2 = new ShiftTask
             {
                 ImmId = immId, MoldId = mold2.Id, ProductId = _factory.TestProductId, PlanQuantity = 1000, PlannedFullCycleSeconds = 30,
-                Status = TaskStatus.Completed, PlannedDate = DateOnly.FromDateTime(d),
+                PartWeightGrams = 5, Status = TaskStatus.Completed, PlannedDate = DateOnly.FromDateTime(d),
                 SetupStartedAt = d.AddHours(11), StartedAt = d.AddHours(12), CompletedAt = d.AddHours(13)
             };
             db.ShiftTasks.AddRange(t1, t2);
@@ -110,7 +110,12 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
             db.ImmCycles.AddRange(
                 Cycle(mold1.Id, t1.Id, 2, d.AddHours(9)),
                 Cycle(mold1.Id, t1.Id, 2, d.AddHours(9).AddMinutes(1)),
-                Cycle(mold2.Id, t2.Id, 1, d.AddHours(12).AddMinutes(30)));
+                Cycle(mold2.Id, t2.Id, 1, d.AddHours(12).AddMinutes(30)),
+                new ImmCycle
+                {
+                    ImmId = immId, MoldId = mold1.Id, TaskId = null, Cavities = 7, IsSuccessful = true,
+                    StartTime = d.AddHours(14), EndTime = d.AddHours(14).AddSeconds(60), DurationSeconds = 60
+                });
             await db.SaveChangesAsync();
         }
 
@@ -118,8 +123,9 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
 
         item.MoldName.Should().Be($"{mold1Name}, {mold2Name}");
         item.PlanQuantity.Should().Be(100 + 120);
-        item.ActualQuantity.Should().Be(5);
-        // ПФ-A: 2 цикла × (10 г × 2 гнезда + 4 г литник) = 48 г; ПФ-B: 1 × (5 × 1 + 1) = 6 г
+        item.ActualQuantity.Should().Be(12);
+        // ПФ-A: 2 цикла × (10 г × 2 гнезда + 4 г литник) = 48 г; ПФ-B: 1 × (5 × 1 + 1) = 6 г.
+        // Сирота-цикл с MoldId, но без задания добавляет выпуск, а расход сырья — нет.
         item.RawMaterialKg.Should().Be(0.054m);
     }
 }

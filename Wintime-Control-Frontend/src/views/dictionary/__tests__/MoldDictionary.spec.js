@@ -14,7 +14,14 @@ vi.mock('@/api/molds', () => ({
 }))
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
-    getList: vi.fn(() => Promise.resolve({ data: [{ id: 'pt-1', article: 'ART', name: 'Изделие' }] }))
+    getList: vi.fn(() => Promise.resolve({ data: [
+      { id: 'pt-1', article: 'ART', name: 'Изделие', products: [
+        { id: 'p-1', fullArticle: 'ART.0', partWeightGrams: 10, plannedInjectionCycleSeconds: 20 }
+      ] },
+      { id: 'pt-2', article: 'NEW', name: 'Другое изделие', products: [
+        { id: 'p-2', fullArticle: 'NEW.0', partWeightGrams: 20, plannedInjectionCycleSeconds: 30 }
+      ] }
+    ] }))
   }
 }))
 vi.mock('@/api/imm', () => ({
@@ -94,5 +101,57 @@ describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
     await flushPromises()
 
     expect(moldsApi.update).toHaveBeenCalledWith('mold-1', { isActive: false })
+  })
+})
+
+describe('MoldDictionary — веса изделий (PZP-24)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('при одинаковом весе изделий показывает одну строку, при разном — строку на изделие', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const products = [
+      { productId: 'p-1', fullArticle: 'ART.0', partWeightGrams: 10, shotWeightGrams: 20 },
+      { productId: 'p-2', fullArticle: 'ART.BLK', partWeightGrams: 10, shotWeightGrams: 20 }
+    ]
+
+    wrapper.vm.editMold({ ...moldRow, productTypeId: 'pt-archived', productWeights: products })
+    expect(wrapper.vm.productWeightRows).toHaveLength(1)
+    expect(wrapper.vm.productWeightRows[0].shotWeightGrams).toBe(20)
+
+    products[1] = { ...products[1], partWeightGrams: 12.5, shotWeightGrams: 25 }
+    wrapper.vm.editMold({ ...moldRow, productTypeId: 'pt-archived', productWeights: products })
+    expect(wrapper.vm.productWeightRows).toHaveLength(2)
+    expect(wrapper.vm.productWeightRows.map(r => r.fullArticle)).toEqual(['ART.0', 'ART.BLK'])
+  })
+
+  it('пересчитывает справку по редактируемым гнёздности и типу изделия', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editMold({
+      ...moldRow,
+      productWeights: [{ productId: 'p-1', fullArticle: 'ART.0', partWeightGrams: 10, shotWeightGrams: 20 }]
+    })
+
+    wrapper.vm.form.cavities = 4
+    await flushPromises()
+    expect(wrapper.vm.productWeightRows[0].shotWeightGrams).toBe(40)
+
+    wrapper.vm.form.productTypeId = 'pt-2'
+    await flushPromises()
+    expect(wrapper.vm.productWeightRows[0].fullArticle).toBe('NEW.0')
+    expect(wrapper.vm.productWeightRows[0].shotWeightGrams).toBe(80)
+  })
+
+  it('форма ПФ больше не отправляет вес детали', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editMold(moldRow)
+    await flushPromises()
+    await wrapper.vm.saveMold()
+    await flushPromises()
+
+    expect(wrapper.vm.form).not.toHaveProperty('partWeightGrams')
+    expect(moldsApi.update.mock.calls[0][1]).not.toHaveProperty('partWeightGrams')
   })
 })

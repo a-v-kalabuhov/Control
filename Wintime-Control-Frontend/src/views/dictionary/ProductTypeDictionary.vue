@@ -34,6 +34,10 @@
           <el-table :data="row.products" size="small" class="m-2">
             <el-table-column prop="fullArticle" label="Полный артикул" width="220" />
             <el-table-column prop="name" label="Наименование" />
+            <el-table-column prop="partWeightGrams" label="Вес, г" width="100" align="right" />
+            <el-table-column label="Цикл литья, с" width="130" align="right">
+              <template #default="{ row: p }">{{ p.plannedInjectionCycleSeconds ?? '—' }}</template>
+            </el-table-column>
             <el-table-column label="Рецепт" min-width="260">
               <template #default="{ row: p }">
                 <div class="flex items-start gap-1">
@@ -147,6 +151,19 @@
         <el-form-item label="Наименование" required>
           <el-input v-model="productForm.name" placeholder="Чёрный" />
         </el-form-item>
+        <el-form-item label="Вес детали, г">
+          <el-input-number
+            v-model="productForm.partWeightGrams" :min="0" :precision="2" :step="0.1"
+            :value-on-clear="0" class="w-full" controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="Цикл литья, с">
+          <el-input-number
+            v-model="productForm.plannedInjectionCycleSeconds" :min="1" :max="86400"
+            class="w-full" controls-position="right"
+          />
+          <div class="text-xs text-gray-500 mt-1">Необязательно; полный цикл задаётся в задании</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="productDialogVisible = false">Отмена</el-button>
@@ -211,7 +228,7 @@ async function onRecipeSaved(context) {
 const productDialogVisible = ref(false)
 const savingProduct = ref(false)
 const editingProduct = ref(null)
-const productForm = reactive({ article: '', name: '' })
+const productForm = reactive({ article: '', name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null })
 
 const filters = reactive({ search: '', isActive: null })
 const form = reactive({ article: '', name: '' })
@@ -293,13 +310,17 @@ function onProductArticleInput() {
 
 function showProductModal() {
   editingProduct.value = null
-  Object.assign(productForm, { article: '', name: '' })
+  Object.assign(productForm, { article: '', name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null })
   productDialogVisible.value = true
 }
 
 function editProduct(p) {
   editingProduct.value = p
-  Object.assign(productForm, { article: p.article, name: p.name })
+  Object.assign(productForm, {
+    article: p.article, name: p.name,
+    partWeightGrams: p.partWeightGrams ?? 0,
+    plannedInjectionCycleSeconds: p.plannedInjectionCycleSeconds ?? null
+  })
   productDialogVisible.value = true
 }
 
@@ -332,11 +353,18 @@ async function saveProduct() {
   savingProduct.value = true
   try {
     const typeId = editing.value.id
+    const payload = {
+      article, name,
+      partWeightGrams: productForm.partWeightGrams ?? 0,
+      plannedInjectionCycleSeconds: productForm.plannedInjectionCycleSeconds ?? null
+    }
     if (editingProduct.value) {
-      await productTypesApi.updateProduct(typeId, editingProduct.value.id, { article, name })
+      await productTypesApi.updateProduct(typeId, editingProduct.value.id, {
+        ...payload, clearPlannedInjectionCycleSeconds: payload.plannedInjectionCycleSeconds === null
+      })
       ElMessage.success('Изделие обновлено')
     } else {
-      await productTypesApi.addProduct(typeId, { article, name })
+      await productTypesApi.addProduct(typeId, payload)
       ElMessage.success('Изделие добавлено')
     }
     productDialogVisible.value = false

@@ -5,6 +5,8 @@ namespace Wintime.Control.Core.DTOs.Tasks;
 public class UpdateTaskRequestDto
 {
     public int? PlanQuantity { get; set; }
+    /// <summary>Вес детали, г; null — не менять. Доступен в любом статусе (PZP-24).</summary>
+    public decimal? PartWeightGrams { get; set; }
     /// <summary>Изделие задания (PZP-19); <c>null</c> — не менять.</summary>
     public Guid? ProductId { get; set; }
     public string? Note { get; set; }
@@ -25,6 +27,8 @@ public class UpdateTaskRequestDto
 
     /// <summary>Эталон цикла литья, секунды; <c>null</c> — не менять.</summary>
     public int? PlannedInjectionCycleSeconds { get; set; }
+    /// <summary>Явно очистить необязательный эталон цикла литья.</summary>
+    public bool ClearPlannedInjectionCycleSeconds { get; set; }
 
     /// <summary>Норматив наладки, минуты; <c>null</c> — не менять.</summary>
     public int? PlannedSetupMinutes { get; set; }

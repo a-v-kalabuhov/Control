@@ -191,6 +191,30 @@ describe('TaskDetailModal — заказ', () => {
   })
 })
 
+describe('TaskDetailModal — вес детали (PZP-24)', () => {
+  it('показывает вес и разрешает менеджеру открыть закрытое задание на правку', async () => {
+    const wrapper = mountModal({ id: 't1', status: 'Closed', partWeightGrams: 12.5 })
+    const { useAuthStore } = await import('@/stores/auth')
+    useAuthStore().userRole = 'Manager'
+    await nextTick()
+
+    const cells = wrapper.findAll('.el-descriptions__cell')
+    const idx = cells.findIndex(c => c.text() === 'Вес детали')
+    expect(cells[idx + 1].text()).toBe('12.5 г')
+    expect(wrapper.vm.canEdit).toBe(true)
+    wrapper.unmount()
+  })
+  it('администратор тоже может открыть закрытое задание на правку веса', async () => {
+    const wrapper = mountModal({ id: 't1', status: 'Closed', partWeightGrams: 12.5 })
+    const { useAuthStore } = await import('@/stores/auth')
+    useAuthStore().userRole = 'Admin'
+    await nextTick()
+
+    expect(wrapper.vm.canEdit).toBe(true)
+    wrapper.unmount()
+  })
+})
+
 describe('TaskDetailModal — конфликты (PZP-07b)', () => {
   const items = [{ kind: 'Plan', resource: 'Imm', overlapSeconds: 3000,
     task: { id: 't1', productArticle: 'A1.0', moldName: 'ПФ-1', immName: 'ТПА-1' },

@@ -21,6 +21,7 @@
 | `FormId` | Артикул ПФ, уникален, кодируется в QR |
 | `ProductTypeId` | Тип изделия, который выпускает ПФ; конкретное изделие выбирается в задании. Обязателен для новых ПФ и для заданий; сменить нельзя, если по ПФ есть задания (кроме первого присвоения) — [ADR-0020](../adr/0020-product-types-and-products.md), [`product-type.md`](product-type.md) |
 | `Cavities` | Текущая гнёздность; меняется при заглушке гнёзд. Для истории — снапшот `ImmCycle.Cavities` |
+| `RunnerWeightGrams` | Вес литника на цикл. Веса детали у ПФ нет: он принадлежит изделию и копируется в задание (PZP-24) |
 | `MaxResourceCycles`, `To1Cycles`, `To2Cycles` | Ресурс и пороги ТО в смыканиях |
 | `CompatibleImms` | ТПА, на которые ставится ПФ. Пусто — любой ТПА. Задание с ТПА вне непустого списка не создать — ADR-0018 |
 | `IsActive` | Архивный флаг: `false` — ПФ выведена из оборота, история сохраняется |
@@ -34,6 +35,7 @@
 
 ## Связанные
 
-- ADR: [ADR-0007](../adr/0007-product-type-catalog.md) — каталог изделий; [ADR-0018](../adr/0018-mold-imm-compatibility-manual-list.md) — совместимые ТПА
+- ADR: [ADR-0007](../adr/0007-product-type-catalog.md) — каталог изделий; [ADR-0018](../adr/0018-mold-imm-compatibility-manual-list.md) — совместимые ТПА;
+  [ADR-0024](../adr/0024-part-weight-product-task-snapshot.md) — вес детали в изделии, у ПФ только литник
 - Спека: `docs/superpowers/specs/2026-10-15-pzp-16-mold-compatible-imms-design.md`
 - Сущности домена: [`imm.md`](imm.md), [`shift-task.md`](shift-task.md)

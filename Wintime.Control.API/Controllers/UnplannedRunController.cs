@@ -198,7 +198,7 @@ public class UnplannedRunController : ControllerBase
             if (c.IsSuccessful)
             {
                 addedQty += c.Cavities;
-                addedWeight += c.Cavities * task.Mold.PartWeightGrams + task.Mold.RunnerWeightGrams;
+                addedWeight += c.Cavities * task.PartWeightGrams + task.Mold.RunnerWeightGrams;
             }
         }
         task.ActualQuantity += (int)addedQty;
@@ -270,7 +270,7 @@ public class UnplannedRunController : ControllerBase
             if (c.IsSuccessful && prevTask != null)
             {
                 qty += c.Cavities;
-                weight += c.Cavities * prevTask.Mold.PartWeightGrams + prevTask.Mold.RunnerWeightGrams;
+                weight += c.Cavities * prevTask.PartWeightGrams + prevTask.Mold.RunnerWeightGrams;
             }
             c.TaskId = null;
             c.MoldId = null;

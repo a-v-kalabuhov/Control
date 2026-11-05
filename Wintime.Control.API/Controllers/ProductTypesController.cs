@@ -21,6 +21,7 @@ public class ProductTypesController : ControllerBase
     private static ProductDto ToDto(Product p, ISet<Guid> usedIds) => new()
     {
         Id = p.Id, Article = p.Article, FullArticle = p.FullArticle, Name = p.Name,
+        PartWeightGrams = p.PartWeightGrams, PlannedInjectionCycleSeconds = p.PlannedInjectionCycleSeconds,
         IsActive = p.IsActive, IsUsed = usedIds.Contains(p.Id),
         Recipe = p.RecipeIngredients
             .OrderBy(i => i.SortOrder)
@@ -50,6 +51,15 @@ public class ProductTypesController : ControllerBase
         var inTasks = await _context.ShiftTasks.Where(t => productIds.Contains(t.ProductId))
             .Select(t => t.ProductId).Distinct().ToListAsync();
         return inOrders.Concat(inTasks).ToHashSet();
+    }
+
+    private static string? ProductAttributeError(decimal? weight, int? injectionCycle)
+    {
+        if (weight is < 0)
+            return "Вес детали должен быть неотрицательным.";
+        if (injectionCycle is <= 0)
+            return "Эталон цикла литья должен быть больше нуля.";
+        return null;
     }
 
     // ── Единое пространство артикулов (PZP-19, решение 4) ──
@@ -212,6 +222,9 @@ public class ProductTypesController : ControllerBase
             return BadRequest("Артикул изделия обязателен.");
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest("Наименование обязательно.");
+        var attributeError = ProductAttributeError(request.PartWeightGrams, request.PlannedInjectionCycleSeconds);
+        if (attributeError != null)
+            return BadRequest(attributeError);
 
         var full = ProductArticle.Compose(pt.Article, part);
         var conflict = await FullArticleConflictAsync(full, Array.Empty<Guid>());
@@ -220,7 +233,9 @@ public class ProductTypesController : ControllerBase
 
         var product = new Product
         {
-            ProductTypeId = id, Article = part, Name = request.Name.Trim(), FullArticle = full, IsActive = true
+            ProductTypeId = id, Article = part, Name = request.Name.Trim(), FullArticle = full, IsActive = true,
+            PartWeightGrams = request.PartWeightGrams,
+            PlannedInjectionCycleSeconds = request.PlannedInjectionCycleSeconds
         };
         _context.Products.Add(product);
         try { await _context.SaveChangesAsync(); }
@@ -238,6 +253,9 @@ public class ProductTypesController : ControllerBase
         var product = pt?.Products.FirstOrDefault(p => p.Id == productId);
         if (pt == null || product == null)
             return NotFound();
+        var attributeError = ProductAttributeError(request.PartWeightGrams, request.PlannedInjectionCycleSeconds);
+        if (attributeError != null)
+            return BadRequest(attributeError);
 
         if (request.Article != null)
         {
@@ -260,6 +278,12 @@ public class ProductTypesController : ControllerBase
                 return BadRequest("Наименование не может быть пустым.");
             product.Name = request.Name.Trim();
         }
+        if (request.PartWeightGrams.HasValue)
+            product.PartWeightGrams = request.PartWeightGrams.Value;
+        if (request.ClearPlannedInjectionCycleSeconds)
+            product.PlannedInjectionCycleSeconds = null;
+        else if (request.PlannedInjectionCycleSeconds.HasValue)
+            product.PlannedInjectionCycleSeconds = request.PlannedInjectionCycleSeconds.Value;
         if (request.IsActive.HasValue)
         {
             if (!request.IsActive.Value && product.IsActive && pt.IsActive

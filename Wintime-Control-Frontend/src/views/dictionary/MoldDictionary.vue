@@ -46,11 +46,7 @@
         </template>
       </el-table-column>
       <el-table-column prop="cavities" label="Гнёзд" width="80" align="center" />
-      <el-table-column label="Вес (г)" width="120">
-        <template #default="{ row }">
-          {{ row.partWeightGrams }} + {{ row.runnerWeightGrams }}
-        </template>
-      </el-table-column>
+      <el-table-column prop="runnerWeightGrams" label="Литник (г)" width="120" />
       <el-table-column prop="storageLocationIndex" label="Место хранения" width="120" />
       <el-table-column label="Остаток ресурса" width="150">
         <template #default="{ row }">
@@ -128,16 +124,21 @@
 
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="Вес детали (г)">
-              <el-input-number v-model="form.partWeightGrams" :precision="2" :step="0.1" class="w-full" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="Вес литника (г)">
               <el-input-number v-model="form.runnerWeightGrams" :precision="2" :step="0.1" class="w-full" />
             </el-form-item>
           </el-col>
         </el-row>
+
+        <el-form-item v-if="editingMold && productWeightRows.length" label="Вес детали">
+          <div class="text-sm">
+            <div v-for="row in productWeightRows" :key="row.productId ?? 'all'">
+              <span v-if="row.fullArticle">{{ row.fullArticle }}: </span>
+              {{ row.partWeightGrams }} г · за смыкание {{ row.shotWeightGrams ?? '—' }} г
+            </div>
+            <div class="text-xs text-gray-500">Вес задаётся в изделиях; вес за смыкание = деталь × гнёзда</div>
+          </div>
+        </el-form-item>
 
         <el-row :gutter="20">
           <el-col :span="12">
@@ -251,6 +252,28 @@ const selectableProductTypes = computed(() => {
   return base
 })
 
+// PZP-24: вес детали принадлежит изделию. Если у всего типа он одинаков,
+// карточка ПФ показывает одну строку; разные веса — по строке на изделие.
+const productWeightRows = computed(() => {
+  const type = productTypes.value.find(t => t.id === form.productTypeId)
+  const source = type?.products?.length
+    ? type.products.map(p => ({
+        productId: p.id, fullArticle: p.fullArticle,
+        partWeightGrams: p.partWeightGrams ?? 0
+      }))
+    : form.productTypeId === editingMold.value?.productTypeId
+      ? (editingMold.value?.productWeights ?? [])
+      : []
+  const rows = source.map(p => ({
+    ...p,
+    shotWeightGrams: (p.partWeightGrams ?? 0) * (form.cavities || 0)
+  }))
+  if (rows.length > 1 && rows.every(r => r.partWeightGrams === rows[0].partWeightGrams)) {
+    return [{ ...rows[0], fullArticle: '' }]
+  }
+  return rows
+})
+
 const qrDialogVisible = ref(false)
 const qrData = ref('')
 const qrLabel = ref('')
@@ -275,7 +298,6 @@ const form = reactive({
   formId: '',
   name: '',
   cavities: 1,
-  partWeightGrams: 0,
   runnerWeightGrams: 0,
   maxResourceCycles: 0,
   to1Cycles: 0,
@@ -353,7 +375,6 @@ const showCreateModal = () => {
     formId: '',
     name: '',
     cavities: 1,
-    partWeightGrams: 0,
     runnerWeightGrams: 0,
     maxResourceCycles: 0,
     to1Cycles: 0,
@@ -375,7 +396,6 @@ const editMold = (mold) => {
     formId: mold.formId,
     name: mold.name,
     cavities: mold.cavities,
-    partWeightGrams: mold.partWeightGrams,
     runnerWeightGrams: mold.runnerWeightGrams,
     maxResourceCycles: mold.maxResourceCycles,
     to1Cycles: mold.to1Cycles,

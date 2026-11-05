@@ -30,10 +30,10 @@ vi.mock('@/api/productTypes', () => ({
     {
       id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true,
       products: [
-        { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true, recipe: [
+        { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true, partWeightGrams: 18, plannedInjectionCycleSeconds: 30, recipe: [
           { materialId: 'pp-1', materialType: 'Plastic', materialArticle: 'PP-1', materialName: 'Полипропилен', materialIsActive: true, percent: 100 }
         ] },
-        { id: 'p-XB', article: 'BLK', fullArticle: 'ART-X.BLK', name: 'Чёрный', isActive: true, recipe: [
+        { id: 'p-XB', article: 'BLK', fullArticle: 'ART-X.BLK', name: 'Чёрный', isActive: true, partWeightGrams: 12.5, plannedInjectionCycleSeconds: 25, recipe: [
           { materialId: 'pp-2', materialType: 'Plastic', materialArticle: 'PP-2', materialName: 'Полипропилен 2', materialIsActive: true, percent: 98 }
         ] },
         { id: 'p-XA', article: 'ARCH', fullArticle: 'ART-X.ARCH', name: 'Архивное', isActive: false, recipe: [
@@ -64,7 +64,7 @@ function mountModal(task = null) {
 
 const editedTask = {
   id: 'task-1', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
-  planQuantity: 10, recipeEdited: true,
+  planQuantity: 10, recipeEdited: true, partWeightGrams: 18, plannedInjectionCycleSeconds: 30,
   recipeIngredients: [
     { id: 'ri-1', materialId: 'pp-2', materialType: 'Plastic', materialArticle: 'PP-2', materialName: 'Полипропилен 2',
       originalMaterialId: 'pp-1', originalMaterialArticle: 'PP-1', originalMaterialName: 'Полипропилен', percent: 100 }
@@ -124,6 +124,8 @@ describe('TaskFormModal — рецепт (BL-36)', () => {
     await flushPromises()
 
     expect(wrapper.vm.form.productId).toBe('p-X0')
+    expect(wrapper.vm.form.partWeightGrams).toBe(18)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(30)
   })
 
   it('задание без правки рецепта — смена изделия без диалога', async () => {

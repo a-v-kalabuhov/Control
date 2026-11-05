@@ -31,7 +31,7 @@ public class MoldsController : ControllerBase
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
     {
-        var query = _context.Molds.Include(m => m.ProductType).Include(m => m.CompatibleImms).AsQueryable();
+        var query = _context.Molds.Include(m => m.ProductType).ThenInclude(pt => pt!.Products).Include(m => m.CompatibleImms).AsQueryable();
 
         if (isActive.HasValue)
         {
@@ -65,7 +65,7 @@ public class MoldsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<MoldDto>> GetMoldById(Guid id)
     {
-        var mold = await _context.Molds.Include(m => m.ProductType).Include(m => m.CompatibleImms).FirstOrDefaultAsync(m => m.Id == id);
+        var mold = await _context.Molds.Include(m => m.ProductType).ThenInclude(pt => pt!.Products).Include(m => m.CompatibleImms).FirstOrDefaultAsync(m => m.Id == id);
         if (mold == null)
             return NotFound();
 
@@ -93,7 +93,7 @@ public class MoldsController : ControllerBase
 
         if (request.ProductTypeId == null)
             return BadRequest("Не указан тип изделия.");
-        var productType = await _context.ProductTypes.FindAsync(request.ProductTypeId.Value);
+        var productType = await _context.ProductTypes.Include(pt => pt.Products).FirstOrDefaultAsync(pt => pt.Id == request.ProductTypeId.Value);
         if (productType == null || !productType.IsActive)
             return BadRequest("Указан несуществующий или архивный тип изделия.");
 
@@ -107,7 +107,6 @@ public class MoldsController : ControllerBase
             FormId = formId,
             Name = request.Name,
             Cavities = request.Cavities,
-            PartWeightGrams = request.PartWeightGrams,
             RunnerWeightGrams = request.RunnerWeightGrams,
             MaxResourceCycles = request.MaxResourceCycles,
             To1Cycles = request.To1Cycles,
@@ -166,8 +165,6 @@ public class MoldsController : ControllerBase
             mold.Name = request.Name;
         if (request.Cavities.HasValue)
             mold.Cavities = request.Cavities.Value;
-        if (request.PartWeightGrams.HasValue)
-            mold.PartWeightGrams = request.PartWeightGrams.Value;
         if (request.RunnerWeightGrams.HasValue)
             mold.RunnerWeightGrams = request.RunnerWeightGrams.Value;
         if (request.MaxResourceCycles.HasValue)
@@ -242,14 +239,24 @@ public class MoldsController : ControllerBase
         return Ok(dto);
     }
 
+    private static decimal? ShotWeight(decimal partWeight, int cavities) =>
+        cavities > 0 && partWeight <= decimal.MaxValue / cavities ? partWeight * cavities : null;
+
     private static MoldDto ToDto(Mold m, int totalCycles) => new()
     {
         Id = m.Id,
         FormId = m.FormId,
         Name = m.Name,
         Cavities = m.Cavities,
-        PartWeightGrams = m.PartWeightGrams,
         RunnerWeightGrams = m.RunnerWeightGrams,
+        ProductWeights = (m.ProductType?.Products ?? Enumerable.Empty<Product>())
+            .OrderBy(p => p.FullArticle)
+            .Select(p => new MoldProductWeightDto
+            {
+                ProductId = p.Id, FullArticle = p.FullArticle, ProductName = p.Name,
+                PartWeightGrams = p.PartWeightGrams, ShotWeightGrams = ShotWeight(p.PartWeightGrams, m.Cavities)
+            })
+            .ToList(),
         MaxResourceCycles = m.MaxResourceCycles,
         To1Cycles = m.To1Cycles,
         To2Cycles = m.To2Cycles,
