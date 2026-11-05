@@ -11,6 +11,9 @@ public class CreateMoldRequestDto
     public int? To2Cycles { get; set; }
     public string? StorageLocationIndex { get; set; }
     public Guid? ProductTypeId { get; set; }
+    public bool HasMovingParts { get; set; }
+    public bool RequiresRobot { get; set; }
+    public bool RequiresConveyor { get; set; }
     // Совместимые ТПА (PZP-16). null/пусто — совместимость не указана.
     public List<Guid>? CompatibleImmIds { get; set; }
 }

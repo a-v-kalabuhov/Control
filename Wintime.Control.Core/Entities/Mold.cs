@@ -14,6 +14,10 @@ public class Mold : BaseEntity
     public string? StorageLocationIndex { get; set; } // Индекс места (А-12)
     public string? DrawingPath { get; set; }
     public string? PhotoPath { get; set; }
+    // Особенности оснастки (PZP-26) — только справка, на планирование и совместимость не влияют.
+    public bool HasMovingParts { get; set; }
+    public bool RequiresRobot { get; set; }
+    public bool RequiresConveyor { get; set; }
     public bool IsActive { get; set; } = true;
 
     // Статус ПФ (ARCH-02). Nullable: Мун игнорирует, UI появится в ROS-01.
