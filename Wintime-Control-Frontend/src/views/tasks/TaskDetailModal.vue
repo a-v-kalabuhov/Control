@@ -38,6 +38,14 @@
             <el-descriptions-item label="Заказ">
               {{ orderLabel }}
             </el-descriptions-item>
+            <el-descriptions-item label="Заказчик">
+              <div class="flex items-center gap-1">
+                <span>{{ customerLabel }}</span>
+                <el-tooltip v-if="customerMismatch" :content="customerMismatchHint">
+                  <el-icon class="text-amber-500" data-test="customer-mismatch"><Warning /></el-icon>
+                </el-tooltip>
+              </div>
+            </el-descriptions-item>
             <el-descriptions-item label="Рабочий режим">
               {{ workModeLabel }}
             </el-descriptions-item>
@@ -219,12 +227,14 @@ import TaskProgress from '@/components/tasks/TaskProgress.vue'
 import TaskResultsTab from '@/components/tasks/TaskResultsTab.vue'
 import { formatPlannedStart } from '@/utils/plannedStart'
 import dayjs from 'dayjs'
+import { Warning } from '@element-plus/icons-vue'
 import { formatDuration } from '@/utils/taskPlan'
 import { usePlanConflictsStore } from '@/stores/planConflicts'
 import { conflictLine, otherSide, CONFLICT_KIND_COLORS } from '@/utils/planConflicts'
 import { productSecondary } from '@/utils/productLabel'
 import ReplaceIngredientDialog from './ReplaceIngredientDialog.vue'
 import { materialTypeLabel, plasticSum, formatPercent, isRecipeSumOk, recipeSumHint } from '@/utils/recipe'
+import { taskCustomer, hasTaskCustomerMismatch } from '@/utils/taskCustomer'
 
 const props = defineProps({
   modelValue: {
@@ -337,6 +347,14 @@ const orderLabel = computed(() => {
   const date = props.task.orderDate ? ` от ${dayjs(props.task.orderDate).format('DD.MM.YYYY')}` : ''
   return `${props.task.orderNumber}${date}`
 })
+
+// PZP-23: привязка заказа важнее наличия текста. Если заказ привязан без заказчика,
+// компанию типа не подставляем — это два независимых справочных значения.
+const customerLabel = computed(() => taskCustomer(props.task) || '—')
+const customerMismatch = computed(() => hasTaskCustomerMismatch(props.task))
+
+const customerMismatchHint = computed(() =>
+  `В заказе: ${props.task?.orderCustomer}; в типе изделия: ${props.task?.productTypeCompany}`)
 
 const formatDate = (date) => {
   if (!date) return '—'

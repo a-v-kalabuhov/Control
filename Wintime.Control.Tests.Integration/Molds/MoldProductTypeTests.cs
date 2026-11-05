@@ -27,12 +27,12 @@ public class MoldProductTypeTests : IClassFixture<IntegrationTestFactory>
         return client;
     }
 
-    private async Task<Guid> SeedTypeAsync(bool isActive = true)
+    private async Task<Guid> SeedTypeAsync(bool isActive = true, string? company = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var article = $"PT-{Guid.NewGuid():N}".ToUpperInvariant();
-        var pt = new ProductType { Article = article, Name = "Изд", IsActive = isActive };
+        var pt = new ProductType { Article = article, Name = "Изд", Company = company, IsActive = isActive };
         pt.Products.Add(new Product { Article = "0", Name = "По умолчанию", FullArticle = article + ".0" });   // PZP-19
         db.ProductTypes.Add(pt);
         await db.SaveChangesAsync();
@@ -66,13 +66,14 @@ public class MoldProductTypeTests : IClassFixture<IntegrationTestFactory>
     public async Task CreateMold_WithType_BindsAndDtoHasTypeName()
     {
         var client = await ManagerClientAsync();
-        var typeId = await SeedTypeAsync();
+        var typeId = await SeedTypeAsync(company: "ООО Заказчик");
         var resp = await client.PostAsJsonAsync("/api/molds", NewMold(typeId));
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var dto = await resp.Content.ReadFromJsonAsync<MoldDto>();
         dto!.ProductTypeId.Should().Be(typeId);
         dto.ProductTypeName.Should().Be("Изд");
+        dto.ProductTypeCompany.Should().Be("ООО Заказчик");
     }
 
     [Fact]

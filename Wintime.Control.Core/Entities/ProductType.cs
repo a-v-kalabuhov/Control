@@ -7,6 +7,7 @@ public class ProductType : BaseEntity
 {
     public string Article { get; set; } = string.Empty; // уникальный человекочитаемый артикул (CRM/1С)
     public string Name { get; set; } = string.Empty;    // наименование изделия
+    public string? Company { get; set; }                 // заказчик типа, свободный текст (PZP-23)
     public bool IsActive { get; set; } = true;          // архивный флаг (мягкое удаление)
 
     // Navigation

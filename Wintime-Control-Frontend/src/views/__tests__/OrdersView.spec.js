@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import OrdersView from '../OrdersView.vue'
 import { useAuthStore } from '@/stores/auth'
+import SuggestInput from '@/components/common/SuggestInput.vue'
 
 vi.mock('@/api/orders', () => ({
   ordersApi: {
@@ -30,10 +31,13 @@ vi.mock('@/api/productTypes', () => ({
       { id: 'p-3', article: 'BLU', fullArticle: 'B7.BLU', name: 'Синее', isActive: true },
       { id: 'p-4', article: 'OLD', fullArticle: 'B7.OLD', name: 'Старое', isActive: false }
     ] }
-  ] })) }
+  ] })),
+    suggestCompanies: vi.fn(() => Promise.resolve({ data: [] }))
+  }
 }))
 
 import { ordersApi } from '@/api/orders'
+import { productTypesApi } from '@/api/productTypes'
 
 function mountView(orders, role = 'Manager') {
   setActivePinia(createPinia())
@@ -140,6 +144,31 @@ describe('OrdersView', () => {
 
     expect(ordersApi.update).toHaveBeenCalledWith('5', expect.objectContaining({ number: 'ORD-5' }))
     expect(ordersApi.create).not.toHaveBeenCalled()
+  })
+
+  it('форма заказа редактирует заказчика через общие подсказки и отправляет его в API', async () => {
+    const row = {
+      id: 'customer-1', number: 'ORD-C', customer: 'ООО Заказчик', productFullArticle: 'A123.BLK',
+      productName: 'Чёрная', quantity: 50, goodQuantity: 10, progressPercent: 20, status: 'Active',
+      dueDate: '2026-08-01T00:00:00Z', productTypeId: 'pt-1', productId: 'p-1'
+    }
+    const wrapper = mountView([row])
+    await flushPromises()
+    wrapper.vm.editItem(row)
+    await flushPromises()
+
+    expect(wrapper.vm.form.customer).toBe('ООО Заказчик')
+    const suggest = wrapper.findComponent(SuggestInput)
+    expect(suggest.exists()).toBe(true)
+    await suggest.props('fetch')('Заказ')
+    expect(productTypesApi.suggestCompanies).toHaveBeenCalledWith('Заказ')
+
+    wrapper.vm.form.customer = 'ООО Новый заказчик'
+    await wrapper.vm.save()
+    await flushPromises()
+
+    expect(ordersApi.update).toHaveBeenCalledWith('customer-1',
+      expect.objectContaining({ customer: 'ООО Новый заказчик' }))
   })
 
   it('создание заказа без даты проходит и отправляет orderDate: null', async () => {

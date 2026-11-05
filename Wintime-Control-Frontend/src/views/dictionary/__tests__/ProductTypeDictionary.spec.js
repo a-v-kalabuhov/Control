@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import ProductTypeDictionary from '../ProductTypeDictionary.vue'
+import SuggestInput from '@/components/common/SuggestInput.vue'
 
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
@@ -10,6 +11,7 @@ vi.mock('@/api/productTypes', () => ({
     getById: vi.fn(),
     create: vi.fn(),
     update: vi.fn(() => Promise.resolve({})),
+    suggestCompanies: vi.fn(() => Promise.resolve({ data: [] })),
     addProduct: vi.fn(),
     updateProduct: vi.fn(() => Promise.resolve({})),
     deleteProduct: vi.fn(() => Promise.resolve({}))
@@ -84,6 +86,26 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     expect(wrapper.vm.dialogVisible).toBe(true)
     expect(document.body.textContent).toContain('Изделия')
     expect(document.body.textContent).toContain('NEW.0')
+  })
+
+  it('форма типа редактирует компанию через подсказки и отправляет её в API', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem({ ...typeA, company: 'ООО Заказчик' })
+    await flushPromises()
+
+    expect(wrapper.vm.form.company).toBe('ООО Заказчик')
+    const suggest = wrapper.findComponent(SuggestInput)
+    expect(suggest.exists()).toBe(true)
+    await suggest.props('fetch')('Заказ')
+    expect(productTypesApi.suggestCompanies).toHaveBeenCalledWith('Заказ')
+
+    wrapper.vm.form.company = 'ООО Новый заказчик'
+    await wrapper.vm.save()
+    await flushPromises()
+
+    expect(productTypesApi.update).toHaveBeenCalledWith('pt-1',
+      expect.objectContaining({ company: 'ООО Новый заказчик' }))
   })
 
   it('добавление изделия приводит часть к верхнему регистру и перезагружает тип', async () => {

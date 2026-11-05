@@ -13,6 +13,9 @@ export const productTypesApi = {
   update(id, data) {
     return apiClient.put(`/producttypes/${id}`, data)
   },
+  suggestCompanies(search) {
+    return apiClient.get('/producttypes/suggestions/companies', { params: { search } })
+  },
   addProduct(typeId, data) {
     return apiClient.post(`/producttypes/${typeId}/products`, data)
   },

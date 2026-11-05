@@ -100,6 +100,37 @@ public class MyTasksApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task GetMyTasks_ReturnsOrderCustomerAndProductTypeCompany()
+    {
+        var (imm, search) = await FreshImmAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var productType = db.ProductTypes.Single(t => t.Products.Any(p => p.Id == _factory.TestProductId));
+            productType.Company = "Компания типа";
+            var order = new Order
+            {
+                Number = $"ORD-{Guid.NewGuid():N}", Customer = "Заказчик заказа",
+                DueDate = DateTime.UtcNow.AddDays(7), ProductId = _factory.TestProductId, Quantity = 100
+            };
+            db.Orders.Add(order);
+            db.ShiftTasks.Add(new ShiftTask
+            {
+                ImmId = imm, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
+                PlanQuantity = 10, Status = TaskStatus.Issued, PersonnelId = _factory.TestAdjusterId,
+                PlannedDate = Tomorrow, PlannedFullCycleSeconds = 30, IssuedAt = DateTime.UtcNow, OrderId = order.Id
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var my = await GetMyAsync(search);
+
+        var task = my.GetProperty("queue").EnumerateArray().Single();
+        task.GetProperty("orderCustomer").GetString().Should().Be("Заказчик заказа");
+        task.GetProperty("productTypeCompany").GetString().Should().Be("Компания типа");
+    }
+
+    [Fact]
     public async Task GetMyTasks_PlannedHidden()
     {
         var (imm, search) = await FreshImmAsync();

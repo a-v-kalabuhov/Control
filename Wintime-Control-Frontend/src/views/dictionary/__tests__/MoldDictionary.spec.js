@@ -15,10 +15,10 @@ vi.mock('@/api/molds', () => ({
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
     getList: vi.fn(() => Promise.resolve({ data: [
-      { id: 'pt-1', article: 'ART', name: 'Изделие', products: [
+      { id: 'pt-1', article: 'ART', name: 'Изделие', company: 'ООО Изделие', products: [
         { id: 'p-1', fullArticle: 'ART.0', partWeightGrams: 10, plannedInjectionCycleSeconds: 20 }
       ] },
-      { id: 'pt-2', article: 'NEW', name: 'Другое изделие', products: [
+      { id: 'pt-2', article: 'NEW', name: 'Другое изделие', company: 'ООО Другое', products: [
         { id: 'p-2', fullArticle: 'NEW.0', partWeightGrams: 20, plannedInjectionCycleSeconds: 30 }
       ] }
     ] }))
@@ -101,6 +101,24 @@ describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
     await flushPromises()
 
     expect(moldsApi.update).toHaveBeenCalledWith('mold-1', { isActive: false })
+  })
+})
+
+describe('MoldDictionary — заказчик типа (PZP-23)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('карточка ПФ показывает компанию выбранного типа изделия', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editMold({ ...moldRow, productTypeCompany: 'ООО Изделие' })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Заказчик')
+    expect(wrapper.text()).toContain('ООО Изделие')
+
+    wrapper.vm.form.productTypeId = 'pt-2'
+    await flushPromises()
+    expect(wrapper.text()).toContain('ООО Другое')
   })
 })
 

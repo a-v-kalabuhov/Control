@@ -26,6 +26,14 @@
             {{ productSecondary(task?.productTypeName, task?.productName) }}
           </div>
         </el-descriptions-item>
+        <el-descriptions-item label="Заказчик">
+          <div class="flex items-center gap-1">
+            <span>{{ customerLabel }}</span>
+            <el-tooltip v-if="customerMismatch" :content="customerMismatchHint">
+              <el-icon class="text-amber-500" data-test="customer-mismatch"><Warning /></el-icon>
+            </el-tooltip>
+          </div>
+        </el-descriptions-item>
         <el-descriptions-item label="Рецепт">
           <template v-if="task?.recipeIngredients?.length">
             <div
@@ -234,6 +242,7 @@ import MobileStatusBadge from '@/components/mobile/MobileStatusBadge.vue'
 import { formatDuration } from '@/utils/taskPlan'
 import { productSecondary } from '@/utils/productLabel'
 import { formatPercent, isRecipeSumOk } from '@/utils/recipe'
+import { taskCustomer, hasTaskCustomerMismatch } from '@/utils/taskCustomer'
 import dayjs from 'dayjs'
 
 const props = defineProps({
@@ -281,6 +290,11 @@ const progressColor = computed(() => {
 })
 
 const recipeSumOk = computed(() => isRecipeSumOk(props.task?.recipeIngredients ?? []))
+
+const customerLabel = computed(() => taskCustomer(props.task) || '—')
+const customerMismatch = computed(() => hasTaskCustomerMismatch(props.task))
+const customerMismatchHint = computed(() =>
+  `В заказе: ${props.task?.orderCustomer}; в типе изделия: ${props.task?.productTypeCompany}`)
 
 const canClose = computed(() => {
   return ['Completed', 'InProgress'].includes(props.task?.status) && 

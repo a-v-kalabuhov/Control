@@ -175,6 +175,26 @@ public class PlanningBoardTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Board_task_carries_product_type_company_for_detail_card()
+    {
+        var immId = await _factory.CreateFreshImmAsync();
+        var moldId = await SeedMoldAsync();
+        var taskId = await SeedTaskAsync(immId, moldId, _ => { });
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var type = await db.ProductTypes.SingleAsync(t => t.Id == _factory.TestProductTypeId);
+            type.Company = "ООО Заказчик";
+            await db.SaveChangesAsync();
+        }
+
+        var board = await GetBoardAsync(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1));
+
+        var item = board.Rows.Single(r => r.Imm.Id == immId).Tasks.Single(t => t.Task.Id == taskId);
+        item.Task.ProductTypeCompany.Should().Be("ООО Заказчик");
+    }
+
+    [Fact]
     public async Task Observer_gets_board()
     {
         var client = await ClientAsync("test_observer", "Observer123!");

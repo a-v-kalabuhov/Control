@@ -179,6 +179,38 @@ describe('TaskDetailModal — заказ', () => {
     expect(cellText(wrapper, 'Заказ')).toBe(`ORD-77 от ${dayjs('2026-10-01T00:00:00Z').format('DD.MM.YYYY')}`)
   })
 
+  it('без заказа показывает компанию типа изделия', async () => {
+    const wrapper = mountModal({
+      id: 't1', status: 'Planned', orderId: null, orderCustomer: 'Не используется',
+      productTypeCompany: 'ООО Компания'
+    })
+    await flushPromises()
+
+    expect(cellText(wrapper, 'Заказчик')).toBe('ООО Компания')
+    expect(wrapper.find('[data-test="customer-mismatch"]').exists()).toBe(false)
+  })
+
+  it('привязанный заказ без заказчика не подставляет компанию типа', async () => {
+    const wrapper = mountModal({
+      id: 't1', status: 'Planned', orderId: 'o1', orderCustomer: null,
+      productTypeCompany: 'ООО Компания'
+    })
+    await flushPromises()
+
+    expect(cellText(wrapper, 'Заказчик')).toBe('—')
+  })
+
+  it('при разных заказчиках показывает значение заказа и предупреждение', async () => {
+    const wrapper = mountModal({
+      id: 't1', status: 'Planned', orderId: 'o1', orderCustomer: 'ООО Заказ',
+      productTypeCompany: 'ООО Тип'
+    })
+    await flushPromises()
+
+    expect(cellText(wrapper, 'Заказчик')).toBe('ООО Заказ')
+    expect(wrapper.find('[data-test="customer-mismatch"]').exists()).toBe(true)
+  })
+
   it('заказ без даты — только номер; без заказа — прочерк', async () => {
     const noDate = mountModal({ id: 't1', status: 'Planned', orderId: 'o1', orderNumber: 'ORD-78', orderDate: null })
     await flushPromises()

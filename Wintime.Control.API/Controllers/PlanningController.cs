@@ -134,7 +134,7 @@ public class PlanningController : ControllerBase
         .AsNoTracking()
         .Include(t => t.Imm)
         .Include(t => t.Mold).ThenInclude(m => m.ProductType)
-        .Include(t => t.Product)
+        .Include(t => t.Product).ThenInclude(p => p!.ProductType)
         .Include(t => t.Personnel)
         .Include(t => t.Order)
         .Include(t => t.RecipeIngredients).ThenInclude(i => i.Material)

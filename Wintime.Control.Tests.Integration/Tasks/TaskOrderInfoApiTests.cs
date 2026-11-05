@@ -25,9 +25,11 @@ public class TaskOrderInfoApiTests : IClassFixture<IntegrationTestFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var productType = db.ProductTypes.Single(t => t.Products.Any(p => p.Id == _factory.TestProductId));
+            productType.Company = "Компания типа";
             var order = new Order
             {
-                Number = "ORD-77", OrderDate = orderDate, DueDate = orderDate.AddDays(30),
+                Number = "ORD-77", Customer = "Заказчик заказа", OrderDate = orderDate, DueDate = orderDate.AddDays(30),
                 ProductId = _factory.TestProductId, Quantity = 100
             };
             db.Orders.Add(order);
@@ -48,5 +50,7 @@ public class TaskOrderInfoApiTests : IClassFixture<IntegrationTestFactory>
 
         body.GetProperty("orderNumber").GetString().Should().Be("ORD-77");
         body.GetProperty("orderDate").GetDateTime().ToUniversalTime().Should().Be(orderDate);
+        body.GetProperty("orderCustomer").GetString().Should().Be("Заказчик заказа");
+        body.GetProperty("productTypeCompany").GetString().Should().Be("Компания типа");
     }
 }

@@ -10,6 +10,7 @@ namespace Wintime.Control.Core.Entities;
 public class Order : BaseEntity
 {
     public string Number { get; set; } = string.Empty;  // человекочитаемый, НЕ уникален (CRM/1С)
+    public string? Customer { get; set; }                // заказчик, свободный текст (PZP-23)
     public DateTime? OrderDate { get; set; }             // дата коммерческого заказа (Utc), необязательна
     public DateTime DueDate { get; set; }                // крайний срок (Utc)
     public Guid ProductId { get; set; }                  // изделие заказа (PZP-19); тип — через Product

@@ -58,6 +58,7 @@ public class OrdersController : ControllerBase
         {
             Id = o.Id,
             Number = o.Number,
+            Customer = o.Customer,
             OrderDate = o.OrderDate,
             DueDate = o.DueDate,
             ProductId = o.ProductId,
@@ -143,6 +144,7 @@ public class OrdersController : ControllerBase
         var order = new Order
         {
             Number = request.Number.Trim(),
+            Customer = CustomerRules.Clean(request.Customer),
             OrderDate = request.OrderDate.HasValue
                 ? DateTime.SpecifyKind(request.OrderDate.Value, DateTimeKind.Utc)
                 : null,
@@ -173,6 +175,8 @@ public class OrdersController : ControllerBase
                 return BadRequest("Номер заказа не может быть пустым.");
             order.Number = request.Number.Trim();
         }
+        if (request.Customer != null)
+            order.Customer = CustomerRules.Clean(request.Customer);
         if (request.Quantity.HasValue)
         {
             if (request.Quantity.Value <= 0)

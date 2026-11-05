@@ -39,7 +39,7 @@ public class ProductTypesController : ControllerBase
 
     private static ProductTypeDto ToDto(ProductType t, ISet<Guid> usedIds) => new()
     {
-        Id = t.Id, Article = t.Article, Name = t.Name, IsActive = t.IsActive,
+        Id = t.Id, Article = t.Article, Name = t.Name, Company = t.Company, IsActive = t.IsActive,
         Products = t.Products.OrderBy(p => p.Article).Select(p => ToDto(p, usedIds)).ToList()
     };
 
@@ -117,6 +117,24 @@ public class ProductTypesController : ControllerBase
         return Ok(items.Select(t => ToDto(t, usedIds)).ToList());
     }
 
+    /// <summary>Подсказки заказчиков из компаний типов изделий и заказов, включая архивные записи.</summary>
+    [HttpGet("suggestions/companies")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
+    public async Task<ActionResult<IEnumerable<string>>> SuggestCompanies([FromQuery] string? search = null)
+    {
+        var companies = _context.ProductTypes.Where(t => t.Company != null).Select(t => t.Company!);
+        var customers = _context.Orders.Where(o => o.Customer != null).Select(o => o.Customer!);
+        var query = companies.Concat(customers);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = $"%{search.Trim()}%";
+            query = query.Where(value => EF.Functions.ILike(value, pattern));
+        }
+
+        var items = await query.Distinct().OrderBy(value => value).Take(20).ToListAsync();
+        return Ok(items);
+    }
+
     [HttpGet("{id:guid}")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<ProductTypeDto>> GetById(Guid id)
@@ -145,7 +163,10 @@ public class ProductTypesController : ControllerBase
             return Conflict(conflict);
 
         // PZP-19: тип создаётся вместе с изделием по умолчанию (у типа всегда ≥ 1 изделия).
-        var pt = new ProductType { Article = article, Name = request.Name.Trim(), IsActive = true };
+        var pt = new ProductType
+        {
+            Article = article, Name = request.Name.Trim(), Company = CustomerRules.Clean(request.Company), IsActive = true
+        };
         pt.Products.Add(new Product
         {
             Article = ProductArticle.DefaultPart,
@@ -197,6 +218,8 @@ public class ProductTypesController : ControllerBase
                 return BadRequest("Наименование не может быть пустым.");
             pt.Name = request.Name.Trim();
         }
+        if (request.Company != null)
+            pt.Company = CustomerRules.Clean(request.Company);
         if (request.IsActive.HasValue)
         {
             if (request.IsActive.Value && !pt.IsActive && !pt.Products.Any(p => p.IsActive))
