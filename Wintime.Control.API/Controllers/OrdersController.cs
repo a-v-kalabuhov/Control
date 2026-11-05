@@ -84,8 +84,14 @@ public class OrdersController : ControllerBase
         [FromQuery] OrderStatus? status = null,
         [FromQuery] string? search = null,
         [FromQuery] Guid? productTypeId = null,
-        [FromQuery] Guid? productId = null)
+        [FromQuery] Guid? productId = null,
+        [FromQuery] string? customer = null,
+        [FromQuery] bool customerEmpty = false)
     {
+        var customerFilter = CustomerRules.Clean(customer);
+        if (customerEmpty && customerFilter != null)
+            return BadRequest("Параметры customer и customerEmpty нельзя передавать вместе.");
+
         var query = _context.Orders.Include(o => o.Product).ThenInclude(p => p!.ProductType).AsQueryable();
         if (status.HasValue)
             query = query.Where(o => o.Status == status.Value);
@@ -95,6 +101,10 @@ public class OrdersController : ControllerBase
             query = query.Where(o => o.Product!.ProductTypeId == productTypeId.Value);
         if (productId.HasValue)
             query = query.Where(o => o.ProductId == productId.Value);
+        if (customerFilter != null)
+            query = query.Where(o => o.Customer == customerFilter);
+        else if (customerEmpty)
+            query = query.Where(o => o.Customer == null);
 
         var orders = await query.OrderByDescending(o => o.CreatedAt).ToListAsync();
         var agg = await ComputeAggregatesAsync(orders.Select(o => o.Id).ToList());
