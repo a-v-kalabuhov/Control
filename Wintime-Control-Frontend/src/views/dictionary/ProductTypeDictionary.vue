@@ -16,6 +16,14 @@
         <el-form-item label="Поиск">
           <el-input v-model="filters.search" placeholder="Артикул или наименование" clearable />
         </el-form-item>
+        <el-form-item label="Заказчик">
+          <CustomerFilterSelect
+            v-model:customer="filters.customer"
+            v-model:customer-empty="filters.customerEmpty"
+            :fetch="fetchCompanies"
+            style="width: 260px;"
+          />
+        </el-form-item>
         <el-form-item label="Статус">
           <el-select v-model="filters.isActive" placeholder="Все" clearable style="width: 160px;">
             <el-option label="Активные" :value="true" />
@@ -184,6 +192,7 @@ import { activeProducts } from '@/utils/productLabel'
 import { apiErrorMessage } from '@/utils/apiError'
 import ProductRecipeDialog from './ProductRecipeDialog.vue'
 import SuggestInput from '@/components/common/SuggestInput.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 import { formatRecipe, isRecipeSumOk, recipeSumHint as recipeSumHintText } from '@/utils/recipe'
 
 // Текст ошибки сервера; нестроковое тело (ProblemDetails и т.п.) заменяется запасным текстом.
@@ -234,7 +243,7 @@ const savingProduct = ref(false)
 const editingProduct = ref(null)
 const productForm = reactive({ article: '', name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null })
 
-const filters = reactive({ search: '', isActive: null })
+const filters = reactive({ search: '', isActive: null, customer: null, customerEmpty: false })
 const form = reactive({ article: '', name: '', company: '' })
 
 const rules = {
@@ -251,7 +260,9 @@ async function loadItems() {
   try {
     const { data } = await productTypesApi.getList({
       isActive: filters.isActive,
-      search: filters.search
+      search: filters.search,
+      customer: filters.customer || undefined,
+      customerEmpty: filters.customerEmpty ? true : undefined
     })
     items.value = data
   } catch {

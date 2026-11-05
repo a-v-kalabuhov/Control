@@ -16,6 +16,14 @@
         <el-form-item label="Поиск">
           <el-input v-model="filters.search" placeholder="Номер заказа" clearable @keyup.enter="loadOrders" />
         </el-form-item>
+        <el-form-item label="Заказчик">
+          <CustomerFilterSelect
+            v-model:customer="filters.customer"
+            v-model:customer-empty="filters.customerEmpty"
+            :fetch="fetchCompanies"
+            style="width: 260px;"
+          />
+        </el-form-item>
         <el-form-item label="Статус">
           <el-select v-model="filters.status" placeholder="Все" clearable style="width: 180px;">
             <el-option v-for="key in ORDER_STATUS_KEYS" :key="key" :label="getOrderStatusMeta(key).label" :value="key" />
@@ -179,6 +187,7 @@ import OrderDetailModal from '@/components/orders/OrderDetailModal.vue'
 import { apiErrorMessage } from '@/utils/apiError'
 import { activeProducts } from '@/utils/productLabel'
 import SuggestInput from '@/components/common/SuggestInput.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
 const authStore = useAuthStore()
 // Observer — только чтение (PZP-07a); запись защищена на бэкенде
@@ -196,7 +205,7 @@ const orders = ref([])
 const productTypes = ref([])
 const productTypesLoading = ref(false)
 
-const filters = reactive({ status: null, search: '' })
+const filters = reactive({ status: null, search: '', customer: null, customerEmpty: false })
 const form = reactive({
   number: '',
   customer: '',
@@ -270,7 +279,9 @@ async function loadOrders() {
   try {
     const { data } = await ordersApi.getList({
       status: filters.status,
-      search: filters.search
+      search: filters.search,
+      customer: filters.customer || undefined,
+      customerEmpty: filters.customerEmpty ? true : undefined
     })
     orders.value = data
   } catch (error) {

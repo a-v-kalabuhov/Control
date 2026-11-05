@@ -17,6 +17,14 @@
         <el-form-item label="Поиск">
           <el-input v-model="filters.search" placeholder="Наименование или артикул" clearable />
         </el-form-item>
+        <el-form-item label="Заказчик">
+          <CustomerFilterSelect
+            v-model:customer="filters.customer"
+            v-model:customer-empty="filters.customerEmpty"
+            :fetch="fetchCompanies"
+            style="width: 260px;"
+          />
+        </el-form-item>
         <el-form-item label="Статус">
           <el-select v-model="filters.isActive" placeholder="Все" clearable style="width: 160px;">
             <el-option label="Активные" :value="true" />
@@ -224,6 +232,7 @@ import { productTypesApi } from '@/api/productTypes'
 import { immApi } from '@/api/imm'
 import { immOptionLabel, formatCompatibleImms } from '@/utils/moldCompatibility'
 import QrCodeDialog from '@/components/common/QrCodeDialog.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 import { apiErrorMessage } from '@/utils/apiError'
 import dayjs from 'dayjs'
 
@@ -302,8 +311,15 @@ const showQr = async (mold) => {
 
 const filters = reactive({
   search: '',
-  isActive: null
+  isActive: null,
+  customer: null,
+  customerEmpty: false
 })
+
+async function fetchCompanies(search) {
+  const { data } = await productTypesApi.suggestCompanies(search)
+  return data
+}
 
 const form = reactive({
   formId: '',
@@ -367,9 +383,11 @@ onMounted(async () => {
 const loadMolds = async () => {
   loading.value = true
   try {
-    const response = await moldsApi.getList({ 
-      isActive: filters.isActive, 
-      search: filters.search 
+    const response = await moldsApi.getList({
+      isActive: filters.isActive,
+      search: filters.search,
+      customer: filters.customer || undefined,
+      customerEmpty: filters.customerEmpty ? true : undefined
     })
     molds.value = response.data
   } catch (error) {

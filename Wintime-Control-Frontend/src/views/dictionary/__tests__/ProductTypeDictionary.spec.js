@@ -4,6 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import ProductTypeDictionary from '../ProductTypeDictionary.vue'
 import SuggestInput from '@/components/common/SuggestInput.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
@@ -106,6 +107,37 @@ describe('ProductTypeDictionary (PZP-19)', () => {
 
     expect(productTypesApi.update).toHaveBeenCalledWith('pt-1',
       expect.objectContaining({ company: 'ООО Новый заказчик' }))
+  })
+
+  it('фильтр заказчика передаёт customer/customerEmpty и сохраняет остальные фильтры', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const listCalls = productTypesApi.getList.mock.calls.length
+    await wrapper.findComponent(CustomerFilterSelect).props('fetch')('Рома')
+    expect(productTypesApi.suggestCompanies).toHaveBeenCalledWith('Рома')
+    expect(productTypesApi.getList).toHaveBeenCalledTimes(listCalls)
+    wrapper.vm.filters.search = 'Крышка'
+    wrapper.vm.filters.isActive = true
+
+    wrapper.vm.filters.customer = 'ООО Ромашка'
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadItems()
+    expect(productTypesApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Крышка', customer: 'ООО Ромашка', customerEmpty: undefined
+    })
+
+    wrapper.vm.filters.customer = null
+    wrapper.vm.filters.customerEmpty = true
+    await wrapper.vm.loadItems()
+    expect(productTypesApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Крышка', customer: undefined, customerEmpty: true
+    })
+
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadItems()
+    expect(productTypesApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Крышка', customer: undefined, customerEmpty: undefined
+    })
   })
 
   it('добавление изделия приводит часть к верхнему регистру и перезагружает тип', async () => {

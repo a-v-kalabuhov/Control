@@ -6,6 +6,7 @@ import ElementPlus from 'element-plus'
 import OrdersView from '../OrdersView.vue'
 import { useAuthStore } from '@/stores/auth'
 import SuggestInput from '@/components/common/SuggestInput.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
 vi.mock('@/api/orders', () => ({
   ordersApi: {
@@ -169,6 +170,36 @@ describe('OrdersView', () => {
 
     expect(ordersApi.update).toHaveBeenCalledWith('customer-1',
       expect.objectContaining({ customer: 'ООО Новый заказчик' }))
+  })
+
+  it('фильтр заказчика передаёт customer/customerEmpty и сохраняет остальные фильтры', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+    const listCalls = ordersApi.getList.mock.calls.length
+    await wrapper.findComponent(CustomerFilterSelect).props('fetch')('Рома')
+    expect(ordersApi.getList).toHaveBeenCalledTimes(listCalls)
+    wrapper.vm.filters.search = 'ORD'
+    wrapper.vm.filters.status = 'Active'
+
+    wrapper.vm.filters.customer = 'ООО Ромашка'
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadOrders()
+    expect(ordersApi.getList).toHaveBeenLastCalledWith({
+      status: 'Active', search: 'ORD', customer: 'ООО Ромашка', customerEmpty: undefined
+    })
+
+    wrapper.vm.filters.customer = null
+    wrapper.vm.filters.customerEmpty = true
+    await wrapper.vm.loadOrders()
+    expect(ordersApi.getList).toHaveBeenLastCalledWith({
+      status: 'Active', search: 'ORD', customer: undefined, customerEmpty: true
+    })
+
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadOrders()
+    expect(ordersApi.getList).toHaveBeenLastCalledWith({
+      status: 'Active', search: 'ORD', customer: undefined, customerEmpty: undefined
+    })
   })
 
   it('создание заказа без даты проходит и отправляет orderDate: null', async () => {

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import MoldDictionary from '../MoldDictionary.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
 vi.mock('@/api/molds', () => ({
   moldsApi: {
@@ -21,7 +22,8 @@ vi.mock('@/api/productTypes', () => ({
       { id: 'pt-2', article: 'NEW', name: 'Другое изделие', company: 'ООО Другое', products: [
         { id: 'p-2', fullArticle: 'NEW.0', partWeightGrams: 20, plannedInjectionCycleSeconds: 30 }
       ] }
-    ] }))
+    ] })),
+    suggestCompanies: vi.fn(() => Promise.resolve({ data: [] }))
   }
 }))
 vi.mock('@/api/imm', () => ({
@@ -106,6 +108,36 @@ describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
 
 describe('MoldDictionary — заказчик типа (PZP-23)', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('фильтр заказчика передаёт параметры через тип изделия и сохраняет остальные фильтры', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const listCalls = moldsApi.getList.mock.calls.length
+    await wrapper.findComponent(CustomerFilterSelect).props('fetch')('Рома')
+    expect(moldsApi.getList).toHaveBeenCalledTimes(listCalls)
+    wrapper.vm.filters.search = 'Форма'
+    wrapper.vm.filters.isActive = true
+
+    wrapper.vm.filters.customer = 'ООО Ромашка'
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadMolds()
+    expect(moldsApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Форма', customer: 'ООО Ромашка', customerEmpty: undefined
+    })
+
+    wrapper.vm.filters.customer = null
+    wrapper.vm.filters.customerEmpty = true
+    await wrapper.vm.loadMolds()
+    expect(moldsApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Форма', customer: undefined, customerEmpty: true
+    })
+
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadMolds()
+    expect(moldsApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Форма', customer: undefined, customerEmpty: undefined
+    })
+  })
 
   it('карточка ПФ показывает компанию выбранного типа изделия', async () => {
     const wrapper = mountView()
