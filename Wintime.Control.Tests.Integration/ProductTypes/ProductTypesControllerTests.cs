@@ -25,6 +25,99 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
         return client;
     }
 
+    private async Task<ProductType> SeedCustomerTypeAsync(
+        string marker, string? company, bool isActive = true)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var article = $"CF-{marker}-{Guid.NewGuid():N}".ToUpperInvariant();
+        var type = new ProductType
+        {
+            Article = article, Name = $"Тип {marker}", Company = company, IsActive = isActive
+        };
+        type.Products.Add(new Product
+        {
+            Article = "0", Name = "По умолчанию", FullArticle = article + ".0", IsActive = true
+        });
+        db.ProductTypes.Add(type);
+        await db.SaveChangesAsync();
+        return type;
+    }
+
+    [Fact]
+    public async Task List_FiltersByCustomer()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var customer = $"Заказчик {marker}";
+        var match = await SeedCustomerTypeAsync(marker, customer);
+        var other = await SeedCustomerTypeAsync(marker, $"Другой {marker}");
+        var differentCase = await SeedCustomerTypeAsync(marker, customer.ToUpperInvariant());
+
+        var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?customer={Uri.EscapeDataString(customer)}");
+
+        list!.Should().ContainSingle(t => t.Id == match.Id);
+        list.Should().NotContain(t => t.Id == other.Id || t.Id == differentCase.Id);
+    }
+
+    [Fact]
+    public async Task List_FiltersUnspecifiedCustomer()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var empty = await SeedCustomerTypeAsync(marker, null);
+        var named = await SeedCustomerTypeAsync(marker, $"Заказчик {marker}");
+
+        var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?search={marker}&customerEmpty=true");
+
+        list!.Should().ContainSingle(t => t.Id == empty.Id);
+        list.Should().NotContain(t => t.Id == named.Id);
+    }
+
+    [Fact]
+    public async Task List_CustomerFilterCombinesWithExistingFilters()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var customer = $"Заказчик {marker}";
+        var active = await SeedCustomerTypeAsync(marker, customer, isActive: true);
+        var archived = await SeedCustomerTypeAsync(marker, customer, isActive: false);
+        var archivedOther = await SeedCustomerTypeAsync(marker, $"Другой {marker}", isActive: false);
+
+        var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?isActive=false&customer={Uri.EscapeDataString(customer)}");
+
+        list!.Should().ContainSingle(t => t.Id == archived.Id);
+        list.Should().NotContain(t => t.Id == active.Id || t.Id == archivedOther.Id);
+    }
+
+    [Fact]
+    public async Task List_UnknownCustomer_ReturnsEmpty()
+    {
+        var client = await ManagerClientAsync();
+        var unknown = $"Несуществующий {Guid.NewGuid():N}";
+
+        var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?customer={Uri.EscapeDataString(unknown)}");
+
+        list.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task List_CustomerAndCustomerEmpty_ReturnsBadRequest()
+    {
+        var client = await ManagerClientAsync();
+
+        var response = await client.GetAsync(
+            "/api/producttypes?customer=ООО%20Ромашка&customerEmpty=true");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain(
+            "Параметры customer и customerEmpty нельзя передавать вместе.");
+    }
+
     [Fact]
     public async Task Manager_CanCreateAndGet()
     {
