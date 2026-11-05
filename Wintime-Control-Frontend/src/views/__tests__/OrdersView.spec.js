@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus, { ElMessage } from 'element-plus'
@@ -71,6 +71,7 @@ function mountView(orders, role = 'Manager') {
 
 describe('OrdersView', () => {
   beforeEach(() => vi.clearAllMocks())
+  afterEach(() => vi.restoreAllMocks())
 
   it('Observer видит заказы, но не кнопки изменения', async () => {
     const wrapper = mountView([
@@ -276,6 +277,30 @@ describe('OrdersView', () => {
     await flushPromises()
     expect(wrapper.vm.orders).toEqual([rowB])
     expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('после размонтирования pending rejection не показывает ошибку и не меняет состояние списка', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const pending = deferred()
+    ordersApi.getList.mockImplementationOnce(() => pending.promise)
+    setActivePinia(createPinia())
+    useAuthStore().userRole = 'Manager'
+    const wrapper = mount(OrdersView, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: { 'el-select': true, 'el-option': true }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.vm.loading).toBe(true)
+
+    wrapper.unmount()
+    pending.reject(new Error('сеть'))
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.orders).toEqual([])
+    expect(wrapper.vm.loading).toBe(true)
   })
 
   it('создание заказа без даты проходит и отправляет orderDate: null', async () => {

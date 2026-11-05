@@ -176,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
@@ -275,6 +275,10 @@ function formatDate(date) {
 }
 
 let loadOrdersRequestId = 0
+
+onBeforeUnmount(() => {
+  loadOrdersRequestId += 1
+})
 
 async function loadOrders() {
   const requestId = ++loadOrdersRequestId

@@ -116,6 +116,26 @@ describe('CustomerFilterSelect', () => {
     expect(wrapper.emitted('update:customer')).toBeUndefined()
   })
 
+  it('реальный ввод ElSelect вызывает fetch один раз через 300 мс без двойного debounce', async () => {
+    vi.useFakeTimers()
+    const fetch = vi.fn().mockResolvedValue([])
+    const wrapper = mountFilter({ fetch })
+
+    await wrapper.find('input').setValue('рома')
+    await vi.advanceTimersByTimeAsync(299)
+    expect(fetch).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledWith('рома')
+
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('update:customer')).toBeUndefined()
+  })
+
   it('ошибка подсказок не сбрасывает выбранное значение', async () => {
     const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
     const wrapper = mountFilter({
@@ -176,6 +196,64 @@ describe('CustomerFilterSelect', () => {
     await fragmentLoad
     await flushPromises()
     expect(wrapper.vm.options.map(option => option.label)).toContain('ООО Новый')
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('смена запроса сразу блокирует поздний успех A до запуска debounce B', async () => {
+    vi.useFakeTimers()
+    const a = deferred()
+    const b = deferred()
+    const fetch = vi.fn()
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const wrapper = mountFilter({ fetch })
+
+    const loadA = wrapper.vm.loadSuggestions('A')
+    wrapper.vm.onRemoteMethod('B')
+    a.resolve(['Заказчик A'])
+    await loadA
+    await flushPromises()
+
+    expect(wrapper.vm.options.map(option => option.label)).toEqual(['(не указано)'])
+    expect(wrapper.vm.loading).toBe(true)
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(300)
+    b.resolve(['Заказчик B'])
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenLastCalledWith('B')
+    expect(wrapper.vm.options.map(option => option.label)).toEqual(['(не указано)', 'Заказчик B'])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('смена запроса сразу блокирует позднюю ошибку A до запуска debounce B', async () => {
+    vi.useFakeTimers()
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const a = deferred()
+    const b = deferred()
+    const fetch = vi.fn()
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const wrapper = mountFilter({ fetch })
+
+    const loadA = wrapper.vm.loadSuggestions('A')
+    wrapper.vm.onRemoteMethod('B')
+    a.reject(new Error('старая ошибка'))
+    await loadA
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.loading).toBe(true)
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(300)
+    b.resolve(['Заказчик B'])
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.options.map(option => option.label)).toEqual(['(не указано)', 'Заказчик B'])
     expect(wrapper.vm.loading).toBe(false)
   })
 

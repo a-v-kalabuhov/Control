@@ -3,6 +3,7 @@
     :model-value="selection"
     filterable
     remote
+    :debounce="0"
     clearable
     :remote-method="onRemoteMethod"
     :loading="loading"
@@ -53,8 +54,7 @@ const options = computed(() => {
   ]
 })
 
-async function loadSuggestions(search) {
-  const requestId = ++suggestionsRequestId
+async function loadSuggestions(search, requestId = ++suggestionsRequestId) {
   loading.value = true
   try {
     const result = await props.fetch(search ?? '')
@@ -69,8 +69,9 @@ async function loadSuggestions(search) {
 }
 
 function onRemoteMethod(search) {
+  const requestId = ++suggestionsRequestId
   clearTimeout(timer)
-  timer = setTimeout(() => loadSuggestions(search), 300)
+  timer = setTimeout(() => loadSuggestions(search, requestId), 300)
 }
 
 function selectKey(value) {

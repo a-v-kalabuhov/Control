@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import MoldDictionary from '../MoldDictionary.vue'
@@ -61,6 +61,8 @@ function deferred() {
   })
   return { promise, resolve, reject }
 }
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -206,6 +208,23 @@ describe('MoldDictionary — заказчик типа (PZP-23)', () => {
     await flushPromises()
     expect(wrapper.vm.molds).toEqual([rowB])
     expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('после размонтирования pending rejection не показывает ошибку и не меняет состояние списка', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const pending = deferred()
+    moldsApi.getList.mockImplementationOnce(() => pending.promise)
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.loading).toBe(true)
+
+    wrapper.unmount()
+    pending.reject(new Error('сеть'))
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.molds).toEqual([])
+    expect(wrapper.vm.loading).toBe(true)
   })
 
   it('карточка ПФ показывает компанию выбранного типа изделия', async () => {

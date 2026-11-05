@@ -103,10 +103,14 @@ public class OrderCustomerFilterTests : IClassFixture<IntegrationTestFactory>
         var client = await ManagerClientAsync();
         var marker = Guid.NewGuid().ToString("N")[..12];
         var customer = $"Заказчик {marker}";
-        var active = await SeedOrderAsync(marker, customer, null);
         var completed = await SeedOrderAsync(marker, customer, null, OrderStatus.Completed);
+        var active = await SeedOrderAsync(
+            marker, customer, null, OrderStatus.Active, completed.ProductId);
         var otherCompleted = await SeedOrderAsync(
             marker, $"Другой {marker}", null, OrderStatus.Completed, completed.ProductId);
+        var completedOutsideSearch = await SeedOrderAsync(
+            $"outside-{Guid.NewGuid():N}", customer, null, OrderStatus.Completed, completed.ProductId);
+        var differentProduct = await SeedOrderAsync(marker, customer, null, OrderStatus.Completed);
 
         var list = await client.GetFromJsonAsync<List<OrderDto>>(
             $"/api/orders?status=Completed&search={marker}" +
@@ -115,6 +119,14 @@ public class OrderCustomerFilterTests : IClassFixture<IntegrationTestFactory>
 
         list!.Should().ContainSingle(o => o.Id == completed.Id);
         list.Should().NotContain(o => o.Id == active.Id || o.Id == otherCompleted.Id);
+        list.Should().NotContain(o => o.Id == completedOutsideSearch.Id || o.Id == differentProduct.Id);
+
+        var mismatchedProducts = await client.GetFromJsonAsync<List<OrderDto>>(
+            $"/api/orders?status=Completed&search={marker}" +
+            $"&productTypeId={completed.Product.ProductTypeId}&productId={differentProduct.ProductId}" +
+            $"&customer={Uri.EscapeDataString(customer)}", JsonOptions);
+
+        mismatchedProducts.Should().BeEmpty();
     }
 
     [Fact]

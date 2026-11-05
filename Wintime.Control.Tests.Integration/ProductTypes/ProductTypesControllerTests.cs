@@ -102,12 +102,15 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
         var active = await SeedCustomerTypeAsync(marker, customer, isActive: true);
         var archived = await SeedCustomerTypeAsync(marker, customer, isActive: false);
         var archivedOther = await SeedCustomerTypeAsync(marker, $"Другой {marker}", isActive: false);
+        var archivedOutsideSearch = await SeedCustomerTypeAsync(
+            $"outside-{Guid.NewGuid():N}", customer, isActive: false);
 
         var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
             $"/api/producttypes?isActive=false&search={marker}&customer={Uri.EscapeDataString(customer)}");
 
         list!.Should().ContainSingle(t => t.Id == archived.Id);
         list.Should().NotContain(t => t.Id == active.Id || t.Id == archivedOther.Id);
+        list.Should().NotContain(t => t.Id == archivedOutsideSearch.Id);
     }
 
     [Fact]

@@ -225,7 +225,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { moldsApi } from '@/api/molds'
 import { productTypesApi } from '@/api/productTypes'
@@ -381,6 +381,10 @@ onMounted(async () => {
 })
 
 let loadMoldsRequestId = 0
+
+onBeforeUnmount(() => {
+  loadMoldsRequestId += 1
+})
 
 const loadMolds = async () => {
   const requestId = ++loadMoldsRequestId

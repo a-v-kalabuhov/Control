@@ -209,6 +209,23 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     expect(wrapper.vm.loading).toBe(false)
   })
 
+  it('после размонтирования pending rejection не показывает ошибку и не меняет состояние списка', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const pending = deferred()
+    productTypesApi.getList.mockImplementationOnce(() => pending.promise)
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.loading).toBe(true)
+
+    wrapper.unmount()
+    pending.reject(new Error('сеть'))
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.items).toEqual([])
+    expect(wrapper.vm.loading).toBe(true)
+  })
+
   it('добавление изделия приводит часть к верхнему регистру и перезагружает тип', async () => {
     productTypesApi.addProduct.mockResolvedValue({ data: {} })
     const wrapper = mountView()

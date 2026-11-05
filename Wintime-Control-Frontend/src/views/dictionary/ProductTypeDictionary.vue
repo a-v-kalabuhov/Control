@@ -185,7 +185,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productTypesApi } from '@/api/productTypes'
 import { activeProducts } from '@/utils/productLabel'
@@ -256,6 +256,10 @@ const fullArticlePreview = computed(() => `${editing.value?.article ?? ''}.${pro
 onMounted(loadItems)
 
 let loadItemsRequestId = 0
+
+onBeforeUnmount(() => {
+  loadItemsRequestId += 1
+})
 
 async function loadItems() {
   const requestId = ++loadItemsRequestId

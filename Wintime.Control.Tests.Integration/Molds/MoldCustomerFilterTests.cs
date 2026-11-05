@@ -122,12 +122,15 @@ public class MoldCustomerFilterTests : IClassFixture<IntegrationTestFactory>
         var active = await SeedMoldAsync(marker, customer, isActive: true);
         var archived = await SeedMoldAsync(marker, customer, isActive: false);
         var archivedOther = await SeedMoldAsync(marker, $"Другой {marker}", isActive: false);
+        var archivedOutsideSearch = await SeedMoldAsync(
+            $"outside-{Guid.NewGuid():N}", customer, isActive: false);
 
         var list = await client.GetFromJsonAsync<List<MoldDto>>(
             $"/api/molds?isActive=false&search={marker}&customer={Uri.EscapeDataString(customer)}");
 
         list!.Should().ContainSingle(m => m.Id == archived.Id);
         list.Should().NotContain(m => m.Id == active.Id || m.Id == archivedOther.Id);
+        list.Should().NotContain(m => m.Id == archivedOutsideSearch.Id);
     }
 
     [Fact]
