@@ -42,12 +42,13 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
         return client;
     }
 
-    private async Task<Guid> CreateOrderAsync(HttpClient client, Guid productId, string number = "ORD-TB")
+    private async Task<Guid> CreateOrderAsync(HttpClient client, Guid productId, string number = "ORD-TB",
+        string? customer = null)
     {
         var response = await client.PostAsJsonAsync("/api/orders", new CreateOrderRequestDto
         {
-            Number = number, OrderDate = DateTime.UtcNow.Date, DueDate = DateTime.UtcNow.Date.AddDays(3),
-            ProductId = productId, Quantity = 100
+            Number = number, Customer = customer, OrderDate = DateTime.UtcNow.Date,
+            DueDate = DateTime.UtcNow.Date.AddDays(3), ProductId = productId, Quantity = 100
         });
         var dto = await response.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         return dto!.Id;
@@ -120,7 +121,7 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
     public async Task CreateTask_WithMatchingOrderId_Returns201_AndSetsOrderId()
     {
         var client = await ManagerClientAsync();
-        var orderId = await CreateOrderAsync(client, _factory.TestProductId, "ORD-CT-OK");
+        var orderId = await CreateOrderAsync(client, _factory.TestProductId, "ORD-CT-OK", "Заказчик заказа");
 
         var response = await client.PostAsJsonAsync("/api/tasks", new CreateTaskRequestDto
         {
@@ -132,6 +133,7 @@ public class TaskOrderBindingApiTests : IClassFixture<IntegrationTestFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await response.Content.ReadFromJsonAsync<TaskDto>(JsonOptions);
         created!.OrderId.Should().Be(orderId);
+        created.OrderCustomer.Should().Be("Заказчик заказа");
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();

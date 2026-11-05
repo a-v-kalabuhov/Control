@@ -144,6 +144,7 @@ public class TasksController : ControllerBase
             .Include(t => t.Personnel)
             .Include(t => t.RecipeIngredients).ThenInclude(i => i.Material)
             .Include(t => t.RecipeIngredients).ThenInclude(i => i.OriginalMaterial)
+            .Include(t => t.Order)
             .Where(t => t.PersonnelId == userId)
             .Where(t => t.Status != Core.Enums.TaskStatus.Planned);
 

@@ -44,6 +44,44 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Company_IsTrimmed_AndEmptyUpdateClearsIt()
+    {
+        var client = await ManagerClientAsync();
+        var created = await (await client.PostAsJsonAsync("/api/producttypes",
+                new CreateProductTypeRequestDto
+                {
+                    Article = $"CUSTOMER-{Guid.NewGuid():N}", Name = "Крышка", Company = "  ООО Заказчик  "
+                }))
+            .Content.ReadFromJsonAsync<ProductTypeDto>();
+        created!.Company.Should().Be("ООО Заказчик");
+
+        (await client.PutAsJsonAsync($"/api/producttypes/{created.Id}",
+                new UpdateProductTypeRequestDto { Company = "" }))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var cleared = await client.GetFromJsonAsync<ProductTypeDto>($"/api/producttypes/{created.Id}");
+        cleared!.Company.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Update_WithoutCompany_KeepsExistingValue()
+    {
+        var client = await ManagerClientAsync();
+        var created = await (await client.PostAsJsonAsync("/api/producttypes",
+                new CreateProductTypeRequestDto
+                {
+                    Article = $"CUSTOMER-{Guid.NewGuid():N}", Name = "Крышка", Company = "ООО Заказчик"
+                }))
+            .Content.ReadFromJsonAsync<ProductTypeDto>();
+
+        await client.PutAsJsonAsync($"/api/producttypes/{created!.Id}",
+            new UpdateProductTypeRequestDto { Name = "Новое имя" });
+
+        var reloaded = await client.GetFromJsonAsync<ProductTypeDto>($"/api/producttypes/{created.Id}");
+        reloaded!.Company.Should().Be("ООО Заказчик");
+    }
+
+    [Fact]
     public async Task Create_DuplicateArticle_ReturnsConflict()
     {
         var client = await ManagerClientAsync();
@@ -123,6 +161,64 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
         var list = await client.GetFromJsonAsync<List<ProductTypeDto>>("/api/producttypes?isActive=true");
         list!.Should().Contain(p => p.Id == active!.Id);
         list.Should().NotContain(p => p.Id == archived.Id);
+    }
+
+    private async Task CreateOrderWithCustomerAsync(HttpClient client, string customer)
+    {
+        var response = await client.PostAsJsonAsync("/api/orders", new
+        {
+            Number = $"ORD-{Guid.NewGuid():N}",
+            DueDate = DateTime.UtcNow.Date.AddDays(7),
+            ProductId = _factory.TestProductId,
+            Quantity = 100,
+            Customer = customer
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Suggestions_Companies_UnionTypesAndOrders_DistinctIncludingArchived()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var shared = $"Общий заказчик {marker}";
+        var orderOnly = $"Заказчик из заказа {marker}";
+        var created = await (await client.PostAsJsonAsync("/api/producttypes",
+                new CreateProductTypeRequestDto
+                {
+                    Article = $"SUG-{Guid.NewGuid():N}", Name = "Тип", Company = shared
+                }))
+            .Content.ReadFromJsonAsync<ProductTypeDto>();
+        await client.PutAsJsonAsync($"/api/producttypes/{created!.Id}",
+            new UpdateProductTypeRequestDto { IsActive = false });
+        await CreateOrderWithCustomerAsync(client, shared);
+        await CreateOrderWithCustomerAsync(client, orderOnly);
+
+        var list = await client.GetFromJsonAsync<List<string>>(
+            $"/api/producttypes/suggestions/companies?search={marker.ToUpperInvariant()}");
+
+        list.Should().BeEquivalentTo(new[] { shared, orderOnly });
+    }
+
+    [Fact]
+    public async Task Suggestions_Companies_AreLimitedTo20()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        for (var i = 0; i < 22; i++)
+        {
+            var response = await client.PostAsJsonAsync("/api/producttypes",
+                new CreateProductTypeRequestDto
+                {
+                    Article = $"SUG-{marker}-{i}", Name = $"Тип {i}", Company = $"Лимит {marker} {i:D2}"
+                });
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+
+        var list = await client.GetFromJsonAsync<List<string>>(
+            $"/api/producttypes/suggestions/companies?search={marker}");
+
+        list.Should().HaveCount(20);
     }
 
     [Fact]

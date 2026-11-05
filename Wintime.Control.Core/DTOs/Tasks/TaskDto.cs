@@ -12,6 +12,7 @@ public class TaskDto
     public string? ProductFullArticle { get; set; }
     public string? ProductName { get; set; }
     public string? ProductTypeName { get; set; }
+    public string? ProductTypeCompany { get; set; }
     public string? PersonnelId { get; set; }
     public string? PersonnelName { get; set; }
     public int PlanQuantity { get; set; }
@@ -36,6 +37,7 @@ public class TaskDto
     // PZP-05
     public Guid? OrderId { get; set; }
     public string? OrderNumber { get; set; }
+    public string? OrderCustomer { get; set; }
     /// <summary>Дата коммерческого заказа (необязательна у заказа).</summary>
     public DateTime? OrderDate { get; set; }
     public int DefectQuantity { get; set; }

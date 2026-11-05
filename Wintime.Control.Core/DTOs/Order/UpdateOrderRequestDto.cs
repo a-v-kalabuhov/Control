@@ -3,6 +3,7 @@ namespace Wintime.Control.Core.DTOs.Order;
 public class UpdateOrderRequestDto
 {
     public string? Number { get; set; }
+    public string? Customer { get; set; }               // null — не менять; пустая строка — очистить
     public DateTime? OrderDate { get; set; }
     public bool ClearOrderDate { get; set; }        // true — убрать дату (null в OrderDate = «не менять»)
     public DateTime? DueDate { get; set; }

@@ -520,6 +520,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Customer")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -683,6 +686,9 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.Property<string>("Article")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Company")
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")

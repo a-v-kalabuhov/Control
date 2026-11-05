@@ -92,6 +92,9 @@
         <el-form-item label="Наименование" prop="name" required>
           <el-input v-model="form.name" placeholder="Крышка 48мм" />
         </el-form-item>
+        <el-form-item label="Заказчик" prop="company">
+          <SuggestInput v-model="form.company" :fetch="fetchCompanies" placeholder="Необязательно" />
+        </el-form-item>
       </el-form>
 
       <div v-if="editing" class="mt-4">
@@ -180,6 +183,7 @@ import { productTypesApi } from '@/api/productTypes'
 import { activeProducts } from '@/utils/productLabel'
 import { apiErrorMessage } from '@/utils/apiError'
 import ProductRecipeDialog from './ProductRecipeDialog.vue'
+import SuggestInput from '@/components/common/SuggestInput.vue'
 import { formatRecipe, isRecipeSumOk, recipeSumHint as recipeSumHintText } from '@/utils/recipe'
 
 // Текст ошибки сервера; нестроковое тело (ProblemDetails и т.п.) заменяется запасным текстом.
@@ -231,7 +235,7 @@ const editingProduct = ref(null)
 const productForm = reactive({ article: '', name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null })
 
 const filters = reactive({ search: '', isActive: null })
-const form = reactive({ article: '', name: '' })
+const form = reactive({ article: '', name: '', company: '' })
 
 const rules = {
   article: [{ required: true, message: 'Введите артикул', trigger: 'blur' }],
@@ -257,15 +261,20 @@ async function loadItems() {
   }
 }
 
+async function fetchCompanies(search) {
+  const { data } = await productTypesApi.suggestCompanies(search)
+  return data
+}
+
 function showCreateModal() {
   editing.value = null
-  Object.assign(form, { article: '', name: '' })
+  Object.assign(form, { article: '', name: '', company: '' })
   dialogVisible.value = true
 }
 
 function editItem(row) {
   editing.value = row
-  Object.assign(form, { article: row.article, name: row.name })
+  Object.assign(form, { article: row.article, name: row.name, company: row.company ?? '' })
   dialogVisible.value = true
 }
 

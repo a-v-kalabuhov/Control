@@ -95,6 +95,9 @@
         <el-form-item label="Номер" prop="number" required>
           <el-input v-model="form.number" placeholder="ORD-001" />
         </el-form-item>
+        <el-form-item label="Заказчик" prop="customer">
+          <SuggestInput v-model="form.customer" :fetch="fetchCompanies" placeholder="Необязательно" />
+        </el-form-item>
         <el-form-item label="Дата" prop="orderDate">
           <el-date-picker
             v-model="form.orderDate"
@@ -175,6 +178,7 @@ import { ORDER_STATUS_KEYS, getOrderStatusMeta } from '@/constants/orderStatus'
 import OrderDetailModal from '@/components/orders/OrderDetailModal.vue'
 import { apiErrorMessage } from '@/utils/apiError'
 import { activeProducts } from '@/utils/productLabel'
+import SuggestInput from '@/components/common/SuggestInput.vue'
 
 const authStore = useAuthStore()
 // Observer — только чтение (PZP-07a); запись защищена на бэкенде
@@ -195,6 +199,7 @@ const productTypesLoading = ref(false)
 const filters = reactive({ status: null, search: '' })
 const form = reactive({
   number: '',
+  customer: '',
   orderDate: '',
   dueDate: '',
   productTypeId: null,
@@ -287,10 +292,18 @@ async function loadProductTypes() {
   }
 }
 
+async function fetchCompanies(search) {
+  const { data } = await productTypesApi.suggestCompanies(search)
+  return data
+}
+
 function showCreateModal() {
   editingId.value = null
   editingRow.value = null
-  Object.assign(form, { number: '', orderDate: '', dueDate: '', productTypeId: null, productId: null, quantity: 1, note: '' })
+  Object.assign(form, {
+    number: '', customer: '', orderDate: '', dueDate: '',
+    productTypeId: null, productId: null, quantity: 1, note: ''
+  })
   dialogVisible.value = true
   loadProductTypes()
 }
@@ -301,6 +314,7 @@ function editItem(row) {
   populating = true
   Object.assign(form, {
     number: row.number ?? '',
+    customer: row.customer ?? '',
     orderDate: row.orderDate ?? '',
     dueDate: row.dueDate ?? '',
     productTypeId: row.productTypeId ?? null,

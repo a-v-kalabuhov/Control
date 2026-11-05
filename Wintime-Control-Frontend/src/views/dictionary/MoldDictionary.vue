@@ -114,6 +114,9 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item v-if="editingMold" label="Заказчик">
+          <span class="text-gray-800">{{ selectedProductTypeCompany || '—' }}</span>
+        </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="Количество гнёзд" prop="cavities" required>
@@ -250,6 +253,14 @@ const selectableProductTypes = computed(() => {
   const extra = editingArchivedType.value
   if (extra && !base.some(pt => pt.id === extra.id)) return [...base, extra]
   return base
+})
+
+const selectedProductTypeCompany = computed(() => {
+  const selected = selectableProductTypes.value.find(t => t.id === form.productTypeId)
+  if (selected) return selected.company ?? null
+  return form.productTypeId === editingMold.value?.productTypeId
+    ? editingMold.value?.productTypeCompany
+    : null
 })
 
 // PZP-24: вес детали принадлежит изделию. Если у всего типа он одинаков,
@@ -390,7 +401,8 @@ const showCreateModal = () => {
 const editMold = (mold) => {
   editingMold.value = mold
   editingArchivedType.value = (mold.productTypeId && !productTypes.value.some(pt => pt.id === mold.productTypeId))
-    ? { id: mold.productTypeId, article: mold.productTypeArticle, name: mold.productTypeName }
+    ? { id: mold.productTypeId, article: mold.productTypeArticle, name: mold.productTypeName,
+        company: mold.productTypeCompany }
     : null
   Object.assign(form, {
     formId: mold.formId,

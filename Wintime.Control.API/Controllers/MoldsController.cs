@@ -268,6 +268,7 @@ public class MoldsController : ControllerBase
         ProductTypeId = m.ProductTypeId,
         ProductTypeArticle = m.ProductType?.Article,
         ProductTypeName = m.ProductType?.Name,
+        ProductTypeCompany = m.ProductType?.Company,
         CompatibleImms = m.CompatibleImms
             .OrderBy(i => i.Name)
             .Select(i => new MoldCompatibleImmDto { Id = i.Id, Name = i.Name, IsActive = i.IsActive })

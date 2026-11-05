@@ -63,6 +63,42 @@ public class OrdersCrudTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Customer_IsTrimmed_AndEmptyUpdateClearsIt()
+    {
+        var client = await ManagerClientAsync();
+        var body = ValidOrder();
+        body.Customer = "  ООО Заказчик  ";
+        var created = await (await client.PostAsJsonAsync("/api/orders", body))
+            .Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+        created!.Customer.Should().Be("ООО Заказчик");
+
+        (await client.PutAsJsonAsync($"/api/orders/{created.Id}",
+                new UpdateOrderRequestDto { Customer = "" }))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var cleared = await (await client.GetAsync($"/api/orders/{created.Id}"))
+            .Content.ReadFromJsonAsync<OrderDetailsDto>(JsonOptions);
+        cleared!.Customer.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Update_WithoutCustomer_KeepsExistingValue()
+    {
+        var client = await ManagerClientAsync();
+        var body = ValidOrder();
+        body.Customer = "ООО Заказчик";
+        var created = await (await client.PostAsJsonAsync("/api/orders", body))
+            .Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+
+        await client.PutAsJsonAsync($"/api/orders/{created!.Id}",
+            new UpdateOrderRequestDto { Note = "Без смены заказчика" });
+
+        var reloaded = await (await client.GetAsync($"/api/orders/{created.Id}"))
+            .Content.ReadFromJsonAsync<OrderDetailsDto>(JsonOptions);
+        reloaded!.Customer.Should().Be("ООО Заказчик");
+    }
+
+    [Fact]
     public async Task Update_ClearOrderDate_RemovesDate()
     {
         var client = await ManagerClientAsync();
