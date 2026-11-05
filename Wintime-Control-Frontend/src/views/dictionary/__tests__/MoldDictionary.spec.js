@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import MoldDictionary from '../MoldDictionary.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
 vi.mock('@/api/molds', () => ({
   moldsApi: {
@@ -21,7 +22,8 @@ vi.mock('@/api/productTypes', () => ({
       { id: 'pt-2', article: 'NEW', name: 'Другое изделие', company: 'ООО Другое', products: [
         { id: 'p-2', fullArticle: 'NEW.0', partWeightGrams: 20, plannedInjectionCycleSeconds: 30 }
       ] }
-    ] }))
+    ] })),
+    suggestCompanies: vi.fn(() => Promise.resolve({ data: [] }))
   }
 }))
 vi.mock('@/api/imm', () => ({
@@ -49,6 +51,18 @@ const moldRow = {
 function mountView() {
   return mount(MoldDictionary, { global: { plugins: [ElementPlus], stubs: { Plus: true } } })
 }
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -106,6 +120,112 @@ describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
 
 describe('MoldDictionary — заказчик типа (PZP-23)', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('фильтр заказчика передаёт параметры через тип изделия и сохраняет остальные фильтры', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const listCalls = moldsApi.getList.mock.calls.length
+    await wrapper.findComponent(CustomerFilterSelect).props('fetch')('Рома')
+    expect(moldsApi.getList).toHaveBeenCalledTimes(listCalls)
+    wrapper.vm.filters.search = 'Форма'
+    wrapper.vm.filters.isActive = true
+
+    wrapper.vm.filters.customer = 'ООО Ромашка'
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadMolds()
+    expect(moldsApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Форма', customer: 'ООО Ромашка', customerEmpty: undefined
+    })
+
+    wrapper.vm.filters.customer = null
+    wrapper.vm.filters.customerEmpty = true
+    await wrapper.vm.loadMolds()
+    expect(moldsApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Форма', customer: undefined, customerEmpty: true
+    })
+
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadMolds()
+    expect(moldsApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Форма', customer: undefined, customerEmpty: undefined
+    })
+  })
+
+  it('при смене заказчика A на B поздний ответ A не заменяет строки B', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    moldsApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowA = { ...moldRow, id: 'race-a', formId: 'RACE-A' }
+    const rowB = { ...moldRow, id: 'race-b', formId: 'RACE-B' }
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadMolds()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadMolds()
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+
+    expect(wrapper.vm.molds).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+
+    a.resolve({ data: [rowA] })
+    await loadA
+    await flushPromises()
+
+    expect(wrapper.vm.molds).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('устаревшая ошибка A не показывается и не сбрасывает loading запроса B', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    moldsApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowB = { ...moldRow, id: 'race-b', formId: 'RACE-B' }
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadMolds()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadMolds()
+    a.reject(new Error('старая ошибка'))
+    await loadA
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.loading).toBe(true)
+
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+    expect(wrapper.vm.molds).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('после размонтирования pending rejection не показывает ошибку и не меняет состояние списка', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const pending = deferred()
+    moldsApi.getList.mockImplementationOnce(() => pending.promise)
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.loading).toBe(true)
+
+    wrapper.unmount()
+    pending.reject(new Error('сеть'))
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.molds).toEqual([])
+    expect(wrapper.vm.loading).toBe(true)
+  })
 
   it('карточка ПФ показывает компанию выбранного типа изделия', async () => {
     const wrapper = mountView()

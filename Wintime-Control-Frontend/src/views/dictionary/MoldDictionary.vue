@@ -17,6 +17,14 @@
         <el-form-item label="Поиск">
           <el-input v-model="filters.search" placeholder="Наименование или артикул" clearable />
         </el-form-item>
+        <el-form-item label="Заказчик">
+          <CustomerFilterSelect
+            v-model:customer="filters.customer"
+            v-model:customer-empty="filters.customerEmpty"
+            :fetch="fetchCompanies"
+            style="width: 260px;"
+          />
+        </el-form-item>
         <el-form-item label="Статус">
           <el-select v-model="filters.isActive" placeholder="Все" clearable style="width: 160px;">
             <el-option label="Активные" :value="true" />
@@ -217,13 +225,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { moldsApi } from '@/api/molds'
 import { productTypesApi } from '@/api/productTypes'
 import { immApi } from '@/api/imm'
 import { immOptionLabel, formatCompatibleImms } from '@/utils/moldCompatibility'
 import QrCodeDialog from '@/components/common/QrCodeDialog.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 import { apiErrorMessage } from '@/utils/apiError'
 import dayjs from 'dayjs'
 
@@ -302,8 +311,15 @@ const showQr = async (mold) => {
 
 const filters = reactive({
   search: '',
-  isActive: null
+  isActive: null,
+  customer: null,
+  customerEmpty: false
 })
+
+async function fetchCompanies(search) {
+  const { data } = await productTypesApi.suggestCompanies(search)
+  return data
+}
 
 const form = reactive({
   formId: '',
@@ -364,18 +380,29 @@ onMounted(async () => {
   await Promise.all([loadMolds(), loadProductTypes(), loadImms()])
 })
 
+let loadMoldsRequestId = 0
+
+onBeforeUnmount(() => {
+  loadMoldsRequestId += 1
+})
+
 const loadMolds = async () => {
+  const requestId = ++loadMoldsRequestId
   loading.value = true
   try {
-    const response = await moldsApi.getList({ 
-      isActive: filters.isActive, 
-      search: filters.search 
+    const response = await moldsApi.getList({
+      isActive: filters.isActive,
+      search: filters.search,
+      customer: filters.customer || undefined,
+      customerEmpty: filters.customerEmpty ? true : undefined
     })
-    molds.value = response.data
+    if (requestId === loadMoldsRequestId) molds.value = response.data
   } catch (error) {
-    ElMessage.error('Ошибка загрузки пресс-форм')
+    if (requestId === loadMoldsRequestId) {
+      ElMessage.error('Ошибка загрузки пресс-форм')
+    }
   } finally {
-    loading.value = false
+    if (requestId === loadMoldsRequestId) loading.value = false
   }
 }
 

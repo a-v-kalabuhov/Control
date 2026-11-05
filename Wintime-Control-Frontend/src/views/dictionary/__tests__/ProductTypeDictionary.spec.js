@@ -4,6 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import ProductTypeDictionary from '../ProductTypeDictionary.vue'
 import SuggestInput from '@/components/common/SuggestInput.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
@@ -30,6 +31,16 @@ const typeA = {
 }
 
 const mounted = []
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 function mountView() {
   const w = mount(ProductTypeDictionary, {
     global: { plugins: [ElementPlus], stubs: { Plus: true } },
@@ -106,6 +117,113 @@ describe('ProductTypeDictionary (PZP-19)', () => {
 
     expect(productTypesApi.update).toHaveBeenCalledWith('pt-1',
       expect.objectContaining({ company: 'ООО Новый заказчик' }))
+  })
+
+  it('фильтр заказчика передаёт customer/customerEmpty и сохраняет остальные фильтры', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const listCalls = productTypesApi.getList.mock.calls.length
+    await wrapper.findComponent(CustomerFilterSelect).props('fetch')('Рома')
+    expect(productTypesApi.suggestCompanies).toHaveBeenCalledWith('Рома')
+    expect(productTypesApi.getList).toHaveBeenCalledTimes(listCalls)
+    wrapper.vm.filters.search = 'Крышка'
+    wrapper.vm.filters.isActive = true
+
+    wrapper.vm.filters.customer = 'ООО Ромашка'
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadItems()
+    expect(productTypesApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Крышка', customer: 'ООО Ромашка', customerEmpty: undefined
+    })
+
+    wrapper.vm.filters.customer = null
+    wrapper.vm.filters.customerEmpty = true
+    await wrapper.vm.loadItems()
+    expect(productTypesApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Крышка', customer: undefined, customerEmpty: true
+    })
+
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadItems()
+    expect(productTypesApi.getList).toHaveBeenLastCalledWith({
+      isActive: true, search: 'Крышка', customer: undefined, customerEmpty: undefined
+    })
+  })
+
+  it('при смене заказчика A на B поздний ответ A не заменяет строки B', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    productTypesApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowA = { ...typeA, id: 'race-a', article: 'RACE-A' }
+    const rowB = { ...typeA, id: 'race-b', article: 'RACE-B' }
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadItems()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadItems()
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+
+    expect(wrapper.vm.items).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+
+    a.resolve({ data: [rowA] })
+    await loadA
+    await flushPromises()
+
+    expect(wrapper.vm.items).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('устаревшая ошибка A не показывается и не сбрасывает loading запроса B', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    productTypesApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowB = { ...typeA, id: 'race-b', article: 'RACE-B' }
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadItems()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadItems()
+    a.reject(new Error('старая ошибка'))
+    await loadA
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.loading).toBe(true)
+
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+    expect(wrapper.vm.items).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('после размонтирования pending rejection не показывает ошибку и не меняет состояние списка', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const pending = deferred()
+    productTypesApi.getList.mockImplementationOnce(() => pending.promise)
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.loading).toBe(true)
+
+    wrapper.unmount()
+    pending.reject(new Error('сеть'))
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.items).toEqual([])
+    expect(wrapper.vm.loading).toBe(true)
   })
 
   it('добавление изделия приводит часть к верхнему регистру и перезагружает тип', async () => {

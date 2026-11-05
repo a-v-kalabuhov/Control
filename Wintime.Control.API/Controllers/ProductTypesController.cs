@@ -92,13 +92,19 @@ public class ProductTypesController : ControllerBase
     private static bool IsUniqueViolation(DbUpdateException e) =>
         e.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation };
 
-    /// <summary>Список типов изделий (фильтры: активность, поиск по артикулу/наименованию типа и изделий).</summary>
+    /// <summary>Список типов изделий (активность, поиск и точный фильтр по заказчику).</summary>
     [HttpGet]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<ProductTypeDto>>> GetList(
         [FromQuery] bool? isActive = null,
-        [FromQuery] string? search = null)
+        [FromQuery] string? search = null,
+        [FromQuery] string? customer = null,
+        [FromQuery] bool customerEmpty = false)
     {
+        var customerFilter = CustomerRules.Clean(customer);
+        if (customerEmpty && customerFilter != null)
+            return BadRequest("Параметры customer и customerEmpty нельзя передавать вместе.");
+
         var query = _context.ProductTypes
             .Include(t => t.Products).ThenInclude(p => p.RecipeIngredients).ThenInclude(i => i.Material)
             .AsQueryable();
@@ -111,6 +117,10 @@ public class ProductTypesController : ControllerBase
             query = query.Where(p => EF.Functions.ILike(p.Name, pattern) || EF.Functions.ILike(p.Article, pattern)
                 || p.Products.Any(x => EF.Functions.ILike(x.FullArticle, pattern) || EF.Functions.ILike(x.Name, pattern)));
         }
+        if (customerFilter != null)
+            query = query.Where(p => p.Company == customerFilter);
+        else if (customerEmpty)
+            query = query.Where(p => p.Company == null);
 
         var items = await query.OrderBy(p => p.Article).ToListAsync();
         var usedIds = await UsedProductIdsAsync(items.SelectMany(t => t.Products).Select(p => p.Id).ToList());

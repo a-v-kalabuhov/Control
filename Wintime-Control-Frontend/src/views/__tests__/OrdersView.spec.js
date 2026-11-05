@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import OrdersView from '../OrdersView.vue'
 import { useAuthStore } from '@/stores/auth'
 import SuggestInput from '@/components/common/SuggestInput.vue'
+import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
 vi.mock('@/api/orders', () => ({
   ordersApi: {
@@ -39,6 +40,23 @@ vi.mock('@/api/productTypes', () => ({
 import { ordersApi } from '@/api/orders'
 import { productTypesApi } from '@/api/productTypes'
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function raceOrder(id) {
+  return {
+    id, number: `ORD-${id}`, productFullArticle: 'A123.BLK', quantity: 1,
+    goodQuantity: 0, progressPercent: 0, status: 'Active', dueDate: null
+  }
+}
+
 function mountView(orders, role = 'Manager') {
   setActivePinia(createPinia())
   useAuthStore().userRole = role
@@ -53,6 +71,7 @@ function mountView(orders, role = 'Manager') {
 
 describe('OrdersView', () => {
   beforeEach(() => vi.clearAllMocks())
+  afterEach(() => vi.restoreAllMocks())
 
   it('Observer видит заказы, но не кнопки изменения', async () => {
     const wrapper = mountView([
@@ -169,6 +188,119 @@ describe('OrdersView', () => {
 
     expect(ordersApi.update).toHaveBeenCalledWith('customer-1',
       expect.objectContaining({ customer: 'ООО Новый заказчик' }))
+  })
+
+  it('фильтр заказчика передаёт customer/customerEmpty и сохраняет остальные фильтры', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+    const listCalls = ordersApi.getList.mock.calls.length
+    await wrapper.findComponent(CustomerFilterSelect).props('fetch')('Рома')
+    expect(ordersApi.getList).toHaveBeenCalledTimes(listCalls)
+    wrapper.vm.filters.search = 'ORD'
+    wrapper.vm.filters.status = 'Active'
+
+    wrapper.vm.filters.customer = 'ООО Ромашка'
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadOrders()
+    expect(ordersApi.getList).toHaveBeenLastCalledWith({
+      status: 'Active', search: 'ORD', customer: 'ООО Ромашка', customerEmpty: undefined
+    })
+
+    wrapper.vm.filters.customer = null
+    wrapper.vm.filters.customerEmpty = true
+    await wrapper.vm.loadOrders()
+    expect(ordersApi.getList).toHaveBeenLastCalledWith({
+      status: 'Active', search: 'ORD', customer: undefined, customerEmpty: true
+    })
+
+    wrapper.vm.filters.customerEmpty = false
+    await wrapper.vm.loadOrders()
+    expect(ordersApi.getList).toHaveBeenLastCalledWith({
+      status: 'Active', search: 'ORD', customer: undefined, customerEmpty: undefined
+    })
+  })
+
+  it('при смене заказчика A на B поздний ответ A не заменяет строки B', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    ordersApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowA = raceOrder('race-a')
+    const rowB = raceOrder('race-b')
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadOrders()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadOrders()
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+
+    expect(wrapper.vm.orders).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+
+    a.resolve({ data: [rowA] })
+    await loadA
+    await flushPromises()
+
+    expect(wrapper.vm.orders).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('устаревшая ошибка A не показывается и не сбрасывает loading запроса B', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const wrapper = mountView([])
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    ordersApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowB = raceOrder('race-b')
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadOrders()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadOrders()
+    a.reject(new Error('старая ошибка'))
+    await loadA
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.loading).toBe(true)
+
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+    expect(wrapper.vm.orders).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('после размонтирования pending rejection не показывает ошибку и не меняет состояние списка', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const pending = deferred()
+    ordersApi.getList.mockImplementationOnce(() => pending.promise)
+    setActivePinia(createPinia())
+    useAuthStore().userRole = 'Manager'
+    const wrapper = mount(OrdersView, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: { 'el-select': true, 'el-option': true }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.vm.loading).toBe(true)
+
+    wrapper.unmount()
+    pending.reject(new Error('сеть'))
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.orders).toEqual([])
+    expect(wrapper.vm.loading).toBe(true)
   })
 
   it('создание заказа без даты проходит и отправляет orderDate: null', async () => {
