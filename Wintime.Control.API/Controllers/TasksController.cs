@@ -298,6 +298,7 @@ public class TasksController : ControllerBase
         };
 
         var schedule = await _factoryClock.GetScheduleAsync();
+        task.SetPartWeight(request.PartWeightGrams ?? product.PartWeightGrams);
         task.SetPlannedStart(request.PlannedDate.Value, request.PlannedSetupStartTime,
                              schedule.ToLocal(_factoryClock.UtcNow));
 
@@ -345,6 +346,7 @@ public class TasksController : ControllerBase
             .FirstOrDefaultAsync(t => t.Id == id);
         if (task == null)
             return NotFound();
+        var previousPartWeight = task.PartWeightGrams;
 
         if (request.ProductId.HasValue && request.ProductId.Value != task.ProductId)
         {
@@ -358,9 +360,14 @@ public class TasksController : ControllerBase
             // BL-36: смена изделия перезаписывает копию рецепта; тот же продукт — no-op.
             // статус и заказ — гард в сущности (ADR-0002)
             if (task.SetProduct(product.Id))
+            {
                 task.ApplyRecipe(product.RecipeIngredients);
+                task.SetPartWeight(product.PartWeightGrams);
+            }
         }
 
+        if (request.PartWeightGrams.HasValue)
+            task.SetPartWeight(request.PartWeightGrams.Value);
         if (request.PlanQuantity.HasValue)
             task.SetPlanQuantity(request.PlanQuantity.Value);
         if (request.Note != null)
@@ -379,7 +386,8 @@ public class TasksController : ControllerBase
         }
         bool cycleFieldsTouched = request.WorkMode.HasValue
                                || request.PlannedFullCycleSeconds.HasValue
-                               || request.PlannedInjectionCycleSeconds.HasValue;
+                               || request.PlannedInjectionCycleSeconds.HasValue
+                               || request.ClearPlannedInjectionCycleSeconds;
         if (cycleFieldsTouched)
         {
             // Не переданные поля сохраняют текущее значение задания. Эталон полного цикла обязателен
@@ -387,7 +395,9 @@ public class TasksController : ControllerBase
             task.SetCycleNorms(
                 request.WorkMode ?? task.WorkMode,
                 request.PlannedFullCycleSeconds ?? task.PlannedFullCycleSeconds,
-                request.PlannedInjectionCycleSeconds ?? task.PlannedInjectionCycleSeconds,
+                request.ClearPlannedInjectionCycleSeconds
+                    ? null
+                    : request.PlannedInjectionCycleSeconds ?? task.PlannedInjectionCycleSeconds,
                 requireFullCycle: true);
         }
         if (request.PlannedSetupMinutes.HasValue)
@@ -397,6 +407,16 @@ public class TasksController : ControllerBase
             // Не переданная часть буфера сохраняет текущее значение задания.
             task.SetReleaseBuffer(request.ReleaseBufferFixedMinutes ?? task.ReleaseBufferFixedMinutes,
                                   request.ReleaseBufferPercent ?? task.ReleaseBufferPercent);
+        }
+        if (task.PartWeightGrams != previousPartWeight)
+        {
+            // Вес не снапшотится в каждый цикл: исправление задания пересчитывает весь его
+            // накопленный расход, иначе карточка разойдётся с отчётом и последующим откатом циклов.
+            task.ActualMaterialWeightGrams = await _context.ImmCycles
+                .Where(c => c.TaskId == task.Id && c.IsSuccessful && c.EndTime != null)
+                .GroupBy(c => c.TaskId)
+                .Select(g => g.Sum(c => c.Cavities * task.PartWeightGrams + task.Mold.RunnerWeightGrams))
+                .FirstOrDefaultAsync();
         }
         await _context.SaveChangesAsync();
 

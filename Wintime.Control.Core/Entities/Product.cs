@@ -13,6 +13,8 @@ public class Product : BaseEntity
     public string Article { get; set; } = string.Empty;     // часть артикула (заглавными)
     public string Name { get; set; } = string.Empty;        // наименование изделия
     public string FullArticle { get; set; } = string.Empty; // хранимый, пересчитывается при правке артикулов
+    public decimal PartWeightGrams { get; set; }            // вес одной детали, граммы (PZP-24)
+    public int? PlannedInjectionCycleSeconds { get; set; } // эталон цикла литья, секунды; необязателен
     public bool IsActive { get; set; } = true;              // архивный флаг
     public List<ProductRecipeIngredient> RecipeIngredients { get; set; } = new();   // рецепт (BL-36)
 

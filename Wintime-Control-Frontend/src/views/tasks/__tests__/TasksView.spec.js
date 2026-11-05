@@ -63,3 +63,28 @@ describe('TasksView — обновление рецепта', () => {
     expect(useTasksStore().loadTasks).toHaveBeenCalled()
   })
 })
+
+describe('TasksView — правка веса (PZP-24)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.spyOn(useTasksStore(), 'loadTasks').mockResolvedValue()
+  })
+
+  it('менеджер и администратор могут открыть Closed из строки', async () => {
+    const { useAuthStore } = await import('@/stores/auth')
+    const auth = useAuthStore()
+    auth.userRole = 'Manager'
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.canEditTask({ status: 'Closed' })).toBe(true)
+
+    auth.userRole = 'Admin'
+    await flushPromises()
+    expect(wrapper.vm.canEditTask({ status: 'Completed' })).toBe(true)
+
+    auth.userRole = 'Adjuster'
+    await flushPromises()
+    expect(wrapper.vm.canEditTask({ status: 'Closed' })).toBe(false)
+  })
+})

@@ -4,6 +4,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.DTOs.UnplannedRun;
+using Wintime.Control.Core.DTOs.Tasks;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Tests.Integration.Infrastructure;
@@ -30,7 +31,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         // 2 сироты-цикла по 2 гнезда, годные
         db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, Cavities = 0, IsSuccessful = true, StartTime = start, EndTime = start.AddSeconds(60), DurationSeconds = 60 });
         db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, Cavities = 0, IsSuccessful = true, StartTime = start.AddSeconds(60), EndTime = start.AddSeconds(120), DurationSeconds = 60 });
-        var task = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2) };
+        var task = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2), PartWeightGrams = 11 };
         db.ShiftTasks.Add(task);
         await db.SaveChangesAsync();
         return (run.Id, task.Id, immId);
@@ -54,6 +55,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         cycles.Should().OnlyContain(c => c.Cavities == 1); // из Mold.Cavities тестовой ПФ (=1)
         var task = await db.ShiftTasks.FindAsync(taskId);
         task!.ActualQuantity.Should().Be(2); // 2 цикла × 1 гнездо
+        task.ActualMaterialWeightGrams.Should().Be(22); // вес задания, не вес ПФ
         var run = await db.UnplannedRuns.FindAsync(runId);
         run!.AssignedTaskId.Should().Be(taskId);
         run.AssignedByUserId.Should().NotBeNull();
@@ -89,6 +91,10 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
         AuthHelper.SetBearerToken(client, token!);
         await client.PostAsJsonAsync($"/api/unplanned-runs/{runId}/assign", new AssignTaskRequestDto { TaskId = taskA });
+        // После привязки менеджер исправил вес: накопленный расход A пересчитан с 22 до 44 г.
+        // Откат эпизода обязан вычесть ту же массу и не увести A в отрицательный расход.
+        var reweight = await client.PutAsJsonAsync($"/api/tasks/{taskA}", new UpdateTaskRequestDto { PartWeightGrams = 22 });
+        reweight.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         // второе смежное задание того же ТПА
         Guid taskB;
@@ -96,7 +102,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
             var run = await db.UnplannedRuns.FindAsync(runId);
-            var t = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = run!.StartTime, PlannedDate = DateOnly.FromDateTime(run!.StartTime), SetupStartedAt = run.ClosedAt };
+            var t = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = run!.StartTime, PlannedDate = DateOnly.FromDateTime(run!.StartTime), SetupStartedAt = run.ClosedAt, PartWeightGrams = 13 };
             db.ShiftTasks.Add(t);
             await db.SaveChangesAsync();
             taskB = t.Id;
@@ -110,8 +116,10 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
             var taskAReloaded = await db.ShiftTasks.FindAsync(taskA);
             taskAReloaded!.ActualQuantity.Should().Be(0, "откат прежней привязки уменьшил выпуск A");
+            taskAReloaded.ActualMaterialWeightGrams.Should().Be(0);
             var taskBReloaded = await db.ShiftTasks.FindAsync(taskB);
             taskBReloaded!.ActualQuantity.Should().Be(2);
+            taskBReloaded.ActualMaterialWeightGrams.Should().Be(26);
 
             // Проверка не только агрегата, но и фактических строк циклов: окно эпизода
             // должно быть полностью перепривязано на taskB, а не только сумма ActualQuantity.

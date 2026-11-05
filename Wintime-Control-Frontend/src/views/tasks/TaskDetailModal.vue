@@ -41,6 +41,9 @@
             <el-descriptions-item label="Рабочий режим">
               {{ workModeLabel }}
             </el-descriptions-item>
+            <el-descriptions-item label="Вес детали">
+              {{ task?.partWeightGrams !== null && task?.partWeightGrams !== undefined ? `${task.partWeightGrams} г` : '—' }}
+            </el-descriptions-item>
             <el-descriptions-item label="Полный цикл">
               {{ task?.plannedFullCycleSeconds ? `${task.plannedFullCycleSeconds} с` : '—' }}
             </el-descriptions-item>
@@ -297,8 +300,8 @@ watch(() => props.task?.id, () => { activeTab.value = 'data' })
 
 const canEdit = computed(() => {
   if (!props.task || props.readonly) return false
-  // PZP-14: в «Наладке»/«В работе» форма открывается в режиме «только буфер»
-  return ['Planned', 'Issued', 'Setup', 'InProgress'].includes(props.task.status) && authStore.isManager
+  // PZP-14: до завершения — ограниченная форма; после — только вес детали (PZP-24).
+  return authStore.isManager || authStore.isAdmin
 })
 
 const canIssue = computed(() => {

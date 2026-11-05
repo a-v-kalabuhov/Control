@@ -28,6 +28,7 @@
 | `PersonnelId` | Наладчик задания (ссылка на `User.Id`) |
 | `OrderId` | Заказ, на который работает задание (необязателен). Выпуск заказа = Σ годных по привязанным заданиям (ADR-0009) |
 | `PlanQuantity` | Плановое количество годных деталей |
+| `PartWeightGrams` | Вес одной детали, г. Копия веса изделия при создании/смене изделия; менеджер/админ правит в любом статусе (PZP-24) |
 | `ActualQuantity` | Фактический выпуск; фиксируется при завершении |
 | `ActualMaterialWeightGrams` | Фактический расход материала |
 | `CloseReason` | Причина отклонения от плана / закрытия (см. правила ниже) |
@@ -131,5 +132,6 @@ D = 10 мин (константа), N — норматив наладки, R —
 - ADR: [ADR-0002](../adr/0002-task-state-machine-in-entity.md) — КА в сущности;
   [ADR-0003](../adr/0003-domain-exception-to-http-400.md) — DomainException → 400;
   [ADR-0016](../adr/0016-task-longer-than-shift.md) — задание длиннее смены;
-  [ADR-0022](../adr/0022-plan-conflicts.md) — конфликты плана
+  [ADR-0022](../adr/0022-plan-conflicts.md) — конфликты плана;
+  [ADR-0024](../adr/0024-part-weight-product-task-snapshot.md) — снапшот веса детали
 - Сущности: [`imm.md`](imm.md), [`mold.md`](mold.md), [`imm-cycle.md`](imm-cycle.md)

@@ -38,12 +38,12 @@ vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
     getList: vi.fn(() => Promise.resolve({ data: [
       { id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, products: [
-        { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true }
+        { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true, partWeightGrams: 10, plannedInjectionCycleSeconds: 20 }
       ] },
       { id: 'pt-Y', article: 'ART-Y', name: 'Тип Y', isActive: true, products: [
-        { id: 'p-Y0', article: '0', fullArticle: 'ART-Y.0', name: 'По умолчанию', isActive: true },
-        { id: 'p-YB', article: 'BLK', fullArticle: 'ART-Y.BLK', name: 'Чёрный', isActive: true },
-        { id: 'p-YW', article: 'WHT', fullArticle: 'ART-Y.WHT', name: 'Белый', isActive: false }
+        { id: 'p-Y0', article: '0', fullArticle: 'ART-Y.0', name: 'По умолчанию', isActive: true, partWeightGrams: 11, plannedInjectionCycleSeconds: 21 },
+        { id: 'p-YB', article: 'BLK', fullArticle: 'ART-Y.BLK', name: 'Чёрный', isActive: true, partWeightGrams: 12.5, plannedInjectionCycleSeconds: 25 },
+        { id: 'p-YW', article: 'WHT', fullArticle: 'ART-Y.WHT', name: 'Белый', isActive: false, partWeightGrams: 13, plannedInjectionCycleSeconds: 26 }
       ] }
     ] }))
   }
@@ -595,6 +595,116 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
     expect(wrapper.vm.form.workMode).toBe('SemiAuto')
     expect(wrapper.vm.form.plannedFullCycleSeconds).toBe(90)
     expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(30)
+  })
+})
+
+describe('TaskFormModal — вес детали (PZP-24)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('при выборе изделия подставляет его вес и цикл литья', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-2'
+    await flushPromises()
+
+    wrapper.vm.form.productId = 'p-YB'
+    await flushPromises()
+
+    expect(wrapper.vm.form.partWeightGrams).toBe(12.5)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(25)
+  })
+
+  it('при открытии задания сохраняет его снапшоты, а не текущие значения изделия', async () => {
+    const task = {
+      id: 'task-weight', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
+      planQuantity: 10, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60,
+      partWeightGrams: 18, plannedInjectionCycleSeconds: 30
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.vm.form.partWeightGrams).toBe(18)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(30)
+  })
+
+  it('при смене изделия обновляет вес и цикл из нового изделия', async () => {
+    const task = {
+      id: 'task-weight', status: 'Planned', immId: 'imm-1', moldId: 'mold-2', productId: 'p-Y0', orderId: null,
+      planQuantity: 10, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60,
+      partWeightGrams: 18, plannedInjectionCycleSeconds: 30
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    wrapper.vm.form.productId = 'p-YB'
+    await flushPromises()
+
+    expect(wrapper.vm.form.partWeightGrams).toBe(12.5)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(25)
+  })
+
+  it('при возврате к исходному изделию восстанавливает снапшоты задания', async () => {
+    const task = {
+      id: 'task-weight', status: 'Planned', immId: 'imm-1', moldId: 'mold-2', productId: 'p-Y0', orderId: null,
+      planQuantity: 10, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60,
+      partWeightGrams: 18, plannedInjectionCycleSeconds: 30
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+    wrapper.vm.form.productId = 'p-YB'
+    await flushPromises()
+
+    wrapper.vm.form.productId = 'p-Y0'
+    await flushPromises()
+
+    expect(wrapper.vm.form.partWeightGrams).toBe(18)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(30)
+  })
+
+  it('явно введённый нулевой вес не заменяется справочным при отложенном автовыборе', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    wrapper.findComponent('[data-test="part-weight"]').vm.$emit('update:modelValue', 0)
+
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+
+    expect(wrapper.vm.form.partWeightGrams).toBe(0)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(20)
+  })
+
+  it('очистка цикла литья отправляет явный clear-флаг', async () => {
+    const task = {
+      id: 'task-weight', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0', orderId: null,
+      planQuantity: 10, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60,
+      partWeightGrams: 18, plannedInjectionCycleSeconds: 30
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+    wrapper.vm.form.plannedInjectionCycleSeconds = null
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.update).toHaveBeenCalledWith('task-weight', expect.objectContaining({
+      plannedInjectionCycleSeconds: null, clearPlannedInjectionCycleSeconds: true
+    }))
+  })
+
+  it('в закрытом задании доступен только вес', async () => {
+    const task = {
+      id: 'task-closed', status: 'Closed', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
+      planQuantity: 10, plannedDate: '2026-10-20', plannedFullCycleSeconds: 60,
+      partWeightGrams: 18, plannedInjectionCycleSeconds: 30
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.vm.isWeightOnlyEdit).toBe(true)
+    expect(wrapper.find('[data-test="part-weight"]').classes()).not.toContain('is-disabled')
+    expect(wrapper.find('[data-test="plan-quantity"]').classes()).toContain('is-disabled')
+    expect(wrapper.find('[data-test="buffer-fixed-minutes"]').classes()).toContain('is-disabled')
   })
 })
 

@@ -104,7 +104,9 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     await wrapper.vm.saveProduct()
     await flushPromises()
 
-    expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', { article: 'BLK', name: 'Чёрный' })
+    expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
+      article: 'BLK', name: 'Чёрный', partWeightGrams: 0, plannedInjectionCycleSeconds: null
+    })
     expect(productTypesApi.getById).toHaveBeenCalledWith('pt-1')
   })
 
@@ -177,5 +179,55 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     expect(ok).toHaveBeenCalledWith('Изделие добавлено')
     expect(err).not.toHaveBeenCalledWith('Ошибка сохранения изделия')
     expect(err).toHaveBeenCalledWith('Не удалось обновить данные типа')
+  })
+})
+
+describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    productTypesApi.getList.mockResolvedValue({ data: [typeA] })
+    productTypesApi.getById.mockResolvedValue({ data: typeA })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    mounted.splice(0).forEach(w => w.unmount())
+    document.body.innerHTML = ''
+  })
+
+  it('при добавлении передаёт вес детали и эталонный цикл литья', async () => {
+    productTypesApi.addProduct.mockResolvedValue({ data: {} })
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.showProductModal()
+    Object.assign(wrapper.vm.productForm, {
+      article: 'blk', name: 'Чёрный', partWeightGrams: 12.5, plannedInjectionCycleSeconds: 20
+    })
+
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+
+    expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
+      article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, plannedInjectionCycleSeconds: 20
+    })
+  })
+
+  it('при правке сохраняет вес и явно очищает цикл литья', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.editProduct({
+      id: 'p-1', article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, plannedInjectionCycleSeconds: 20
+    })
+    Object.assign(wrapper.vm.productForm, { partWeightGrams: 14.25, plannedInjectionCycleSeconds: null })
+
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+
+    expect(productTypesApi.updateProduct).toHaveBeenCalledWith('pt-1', 'p-1', {
+      article: 'BLK', name: 'Чёрный', partWeightGrams: 14.25,
+      plannedInjectionCycleSeconds: null, clearPlannedInjectionCycleSeconds: true
+    })
   })
 })

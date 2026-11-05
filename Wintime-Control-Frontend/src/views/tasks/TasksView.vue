@@ -535,9 +535,9 @@ const issueTask = async (task) => {
   issueDialogVisible.value = true
 }
 
-// PZP-14: в «Наладке»/«В работе» правится только буфер выпуска
+// PZP-14: до завершения — ограниченная форма; после — только вес детали (PZP-24)
 const canEditTask = (task) => {
-  return ['Planned', 'Issued', 'Setup', 'InProgress'].includes(task.status) && canCreate.value
+  return canCreate.value
 }
 
 const formatDate = (date) => {

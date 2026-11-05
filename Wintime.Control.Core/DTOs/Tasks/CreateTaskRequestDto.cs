@@ -12,6 +12,8 @@ public class CreateTaskRequestDto
     public Guid? OrderId { get; set; }
     public string? PersonnelId { get; set; }
     public int PlanQuantity { get; set; }
+    /// <summary>Вес детали, г; null — скопировать из изделия (PZP-24).</summary>
+    public decimal? PartWeightGrams { get; set; }
     public string? Note { get; set; }
     /// <summary>Плановая дата. Обязательна (null → 400).</summary>
     public DateOnly? PlannedDate { get; set; }

@@ -4,4 +4,6 @@ public class CreateProductRequestDto
 {
     public string Article { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public decimal PartWeightGrams { get; set; }
+    public int? PlannedInjectionCycleSeconds { get; set; }
 }

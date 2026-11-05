@@ -483,9 +483,6 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<decimal>("PartWeightGrams")
-                        .HasColumnType("numeric");
-
                     b.Property<string>("PhotoPath")
                         .HasColumnType("text");
 
@@ -628,6 +625,12 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<decimal>("PartWeightGrams")
+                        .HasColumnType("numeric");
+
+                    b.Property<int?>("PlannedInjectionCycleSeconds")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("ProductTypeId")
                         .HasColumnType("uuid");
@@ -774,6 +777,9 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.Property<Guid?>("OrderId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("PartWeightGrams")
+                        .HasColumnType("numeric");
 
                     b.Property<string>("PersonnelId")
                         .HasColumnType("text");
