@@ -22,26 +22,32 @@ public class MoldsController : ControllerBase
         _context = context;
     }
 
-    /// <summary>
-    /// Список всех пресс-форм
-    /// </summary>
+    /// <summary>Список пресс-форм с фильтрами по активности, поиску и заказчику типа.</summary>
     [HttpGet]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<MoldDto>>> GetMoldList(
         [FromQuery] bool? isActive = null,
-        [FromQuery] string? search = null)
+        [FromQuery] string? search = null,
+        [FromQuery] string? customer = null,
+        [FromQuery] bool customerEmpty = false)
     {
-        var query = _context.Molds.Include(m => m.ProductType).ThenInclude(pt => pt!.Products).Include(m => m.CompatibleImms).AsQueryable();
+        var customerFilter = CustomerRules.Clean(customer);
+        if (customerEmpty && customerFilter != null)
+            return BadRequest("Параметры customer и customerEmpty нельзя передавать вместе.");
+
+        var query = _context.Molds
+            .Include(m => m.ProductType).ThenInclude(pt => pt!.Products)
+            .Include(m => m.CompatibleImms)
+            .AsQueryable();
 
         if (isActive.HasValue)
-        {
             query = query.Where(m => m.IsActive == isActive.Value);
-        }
-
         if (!string.IsNullOrEmpty(search))
-        {
             query = query.Where(m => m.Name.Contains(search) || m.FormId.Contains(search));
-        }
+        if (customerFilter != null)
+            query = query.Where(m => m.ProductType != null && m.ProductType.Company == customerFilter);
+        else if (customerEmpty)
+            query = query.Where(m => m.ProductType == null || m.ProductType.Company == null);
 
         var molds = await query.ToListAsync();
 
