@@ -189,6 +189,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productTypesApi } from '@/api/productTypes'
 import { activeProducts } from '@/utils/productLabel'
+import { nextProductArticle } from '@/utils/productArticle'
 import { apiErrorMessage } from '@/utils/apiError'
 import ProductRecipeDialog from './ProductRecipeDialog.vue'
 import SuggestInput from '@/components/common/SuggestInput.vue'
@@ -339,7 +340,10 @@ function onProductArticleInput() {
 
 function showProductModal() {
   editingProduct.value = null
-  Object.assign(productForm, { article: '', name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null })
+  Object.assign(productForm, {
+    article: nextProductArticle(editing.value.products),
+    name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null
+  })
   productDialogVisible.value = true
 }
 
