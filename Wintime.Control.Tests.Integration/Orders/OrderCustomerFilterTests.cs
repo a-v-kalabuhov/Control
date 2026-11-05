@@ -72,11 +72,13 @@ public class OrderCustomerFilterTests : IClassFixture<IntegrationTestFactory>
         var ownCustomer = await SeedOrderAsync(marker, customer, $"Другая компания {marker}");
         var fallbackCandidate = await SeedOrderAsync(marker, null, customer);
         var other = await SeedOrderAsync(marker, $"Другой {marker}", null);
+        var differentCase = await SeedOrderAsync(marker, customer.ToUpperInvariant(), null);
 
         var namedList = await client.GetFromJsonAsync<List<OrderDto>>(
             $"/api/orders?customer={Uri.EscapeDataString(customer)}", JsonOptions);
         namedList!.Should().ContainSingle(o => o.Id == ownCustomer.Id);
-        namedList.Should().NotContain(o => o.Id == fallbackCandidate.Id || o.Id == other.Id);
+        namedList.Should().NotContain(o =>
+            o.Id == fallbackCandidate.Id || o.Id == other.Id || o.Id == differentCase.Id);
     }
 
     [Fact]
@@ -136,5 +138,7 @@ public class OrderCustomerFilterTests : IClassFixture<IntegrationTestFactory>
             "/api/orders?customer=ООО%20Ромашка&customerEmpty=true");
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Be(
+            "Параметры customer и customerEmpty нельзя передавать вместе.");
     }
 }

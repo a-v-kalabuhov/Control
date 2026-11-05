@@ -380,7 +380,10 @@ onMounted(async () => {
   await Promise.all([loadMolds(), loadProductTypes(), loadImms()])
 })
 
+let loadMoldsRequestId = 0
+
 const loadMolds = async () => {
+  const requestId = ++loadMoldsRequestId
   loading.value = true
   try {
     const response = await moldsApi.getList({
@@ -389,11 +392,13 @@ const loadMolds = async () => {
       customer: filters.customer || undefined,
       customerEmpty: filters.customerEmpty ? true : undefined
     })
-    molds.value = response.data
+    if (requestId === loadMoldsRequestId) molds.value = response.data
   } catch (error) {
-    ElMessage.error('Ошибка загрузки пресс-форм')
+    if (requestId === loadMoldsRequestId) {
+      ElMessage.error('Ошибка загрузки пресс-форм')
+    }
   } finally {
-    loading.value = false
+    if (requestId === loadMoldsRequestId) loading.value = false
   }
 }
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import MoldDictionary from '../MoldDictionary.vue'
 import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
@@ -50,6 +50,16 @@ const moldRow = {
 
 function mountView() {
   return mount(MoldDictionary, { global: { plugins: [ElementPlus], stubs: { Plus: true } } })
+}
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
@@ -137,6 +147,65 @@ describe('MoldDictionary — заказчик типа (PZP-23)', () => {
     expect(moldsApi.getList).toHaveBeenLastCalledWith({
       isActive: true, search: 'Форма', customer: undefined, customerEmpty: undefined
     })
+  })
+
+  it('при смене заказчика A на B поздний ответ A не заменяет строки B', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    moldsApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowA = { ...moldRow, id: 'race-a', formId: 'RACE-A' }
+    const rowB = { ...moldRow, id: 'race-b', formId: 'RACE-B' }
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadMolds()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadMolds()
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+
+    expect(wrapper.vm.molds).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+
+    a.resolve({ data: [rowA] })
+    await loadA
+    await flushPromises()
+
+    expect(wrapper.vm.molds).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('устаревшая ошибка A не показывается и не сбрасывает loading запроса B', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    moldsApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowB = { ...moldRow, id: 'race-b', formId: 'RACE-B' }
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadMolds()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadMolds()
+    a.reject(new Error('старая ошибка'))
+    await loadA
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.loading).toBe(true)
+
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+    expect(wrapper.vm.molds).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
   })
 
   it('карточка ПФ показывает компанию выбранного типа изделия', async () => {

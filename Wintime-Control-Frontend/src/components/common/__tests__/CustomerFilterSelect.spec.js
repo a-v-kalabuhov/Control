@@ -5,6 +5,16 @@ import ElementPlus, { ElMessage } from 'element-plus'
 import CustomerFilterSelect from '../CustomerFilterSelect.vue'
 
 const mounted = []
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 function mountFilter(props = {}) {
   const wrapper = mount(CustomerFilterSelect, {
     props: { customer: null, customerEmpty: false, fetch: vi.fn().mockResolvedValue([]), ...props },
@@ -35,12 +45,17 @@ describe('CustomerFilterSelect', () => {
     ])
   })
 
-  it('при открытии загружает исходный список', async () => {
+  it('при открытии загружает исходный список один раз через remote-method', async () => {
+    vi.useFakeTimers()
     const fetch = vi.fn().mockResolvedValue([])
     const wrapper = mountFilter({ fetch })
 
-    await wrapper.vm.onVisibleChange(true)
+    wrapper.findComponent({ name: 'ElSelect' }).vm.$emit('visible-change', true)
+    wrapper.vm.onRemoteMethod('')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
 
+    expect(fetch).toHaveBeenCalledTimes(1)
     expect(fetch).toHaveBeenCalledWith('')
   })
 
@@ -112,5 +127,70 @@ describe('CustomerFilterSelect', () => {
     expect(wrapper.vm.options.map(option => option.label)).toContain('ООО Ромашка')
     expect(wrapper.emitted('update:customer')).toBeUndefined()
     expect(error).toHaveBeenCalledWith('Ошибка загрузки заказчиков')
+  })
+
+  it('поздний ответ старого пустого запроса не заменяет подсказки нового фрагмента', async () => {
+    const empty = deferred()
+    const fragment = deferred()
+    const fetch = vi.fn()
+      .mockImplementationOnce(() => empty.promise)
+      .mockImplementationOnce(() => fragment.promise)
+    const wrapper = mountFilter({ fetch })
+
+    const emptyLoad = wrapper.vm.loadSuggestions('')
+    const fragmentLoad = wrapper.vm.loadSuggestions('рома')
+    fragment.resolve(['ООО Новый'])
+    await fragmentLoad
+    await flushPromises()
+
+    expect(wrapper.vm.options.map(option => option.label)).toEqual(['(не указано)', 'ООО Новый'])
+    expect(wrapper.vm.loading).toBe(false)
+
+    empty.resolve(['ООО Старый'])
+    await emptyLoad
+    await flushPromises()
+
+    expect(wrapper.vm.options.map(option => option.label)).toEqual(['(не указано)', 'ООО Новый'])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('устаревшая ошибка не показывается и не сбрасывает loading нового запроса', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const empty = deferred()
+    const fragment = deferred()
+    const fetch = vi.fn()
+      .mockImplementationOnce(() => empty.promise)
+      .mockImplementationOnce(() => fragment.promise)
+    const wrapper = mountFilter({ fetch })
+
+    const emptyLoad = wrapper.vm.loadSuggestions('')
+    const fragmentLoad = wrapper.vm.loadSuggestions('рома')
+    empty.reject(new Error('старая ошибка'))
+    await emptyLoad
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.loading).toBe(true)
+
+    fragment.resolve(['ООО Новый'])
+    await fragmentLoad
+    await flushPromises()
+    expect(wrapper.vm.options.map(option => option.label)).toContain('ООО Новый')
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('после размонтирования pending rejection не меняет подсказки и не показывает ошибку', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const pending = deferred()
+    const wrapper = mountFilter({ customer: 'ООО Ромашка', fetch: vi.fn(() => pending.promise) })
+    const load = wrapper.vm.loadSuggestions('')
+
+    wrapper.unmount()
+    pending.reject(new Error('сеть'))
+    await load
+    await flushPromises()
+
+    expect(wrapper.vm.options.map(option => option.label)).toEqual(['(не указано)', 'ООО Ромашка'])
+    expect(error).not.toHaveBeenCalled()
   })
 })

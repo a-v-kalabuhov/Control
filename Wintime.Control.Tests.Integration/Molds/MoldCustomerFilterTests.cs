@@ -73,13 +73,14 @@ public class MoldCustomerFilterTests : IClassFixture<IntegrationTestFactory>
         var customer = $"Заказчик {marker}";
         var match = await SeedMoldAsync(marker, customer);
         var other = await SeedMoldAsync(marker, $"Другой {marker}");
+        var differentCase = await SeedMoldAsync(marker, customer.ToUpperInvariant());
         var withoutType = await SeedMoldAsync(marker, null, withType: false);
 
         var list = await client.GetFromJsonAsync<List<MoldDto>>(
             $"/api/molds?customer={Uri.EscapeDataString(customer)}");
 
         list!.Should().ContainSingle(m => m.Id == match.Id);
-        list.Should().NotContain(m => m.Id == other.Id || m.Id == withoutType.Id);
+        list.Should().NotContain(m => m.Id == other.Id || m.Id == differentCase.Id || m.Id == withoutType.Id);
     }
 
     [Fact]
@@ -138,5 +139,7 @@ public class MoldCustomerFilterTests : IClassFixture<IntegrationTestFactory>
             "/api/molds?customer=ООО%20Ромашка&customerEmpty=true");
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Be(
+            "Параметры customer и customerEmpty нельзя передавать вместе.");
     }
 }

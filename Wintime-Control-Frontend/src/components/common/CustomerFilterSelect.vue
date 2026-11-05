@@ -9,7 +9,6 @@
     :placeholder="placeholder"
     class="w-full"
     @update:model-value="selectKey"
-    @visible-change="onVisibleChange"
   >
     <el-option
       v-for="option in options"
@@ -38,6 +37,7 @@ const emit = defineEmits(['update:customer', 'update:customerEmpty'])
 const suggestions = ref([])
 const loading = ref(false)
 let timer = null
+let suggestionsRequestId = 0
 
 const selection = computed(() => {
   if (props.customerEmpty) return EMPTY_KEY
@@ -54,23 +54,23 @@ const options = computed(() => {
 })
 
 async function loadSuggestions(search) {
+  const requestId = ++suggestionsRequestId
   loading.value = true
   try {
-    suggestions.value = await props.fetch(search ?? '') ?? []
+    const result = await props.fetch(search ?? '')
+    if (requestId === suggestionsRequestId) suggestions.value = result ?? []
   } catch {
-    ElMessage.error('Ошибка загрузки заказчиков')
+    if (requestId === suggestionsRequestId) {
+      ElMessage.error('Ошибка загрузки заказчиков')
+    }
   } finally {
-    loading.value = false
+    if (requestId === suggestionsRequestId) loading.value = false
   }
 }
 
 function onRemoteMethod(search) {
   clearTimeout(timer)
   timer = setTimeout(() => loadSuggestions(search), 300)
-}
-
-async function onVisibleChange(visible) {
-  if (visible) await loadSuggestions('')
 }
 
 function selectKey(value) {
@@ -89,6 +89,9 @@ function selectKey(value) {
   emit('update:customerEmpty', false)
 }
 
-onBeforeUnmount(() => clearTimeout(timer))
-defineExpose({ loadSuggestions, onRemoteMethod, onVisibleChange, selectKey, options })
+onBeforeUnmount(() => {
+  suggestionsRequestId += 1
+  clearTimeout(timer)
+})
+defineExpose({ loadSuggestions, onRemoteMethod, selectKey, options })
 </script>

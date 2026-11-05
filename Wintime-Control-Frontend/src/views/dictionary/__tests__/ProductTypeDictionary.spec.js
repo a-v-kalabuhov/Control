@@ -31,6 +31,16 @@ const typeA = {
 }
 
 const mounted = []
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 function mountView() {
   const w = mount(ProductTypeDictionary, {
     global: { plugins: [ElementPlus], stubs: { Plus: true } },
@@ -138,6 +148,65 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     expect(productTypesApi.getList).toHaveBeenLastCalledWith({
       isActive: true, search: 'Крышка', customer: undefined, customerEmpty: undefined
     })
+  })
+
+  it('при смене заказчика A на B поздний ответ A не заменяет строки B', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    productTypesApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowA = { ...typeA, id: 'race-a', article: 'RACE-A' }
+    const rowB = { ...typeA, id: 'race-b', article: 'RACE-B' }
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadItems()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadItems()
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+
+    expect(wrapper.vm.items).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+
+    a.resolve({ data: [rowA] })
+    await loadA
+    await flushPromises()
+
+    expect(wrapper.vm.items).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('устаревшая ошибка A не показывается и не сбрасывает loading запроса B', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    productTypesApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowB = { ...typeA, id: 'race-b', article: 'RACE-B' }
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadItems()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadItems()
+    a.reject(new Error('старая ошибка'))
+    await loadA
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.loading).toBe(true)
+
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+    expect(wrapper.vm.items).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
   })
 
   it('добавление изделия приводит часть к верхнему регистру и перезагружает тип', async () => {

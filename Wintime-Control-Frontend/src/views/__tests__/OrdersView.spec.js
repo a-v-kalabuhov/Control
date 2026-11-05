@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import OrdersView from '../OrdersView.vue'
 import { useAuthStore } from '@/stores/auth'
 import SuggestInput from '@/components/common/SuggestInput.vue'
@@ -39,6 +39,23 @@ vi.mock('@/api/productTypes', () => ({
 
 import { ordersApi } from '@/api/orders'
 import { productTypesApi } from '@/api/productTypes'
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function raceOrder(id) {
+  return {
+    id, number: `ORD-${id}`, productFullArticle: 'A123.BLK', quantity: 1,
+    goodQuantity: 0, progressPercent: 0, status: 'Active', dueDate: null
+  }
+}
 
 function mountView(orders, role = 'Manager') {
   setActivePinia(createPinia())
@@ -200,6 +217,65 @@ describe('OrdersView', () => {
     expect(ordersApi.getList).toHaveBeenLastCalledWith({
       status: 'Active', search: 'ORD', customer: undefined, customerEmpty: undefined
     })
+  })
+
+  it('при смене заказчика A на B поздний ответ A не заменяет строки B', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    ordersApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowA = raceOrder('race-a')
+    const rowB = raceOrder('race-b')
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadOrders()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadOrders()
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+
+    expect(wrapper.vm.orders).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+
+    a.resolve({ data: [rowA] })
+    await loadA
+    await flushPromises()
+
+    expect(wrapper.vm.orders).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
+  })
+
+  it('устаревшая ошибка A не показывается и не сбрасывает loading запроса B', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const wrapper = mountView([])
+    await flushPromises()
+    const a = deferred()
+    const b = deferred()
+    ordersApi.getList
+      .mockImplementationOnce(() => a.promise)
+      .mockImplementationOnce(() => b.promise)
+    const rowB = raceOrder('race-b')
+
+    wrapper.vm.filters.customer = 'Заказчик A'
+    const loadA = wrapper.vm.loadOrders()
+    wrapper.vm.filters.customer = 'Заказчик B'
+    const loadB = wrapper.vm.loadOrders()
+    a.reject(new Error('старая ошибка'))
+    await loadA
+    await flushPromises()
+
+    expect(error).not.toHaveBeenCalled()
+    expect(wrapper.vm.loading).toBe(true)
+
+    b.resolve({ data: [rowB] })
+    await loadB
+    await flushPromises()
+    expect(wrapper.vm.orders).toEqual([rowB])
+    expect(wrapper.vm.loading).toBe(false)
   })
 
   it('создание заказа без даты проходит и отправляет orderDate: null', async () => {

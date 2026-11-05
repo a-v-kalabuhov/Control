@@ -77,6 +77,23 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task List_WhitespaceCustomerAndCustomerEmpty_TreatedAsUnspecified()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var empty = await SeedCustomerTypeAsync(marker, null);
+        var named = await SeedCustomerTypeAsync(marker, $"Заказчик {marker}");
+
+        var response = await client.GetAsync(
+            $"/api/producttypes?search={marker}&customer=%20%20&customerEmpty=true");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var list = await response.Content.ReadFromJsonAsync<List<ProductTypeDto>>();
+        list!.Should().ContainSingle(t => t.Id == empty.Id);
+        list.Should().NotContain(t => t.Id == named.Id);
+    }
+
+    [Fact]
     public async Task List_CustomerFilterCombinesWithExistingFilters()
     {
         var client = await ManagerClientAsync();
@@ -87,7 +104,7 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
         var archivedOther = await SeedCustomerTypeAsync(marker, $"Другой {marker}", isActive: false);
 
         var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
-            $"/api/producttypes?isActive=false&customer={Uri.EscapeDataString(customer)}");
+            $"/api/producttypes?isActive=false&search={marker}&customer={Uri.EscapeDataString(customer)}");
 
         list!.Should().ContainSingle(t => t.Id == archived.Id);
         list.Should().NotContain(t => t.Id == active.Id || t.Id == archivedOther.Id);

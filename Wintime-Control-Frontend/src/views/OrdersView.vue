@@ -274,7 +274,10 @@ function formatDate(date) {
   return date ? dayjs(date).format('DD.MM.YYYY') : ''
 }
 
+let loadOrdersRequestId = 0
+
 async function loadOrders() {
+  const requestId = ++loadOrdersRequestId
   loading.value = true
   try {
     const { data } = await ordersApi.getList({
@@ -283,11 +286,13 @@ async function loadOrders() {
       customer: filters.customer || undefined,
       customerEmpty: filters.customerEmpty ? true : undefined
     })
-    orders.value = data
+    if (requestId === loadOrdersRequestId) orders.value = data
   } catch (error) {
-    ElMessage.error(apiErrorMessage(error, 'Ошибка загрузки заказов'))
+    if (requestId === loadOrdersRequestId) {
+      ElMessage.error(apiErrorMessage(error, 'Ошибка загрузки заказов'))
+    }
   } finally {
-    loading.value = false
+    if (requestId === loadOrdersRequestId) loading.value = false
   }
 }
 

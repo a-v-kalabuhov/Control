@@ -255,7 +255,10 @@ const fullArticlePreview = computed(() => `${editing.value?.article ?? ''}.${pro
 
 onMounted(loadItems)
 
+let loadItemsRequestId = 0
+
 async function loadItems() {
+  const requestId = ++loadItemsRequestId
   loading.value = true
   try {
     const { data } = await productTypesApi.getList({
@@ -264,11 +267,13 @@ async function loadItems() {
       customer: filters.customer || undefined,
       customerEmpty: filters.customerEmpty ? true : undefined
     })
-    items.value = data
+    if (requestId === loadItemsRequestId) items.value = data
   } catch {
-    ElMessage.error('Ошибка загрузки типов изделий')
+    if (requestId === loadItemsRequestId) {
+      ElMessage.error('Ошибка загрузки типов изделий')
+    }
   } finally {
-    loading.value = false
+    if (requestId === loadItemsRequestId) loading.value = false
   }
 }
 
