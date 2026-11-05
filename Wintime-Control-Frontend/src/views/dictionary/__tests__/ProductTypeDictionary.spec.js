@@ -226,6 +226,49 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     expect(wrapper.vm.loading).toBe(true)
   })
 
+  it('при открытии нового изделия подставляет следующий числовой артикул', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+
+    wrapper.vm.showProductModal()
+    await flushPromises()
+
+    expect(wrapper.vm.editingProduct).toBeNull()
+    expect(wrapper.vm.productForm.article).toBe('1')
+    expect(wrapper.vm.fullArticlePreview).toBe('A123.1')
+  })
+
+  it('сохраняет ручную замену автоподставленного артикула', async () => {
+    productTypesApi.addProduct.mockResolvedValue({ data: {} })
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.showProductModal()
+    expect(wrapper.vm.productForm.article).toBe('1')
+
+    wrapper.vm.productForm.article = 'custom'
+    wrapper.vm.onProductArticleInput()
+    wrapper.vm.productForm.name = 'Особый'
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+
+    expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', expect.objectContaining({
+      article: 'CUSTOM'
+    }))
+  })
+
+  it('при редактировании не заменяет существующий артикул автоподстановкой', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+
+    wrapper.vm.editProduct({ id: 'p4', article: '4', name: 'Четвёртый' })
+    await flushPromises()
+
+    expect(wrapper.vm.productForm.article).toBe('4')
+  })
+
   it('добавление изделия приводит часть к верхнему регистру и перезагружает тип', async () => {
     productTypesApi.addProduct.mockResolvedValue({ data: {} })
     const wrapper = mountView()
