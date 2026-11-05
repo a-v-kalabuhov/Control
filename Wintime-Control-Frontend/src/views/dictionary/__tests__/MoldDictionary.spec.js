@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import ElementPlus, { ElMessage } from 'element-plus'
+import ElementPlus, { ElMessage, ElCheckbox } from 'element-plus'
 import MoldDictionary from '../MoldDictionary.vue'
 import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
@@ -291,5 +291,95 @@ describe('MoldDictionary — веса изделий (PZP-24)', () => {
 
     expect(wrapper.vm.form).not.toHaveProperty('partWeightGrams')
     expect(moldsApi.update.mock.calls[0][1]).not.toHaveProperty('partWeightGrams')
+  })
+})
+
+describe('MoldDictionary — особенности ПФ (PZP-26)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('в таблице показывает только включённые особенности и прочерк при их отсутствии', async () => {
+    moldsApi.getList.mockResolvedValueOnce({ data: [
+      { ...moldRow, hasMovingParts: true, requiresRobot: false, requiresConveyor: true },
+      { ...moldRow, id: 'mold-2', formId: 'PF-2', hasMovingParts: false, requiresRobot: false, requiresConveyor: false }
+    ] })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Особенности')
+    expect(wrapper.findAll('[data-test="mold-feature-moving-parts"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-test="mold-feature-robot"]')).toHaveLength(0)
+    expect(wrapper.findAll('[data-test="mold-feature-conveyor"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-test="mold-features-empty"]')).toHaveLength(1)
+  })
+
+  it('задаёт признаки при создании, подставляет при редактировании и отправляет при сохранении', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.showCreateModal()
+    expect(wrapper.vm.form.hasMovingParts).toBe(false)
+    expect(wrapper.vm.form.requiresRobot).toBe(false)
+    expect(wrapper.vm.form.requiresConveyor).toBe(false)
+
+    wrapper.vm.editMold({ ...moldRow, hasMovingParts: true, requiresRobot: true, requiresConveyor: false })
+    await flushPromises()
+    expect(wrapper.vm.form.hasMovingParts).toBe(true)
+    expect(wrapper.vm.form.requiresRobot).toBe(true)
+    expect(wrapper.vm.form.requiresConveyor).toBe(false)
+
+    wrapper.vm.form.requiresConveyor = true
+    await wrapper.vm.saveMold()
+    await flushPromises()
+    expect(moldsApi.update).toHaveBeenCalledWith('mold-1', expect.objectContaining({
+      hasMovingParts: true,
+      requiresRobot: true,
+      requiresConveyor: true
+    }))
+  })
+
+  it('сбрасывает особенности при повторном создании после редактирования', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editMold({ ...moldRow, hasMovingParts: true, requiresRobot: true, requiresConveyor: true })
+    await flushPromises()
+
+    wrapper.vm.showCreateModal()
+    await flushPromises()
+
+    expect(wrapper.vm.form.hasMovingParts).toBe(false)
+    expect(wrapper.vm.form.requiresRobot).toBe(false)
+    expect(wrapper.vm.form.requiresConveyor).toBe(false)
+
+    Object.assign(wrapper.vm.form, {
+      formId: 'PF-NEW', name: 'Новая ПФ', productTypeId: 'pt-1', maxResourceCycles: 1000
+    })
+    await wrapper.vm.saveMold()
+    await flushPromises()
+    expect(moldsApi.create).toHaveBeenCalledWith(expect.objectContaining({
+      hasMovingParts: false,
+      requiresRobot: false,
+      requiresConveyor: false
+    }))
+  })
+
+  it('отключает чекбоксы особенностей только у архивной ПФ', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.editMold({ ...moldRow, isActive: false })
+    await flushPromises()
+    let checkboxes = wrapper.findAllComponents(ElCheckbox)
+    expect(checkboxes).toHaveLength(3)
+    expect(checkboxes.every(c => c.props('disabled') === true)).toBe(true)
+
+    wrapper.vm.form.isActive = true
+    await flushPromises()
+    checkboxes = wrapper.findAllComponents(ElCheckbox)
+    expect(checkboxes.every(c => c.props('disabled') === true)).toBe(true)
+
+    wrapper.vm.editMold(moldRow)
+    await flushPromises()
+    checkboxes = wrapper.findAllComponents(ElCheckbox)
+    expect(checkboxes.every(c => c.props('disabled') === false)).toBe(true)
   })
 })

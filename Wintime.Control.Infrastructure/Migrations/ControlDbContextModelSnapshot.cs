@@ -470,6 +470,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("HasMovingParts")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -488,6 +491,12 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.Property<Guid?>("ProductTypeId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("RequiresConveyor")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RequiresRobot")
+                        .HasColumnType("boolean");
 
                     b.Property<decimal>("RunnerWeightGrams")
                         .HasColumnType("numeric");

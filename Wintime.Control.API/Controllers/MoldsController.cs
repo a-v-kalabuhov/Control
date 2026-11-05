@@ -119,6 +119,9 @@ public class MoldsController : ControllerBase
             To2Cycles = request.To2Cycles,
             StorageLocationIndex = request.StorageLocationIndex,
             ProductTypeId = request.ProductTypeId,
+            HasMovingParts = request.HasMovingParts,
+            RequiresRobot = request.RequiresRobot,
+            RequiresConveyor = request.RequiresConveyor,
             CompatibleImms = compatibleImms!,
             IsActive = true
         };
@@ -144,6 +147,16 @@ public class MoldsController : ControllerBase
 
         if (request.Cavities is < 1)
             return BadRequest("Количество гнёзд должно быть не меньше 1.");
+
+        // PZP-26: особенности архивной ПФ доступны только для чтения.
+        // Повторная передача неизменных значений не блокирует правку остальных полей.
+        if (!mold.IsActive && (
+            (request.HasMovingParts.HasValue && request.HasMovingParts.Value != mold.HasMovingParts) ||
+            (request.RequiresRobot.HasValue && request.RequiresRobot.Value != mold.RequiresRobot) ||
+            (request.RequiresConveyor.HasValue && request.RequiresConveyor.Value != mold.RequiresConveyor)))
+        {
+            return BadRequest("Нельзя изменять особенности архивной пресс-формы.");
+        }
 
         // PZP-07b: в архив — только ПФ без незавершённых заданий.
         if (request.IsActive == false && mold.IsActive)
@@ -181,6 +194,12 @@ public class MoldsController : ControllerBase
             mold.To2Cycles = request.To2Cycles.Value;
         if (request.StorageLocationIndex != null)
             mold.StorageLocationIndex = request.StorageLocationIndex;
+        if (request.HasMovingParts.HasValue)
+            mold.HasMovingParts = request.HasMovingParts.Value;
+        if (request.RequiresRobot.HasValue)
+            mold.RequiresRobot = request.RequiresRobot.Value;
+        if (request.RequiresConveyor.HasValue)
+            mold.RequiresConveyor = request.RequiresConveyor.Value;
         if (request.IsActive.HasValue)
             mold.IsActive = request.IsActive.Value;
 
@@ -269,6 +288,9 @@ public class MoldsController : ControllerBase
         StorageLocationIndex = m.StorageLocationIndex,
         DrawingPath = m.DrawingPath,
         PhotoPath = m.PhotoPath,
+        HasMovingParts = m.HasMovingParts,
+        RequiresRobot = m.RequiresRobot,
+        RequiresConveyor = m.RequiresConveyor,
         TotalCycles = totalCycles,
         RemainingResource = m.MaxResourceCycles - totalCycles,
         ProductTypeId = m.ProductTypeId,

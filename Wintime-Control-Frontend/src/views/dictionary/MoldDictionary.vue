@@ -56,6 +56,26 @@
       <el-table-column prop="cavities" label="Гнёзд" width="80" align="center" />
       <el-table-column prop="runnerWeightGrams" label="Литник (г)" width="120" />
       <el-table-column prop="storageLocationIndex" label="Место хранения" width="120" />
+      <el-table-column label="Особенности" width="140" align="center">
+        <template #default="{ row }">
+          <div class="flex items-center justify-center gap-2">
+            <el-tooltip v-if="row.hasMovingParts" content="Подвижные знаки" placement="top">
+              <el-icon data-test="mold-feature-moving-parts" :size="18" aria-label="Подвижные знаки"><Rank /></el-icon>
+            </el-tooltip>
+            <el-tooltip v-if="row.requiresRobot" content="Нужен робот" placement="top">
+              <el-icon data-test="mold-feature-robot" :size="18" aria-label="Нужен робот"><Cpu /></el-icon>
+            </el-tooltip>
+            <el-tooltip v-if="row.requiresConveyor" content="Нужен конвейер" placement="top">
+              <el-icon data-test="mold-feature-conveyor" :size="18" aria-label="Нужен конвейер"><Van /></el-icon>
+            </el-tooltip>
+            <span
+              v-if="!row.hasMovingParts && !row.requiresRobot && !row.requiresConveyor"
+              data-test="mold-features-empty"
+              class="text-gray-400"
+            >—</span>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="Остаток ресурса" width="150">
         <template #default="{ row }">
           <el-progress
@@ -190,6 +210,17 @@
           </el-col>
         </el-row>
 
+        <el-form-item label="Особенности">
+          <div class="flex flex-col items-start gap-1">
+            <el-checkbox v-model="form.hasMovingParts" :disabled="featuresDisabled">Подвижные знаки</el-checkbox>
+            <el-checkbox v-model="form.requiresRobot" :disabled="featuresDisabled">Нужен робот</el-checkbox>
+            <el-checkbox v-model="form.requiresConveyor" :disabled="featuresDisabled">Нужен конвейер</el-checkbox>
+            <div v-if="featuresDisabled" class="text-xs text-gray-500">
+              У архивной пресс-формы особенности доступны только для чтения
+            </div>
+          </div>
+        </el-form-item>
+
         <el-form-item label="Совместимые ТПА">
           <el-select
             v-model="form.compatibleImmIds"
@@ -227,6 +258,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Cpu, Rank, Van } from '@element-plus/icons-vue'
 import { moldsApi } from '@/api/molds'
 import { productTypesApi } from '@/api/productTypes'
 import { immApi } from '@/api/imm'
@@ -241,6 +273,7 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const editingMold = ref(null)
 const formRef = ref(null)
+const featuresDisabled = computed(() => editingMold.value?.isActive === false)
 
 const molds = ref([])
 const productTypes = ref([])
@@ -332,6 +365,9 @@ const form = reactive({
   storageLocationIndex: '',
   isActive: true,
   productTypeId: null,
+  hasMovingParts: false,
+  requiresRobot: false,
+  requiresConveyor: false,
   compatibleImmIds: [],
 })
 
@@ -420,6 +456,9 @@ const showCreateModal = () => {
     storageLocationIndex: '',
     isActive: true,
     productTypeId: null,
+    hasMovingParts: false,
+    requiresRobot: false,
+    requiresConveyor: false,
     compatibleImmIds: [],
   })
   dialogVisible.value = true
@@ -442,6 +481,9 @@ const editMold = (mold) => {
     storageLocationIndex: mold.storageLocationIndex,
     isActive: mold.isActive,
     productTypeId: mold.productTypeId ?? null,
+    hasMovingParts: mold.hasMovingParts ?? false,
+    requiresRobot: mold.requiresRobot ?? false,
+    requiresConveyor: mold.requiresConveyor ?? false,
     compatibleImmIds: (mold.compatibleImms ?? []).map(i => i.id),
   })
   dialogVisible.value = true

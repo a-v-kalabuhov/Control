@@ -15,6 +15,9 @@ public class MoldDto
     public string? StorageLocationIndex { get; set; }
     public string? DrawingPath { get; set; }
     public string? PhotoPath { get; set; }
+    public bool HasMovingParts { get; set; }
+    public bool RequiresRobot { get; set; }
+    public bool RequiresConveyor { get; set; }
     public int TotalCycles { get; set; } // Расчётное
     public int RemainingResource { get; set; } // Расчётное
     public Guid? ProductTypeId { get; set; }
