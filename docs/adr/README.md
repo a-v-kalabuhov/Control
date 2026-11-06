@@ -54,3 +54,4 @@
 - [ADR-0023](0023-product-defaults-and-task-copy.md) — Технологические умолчания изделия и их копия в задании (рецепт)
 - [ADR-0024](0024-part-weight-product-task-snapshot.md) — Вес детали в изделии и его снапшот в задании
 - [ADR-0025](0025-cavities-mold-product-task.md) — Гнёздовость: максимум ПФ, умолчание изделия, рабочая копия задания *(заменяет ADR-0001)*
+- [ADR-0026](0026-nomenclature-xlsx-import.md) — Двухэтапный импорт номенклатуры из XLSX

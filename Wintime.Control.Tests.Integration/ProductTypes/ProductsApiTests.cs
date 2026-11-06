@@ -99,6 +99,40 @@ public class ProductsApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task AddAndUpdateProduct_StoresAndClearsComment()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        var created = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products",
+            new CreateProductRequestDto { Article = "BLK", Name = "Чёрный", Comment = "Не сушить" });
+        var p = await created.Content.ReadFromJsonAsync<ProductDto>();
+
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        p!.Comment.Should().Be("Не сушить");
+
+        var updated = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{p.Id}",
+            new UpdateProductRequestDto { Comment = "  " });
+        updated.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await GetTypeAsync(c, t.Id)).Products.Single(x => x.Id == p.Id).Comment.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UpdateProduct_ClearCommentFlag_ClearsComment()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        var created = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products",
+            new CreateProductRequestDto { Article = "BLK", Name = "Чёрный", Comment = "Старый" });
+        var p = await created.Content.ReadFromJsonAsync<ProductDto>();
+
+        var updated = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{p!.Id}",
+            new UpdateProductRequestDto { ClearComment = true });
+
+        updated.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await GetTypeAsync(c, t.Id)).Products.Single(x => x.Id == p.Id).Comment.Should().BeNull();
+    }
+
+    [Fact]
     public async Task UpdateProduct_ChangesWeightAndClearsInjectionCycle()
     {
         var c = await ClientAsync();

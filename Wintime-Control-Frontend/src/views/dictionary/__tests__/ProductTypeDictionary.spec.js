@@ -5,6 +5,7 @@ import ElementPlus, { ElMessage } from 'element-plus'
 import ProductTypeDictionary from '../ProductTypeDictionary.vue'
 import SuggestInput from '@/components/common/SuggestInput.vue'
 import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
+import NomenclatureImportDialog from '../NomenclatureImportDialog.vue'
 
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
@@ -68,6 +69,20 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Справочник типов изделий')
     expect(wrapper.text()).toContain('Добавить тип изделия')
+  })
+
+  it('показывает импорт и перезагружает справочник после успешного импорта', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Импорт Excel')
+    const initialCalls = productTypesApi.getList.mock.calls.length
+
+    wrapper.vm.importDialogVisible = true
+    await wrapper.vm.$nextTick()
+    wrapper.findComponent(NomenclatureImportDialog).vm.$emit('imported')
+    await flushPromises()
+
+    expect(productTypesApi.getList.mock.calls.length).toBe(initialCalls + 1)
   })
 
   it('показывает число активных изделий типа', async () => {
@@ -269,6 +284,39 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     expect(wrapper.vm.productForm.article).toBe('4')
   })
 
+  it('сохраняет комментарий изделия в create и update payload', async () => {
+    productTypesApi.addProduct.mockResolvedValue({ data: {} })
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.showProductModal()
+    wrapper.vm.productForm.article = 'BLK'
+    wrapper.vm.productForm.name = 'Чёрный'
+    wrapper.vm.productForm.comment = 'Не сушить'
+
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+    expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', expect.objectContaining({
+      comment: 'Не сушить'
+    }))
+
+    wrapper.vm.editProduct({ ...typeA.products[1], comment: 'Старый комментарий' })
+    expect(wrapper.vm.productForm.comment).toBe('Старый комментарий')
+    wrapper.vm.productForm.comment = 'Новый комментарий'
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+    expect(productTypesApi.updateProduct).toHaveBeenCalledWith('pt-1', 'p2', expect.objectContaining({
+      comment: 'Новый комментарий'
+    }))
+
+    wrapper.vm.productForm.comment = ''
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+    expect(productTypesApi.updateProduct).toHaveBeenLastCalledWith('pt-1', 'p2', expect.objectContaining({
+      comment: null, clearComment: true
+    }))
+  })
+
   it('добавление изделия приводит часть к верхнему регистру и перезагружает тип', async () => {
     productTypesApi.addProduct.mockResolvedValue({ data: {} })
     const wrapper = mountView()
@@ -288,7 +336,7 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     await flushPromises()
 
     expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
-      article: 'BLK', name: 'Чёрный', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
+      article: 'BLK', name: 'Чёрный', comment: null, partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
     })
     expect(productTypesApi.getById).toHaveBeenCalledWith('pt-1')
   })
@@ -392,7 +440,7 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
     await flushPromises()
 
     expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
-      article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, cavities: null, plannedInjectionCycleSeconds: 20, hasSample: false
+      article: 'BLK', name: 'Чёрный', comment: null, partWeightGrams: 12.5, cavities: null, plannedInjectionCycleSeconds: 20, hasSample: false
     })
   })
 
@@ -410,7 +458,7 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
     await flushPromises()
 
     expect(productTypesApi.updateProduct).toHaveBeenCalledWith('pt-1', 'p-1', {
-      article: 'BLK', name: 'Чёрный', partWeightGrams: 14.25, cavities: null, clearCavities: true,
+      article: 'BLK', name: 'Чёрный', comment: null, clearComment: true, partWeightGrams: 14.25, cavities: null, clearCavities: true,
       plannedInjectionCycleSeconds: null, clearPlannedInjectionCycleSeconds: true, hasSample: false
     })
   })

@@ -16,6 +16,7 @@ using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Cache;
 using Wintime.Control.Infrastructure.Services;
+using Wintime.Control.Infrastructure.Nomenclature;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -179,6 +180,8 @@ builder.Services.AddScoped<ITaskResultsService, TaskResultsService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IPdfReportService, PdfReportService>();
+builder.Services.AddSingleton<NomenclatureWorkbookParser>();
+builder.Services.AddScoped<NomenclatureImportService>();
 // MQTT Service
 builder.Services.AddSingleton<IWintimeMqttClientFactory, WintimeMqttClientFactory>();
 builder.Services.AddSingleton(sp =>

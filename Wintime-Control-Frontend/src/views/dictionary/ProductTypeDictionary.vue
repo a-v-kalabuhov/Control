@@ -5,10 +5,13 @@
         <h2 class="text-2xl font-bold text-gray-800">Справочник типов изделий</h2>
         <p class="text-gray-600 mt-1">Номенклатура: типы изделий и их изделия</p>
       </div>
-      <el-button type="primary" @click="showCreateModal">
-        <el-icon class="mr-1"><Plus /></el-icon>
-        Добавить тип изделия
-      </el-button>
+      <div class="flex gap-2">
+        <el-button @click="importDialogVisible = true">Импорт Excel</el-button>
+        <el-button type="primary" @click="showCreateModal">
+          <el-icon class="mr-1"><Plus /></el-icon>
+          Добавить тип изделия
+        </el-button>
+      </div>
     </div>
 
     <el-card class="mb-4">
@@ -191,6 +194,12 @@
         <el-form-item label="Наименование" required>
           <el-input v-model="productForm.name" placeholder="Чёрный" />
         </el-form-item>
+        <el-form-item label="Комментарий">
+          <el-input
+            v-model="productForm.comment" type="textarea" :rows="2" maxlength="1000"
+            placeholder="Технологические примечания, необязательно"
+          />
+        </el-form-item>
         <el-form-item label="Вес детали, г">
           <el-input-number
             v-model="productForm.partWeightGrams" :min="0" :precision="2" :step="0.1"
@@ -220,6 +229,8 @@
         <el-button type="primary" @click="saveProduct" :loading="savingProduct">Сохранить</el-button>
       </template>
     </el-dialog>
+
+    <NomenclatureImportDialog v-model="importDialogVisible" @imported="loadItems" />
   </div>
 </template>
 
@@ -232,6 +243,7 @@ import { activeProducts } from '@/utils/productLabel'
 import { nextProductArticle } from '@/utils/productArticle'
 import { apiErrorMessage } from '@/utils/apiError'
 import ProductRecipeDialog from './ProductRecipeDialog.vue'
+import NomenclatureImportDialog from './NomenclatureImportDialog.vue'
 import SuggestInput from '@/components/common/SuggestInput.vue'
 import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 import { formatRecipe, isRecipeSumOk, recipeSumHint as recipeSumHintText } from '@/utils/recipe'
@@ -248,6 +260,7 @@ const dialogVisible = ref(false)
 const editing = ref(null)
 const formRef = ref(null)
 const items = ref([])
+const importDialogVisible = ref(false)
 
 // BL-36: рецепт изделия — отдельный диалог; после сохранения перечитываем тип.
 const recipeDialogVisible = ref(false)
@@ -283,7 +296,7 @@ const productDialogVisible = ref(false)
 const savingProduct = ref(false)
 const editingProduct = ref(null)
 const productForm = reactive({
-  article: '', name: '', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
+  article: '', name: '', comment: '', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
 })
 
 const filters = reactive({ search: '', isActive: null, customer: null, customerEmpty: false })
@@ -389,7 +402,7 @@ function showProductModal() {
   editingProduct.value = null
   Object.assign(productForm, {
     article: nextProductArticle(editing.value.products),
-    name: '', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
+    name: '', comment: '', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
   })
   productDialogVisible.value = true
 }
@@ -397,7 +410,7 @@ function showProductModal() {
 function editProduct(p) {
   editingProduct.value = p
   Object.assign(productForm, {
-    article: p.article, name: p.name,
+    article: p.article, name: p.name, comment: p.comment ?? '',
     partWeightGrams: p.partWeightGrams ?? 0,
     cavities: p.cavities ?? null,
     plannedInjectionCycleSeconds: p.plannedInjectionCycleSeconds ?? null,
@@ -436,7 +449,7 @@ async function saveProduct() {
   try {
     const typeId = editing.value.id
     const payload = {
-      article, name,
+      article, name, comment: productForm.comment?.trim() || null,
       partWeightGrams: productForm.partWeightGrams ?? 0,
       cavities: productForm.cavities ?? null,
       plannedInjectionCycleSeconds: productForm.plannedInjectionCycleSeconds ?? null,
@@ -445,6 +458,7 @@ async function saveProduct() {
     if (editingProduct.value) {
       await productTypesApi.updateProduct(typeId, editingProduct.value.id, {
         ...payload,
+        clearComment: payload.comment === null,
         clearCavities: payload.cavities === null,
         clearPlannedInjectionCycleSeconds: payload.plannedInjectionCycleSeconds === null
       })
