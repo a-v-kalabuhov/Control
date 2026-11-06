@@ -37,10 +37,10 @@ vi.mock('@/api/orders', () => ({
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
     getList: vi.fn(() => Promise.resolve({ data: [
-      { id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, products: [
+      { id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, packagingUnit: 24, products: [
         { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true, partWeightGrams: 10, plannedInjectionCycleSeconds: 20 }
       ] },
-      { id: 'pt-Y', article: 'ART-Y', name: 'Тип Y', isActive: true, products: [
+      { id: 'pt-Y', article: 'ART-Y', name: 'Тип Y', isActive: true, packagingUnit: 12, products: [
         { id: 'p-Y0', article: '0', fullArticle: 'ART-Y.0', name: 'По умолчанию', isActive: true, partWeightGrams: 11, plannedInjectionCycleSeconds: 21 },
         { id: 'p-YB', article: 'BLK', fullArticle: 'ART-Y.BLK', name: 'Чёрный', isActive: true, partWeightGrams: 12.5, plannedInjectionCycleSeconds: 25 },
         { id: 'p-YW', article: 'WHT', fullArticle: 'ART-Y.WHT', name: 'Белый', isActive: false, partWeightGrams: 13, plannedInjectionCycleSeconds: 26 }
@@ -63,6 +63,7 @@ import { immApi } from '@/api/imm'
 import { moldsApi } from '@/api/molds'
 import { tasksApi } from '@/api/tasks'
 import { ordersApi } from '@/api/orders'
+import { productTypesApi } from '@/api/productTypes'
 import { settingsApi } from '@/api/settings'
 
 function mountModal(props = {}) {
@@ -705,6 +706,104 @@ describe('TaskFormModal — вес детали (PZP-24)', () => {
     expect(wrapper.find('[data-test="part-weight"]').classes()).not.toContain('is-disabled')
     expect(wrapper.find('[data-test="plan-quantity"]').classes()).toContain('is-disabled')
     expect(wrapper.find('[data-test="buffer-fixed-minutes"]').classes()).toContain('is-disabled')
+  })
+})
+
+describe('TaskFormModal — тарная единица (PZP-29)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('при выборе ПФ подставляет тарную единицу типа изделия', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+
+    expect(wrapper.vm.form.packagingUnit).toBe(24)
+  })
+
+  it('при создании отправляет явную очистку вместо копирования умолчания', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    Object.assign(wrapper.vm.form, {
+      immId: 'imm-1', moldId: 'mold-1', planQuantity: 10,
+      plannedFullCycleSeconds: 60, plannedDate: '2099-01-01'
+    })
+    await flushPromises()
+    expect(wrapper.vm.form.packagingUnit).toBe(24)
+    wrapper.vm.form.packagingUnit = null
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalledWith(expect.objectContaining({
+      packagingUnit: null, clearPackagingUnit: true
+    }))
+  })
+
+  it('не перезаписывает ручной ввод после поздней загрузки типа изделия', async () => {
+    let resolveTypes
+    productTypesApi.getList.mockImplementationOnce(() => new Promise(resolve => { resolveTypes = resolve }))
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+    wrapper.findComponent('[data-test="packaging-unit"]').vm.$emit('update:modelValue', 48)
+
+    resolveTypes({ data: [{
+      id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, packagingUnit: 24,
+      products: [{ id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true }]
+    }] })
+    await flushPromises()
+
+    expect(wrapper.vm.form.packagingUnit).toBe(48)
+  })
+
+  it('поле тарной единицы настроено на целые числа', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    expect(wrapper.findComponent('[data-test="packaging-unit"]').props('precision')).toBe(0)
+  })
+
+  it('при редактировании сохраняет снапшот задания, а не умолчание типа', async () => {
+    const task = {
+      id: 'task-packaging', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
+      planQuantity: 10, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60, packagingUnit: 36
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.vm.form.packagingUnit).toBe(36)
+  })
+
+  it('в закрытом задании тарная единица доступна для правки', async () => {
+    const task = {
+      id: 'task-packaging-closed', status: 'Closed', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
+      planQuantity: 10, plannedDate: '2026-10-20', plannedFullCycleSeconds: 60, packagingUnit: 36
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="packaging-unit"]').classes()).not.toContain('is-disabled')
+    expect(wrapper.find('[data-test="plan-quantity"]').classes()).toContain('is-disabled')
+  })
+
+  it('очистка тарной единицы отправляет явный clear-флаг', async () => {
+    const task = {
+      id: 'task-packaging-clear', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
+      planQuantity: 10, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60, packagingUnit: 36
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+    wrapper.vm.form.packagingUnit = null
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.update).toHaveBeenCalledWith('task-packaging-clear', expect.objectContaining({
+      packagingUnit: null, clearPackagingUnit: true
+    }))
   })
 })
 

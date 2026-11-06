@@ -247,6 +247,18 @@ describe('TaskDetailModal — вес детали (PZP-24)', () => {
   })
 })
 
+describe('TaskDetailModal — тарная единица (PZP-29)', () => {
+  it('показывает тарную единицу в данных задания', async () => {
+    const wrapper = mountModal({ id: 't1', status: 'Planned', packagingUnit: 24 })
+    await flushPromises()
+
+    const cells = wrapper.findAll('.el-descriptions__cell')
+    const idx = cells.findIndex(c => c.text() === 'Тарная единица')
+    expect(cells[idx + 1].text()).toBe('24 шт.')
+    wrapper.unmount()
+  })
+})
+
 describe('TaskDetailModal — конфликты (PZP-07b)', () => {
   const items = [{ kind: 'Plan', resource: 'Imm', overlapSeconds: 3000,
     task: { id: 't1', productArticle: 'A1.0', moldName: 'ПФ-1', immName: 'ТПА-1' },

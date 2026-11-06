@@ -22,7 +22,7 @@ public class ProductTypesController : ControllerBase
     {
         Id = p.Id, Article = p.Article, FullArticle = p.FullArticle, Name = p.Name,
         PartWeightGrams = p.PartWeightGrams, PlannedInjectionCycleSeconds = p.PlannedInjectionCycleSeconds,
-        IsActive = p.IsActive, IsUsed = usedIds.Contains(p.Id),
+        HasSample = p.HasSample, IsActive = p.IsActive, IsUsed = usedIds.Contains(p.Id),
         Recipe = p.RecipeIngredients
             .OrderBy(i => i.SortOrder)
             .Select(i => new RecipeIngredientDto
@@ -39,7 +39,8 @@ public class ProductTypesController : ControllerBase
 
     private static ProductTypeDto ToDto(ProductType t, ISet<Guid> usedIds) => new()
     {
-        Id = t.Id, Article = t.Article, Name = t.Name, Company = t.Company, IsActive = t.IsActive,
+        Id = t.Id, Article = t.Article, Name = t.Name, Company = t.Company,
+        PackagingUnit = t.PackagingUnit, IsActive = t.IsActive,
         Products = t.Products.OrderBy(p => p.Article).Select(p => ToDto(p, usedIds)).ToList()
     };
 
@@ -61,6 +62,9 @@ public class ProductTypesController : ControllerBase
             return "Эталон цикла литья должен быть больше нуля.";
         return null;
     }
+
+    private static string? PackagingUnitError(int? packagingUnit) =>
+        packagingUnit is <= 0 ? "Тарная единица должна быть больше нуля." : null;
 
     // ── Единое пространство артикулов (PZP-19, решение 4) ──
     // Артикул типа не совпадает ни с другим артикулом типа, ни с полным артикулом изделия.
@@ -167,6 +171,9 @@ public class ProductTypesController : ControllerBase
             return BadRequest("Артикул обязателен.");
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest("Наименование обязательно.");
+        var packagingUnitError = PackagingUnitError(request.PackagingUnit);
+        if (packagingUnitError != null)
+            return BadRequest(packagingUnitError);
         var conflict = await TypeArticleConflictAsync(article, null)
             ?? await FullArticleConflictAsync(ProductArticle.Compose(article, ProductArticle.DefaultPart), Array.Empty<Guid>());
         if (conflict != null)
@@ -175,7 +182,8 @@ public class ProductTypesController : ControllerBase
         // PZP-19: тип создаётся вместе с изделием по умолчанию (у типа всегда ≥ 1 изделия).
         var pt = new ProductType
         {
-            Article = article, Name = request.Name.Trim(), Company = CustomerRules.Clean(request.Company), IsActive = true
+            Article = article, Name = request.Name.Trim(), Company = CustomerRules.Clean(request.Company),
+            PackagingUnit = request.PackagingUnit, IsActive = true
         };
         pt.Products.Add(new Product
         {
@@ -198,6 +206,9 @@ public class ProductTypesController : ControllerBase
         var pt = await _context.ProductTypes.Include(t => t.Products).FirstOrDefaultAsync(t => t.Id == id);
         if (pt == null)
             return NotFound();
+        var packagingUnitError = PackagingUnitError(request.PackagingUnit);
+        if (packagingUnitError != null)
+            return BadRequest(packagingUnitError);
 
         if (request.Article != null)
         {
@@ -230,6 +241,10 @@ public class ProductTypesController : ControllerBase
         }
         if (request.Company != null)
             pt.Company = CustomerRules.Clean(request.Company);
+        if (request.ClearPackagingUnit)
+            pt.PackagingUnit = null;
+        else if (request.PackagingUnit.HasValue)
+            pt.PackagingUnit = request.PackagingUnit.Value;
         if (request.IsActive.HasValue)
         {
             if (request.IsActive.Value && !pt.IsActive && !pt.Products.Any(p => p.IsActive))
@@ -268,7 +283,8 @@ public class ProductTypesController : ControllerBase
         {
             ProductTypeId = id, Article = part, Name = request.Name.Trim(), FullArticle = full, IsActive = true,
             PartWeightGrams = request.PartWeightGrams,
-            PlannedInjectionCycleSeconds = request.PlannedInjectionCycleSeconds
+            PlannedInjectionCycleSeconds = request.PlannedInjectionCycleSeconds,
+            HasSample = request.HasSample
         };
         _context.Products.Add(product);
         try { await _context.SaveChangesAsync(); }
@@ -317,6 +333,8 @@ public class ProductTypesController : ControllerBase
             product.PlannedInjectionCycleSeconds = null;
         else if (request.PlannedInjectionCycleSeconds.HasValue)
             product.PlannedInjectionCycleSeconds = request.PlannedInjectionCycleSeconds.Value;
+        if (request.HasSample.HasValue)
+            product.HasSample = request.HasSample.Value;
         if (request.IsActive.HasValue)
         {
             if (!request.IsActive.Value && product.IsActive && pt.IsActive

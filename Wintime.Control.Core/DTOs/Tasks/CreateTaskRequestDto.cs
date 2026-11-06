@@ -14,6 +14,10 @@ public class CreateTaskRequestDto
     public int PlanQuantity { get; set; }
     /// <summary>Вес детали, г; null — скопировать из изделия (PZP-24).</summary>
     public decimal? PartWeightGrams { get; set; }
+    /// <summary>Тарная единица, шт.; null — скопировать из типа изделия (PZP-29).</summary>
+    public int? PackagingUnit { get; set; }
+    /// <summary>Явно не копировать тарную единицу типа и оставить значение пустым.</summary>
+    public bool ClearPackagingUnit { get; set; }
     public string? Note { get; set; }
     /// <summary>Плановая дата. Обязательна (null → 400).</summary>
     public DateOnly? PlannedDate { get; set; }

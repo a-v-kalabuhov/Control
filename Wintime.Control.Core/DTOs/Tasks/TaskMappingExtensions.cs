@@ -33,6 +33,7 @@ public static class TaskMappingExtensions
             PersonnelName = t.Personnel?.FullName,
             PlanQuantity = t.PlanQuantity,
             PartWeightGrams = t.PartWeightGrams,
+            PackagingUnit = t.PackagingUnit,
             ActualQuantity = t.ActualQuantity,
             ActualMaterialWeightGrams = t.ActualMaterialWeightGrams,
             ProgressPercent = t.PlanQuantity > 0 ? (decimal)t.ActualQuantity / t.PlanQuantity * 100 : 0,

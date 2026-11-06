@@ -631,6 +631,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("HasSample")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -709,6 +712,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int?>("PackagingUnit")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -792,6 +798,9 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.Property<Guid?>("OrderId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("PackagingUnit")
+                        .HasColumnType("integer");
 
                     b.Property<decimal>("PartWeightGrams")
                         .HasColumnType("numeric");

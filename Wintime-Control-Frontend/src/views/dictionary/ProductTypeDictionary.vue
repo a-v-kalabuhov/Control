@@ -41,7 +41,16 @@
         <template #default="{ row }">
           <el-table :data="row.products" size="small" class="m-2">
             <el-table-column prop="fullArticle" label="Полный артикул" width="220" />
-            <el-table-column prop="name" label="Наименование" />
+            <el-table-column label="Наименование">
+              <template #default="{ row: p }">
+                <div class="flex items-center gap-1">
+                  <span>{{ p.name }}</span>
+                  <el-tooltip v-if="p.hasSample" content="Есть образец">
+                    <el-icon data-test="product-sample" class="text-emerald-600"><Box /></el-icon>
+                  </el-tooltip>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column prop="partWeightGrams" label="Вес, г" width="100" align="right" />
             <el-table-column label="Цикл литья, с" width="130" align="right">
               <template #default="{ row: p }">{{ p.plannedInjectionCycleSeconds ?? '—' }}</template>
@@ -103,6 +112,14 @@
         <el-form-item label="Заказчик" prop="company">
           <SuggestInput v-model="form.company" :fetch="fetchCompanies" placeholder="Необязательно" />
         </el-form-item>
+        <el-form-item label="Тарная единица, шт." prop="packagingUnit">
+          <el-input-number
+            v-model="form.packagingUnit" :min="1" :max="1000000" :precision="0"
+            data-test="type-packaging-unit"
+            class="w-full" controls-position="right"
+          />
+          <div class="text-xs text-gray-500 mt-1">Необязательно; копируется в новые задания</div>
+        </el-form-item>
       </el-form>
 
       <div v-if="editing" class="mt-4">
@@ -113,7 +130,16 @@
         <el-table :data="editing.products" size="small">
           <el-table-column prop="article" label="Артикул" width="100" />
           <el-table-column prop="fullArticle" label="Полный артикул" width="150" />
-          <el-table-column prop="name" label="Наименование" />
+          <el-table-column label="Наименование">
+            <template #default="{ row: p }">
+              <div class="flex items-center gap-1">
+                <span>{{ p.name }}</span>
+                <el-tooltip v-if="p.hasSample" content="Есть образец">
+                  <el-icon data-test="product-sample" class="text-emerald-600"><Box /></el-icon>
+                </el-tooltip>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column label="Статус" width="100" align="center">
             <template #default="{ row: p }">
               <el-tag :type="p.isActive ? 'success' : 'info'">{{ p.isActive ? 'Активно' : 'В архиве' }}</el-tag>
@@ -175,6 +201,9 @@
           />
           <div class="text-xs text-gray-500 mt-1">Необязательно; полный цикл задаётся в задании</div>
         </el-form-item>
+        <el-form-item label="Образец">
+          <el-switch v-model="productForm.hasSample" active-text="Есть образец" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="productDialogVisible = false">Отмена</el-button>
@@ -187,6 +216,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Box } from '@element-plus/icons-vue'
 import { productTypesApi } from '@/api/productTypes'
 import { activeProducts } from '@/utils/productLabel'
 import { nextProductArticle } from '@/utils/productArticle'
@@ -242,10 +272,12 @@ async function onRecipeSaved(context) {
 const productDialogVisible = ref(false)
 const savingProduct = ref(false)
 const editingProduct = ref(null)
-const productForm = reactive({ article: '', name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null })
+const productForm = reactive({
+  article: '', name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null, hasSample: false
+})
 
 const filters = reactive({ search: '', isActive: null, customer: null, customerEmpty: false })
-const form = reactive({ article: '', name: '', company: '' })
+const form = reactive({ article: '', name: '', company: '', packagingUnit: null })
 
 const rules = {
   article: [{ required: true, message: 'Введите артикул', trigger: 'blur' }],
@@ -289,13 +321,15 @@ async function fetchCompanies(search) {
 
 function showCreateModal() {
   editing.value = null
-  Object.assign(form, { article: '', name: '', company: '' })
+  Object.assign(form, { article: '', name: '', company: '', packagingUnit: null })
   dialogVisible.value = true
 }
 
 function editItem(row) {
   editing.value = row
-  Object.assign(form, { article: row.article, name: row.name, company: row.company ?? '' })
+  Object.assign(form, {
+    article: row.article, name: row.name, company: row.company ?? '', packagingUnit: row.packagingUnit ?? null
+  })
   dialogVisible.value = true
 }
 
@@ -306,7 +340,10 @@ async function save() {
     saving.value = true
     try {
       if (editing.value) {
-        await productTypesApi.update(editing.value.id, form)
+        await productTypesApi.update(editing.value.id, {
+          ...form,
+          clearPackagingUnit: form.packagingUnit === null || form.packagingUnit === undefined
+        })
         ElMessage.success('Тип изделия обновлён')
         dialogVisible.value = false
       } else {
@@ -342,7 +379,7 @@ function showProductModal() {
   editingProduct.value = null
   Object.assign(productForm, {
     article: nextProductArticle(editing.value.products),
-    name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null
+    name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null, hasSample: false
   })
   productDialogVisible.value = true
 }
@@ -352,7 +389,8 @@ function editProduct(p) {
   Object.assign(productForm, {
     article: p.article, name: p.name,
     partWeightGrams: p.partWeightGrams ?? 0,
-    plannedInjectionCycleSeconds: p.plannedInjectionCycleSeconds ?? null
+    plannedInjectionCycleSeconds: p.plannedInjectionCycleSeconds ?? null,
+    hasSample: p.hasSample ?? false
   })
   productDialogVisible.value = true
 }
@@ -389,7 +427,8 @@ async function saveProduct() {
     const payload = {
       article, name,
       partWeightGrams: productForm.partWeightGrams ?? 0,
-      plannedInjectionCycleSeconds: productForm.plannedInjectionCycleSeconds ?? null
+      plannedInjectionCycleSeconds: productForm.plannedInjectionCycleSeconds ?? null,
+      hasSample: productForm.hasSample ?? false
     }
     if (editingProduct.value) {
       await productTypesApi.updateProduct(typeId, editingProduct.value.id, {

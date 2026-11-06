@@ -17,6 +17,9 @@ public class ShiftTask : BaseEntity
 
     /// <summary>Вес одной детали, граммы. Копия веса изделия; правится менеджером в любом статусе (PZP-24).</summary>
     public decimal PartWeightGrams { get; set; }
+
+    /// <summary>Тарная единица, штук. Копия умолчания типа изделия; правится менеджером в любом статусе (PZP-29).</summary>
+    public int? PackagingUnit { get; set; }
     public Wintime.Control.Core.Enums.TaskStatus Status { get; set; } = Wintime.Control.Core.Enums.TaskStatus.Planned;
     public string? Note { get; set; }
     public string? CloseReason { get; set; }
@@ -310,6 +313,14 @@ public class ShiftTask : BaseEntity
         if (weightGrams < 0)
             throw new DomainException("Вес детали должен быть неотрицательным");
         PartWeightGrams = weightGrams;
+    }
+
+    /// <summary>PZP-29: изменить или очистить тарную единицу. Разрешено в любом статусе.</summary>
+    public void SetPackagingUnit(int? packagingUnit)
+    {
+        if (packagingUnit is <= 0)
+            throw new DomainException("Тарная единица должна быть больше нуля");
+        PackagingUnit = packagingUnit;
     }
 
     /// <summary>

@@ -61,13 +61,32 @@ SELECT '{task2Id}',0,0,now(),0,""Id"",'{mold2Id}','{product1Id}',100,current_dat
 
         await migrator.MigrateAsync(target);
 
-        await using var check = NewContext();
-        (await check.Products.OrderBy(p => p.Article).ToListAsync())
-            .Should().OnlyContain(p => p.PartWeightGrams == 10m);
-        (await check.ShiftTasks.SingleAsync(t => t.Id == task1Id)).PartWeightGrams.Should().Be(10m);
-        (await check.ShiftTasks.SingleAsync(t => t.Id == task2Id)).PartWeightGrams.Should().Be(12m);
         await using var verifyConn = new NpgsqlConnection(_pg.GetConnectionString());
         await verifyConn.OpenAsync();
+
+        // Контекст описывает последнюю схему, а здесь база остановлена на PZP-24:
+        // проверяем исторические колонки через SQL, не затрагивая поля поздних миграций.
+        var productWeights = new Dictionary<string, decimal>();
+        await using (var cmd = new NpgsqlCommand(
+            "SELECT \"Article\", \"PartWeightGrams\" FROM \"Products\"", verifyConn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                productWeights.Add(reader.GetString(0), reader.GetDecimal(1));
+        }
+        productWeights.Values.Should().OnlyContain(weight => weight == 10m);
+
+        var taskWeights = new Dictionary<Guid, decimal>();
+        await using (var cmd = new NpgsqlCommand(
+            "SELECT \"Id\", \"PartWeightGrams\" FROM \"ShiftTasks\"", verifyConn))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                taskWeights.Add(reader.GetGuid(0), reader.GetDecimal(1));
+        }
+        taskWeights[task1Id].Should().Be(10m);
+        taskWeights[task2Id].Should().Be(12m);
+
         await using var verifyCmd = new NpgsqlCommand(
             "SELECT count(*) FROM information_schema.columns WHERE table_name = 'Molds' AND column_name = 'PartWeightGrams'", verifyConn);
         (await verifyCmd.ExecuteScalarAsync()).Should().Be(0L);

@@ -46,6 +46,9 @@
           </template>
           <span v-else>—</span>
         </el-descriptions-item>
+        <el-descriptions-item label="Тарная единица">
+          {{ task?.packagingUnit ? `${task.packagingUnit} шт.` : '—' }}
+        </el-descriptions-item>
         <el-descriptions-item label="План">
           <div class="text-xl font-bold text-primary-600">{{ task?.planQuantity }} шт</div>
         </el-descriptions-item>
