@@ -21,7 +21,7 @@ public class ReleaseForecastService : IReleaseForecastService
         var ids = taskIds.ToList();
         var inputs = await _context.ShiftTasks
             .Where(t => ids.Contains(t.Id) && t.Status == TaskStatus.InProgress)
-            .Select(t => new { t.Id, t.PlanQuantity, t.ActualQuantity, t.PlannedFullCycleSeconds, t.Mold.Cavities })
+            .Select(t => new { t.Id, t.PlanQuantity, t.ActualQuantity, t.PlannedFullCycleSeconds, t.Cavities })
             .ToListAsync(ct);
         if (inputs.Count == 0)
             return new Dictionary<Guid, ReleaseForecastResult>();

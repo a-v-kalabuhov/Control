@@ -41,7 +41,7 @@ public class TaskListFiltersApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Status = status, PlannedDate = plannedDate,
+            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Cavities = 1, Status = status, PlannedDate = plannedDate,
             IssuedAt = issued, SetupStartedAt = setup, StartedAt = started, CompletedAt = completed, ClosedAt = closed
         };
         db.ShiftTasks.Add(task);

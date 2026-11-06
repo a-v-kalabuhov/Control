@@ -281,6 +281,38 @@ describe('MoldDictionary — веса изделий (PZP-24)', () => {
     expect(wrapper.vm.productWeightRows[0].shotWeightGrams).toBe(80)
   })
 
+  it('вес за смыкание использует умолчание изделия или максимум ПФ', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editMold(moldRow)
+    wrapper.vm.form.cavities = 4
+    wrapper.vm.productTypes[0].products[0].cavities = 2
+    await flushPromises()
+
+    expect(wrapper.vm.productWeightRows[0].shotWeightGrams).toBe(20)
+
+    wrapper.vm.productTypes[0].products[0].cavities = null
+    await flushPromises()
+    expect(wrapper.vm.productWeightRows[0].shotWeightGrams).toBe(40)
+  })
+
+  it('архивный тип с разной гнёздовостью изделий не объединяет строки весов', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editMold({
+      ...moldRow,
+      productTypeId: 'pt-archived',
+      cavities: 4,
+      productWeights: [
+        { productId: 'p-1', fullArticle: 'ART.0', partWeightGrams: 10, cavities: 1 },
+        { productId: 'p-2', fullArticle: 'ART.BLK', partWeightGrams: 10, cavities: 2 }
+      ]
+    })
+
+    expect(wrapper.vm.productWeightRows).toHaveLength(2)
+    expect(wrapper.vm.productWeightRows.map(r => r.shotWeightGrams)).toEqual([10, 20])
+  })
+
   it('форма ПФ больше не отправляет вес детали', async () => {
     const wrapper = mountView()
     await flushPromises()

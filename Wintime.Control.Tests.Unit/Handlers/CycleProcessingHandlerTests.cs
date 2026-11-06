@@ -417,7 +417,7 @@ public class CycleProcessingHandlerTests
         using var db = CreateDb();
         var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
         var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
-        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.InProgress };
+        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Cavities = 2, Status = EntityTaskStatus.InProgress };
         db.AddRange(mold, imm, task);
         await db.SaveChangesAsync();
 
@@ -428,9 +428,31 @@ public class CycleProcessingHandlerTests
             currentCycle: new CycleSnapshot(1, DateTime.UtcNow, null, null)));
 
         var cycle = await db.ImmCycles.SingleAsync();
-        cycle.Cavities.Should().Be(4);
+        cycle.Cavities.Should().Be(2);
         cycle.TaskId.Should().Be(task.Id);
         cycle.MoldId.Should().Be(mold.Id);
+    }
+
+    [Fact]
+    public async SystemTask InProgress_lastCycle_without_open_row_snapshots_task_cavities()
+    {
+        var immId = Guid.NewGuid();
+        using var db = CreateDb();
+        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
+        var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
+        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Cavities = 2, Status = EntityTaskStatus.InProgress };
+        db.AddRange(mold, imm, task);
+        await db.SaveChangesAsync();
+        var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
+        var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);
+        var start = DateTime.UtcNow.AddSeconds(-10);
+
+        await sut.ProcessAsync(MakeContext(immId, "auto",
+            lastCycle: new CompletedCycleSnapshot(1, start, start.AddSeconds(10), null, null)));
+
+        var cycle = await db.ImmCycles.SingleAsync();
+        cycle.Cavities.Should().Be(2);
+        cycle.TaskId.Should().Be(task.Id);
     }
 
     [Fact]

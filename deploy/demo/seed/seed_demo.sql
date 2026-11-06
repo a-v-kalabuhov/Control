@@ -93,6 +93,9 @@ JOIN (VALUES (1,'0','По умолчанию',3.2,4),(1,'Б','Белая',3.2,4)
              (9,'0','По умолчанию',1.5,3),(10,'0','По умолчанию',0.4,3)) v(n, part, name, pw, inj)
   ON pt."Id" = ('e3000000-0000-0000-0000-0000000000' || lpad(v.n::text, 2, '0'))::uuid;
 
+-- PZP-36: изделие с умолчанием меньше максимума ПФ проверяет согласованность плана и циклов.
+UPDATE "Products" SET "Cavities" = 1 WHERE "FullArticle" = 'КФ01.0';
+
 -- ct — длительность полного цикла, с; inj — время литья, с; rw — вес литника, г
 CREATE TEMP TABLE _mold AS
 SELECT n, ('c3000000-0000-0000-0000-0000000000' || lpad(n::text, 2, '0'))::uuid AS id,
@@ -248,18 +251,19 @@ DECLARE
   m         record;
   v_prod    uuid;
   v_weight  numeric;
+  v_cav     int;
   loc       timestamp := p_planned AT TIME ZONE 'Europe/Moscow';
   v_created timestamptz := COALESCE(p_issued, p_planned) - interval '1 day';
 BEGIN
   SELECT * INTO m FROM _mold WHERE n = p_mold;
-  SELECT "Id", "PartWeightGrams" INTO v_prod, v_weight FROM "Products" WHERE "ProductTypeId" = m.type_id ORDER BY random() LIMIT 1;
-  INSERT INTO "ShiftTasks" ("Id","ImmId","MoldId","ProductId","PersonnelId","PlanQuantity","ActualQuantity",
+  SELECT "Id", "PartWeightGrams", "Cavities" INTO v_prod, v_weight, v_cav FROM "Products" WHERE "ProductTypeId" = m.type_id ORDER BY random() LIMIT 1;
+  INSERT INTO "ShiftTasks" ("Id","ImmId","MoldId","ProductId","PersonnelId","PlanQuantity","Cavities","ActualQuantity",
                             "ActualMaterialWeightGrams","PartWeightGrams","Status","WorkMode","PlannedFullCycleSeconds",
                             "PlannedInjectionCycleSeconds","DefectQuantity","PlannedDate","PlannedSetupStartTime",
                             "PlannedSetupMinutes","ReleaseBufferFixedMinutes","ReleaseBufferPercent",
                             "IssuedAt","SetupStartedAt","MoldVerifiedAt","StartedAt","CompletedAt","ClosedAt",
                             "CreatedAt","UpdatedAt")
-  VALUES (v_id, p_imm, m.id, v_prod, p_adj, p_plan, 0, 0, v_weight, p_status, p_mode, m.ct, m.inj, 0,
+  VALUES (v_id, p_imm, m.id, v_prod, p_adj, p_plan, COALESCE(v_cav, m.cav), 0, 0, v_weight, p_status, p_mode, m.ct, m.inj, 0,
           loc::date, loc::time, 90, 30, 10,
           p_issued, p_setup,
           CASE WHEN p_setup IS NOT NULL AND random() < 0.8 THEN p_setup + interval '10 minutes' END,
@@ -281,7 +285,7 @@ DECLARE
   s_beg timestamptz; s_end timestamptz; t timestamptz; b_end timestamptz; c_end timestamptz; x_end timestamptz;
   v_planned timestamptz;
   w_a timestamptz; w_b timestamptz; w_st text;
-  v_task uuid; v_mold int; last_mold int; v_dt_done boolean;
+  v_task uuid; v_mold int; v_cav int; last_mold int; v_dt_done boolean;
 BEGIN
   PERFORM setseed(0.19);
   SELECT * INTO cfg FROM _cfg;
@@ -372,17 +376,28 @@ BEGIN
         cur := lim;
         CONTINUE;
       END IF;
-      need := ceil(v_plan::numeric / m.cav)::int;                     -- смыканий до остановки по плану
 
       v_planned := date_bin('15 minutes', s_beg - pg_temp.rmin(0, 90), cfg.p_start);
       v_task := pg_temp.task(im.id, v_mold, v_adj, v_plan, 3, v_mode, v_planned,
                              v_planned - pg_temp.rmin(60, 720), s_beg, s_end, NULL, NULL);
+      -- Фактическая рабочая копия выбранного изделия, не обязательно максимум ПФ.
+      SELECT "Cavities" INTO v_cav FROM "ShiftTasks" WHERE "Id" = v_task;
+      v_plan := (floor(v_shots * v_cav / 100.0) * 100)::int;
+      IF v_plan < 100 THEN
+        DELETE FROM "ShiftTasks" WHERE "Id" = v_task;
+        PERFORM pg_temp.st(im.id, 'Idle', cur, lim);
+        cur := lim;
+        CONTINUE;
+      END IF;
+      UPDATE "ShiftTasks" SET "PlanQuantity" = v_plan WHERE "Id" = v_task;
+      need := ceil(v_plan::numeric / v_cav)::int;                     -- смыканий до остановки по плану
+
       PERFORM pg_temp.st(im.id, 'Manual', s_beg, s_end);
 
       t := s_end; done := 0;
       WHILE done < need AND t < lim LOOP
         b_end := LEAST(t + pg_temp.rmin(40, 240), lim);
-        n := pg_temp.cyc(im.id, v_task, m.id, m.cav, m.ct, m.inj, v_gap, t, b_end, cno, need - done);
+        n := pg_temp.cyc(im.id, v_task, m.id, v_cav, m.ct, m.inj, v_gap, t, b_end, cno, need - done);
         EXIT WHEN n = 0;
         c_end := t + n * v_period * interval '1 second';
         PERFORM pg_temp.st(im.id, 'Auto', t, c_end);
@@ -435,8 +450,10 @@ BEGIN
     ELSIF im.kind = 'setup' THEN
       SELECT * INTO m FROM _mold WHERE _mold.n = im.cur_mold;
       v_planned := date_bin('15 minutes', hist_end - interval '30 minutes', cfg.p_start);
-      PERFORM pg_temp.task(im.id, im.cur_mold, v_adjuster, m.cav * 500, 5, 0, v_planned,
+      v_task := pg_temp.task(im.id, im.cur_mold, v_adjuster, m.cav * 500, 5, 0, v_planned,
                            v_planned - interval '3 hours', hist_end, NULL, NULL, NULL);
+      SELECT "Cavities" INTO v_cav FROM "ShiftTasks" WHERE "Id" = v_task;
+      UPDATE "ShiftTasks" SET "PlanQuantity" = v_cav * 500 WHERE "Id" = v_task;
       PERFORM pg_temp.st(im.id, 'Manual', hist_end, NULL);
 
     ELSE -- run: текущее задание в работе
@@ -448,6 +465,10 @@ BEGIN
       v_task := pg_temp.task(im.id, im.cur_mold, v_adj,
                              GREATEST(floor(60 * 3600 / (m.ct + 1) * m.cav / 100.0) * 100, 100)::int, 2, 0,
                              v_planned, v_planned - pg_temp.rmin(60, 600), s_beg, s_end, NULL, NULL);
+      SELECT "Cavities" INTO v_cav FROM "ShiftTasks" WHERE "Id" = v_task;
+      UPDATE "ShiftTasks"
+         SET "PlanQuantity" = GREATEST(floor(60 * 3600 / (m.ct + 1) * v_cav / 100.0) * 100, 100)::int
+       WHERE "Id" = v_task;
       PERFORM pg_temp.st(im.id, 'Manual', s_beg, s_end);
       t := s_end; v_dt_done := false;
       LOOP
@@ -462,7 +483,7 @@ BEGIN
         b_end := LEAST(t + pg_temp.rmin(40, 240), cfg.t0,
                        CASE WHEN im.n = 2 AND NOT v_dt_done AND t < cfg.t0 - interval '100 minutes'
                             THEN cfg.t0 - interval '90 minutes' ELSE 'infinity'::timestamptz END);
-        n := pg_temp.cyc(im.id, v_task, m.id, m.cav, m.ct, m.inj, 1, t, b_end, cno, 1000000);
+        n := pg_temp.cyc(im.id, v_task, m.id, v_cav, m.ct, m.inj, 1, t, b_end, cno, 1000000);
         cno := cno + n;
         IF b_end >= cfg.t0 THEN
           PERFORM pg_temp.st(im.id, 'Auto', t, NULL);
@@ -486,17 +507,19 @@ END $$;
 
 -- Очередь «на сейчас»: выданные демо-adjuster и задания других наладчиков
 DO $$
-DECLARE cfg record; v_adjuster text; q record; v_planned timestamptz; m record;
+DECLARE cfg record; v_adjuster text; q record; v_planned timestamptz; m record; v_task uuid; v_cav int;
 BEGIN
   SELECT * INTO cfg FROM _cfg;
   SELECT "Id" INTO v_adjuster FROM "Users" WHERE "UserName" = 'adjuster';
   FOR q IN SELECT * FROM _queue ORDER BY imm, ago DESC LOOP
     SELECT * INTO m FROM _mold WHERE n = q.mold;
     v_planned := date_bin('15 minutes', cfg.t0 - q.ago * interval '1 minute', cfg.p_start);
-    PERFORM pg_temp.task((SELECT id FROM _imm WHERE n = q.imm), q.mold,
+    v_task := pg_temp.task((SELECT id FROM _imm WHERE n = q.imm), q.mold,
                          CASE WHEN q.who = 'demo' THEN v_adjuster ELSE q.who END,
                          m.cav * q.shots, q.status, 0, v_planned,
                          CASE WHEN q.status = 1 THEN v_planned - interval '2 hours' END, NULL, NULL, NULL, NULL);
+    SELECT "Cavities" INTO v_cav FROM "ShiftTasks" WHERE "Id" = v_task;
+    UPDATE "ShiftTasks" SET "PlanQuantity" = v_cav * q.shots WHERE "Id" = v_task;
   END LOOP;
 END $$;
 

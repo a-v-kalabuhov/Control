@@ -807,6 +807,138 @@ describe('TaskFormModal — тарная единица (PZP-29)', () => {
   })
 })
 
+describe('TaskFormModal — гнёздовость задания (PZP-36)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('без умолчания изделия подставляет максимум ПФ и ограничивает ввод', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+
+    expect(wrapper.vm.form.cavities).toBe(4)
+    const input = wrapper.findComponent('[data-test="task-cavities"]')
+    expect(input.exists()).toBe(true)
+    expect(input.props('min')).toBe(1)
+    expect(input.props('max')).toBe(4)
+    expect(input.props('precision')).toBe(0)
+  })
+
+  it('подставляет умолчание изделия и обновляет его при смене изделия', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-2'
+    await flushPromises()
+    wrapper.vm.productTypes[1].products[0].cavities = 1
+    wrapper.vm.productTypes[1].products[1].cavities = 2
+    await flushPromises()
+
+    wrapper.vm.form.productId = 'p-Y0'
+    await flushPromises()
+    expect(wrapper.vm.form.cavities).toBe(1)
+
+    wrapper.vm.form.productId = 'p-YB'
+    await flushPromises()
+    expect(wrapper.vm.form.cavities).toBe(2)
+  })
+
+  it('при редактировании сохраняет снапшот и восстанавливает его при возврате изделия', async () => {
+    const task = {
+      id: 'task-cavities', status: 'Planned', immId: 'imm-1', moldId: 'mold-2', productId: 'p-Y0', orderId: null,
+      planQuantity: 10, cavities: 1, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+    wrapper.vm.productTypes[1].products[0].cavities = 2
+    wrapper.vm.productTypes[1].products[1].cavities = 2
+    await flushPromises()
+    expect(wrapper.vm.form.cavities).toBe(1)
+
+    wrapper.vm.form.productId = 'p-YB'
+    await flushPromises()
+    expect(wrapper.vm.form.cavities).toBe(2)
+
+    wrapper.vm.form.productId = 'p-Y0'
+    await flushPromises()
+    expect(wrapper.vm.form.cavities).toBe(1)
+  })
+
+  it('не уменьшает старый снапшот при позднем уменьшении справочного умолчания', async () => {
+    let resolveTypes
+    productTypesApi.getList.mockImplementationOnce(() => new Promise(resolve => { resolveTypes = resolve }))
+    const task = {
+      id: 'task-cavities-old', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0', orderId: null,
+      planQuantity: 10, cavities: 4, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+    expect(wrapper.vm.form.cavities).toBe(4)
+
+    resolveTypes({ data: [
+      { id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, products: [
+        { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true, cavities: 2 }
+      ] }
+    ] })
+    await flushPromises()
+
+    expect(wrapper.vm.defaultCavities).toBe(2)
+    expect(wrapper.findComponent('[data-test="task-cavities"]').props('max')).toBe(4)
+    wrapper.vm.populateForm(task) // повторное открытие при уже загруженном меньшем умолчании
+    await flushPromises()
+    expect(wrapper.vm.form.cavities).toBe(4)
+    wrapper.vm.form.note = 'Правка без изменения гнёзд'
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(tasksApi.update).toHaveBeenCalledWith('task-cavities-old', expect.objectContaining({ cavities: 4 }))
+  })
+
+  it('не отправляет значение выше умолчания', async () => {
+    const wrapper = mountModal()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    Object.assign(wrapper.vm.form, {
+      immId: 'imm-1', planQuantity: 10, plannedFullCycleSeconds: 60, plannedDate: '2099-01-01'
+    })
+    await flushPromises()
+    let validationError = null
+    wrapper.vm.rules.cavities[0].validator(null, 5, error => { validationError = error })
+
+    expect(validationError?.message).toContain('Не больше 4')
+    expect(tasksApi.create).not.toHaveBeenCalled()
+  })
+
+  it('предпросмотр плана использует уменьшенную гнёздовость задания', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.vm.loadMolds()
+    Object.assign(wrapper.vm.form, {
+      moldId: 'mold-1', planQuantity: 100, plannedFullCycleSeconds: 60, cavities: 2
+    })
+    await flushPromises()
+
+    const preview = wrapper.find('[data-test="plan-preview"]').text()
+    expect(preview).toContain('Выпуск ≈ 50 мин')
+    expect(preview).toContain('буфер ≈ 15 мин')
+    expect(preview).toContain('всего с наладкой ≈ 1 ч 35 мин')
+  })
+
+  it('в закрытом задании поле доступно и отправляет уменьшенное значение', async () => {
+    const task = {
+      id: 'task-cavities-closed', status: 'Closed', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
+      planQuantity: 10, cavities: 2, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="task-cavities"]').classes()).not.toContain('is-disabled')
+    wrapper.vm.form.cavities = 1
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.update).toHaveBeenCalledWith('task-cavities-closed', expect.objectContaining({ cavities: 1 }))
+  })
+})
+
 describe('TaskFormModal — плановое начало и наладчик (PZP-13)', () => {
   beforeEach(() => vi.clearAllMocks())
 

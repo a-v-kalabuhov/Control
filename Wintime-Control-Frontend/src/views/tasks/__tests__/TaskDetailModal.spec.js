@@ -90,6 +90,24 @@ describe('TaskDetailModal — план задания (PZP-14)', () => {
   })
 })
 
+describe('TaskDetailModal — гнёздовость задания (PZP-36)', () => {
+  const cellText = (wrapper, label) => {
+    const cells = wrapper.findAll('.el-descriptions__cell')
+    const idx = cells.findIndex(c => c.text() === label)
+    return cells[idx + 1]?.text()
+  }
+
+  it('показывает рабочую гнёздовость задания или прочерк', async () => {
+    const wrapper = mountModal({ id: 't1', status: 'Planned', cavities: 2 })
+    await flushPromises()
+    expect(cellText(wrapper, 'Гнёзда')).toBe('2')
+
+    await wrapper.setProps({ task: { id: 't1', status: 'Planned', cavities: null } })
+    await flushPromises()
+    expect(cellText(wrapper, 'Гнёзда')).toBe('—')
+  })
+})
+
 describe('TaskDetailModal — вкладки', () => {
   it('по умолчанию «Данные задания»; «Результаты выполнения» монтируют вкладку итогов с id задания', async () => {
     const wrapper = mount(TaskDetailModal, {

@@ -1,6 +1,6 @@
 # ADR-0001: Снапшот гнёздности в ImmCycle.Cavities
 
-- **Статус:** Accepted
+- **Статус:** Superseded by [ADR-0025](0025-cavities-mold-product-task.md)
 - **Дата:** 2026-06-15
 
 ## Контекст

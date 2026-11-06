@@ -102,6 +102,9 @@ public class MoldsController : ControllerBase
         var productType = await _context.ProductTypes.Include(pt => pt.Products).FirstOrDefaultAsync(pt => pt.Id == request.ProductTypeId.Value);
         if (productType == null || !productType.IsActive)
             return BadRequest("Указан несуществующий или архивный тип изделия.");
+        var productMaximum = productType.Products.Select(p => (int?)p.Cavities).Max();
+        if (productMaximum.HasValue && request.Cavities < productMaximum.Value)
+            return BadRequest($"Максимум гнёзд ПФ не может быть меньше умолчания изделия ({productMaximum.Value}).");
 
         var (compatibleImms, immError) = await ResolveCompatibleImmsAsync(
             request.CompatibleImmIds ?? new List<Guid>(), Array.Empty<Imm>());
@@ -147,6 +150,16 @@ public class MoldsController : ControllerBase
 
         if (request.Cavities is < 1)
             return BadRequest("Количество гнёзд должно быть не меньше 1.");
+        var cavityRelatedChange = (request.Cavities.HasValue && request.Cavities.Value != mold.Cavities)
+            || (request.ProductTypeId.HasValue && request.ProductTypeId.Value != mold.ProductTypeId)
+            || (request.IsActive.HasValue && request.IsActive.Value != mold.IsActive);
+        if (cavityRelatedChange && (mold.IsActive || request.IsActive == true))
+        {
+            var cavitiesError = await ProductDefaultCavitiesErrorAsync(
+                request.ProductTypeId ?? mold.ProductTypeId, request.Cavities ?? mold.Cavities);
+            if (cavitiesError != null)
+                return BadRequest(cavitiesError);
+        }
 
         // PZP-26: особенности архивной ПФ доступны только для чтения.
         // Повторная передача неизменных значений не блокирует правку остальных полей.
@@ -264,6 +277,19 @@ public class MoldsController : ControllerBase
         return Ok(dto);
     }
 
+    private async Task<string?> ProductDefaultCavitiesErrorAsync(Guid? productTypeId, int moldCavities)
+    {
+        if (!productTypeId.HasValue)
+            return null;
+        var productMaximum = await _context.Products
+            .Where(p => p.ProductTypeId == productTypeId.Value)
+            .Select(p => (int?)p.Cavities)
+            .MaxAsync();
+        return productMaximum.HasValue && moldCavities < productMaximum.Value
+            ? $"Максимум гнёзд ПФ не может быть меньше умолчания изделия ({productMaximum.Value})."
+            : null;
+    }
+
     private static decimal? ShotWeight(decimal partWeight, int cavities) =>
         cavities > 0 && partWeight <= decimal.MaxValue / cavities ? partWeight * cavities : null;
 
@@ -279,7 +305,8 @@ public class MoldsController : ControllerBase
             .Select(p => new MoldProductWeightDto
             {
                 ProductId = p.Id, FullArticle = p.FullArticle, ProductName = p.Name,
-                PartWeightGrams = p.PartWeightGrams, ShotWeightGrams = ShotWeight(p.PartWeightGrams, m.Cavities)
+                PartWeightGrams = p.PartWeightGrams, Cavities = p.Cavities,
+                ShotWeightGrams = ShotWeight(p.PartWeightGrams, p.Cavities ?? m.Cavities)
             })
             .ToList(),
         MaxResourceCycles = m.MaxResourceCycles,

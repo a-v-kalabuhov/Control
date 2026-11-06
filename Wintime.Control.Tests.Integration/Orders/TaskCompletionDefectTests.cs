@@ -23,7 +23,7 @@ public class TaskCompletionDefectTests : IClassFixture<IntegrationTestFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var t = new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
-            PlanQuantity = 100, ActualQuantity = actual, Status = TaskStatus.InProgress, IssuedAt = DateTime.UtcNow, StartedAt = DateTime.UtcNow };
+            Cavities = 1, PlanQuantity = 100, ActualQuantity = actual, Status = TaskStatus.InProgress, IssuedAt = DateTime.UtcNow, StartedAt = DateTime.UtcNow };
         db.ShiftTasks.Add(t);
         await db.SaveChangesAsync();
         return t.Id;

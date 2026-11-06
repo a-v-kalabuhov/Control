@@ -105,7 +105,7 @@ public class TaskPlannedStartApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10,
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Cavities = 1,
             Status = status, PlannedDate = date, PlannedSetupStartTime = time, PlannedFullCycleSeconds = 30
         };
         db.ShiftTasks.Add(task);

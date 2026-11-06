@@ -6,7 +6,7 @@ public class Mold : BaseEntity
 {
     public string FormId { get; set; } = string.Empty; // Уникальный артикул для QR
     public string Name { get; set; } = string.Empty; // Наименование изделия
-    public int Cavities { get; set; } // Гнёздность
+    public int Cavities { get; set; } // Максимальное количество гнёзд ПФ (PZP-36)
     public decimal RunnerWeightGrams { get; set; } // Вес литника
     public int MaxResourceCycles { get; set; } // Ресурс
     public int? To1Cycles { get; set; } // Порог ТО1

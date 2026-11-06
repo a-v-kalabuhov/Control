@@ -624,6 +624,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int?>("Cavities")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -764,6 +767,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .HasColumnType("numeric");
 
                     b.Property<int>("ActualQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Cavities")
                         .HasColumnType("integer");
 
                     b.Property<string>("CloseReason")

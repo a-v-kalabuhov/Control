@@ -37,7 +37,7 @@ public class EffectiveStatusHistoryServiceTests : IClassFixture<IntegrationTestF
             { ImmId = withData.Id, Status = ImmStatus.Auto, ChangedAt = from, EndedAt = null });
         db.ShiftTasks.Add(new ShiftTask
         {
-            ImmId = withData.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100,
+            ImmId = withData.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1,
             Status = TaskStatus.InProgress, SetupStartedAt = from, StartedAt = from.AddMinutes(10)
         });
         db.Events.Add(new Event
@@ -78,14 +78,14 @@ public class EffectiveStatusHistoryServiceTests : IClassFixture<IntegrationTestF
         // Завершено до окна — не должно попасть в результат.
         db.ShiftTasks.Add(new ShiftTask
         {
-            ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Status = TaskStatus.Completed,
+            ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1, Status = TaskStatus.Completed,
             SetupStartedAt = from.AddDays(-3), StartedAt = from.AddDays(-3).AddMinutes(5),
             CompletedAt = from.AddDays(-2)
         });
         // Начато раньше и ещё открыто — пересекает окно.
         db.ShiftTasks.Add(new ShiftTask
         {
-            ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Status = TaskStatus.InProgress,
+            ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1, Status = TaskStatus.InProgress,
             SetupStartedAt = from.AddDays(-1), StartedAt = from.AddDays(-1).AddMinutes(5)
         });
         await db.SaveChangesAsync();

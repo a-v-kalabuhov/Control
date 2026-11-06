@@ -20,7 +20,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
     private readonly IntegrationTestFactory _factory;
     public AssignTaskTests(IntegrationTestFactory factory) => _factory = factory;
 
-    private async Task<(Guid runId, Guid taskId, Guid immId)> SeedEpisodeWithAdjacentTaskAsync()
+    private async Task<(Guid runId, Guid taskId, Guid immId, Guid moldId)> SeedEpisodeWithAdjacentTaskAsync()
     {
         var immId = await _factory.CreateFreshImmAsync();
         var start = DateTime.UtcNow.AddMinutes(-20);
@@ -31,16 +31,22 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         // 2 сироты-цикла по 2 гнезда, годные
         db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, Cavities = 0, IsSuccessful = true, StartTime = start, EndTime = start.AddSeconds(60), DurationSeconds = 60 });
         db.ImmCycles.Add(new ImmCycle { ImmId = immId, TaskId = null, Cavities = 0, IsSuccessful = true, StartTime = start.AddSeconds(60), EndTime = start.AddSeconds(120), DurationSeconds = 60 });
-        var task = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2), PartWeightGrams = 11 };
+        var mold = new Mold
+        {
+            Name = "ПФ ретро-привязки", FormId = $"RETRO-{Guid.NewGuid():N}",
+            Cavities = 4, ProductTypeId = _factory.TestProductTypeId
+        };
+        db.Molds.Add(mold);
+        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 50, Cavities = 2, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2), PartWeightGrams = 11 };
         db.ShiftTasks.Add(task);
         await db.SaveChangesAsync();
-        return (run.Id, task.Id, immId);
+        return (run.Id, task.Id, immId, mold.Id);
     }
 
     [Fact]
     public async Task Assign_backfills_orphan_cycles_and_recomputes_output()
     {
-        var (runId, taskId, immId) = await SeedEpisodeWithAdjacentTaskAsync();
+        var (runId, taskId, immId, moldId) = await SeedEpisodeWithAdjacentTaskAsync();
         var client = _factory.CreateClient();
         var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
         AuthHelper.SetBearerToken(client, token!);
@@ -51,11 +57,11 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var cycles = await db.ImmCycles.Where(c => c.ImmId == immId).ToListAsync();
-        cycles.Should().OnlyContain(c => c.TaskId == taskId && c.MoldId == _factory.TestMoldId);
-        cycles.Should().OnlyContain(c => c.Cavities == 1); // из Mold.Cavities тестовой ПФ (=1)
+        cycles.Should().OnlyContain(c => c.TaskId == taskId && c.MoldId == moldId);
+        cycles.Should().OnlyContain(c => c.Cavities == 2); // рабочая гнёздовость задания, а не максимум ПФ (=4)
         var task = await db.ShiftTasks.FindAsync(taskId);
-        task!.ActualQuantity.Should().Be(2); // 2 цикла × 1 гнездо
-        task.ActualMaterialWeightGrams.Should().Be(22); // вес задания, не вес ПФ
+        task!.ActualQuantity.Should().Be(4); // 2 цикла × 2 гнезда
+        task.ActualMaterialWeightGrams.Should().Be(44); // вес задания, не вес ПФ
         var run = await db.UnplannedRuns.FindAsync(runId);
         run!.AssignedTaskId.Should().Be(taskId);
         run.AssignedByUserId.Should().NotBeNull();
@@ -64,13 +70,13 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task Assign_rejects_task_of_other_imm()
     {
-        var (runId, _, _) = await SeedEpisodeWithAdjacentTaskAsync();
+        var (runId, _, _, _) = await SeedEpisodeWithAdjacentTaskAsync();
         var otherImm = await _factory.CreateFreshImmAsync();
         Guid otherTaskId;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var t = new EntityTask { ImmId = otherImm, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow, PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow) };
+            var t = new EntityTask { ImmId = otherImm, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Cavities = 1, Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow, PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow) };
             db.ShiftTasks.Add(t);
             await db.SaveChangesAsync();
             otherTaskId = t.Id;
@@ -86,12 +92,12 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task Reassign_rolls_back_previous_binding()
     {
-        var (runId, taskA, immId) = await SeedEpisodeWithAdjacentTaskAsync();
+        var (runId, taskA, immId, moldId) = await SeedEpisodeWithAdjacentTaskAsync();
         var client = _factory.CreateClient();
         var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
         AuthHelper.SetBearerToken(client, token!);
         await client.PostAsJsonAsync($"/api/unplanned-runs/{runId}/assign", new AssignTaskRequestDto { TaskId = taskA });
-        // После привязки менеджер исправил вес: накопленный расход A пересчитан с 22 до 44 г.
+        // После привязки менеджер исправил вес: накопленный расход A пересчитан с 44 до 88 г.
         // Откат эпизода обязан вычесть ту же массу и не увести A в отрицательный расход.
         var reweight = await client.PutAsJsonAsync($"/api/tasks/{taskA}", new UpdateTaskRequestDto { PartWeightGrams = 22 });
         reweight.StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -102,7 +108,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
             var run = await db.UnplannedRuns.FindAsync(runId);
-            var t = new EntityTask { ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Status = TaskStatus.Setup, IssuedAt = run!.StartTime, PlannedDate = DateOnly.FromDateTime(run!.StartTime), SetupStartedAt = run.ClosedAt, PartWeightGrams = 13 };
+            var t = new EntityTask { ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Cavities = 3, Status = TaskStatus.Setup, IssuedAt = run!.StartTime, PlannedDate = DateOnly.FromDateTime(run!.StartTime), SetupStartedAt = run.ClosedAt, PartWeightGrams = 13 };
             db.ShiftTasks.Add(t);
             await db.SaveChangesAsync();
             taskB = t.Id;
@@ -118,15 +124,15 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
             taskAReloaded!.ActualQuantity.Should().Be(0, "откат прежней привязки уменьшил выпуск A");
             taskAReloaded.ActualMaterialWeightGrams.Should().Be(0);
             var taskBReloaded = await db.ShiftTasks.FindAsync(taskB);
-            taskBReloaded!.ActualQuantity.Should().Be(2);
-            taskBReloaded.ActualMaterialWeightGrams.Should().Be(26);
+            taskBReloaded!.ActualQuantity.Should().Be(6);
+            taskBReloaded.ActualMaterialWeightGrams.Should().Be(78);
 
             // Проверка не только агрегата, но и фактических строк циклов: окно эпизода
             // должно быть полностью перепривязано на taskB, а не только сумма ActualQuantity.
             var cycles = await db.ImmCycles.Where(c => c.ImmId == immId).ToListAsync();
             cycles.Should().OnlyContain(c => c.TaskId == taskB);
-            cycles.Should().OnlyContain(c => c.MoldId == _factory.TestMoldId);
-            cycles.Should().OnlyContain(c => c.Cavities == 1); // из Mold.Cavities тестовой ПФ (=1)
+            cycles.Should().OnlyContain(c => c.MoldId == moldId);
+            cycles.Should().OnlyContain(c => c.Cavities == 3); // рабочая гнёздовость целевого задания
         }
     }
 }

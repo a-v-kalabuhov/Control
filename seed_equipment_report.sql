@@ -218,14 +218,14 @@ BEGIN
       s_end  := cur + pg_temp.rmin(60, 180);
       r_end  := LEAST(s_end + pg_temp.rmin(16 * 60, 96 * 60), lim);
 
-      INSERT INTO "ShiftTasks" ("Id","ImmId","MoldId","ProductId","PersonnelId","PlanQuantity","ActualQuantity","ActualMaterialWeightGrams",
+      INSERT INTO "ShiftTasks" ("Id","ImmId","MoldId","ProductId","PersonnelId","PlanQuantity","Cavities","ActualQuantity","ActualMaterialWeightGrams",
                                 "Status","WorkMode","PlannedFullCycleSeconds","PlannedInjectionCycleSeconds","DefectQuantity",
                                 "PlannedDate","IssuedAt","SetupStartedAt","MoldVerifiedAt","StartedAt","CompletedAt","ClosedAt",
                                 "CreatedAt","UpdatedAt")
       VALUES (v_task, v_imm, v_mold,
               (SELECT p."Id" FROM "Products" p JOIN "Molds" m ON m."ProductTypeId" = p."ProductTypeId"
                WHERE m."Id" = v_mold AND p."Article" = '0'),
-              v_adj, 0, 0, 0,
+              v_adj, 0, mold_cav[k], 0, 0,
               CASE WHEN r_end < pg_temp.lt('2026-09-25 00:00') THEN 4 ELSE 3 END, 0,
               mold_ct[k], GREATEST(mold_ct[k] / 3, 1), 0,
               (cur AT TIME ZONE 'Europe/Moscow')::date, cur - interval '1 hour', cur, cur + interval '20 minutes', s_end, r_end,

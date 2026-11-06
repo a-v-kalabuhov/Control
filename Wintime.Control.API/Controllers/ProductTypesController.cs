@@ -21,7 +21,7 @@ public class ProductTypesController : ControllerBase
     private static ProductDto ToDto(Product p, ISet<Guid> usedIds) => new()
     {
         Id = p.Id, Article = p.Article, FullArticle = p.FullArticle, Name = p.Name,
-        PartWeightGrams = p.PartWeightGrams, PlannedInjectionCycleSeconds = p.PlannedInjectionCycleSeconds,
+        PartWeightGrams = p.PartWeightGrams, Cavities = p.Cavities, PlannedInjectionCycleSeconds = p.PlannedInjectionCycleSeconds,
         HasSample = p.HasSample, IsActive = p.IsActive, IsUsed = usedIds.Contains(p.Id),
         Recipe = p.RecipeIngredients
             .OrderBy(i => i.SortOrder)
@@ -65,6 +65,18 @@ public class ProductTypesController : ControllerBase
 
     private static string? PackagingUnitError(int? packagingUnit) =>
         packagingUnit is <= 0 ? "Тарная единица должна быть больше нуля." : null;
+
+    private static string? ProductCavitiesError(ProductType type, int? cavities)
+    {
+        if (cavities is <= 0)
+            return "Количество гнёзд изделия должно быть больше нуля.";
+        if (!cavities.HasValue)
+            return null;
+        var moldMaximum = type.Molds.Where(m => m.IsActive).Select(m => (int?)m.Cavities).Min();
+        return moldMaximum.HasValue && cavities.Value > moldMaximum.Value
+            ? $"Количество гнёзд изделия не может превышать максимум активных ПФ типа ({moldMaximum.Value})."
+            : null;
+    }
 
     // ── Единое пространство артикулов (PZP-19, решение 4) ──
     // Артикул типа не совпадает ни с другим артикулом типа, ни с полным артикулом изделия.
@@ -262,7 +274,7 @@ public class ProductTypesController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<ProductDto>> AddProduct(Guid id, [FromBody] CreateProductRequestDto request)
     {
-        var pt = await _context.ProductTypes.FindAsync(id);
+        var pt = await _context.ProductTypes.Include(t => t.Molds).FirstOrDefaultAsync(t => t.Id == id);
         if (pt == null)
             return NotFound();
         var part = ProductArticle.Normalize(request.Article);
@@ -273,6 +285,9 @@ public class ProductTypesController : ControllerBase
         var attributeError = ProductAttributeError(request.PartWeightGrams, request.PlannedInjectionCycleSeconds);
         if (attributeError != null)
             return BadRequest(attributeError);
+        var cavitiesError = ProductCavitiesError(pt, request.Cavities);
+        if (cavitiesError != null)
+            return BadRequest(cavitiesError);
 
         var full = ProductArticle.Compose(pt.Article, part);
         var conflict = await FullArticleConflictAsync(full, Array.Empty<Guid>());
@@ -282,7 +297,7 @@ public class ProductTypesController : ControllerBase
         var product = new Product
         {
             ProductTypeId = id, Article = part, Name = request.Name.Trim(), FullArticle = full, IsActive = true,
-            PartWeightGrams = request.PartWeightGrams,
+            PartWeightGrams = request.PartWeightGrams, Cavities = request.Cavities,
             PlannedInjectionCycleSeconds = request.PlannedInjectionCycleSeconds,
             HasSample = request.HasSample
         };
@@ -298,7 +313,7 @@ public class ProductTypesController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<IActionResult> UpdateProduct(Guid id, Guid productId, [FromBody] UpdateProductRequestDto request)
     {
-        var pt = await _context.ProductTypes.Include(t => t.Products).FirstOrDefaultAsync(t => t.Id == id);
+        var pt = await _context.ProductTypes.Include(t => t.Products).Include(t => t.Molds).FirstOrDefaultAsync(t => t.Id == id);
         var product = pt?.Products.FirstOrDefault(p => p.Id == productId);
         if (pt == null || product == null)
             return NotFound();
@@ -329,6 +344,15 @@ public class ProductTypesController : ControllerBase
         }
         if (request.PartWeightGrams.HasValue)
             product.PartWeightGrams = request.PartWeightGrams.Value;
+        if (request.ClearCavities)
+            product.Cavities = null;
+        else if (request.Cavities.HasValue && request.Cavities.Value != product.Cavities)
+        {
+            var cavitiesError = ProductCavitiesError(pt, request.Cavities.Value);
+            if (cavitiesError != null)
+                return BadRequest(cavitiesError);
+            product.Cavities = request.Cavities.Value;
+        }
         if (request.ClearPlannedInjectionCycleSeconds)
             product.PlannedInjectionCycleSeconds = null;
         else if (request.PlannedInjectionCycleSeconds.HasValue)

@@ -14,6 +14,7 @@ public class Product : BaseEntity
     public string Name { get; set; } = string.Empty;        // наименование изделия
     public string FullArticle { get; set; } = string.Empty; // хранимый, пересчитывается при правке артикулов
     public decimal PartWeightGrams { get; set; }            // вес одной детали, граммы (PZP-24)
+    public int? Cavities { get; set; }                       // умолчание гнёзд изделия; null — максимум ПФ (PZP-36)
     public int? PlannedInjectionCycleSeconds { get; set; } // эталон цикла литья, секунды; необязателен
     public bool HasSample { get; set; }                   // есть физический образец изделия (PZP-29)
     public bool IsActive { get; set; } = true;              // архивный флаг

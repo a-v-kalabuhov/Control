@@ -305,23 +305,24 @@ const selectedProductTypeCompany = computed(() => {
     : null
 })
 
-// PZP-24: вес детали принадлежит изделию. Если у всего типа он одинаков,
-// карточка ПФ показывает одну строку; разные веса — по строке на изделие.
+// PZP-24/PZP-36: вес детали и необязательное умолчание гнёзд принадлежат изделию.
+// Если вес и вес за смыкание у всего типа одинаковы, карточка ПФ показывает одну строку.
 const productWeightRows = computed(() => {
   const type = productTypes.value.find(t => t.id === form.productTypeId)
   const source = type?.products?.length
     ? type.products.map(p => ({
         productId: p.id, fullArticle: p.fullArticle,
-        partWeightGrams: p.partWeightGrams ?? 0
+        partWeightGrams: p.partWeightGrams ?? 0, cavities: p.cavities ?? null
       }))
     : form.productTypeId === editingMold.value?.productTypeId
       ? (editingMold.value?.productWeights ?? [])
       : []
   const rows = source.map(p => ({
     ...p,
-    shotWeightGrams: (p.partWeightGrams ?? 0) * (form.cavities || 0)
+    shotWeightGrams: (p.partWeightGrams ?? 0) * (p.cavities ?? form.cavities ?? 0)
   }))
-  if (rows.length > 1 && rows.every(r => r.partWeightGrams === rows[0].partWeightGrams)) {
+  if (rows.length > 1 && rows.every(r =>
+    r.partWeightGrams === rows[0].partWeightGrams && r.shotWeightGrams === rows[0].shotWeightGrams)) {
     return [{ ...rows[0], fullArticle: '' }]
   }
   return rows

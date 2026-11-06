@@ -67,7 +67,7 @@ public class PlanConflictsApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 100,
+            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 2,
             PlannedFullCycleSeconds = 60, PlannedSetupMinutes = 30, Status = TaskStatus.Planned,
             PlannedDate = Day, PlannedSetupStartTime = time
         };
@@ -126,7 +126,7 @@ public class PlanConflictsApiTests : IClassFixture<IntegrationTestFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            (await db.Molds.SingleAsync(m => m.Id == mold)).Cavities = 1;
+            (await db.ShiftTasks.SingleAsync(t => t.Id == a)).Cavities = 1;
             await db.SaveChangesAsync();
         }
 

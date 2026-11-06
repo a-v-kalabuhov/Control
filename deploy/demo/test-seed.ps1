@@ -68,7 +68,7 @@ try {
     Write-Host "==> 5/5 Проверки..."
     $rows = docker exec $Container psql -U postgres -d $Db -At -F "|" -v ON_ERROR_STOP=1 -f /tmp/check.sql
     # Число SELECT-строк в check_seed.sql: пустой или обрезанный вывод не должен пройти как «всё в порядке»
-    $ExpectedChecks = 23
+    $ExpectedChecks = 25
     $failed = @()
     $parsed = 0
     foreach ($row in $rows) {

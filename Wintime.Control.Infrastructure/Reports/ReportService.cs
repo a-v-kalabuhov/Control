@@ -145,7 +145,7 @@ public class ReportService : IReportService
         // Средний цикл не считаем — он смотрится по заданию (вкладка «Результаты выполнения»).
         var totalCycles = cycles.Count;
 
-        // Выработка — по снапшоту гнёздности каждого цикла (ImmCycle.Cavities), не по текущему Mold.Cavities.
+        // Выработка — по снапшоту гнёздности каждого цикла (ImmCycle.Cavities), не по текущим справочникам или заданию.
         var actualQuantity = cycles.Sum(c => c.Cavities);
 
         // Детализация простоев по причинам
@@ -181,7 +181,7 @@ public class ReportService : IReportService
 
         // Нормативный план за период (ARCH-03): сумма по заданиям; для текущих суток — до «сейчас».
         var planQuantity = tasks.Sum(t => TaskPeriodPlan.Calculate(
-            TaskActivityWindow.Release(t, now), t.PlanQuantity, t.Mold?.Cavities ?? 0,
+            TaskActivityWindow.Release(t, now), t.PlanQuantity, t.Cavities,
             t.PlannedFullCycleSeconds, periodStart, aggregateEnd));
 
         return new DailyReportImmItemDto

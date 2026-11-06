@@ -42,7 +42,7 @@ public class EquipmentReportTests : IClassFixture<IntegrationTestFactory>
                 { ImmId = imm.Id, Status = ImmStatus.Auto, ChangedAt = from, EndedAt = to });
             db.ShiftTasks.Add(new ShiftTask
             {
-                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Status = TaskStatus.Completed,
+                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1, Status = TaskStatus.Completed,
                 SetupStartedAt = from, StartedAt = from, CompletedAt = to
             });
             await db.SaveChangesAsync();

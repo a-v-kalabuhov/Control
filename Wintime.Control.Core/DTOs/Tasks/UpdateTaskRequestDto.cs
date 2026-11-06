@@ -5,6 +5,8 @@ namespace Wintime.Control.Core.DTOs.Tasks;
 public class UpdateTaskRequestDto
 {
     public int? PlanQuantity { get; set; }
+    /// <summary>Гнёзда задания; null — не менять. Доступно в любом статусе (PZP-36).</summary>
+    public int? Cavities { get; set; }
     /// <summary>Вес детали, г; null — не менять. Доступен в любом статусе (PZP-24).</summary>
     public decimal? PartWeightGrams { get; set; }
     /// <summary>Тарная единица, шт.; null — не менять. Доступна в любом статусе (PZP-29).</summary>

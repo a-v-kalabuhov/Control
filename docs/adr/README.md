@@ -32,7 +32,7 @@
 
 ## Список
 
-- [ADR-0001](0001-imm-cycle-cavities-snapshot.md) — Снапшот гнёздности в `ImmCycle.Cavities`
+- [ADR-0001](0001-imm-cycle-cavities-snapshot.md) — Снапшот гнёздности в `ImmCycle.Cavities` *(заменён ADR-0025)*
 - [ADR-0002](0002-task-state-machine-in-entity.md) — Конечный автомат задания в сущности `ShiftTask`
 - [ADR-0003](0003-domain-exception-to-http-400.md) — `DomainException` → HTTP 400 через `IExceptionHandler`
 - [ADR-0004](0004-single-role-source-user-role.md) — Единственный источник роли — `User.Role`
@@ -53,3 +53,4 @@
 - [ADR-0022](0022-plan-conflicts.md) — Конфликты плана: вычисляемые, без блокировок, прогноз выполнения по стадиям
 - [ADR-0023](0023-product-defaults-and-task-copy.md) — Технологические умолчания изделия и их копия в задании (рецепт)
 - [ADR-0024](0024-part-weight-product-task-snapshot.md) — Вес детали в изделии и его снапшот в задании
+- [ADR-0025](0025-cavities-mold-product-task.md) — Гнёздовость: максимум ПФ, умолчание изделия, рабочая копия задания *(заменяет ADR-0001)*

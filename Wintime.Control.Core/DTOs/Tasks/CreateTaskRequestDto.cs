@@ -12,6 +12,8 @@ public class CreateTaskRequestDto
     public Guid? OrderId { get; set; }
     public string? PersonnelId { get; set; }
     public int PlanQuantity { get; set; }
+    /// <summary>Гнёзда задания; null — умолчание изделия или максимум ПФ (PZP-36).</summary>
+    public int? Cavities { get; set; }
     /// <summary>Вес детали, г; null — скопировать из изделия (PZP-24).</summary>
     public decimal? PartWeightGrams { get; set; }
     /// <summary>Тарная единица, шт.; null — скопировать из типа изделия (PZP-29).</summary>

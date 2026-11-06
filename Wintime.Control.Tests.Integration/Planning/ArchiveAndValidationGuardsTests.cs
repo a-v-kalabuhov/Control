@@ -45,7 +45,7 @@ public class ArchiveAndValidationGuardsTests : IClassFixture<IntegrationTestFact
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         db.ShiftTasks.Add(new ShiftTask
         {
-            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 100,
+            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 2,
             PlannedFullCycleSeconds = 60, Status = status,
             PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(3)
         });
