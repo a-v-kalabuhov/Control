@@ -12,6 +12,8 @@ public class ShiftTask : BaseEntity
     public Guid ProductId { get; set; }   // изделие задания (PZP-19); принадлежит типу ПФ задания
     public string? PersonnelId { get; set; } // Ссылка на User.Id
     public int PlanQuantity { get; set; }
+    /// <summary>Рабочая гнёздовость задания: копия умолчания изделия или максимума ПФ (PZP-36).</summary>
+    public int Cavities { get; set; }
     public int ActualQuantity { get; set; }
     public decimal ActualMaterialWeightGrams { get; set; }
 

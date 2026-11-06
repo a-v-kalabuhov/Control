@@ -52,6 +52,9 @@
             <el-descriptions-item label="Вес детали">
               {{ task?.partWeightGrams !== null && task?.partWeightGrams !== undefined ? `${task.partWeightGrams} г` : '—' }}
             </el-descriptions-item>
+            <el-descriptions-item label="Гнёзда">
+              {{ task?.cavities ?? '—' }}
+            </el-descriptions-item>
             <el-descriptions-item label="Тарная единица">
               {{ task?.packagingUnit ? `${task.packagingUnit} шт.` : '—' }}
             </el-descriptions-item>

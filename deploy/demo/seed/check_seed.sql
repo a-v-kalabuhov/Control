@@ -27,9 +27,10 @@ UNION ALL SELECT 'task_imm_incompatible', count(*) FROM "ShiftTasks" t
   WHERE EXISTS (SELECT 1 FROM "MoldCompatibleImms" c WHERE c."MoldId" = t."MoldId")
     AND NOT EXISTS (SELECT 1 FROM "MoldCompatibleImms" c WHERE c."MoldId" = t."MoldId" AND c."ImmId" = t."ImmId")
 UNION ALL SELECT 'task_without_cycle_norm', count(*) FROM "ShiftTasks" WHERE COALESCE("PlannedFullCycleSeconds", 0) <= 0
--- ТПА останавливается по числу смыканий ⌈План/Гнёзда⌉, поэтому выпуск может превысить план не больше чем на гнёзда − 1
-UNION ALL SELECT 'output_over_plan', count(*) FROM "ShiftTasks" t JOIN "Molds" m ON m."Id" = t."MoldId"
-  WHERE t."ActualQuantity" >= t."PlanQuantity" + m."Cavities"
+UNION ALL SELECT 'task_cavities_not_positive', count(*) FROM "ShiftTasks" WHERE "Cavities" <= 0
+-- ТПА останавливается по числу смыканий ⌈План/Гнёзда задания⌉, поэтому выпуск может превысить план не больше чем на гнёзда − 1
+UNION ALL SELECT 'output_over_plan', count(*) FROM "ShiftTasks" t
+  WHERE t."ActualQuantity" >= t."PlanQuantity" + t."Cavities"
 UNION ALL SELECT 'imm_multiple_active_tasks', count(*) FROM
   (SELECT "ImmId" FROM "ShiftTasks" WHERE "Status" IN (2, 5) GROUP BY "ImmId" HAVING count(*) > 1) x
 UNION ALL SELECT 'issued_without_adjuster', count(*) FROM "ShiftTasks" WHERE "Status" = 1 AND "PersonnelId" IS NULL
@@ -43,6 +44,8 @@ UNION ALL SELECT 'status_overlap', count(*) FROM
   WHERE s.nxt < COALESCE(s."EndedAt", 'infinity')
 UNION ALL SELECT 'cycle_outside_task_window', count(*) FROM "ImmCycles" c JOIN "ShiftTasks" t ON t."Id" = c."TaskId"
   WHERE c."StartTime" < t."StartedAt" OR c."EndTime" > COALESCE(t."CompletedAt", now())
+UNION ALL SELECT 'cycle_task_cavities_mismatch', count(*) FROM "ImmCycles" c JOIN "ShiftTasks" t ON t."Id" = c."TaskId"
+  WHERE c."Cavities" <> t."Cavities"
 UNION ALL SELECT 'completed_order_with_open_task', count(*) FROM "Orders" o
   JOIN "ShiftTasks" t ON t."OrderId" = o."Id" WHERE o."Status" = 1 AND t."Status" NOT IN (3, 4)
 UNION ALL SELECT 'active_imm_without_recent_telemetry', count(*) FROM "Imms" i

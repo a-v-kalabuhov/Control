@@ -46,7 +46,7 @@ public class StartSetupMoldBusyTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 100,
+            ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 2,
             PlannedFullCycleSeconds = 60, Status = status, PersonnelId = _factory.TestAdjusterId,
             PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow),
             SetupStartedAt = status == TaskStatus.Issued ? null : DateTime.UtcNow.AddMinutes(-30)

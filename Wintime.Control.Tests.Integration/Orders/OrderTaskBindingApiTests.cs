@@ -46,7 +46,7 @@ public class OrderTaskBindingApiTests : IClassFixture<IntegrationTestFactory>
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        var t = new ShiftTask { ImmId = _factory.TestImmId, MoldId = moldId, ProductId = productId, PlanQuantity = 50, Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow };
+        var t = new ShiftTask { ImmId = _factory.TestImmId, MoldId = moldId, ProductId = productId, PlanQuantity = 50, Cavities = 1, Status = TaskStatus.Issued, IssuedAt = DateTime.UtcNow };
         db.ShiftTasks.Add(t);
         await db.SaveChangesAsync();
         return t.Id;

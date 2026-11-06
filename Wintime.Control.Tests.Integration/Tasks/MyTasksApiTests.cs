@@ -40,7 +40,7 @@ public class MyTasksApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Status = status,
+            ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Cavities = 1, Status = status,
             PersonnelId = personnelId == "self" ? _factory.TestAdjusterId : personnelId,
             PlannedDate = date, PlannedSetupStartTime = time, PlannedFullCycleSeconds = 30,
             IssuedAt = status == TaskStatus.Planned ? null : DateTime.UtcNow.AddDays(-20),
@@ -117,7 +117,7 @@ public class MyTasksApiTests : IClassFixture<IntegrationTestFactory>
             db.ShiftTasks.Add(new ShiftTask
             {
                 ImmId = imm, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
-                PlanQuantity = 10, Status = TaskStatus.Issued, PersonnelId = _factory.TestAdjusterId,
+                PlanQuantity = 10, Cavities = 1, Status = TaskStatus.Issued, PersonnelId = _factory.TestAdjusterId,
                 PlannedDate = Tomorrow, PlannedFullCycleSeconds = 30, IssuedAt = DateTime.UtcNow, OrderId = order.Id
             });
             await db.SaveChangesAsync();

@@ -44,9 +44,9 @@ public class OrderProgressTests : IClassFixture<IntegrationTestFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
             db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
-                PlanQuantity = 60, ActualQuantity = 60, DefectQuantity = 0, Status = TaskStatus.Completed, OrderId = order!.Id });
+                Cavities = 1, PlanQuantity = 60, ActualQuantity = 60, DefectQuantity = 0, Status = TaskStatus.Completed, OrderId = order!.Id });
             db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
-                PlanQuantity = 50, ActualQuantity = 50, DefectQuantity = 10, Status = TaskStatus.Completed, OrderId = order.Id });
+                Cavities = 1, PlanQuantity = 50, ActualQuantity = 50, DefectQuantity = 10, Status = TaskStatus.Completed, OrderId = order.Id });
             await db.SaveChangesAsync();
         }
 
@@ -80,7 +80,7 @@ public class OrderProgressTests : IClassFixture<IntegrationTestFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
             db.ShiftTasks.Add(new ShiftTask { ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId,
-                PlanQuantity = 100, ActualQuantity = 100, DefectQuantity = 5, Status = TaskStatus.Completed, OrderId = order!.Id });
+                Cavities = 1, PlanQuantity = 100, ActualQuantity = 100, DefectQuantity = 5, Status = TaskStatus.Completed, OrderId = order!.Id });
             await db.SaveChangesAsync();
         }
 

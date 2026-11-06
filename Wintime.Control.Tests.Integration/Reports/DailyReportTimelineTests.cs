@@ -59,7 +59,7 @@ public class DailyReportTimelineTests : IClassFixture<IntegrationTestFactory>
 
             db.ShiftTasks.Add(new ShiftTask
             {
-                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100,
+                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1,
                 Status = TaskStatus.InProgress, SetupStartedAt = statusChangedAt,
                 StartedAt = statusChangedAt, CompletedAt = null
             });

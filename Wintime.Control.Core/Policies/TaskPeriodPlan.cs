@@ -6,7 +6,7 @@ namespace Wintime.Control.Core.Policies;
 /// <c>N(t) = ⌊(min(t, E) − S) / C⌋ × K</c> — накопленный норматив к моменту t;
 /// план за период = <c>min(P, N(to)) − min(P, N(from))</c>. Поэтому сумма по дням равна плану
 /// задания (не больше P), а простои внутри выпуска не вычитаются — это потери, видимые как
-/// разрыв план/факт. Гнёзда K — текущие <c>Mold.Cavities</c> (прогноз, как в TaskPlanCalculator).
+/// разрыв план/факт. Гнёзда K — рабочая копия <c>ShiftTask.Cavities</c> (прогноз, как в TaskPlanCalculator).
 /// </summary>
 public static class TaskPeriodPlan
 {

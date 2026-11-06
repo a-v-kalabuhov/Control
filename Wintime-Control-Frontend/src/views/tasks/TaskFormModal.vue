@@ -137,6 +137,19 @@
             controls-position="right"
           />
         </el-form-item>
+        <el-form-item label="Гнёзда" prop="cavities">
+          <el-input-number
+            v-model="form.cavities"
+            data-test="task-cavities"
+            :min="1"
+            :max="cavitiesInputMax"
+            :precision="0"
+            @update:model-value="cavitiesCustomized = true"
+            class="w-full"
+            controls-position="right"
+          />
+          <div class="text-xs text-gray-500 mt-1">Рабочее значение задания; не больше {{ defaultCavities ?? '—' }}</div>
+        </el-form-item>
         <el-form-item label="Вес детали, г" prop="partWeightGrams">
           <el-input-number
             v-model="form.partWeightGrams"
@@ -341,6 +354,7 @@ const form = reactive({
   productId: null,
   personnelId: null,
   planQuantity: 1000,
+  cavities: null,
   partWeightGrams: 0,
   packagingUnit: null,
   plannedDate: null,
@@ -357,6 +371,7 @@ const form = reactive({
 
 // Признаки ручного ввода отдельно от значения: 0 — валидный вес, null — валидный цикл или тарная единица.
 const partWeightCustomized = ref(false)
+const cavitiesCustomized = ref(false)
 const injectionCycleCustomized = ref(false)
 const packagingUnitCustomized = ref(false)
 
@@ -369,6 +384,20 @@ const rules = {
     { required: true, message: 'Введите план', trigger: 'blur' },
     { type: 'number', min: 1, message: 'План должен быть больше 0', trigger: 'blur' }
   ],
+  cavities: [{
+    validator: (rule, value, callback) => {
+      if (value === null || value === undefined) return callback(new Error('Укажите количество гнёзд'))
+      if (!Number.isInteger(value) || value < 1) return callback(new Error('Гнёзда — целое число больше 0'))
+      const unchangedTaskValue = editingTask.value
+        && form.productId === editingTask.value.productId
+        && value === editingTask.value.cavities
+      if (!unchangedTaskValue && defaultCavities.value && value > defaultCavities.value) {
+        return callback(new Error(`Не больше ${defaultCavities.value} гнёзд по умолчанию`))
+      }
+      callback()
+    },
+    trigger: 'blur'
+  }],
   partWeightGrams: [
     { required: true, message: 'Укажите вес детали', trigger: 'blur' },
     { type: 'number', min: 0, message: 'Вес не может быть отрицательным', trigger: 'blur' }
@@ -424,11 +453,11 @@ const selectedMoldInfo = computed(() => {
   return molds.value.find(m => m.id === form.moldId)
 })
 
-// PZP-14: живой предпросмотр плана (гнёзда — из выбранной ПФ)
+// PZP-14/PZP-36: живой предпросмотр плана по рабочей гнёздовости задания
 const planPreview = computed(() => {
   const plan = calcTaskPlan({
     planQuantity: form.planQuantity,
-    cavities: selectedMoldInfo.value?.cavities,
+    cavities: form.cavities,
     fullCycleSeconds: form.plannedFullCycleSeconds,
     setupMinutes: form.plannedSetupMinutes,
     bufferFixedMinutes: form.releaseBufferFixedMinutes,
@@ -468,6 +497,7 @@ const withFallbackProduct = (list, source, isActive) => {
     fullArticle: source.productFullArticle || source.productId,
     name: source.productName,
     isActive,
+    cavities: matchingProduct?.cavities,
     recipe: matchingProduct?.recipe
   }]
 }
@@ -488,6 +518,21 @@ const isProductLocked = computed(() =>
   !!props.lockedOrder || (!!editingTask.value && (editingTask.value.status !== 'Planned' || !!editingTask.value.orderId)))
 
 const selectedProduct = computed(() => productOptions.value.find(p => p.id === form.productId) || null)
+const defaultCavities = computed(() => selectedProduct.value?.cavities ?? selectedMoldInfo.value?.cavities ?? null)
+// Компонент не должен обрезать исходный снапшот при уменьшении справочного умолчания.
+// Валидатор выше всё равно ограничивает новое значение текущим defaultCavities.
+const cavitiesInputMax = computed(() =>
+  Math.max(defaultCavities.value ?? 0, editingTask.value?.cavities ?? 0) || Number.MAX_SAFE_INTEGER)
+
+// PZP-36: при поздней загрузке справочников подставляем умолчание только если менеджер
+// ещё не изменил значение; снапшот редактируемого задания никогда не затираем.
+watch(defaultCavities, (value, previous) => {
+  if (revertingProduct) return
+  if (editingTask.value && form.productId === editingTask.value.productId
+    && form.cavities === editingTask.value.cavities) return
+  if (form.cavities !== previous) cavitiesCustomized.value = true
+  if (!cavitiesCustomized.value) form.cavities = value ?? null
+})
 
 // BL-36: рецепт выбранного изделия — только для чтения в форме.
 const selectedProductRecipe = computed(() => selectedProduct.value?.recipe ?? [])
@@ -562,6 +607,7 @@ const resetForm = () => {
     productId: props.lockedOrder?.productId ?? null,
     personnelId: null,
     planQuantity: 1000,
+    cavities: null,
     partWeightGrams: 0,
     packagingUnit: null,
     plannedDate: null,
@@ -577,6 +623,7 @@ const resetForm = () => {
   })
   orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
   partWeightCustomized.value = false
+  cavitiesCustomized.value = false
   injectionCycleCustomized.value = false
   packagingUnitCustomized.value = false
   initialOrderId.value = null
@@ -630,6 +677,8 @@ watch(() => form.productId, async (newId, oldId) => {
   } catch {
     revertingProduct = true
     form.productId = oldId
+    form.cavities = props.task.cavities ?? null
+    cavitiesCustomized.value = false
     form.partWeightGrams = props.task.partWeightGrams ?? 0
     form.plannedInjectionCycleSeconds = props.task.plannedInjectionCycleSeconds ?? null
     partWeightCustomized.value = false
@@ -642,12 +691,14 @@ watch(() => form.productId, async (newId, oldId) => {
   }
 })
 
-// PZP-24: выбранное изделие даёт вес и эталон цикла литья только при выборе/смене.
+// PZP-24/PZP-36: изделие даёт вес, цикл и умолчание гнёзд только при выборе/смене.
 // При открытии редактирования значения задания — снапшоты и не перезаписываются справочником.
 watch(selectedProduct, (product, previousProduct) => {
   if (revertingProduct) return
   if (!product) {
     if (!editingTask.value) {
+      form.cavities = selectedMoldInfo.value?.cavities ?? null
+      cavitiesCustomized.value = false
       form.partWeightGrams = 0
       form.plannedInjectionCycleSeconds = null
       partWeightCustomized.value = false
@@ -657,6 +708,8 @@ watch(selectedProduct, (product, previousProduct) => {
   }
   if (editingTask.value && product.id === editingTask.value.productId) {
     if (previousProduct && previousProduct.id !== product.id) {
+      form.cavities = editingTask.value.cavities ?? null
+      cavitiesCustomized.value = false
       form.partWeightGrams = editingTask.value.partWeightGrams ?? 0
       form.plannedInjectionCycleSeconds = editingTask.value.plannedInjectionCycleSeconds ?? null
       partWeightCustomized.value = false
@@ -665,6 +718,8 @@ watch(selectedProduct, (product, previousProduct) => {
     return
   }
   if (previousProduct && previousProduct.id !== product.id) {
+    form.cavities = product.cavities ?? selectedMoldInfo.value?.cavities ?? null
+    cavitiesCustomized.value = false
     form.partWeightGrams = product.partWeightGrams ?? 0
     form.plannedInjectionCycleSeconds = product.plannedInjectionCycleSeconds ?? null
     partWeightCustomized.value = false
@@ -677,6 +732,7 @@ watch(selectedProduct, (product, previousProduct) => {
   if (form.plannedInjectionCycleSeconds !== (previousProduct?.plannedInjectionCycleSeconds ?? null)) {
     injectionCycleCustomized.value = true
   }
+  if (!cavitiesCustomized.value) form.cavities = defaultCavities.value ?? null
   if (!partWeightCustomized.value) form.partWeightGrams = product.partWeightGrams ?? 0
   if (!injectionCycleCustomized.value) {
     form.plannedInjectionCycleSeconds = product.plannedInjectionCycleSeconds ?? null
@@ -775,6 +831,7 @@ const populateForm = (task) => {
     productId: task.productId ?? null,
     personnelId: task.personnelId ?? null,
     planQuantity: task.planQuantity,
+    cavities: task.cavities ?? null,
     partWeightGrams: task.partWeightGrams ?? 0,
     packagingUnit: task.packagingUnit ?? null,
     plannedDate: task.plannedDate,
@@ -790,6 +847,7 @@ const populateForm = (task) => {
   })
   initialOrderId.value = task.orderId || null
   partWeightCustomized.value = false
+  cavitiesCustomized.value = false
   injectionCycleCustomized.value = false
   packagingUnitCustomized.value = false
   // В режиме редактирования селект ПФ задизейблен и никогда не получает

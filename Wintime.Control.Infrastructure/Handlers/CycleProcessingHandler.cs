@@ -98,7 +98,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
                         MoldId = activeTask?.MoldId,
                         StartTime = last.StartTime,
                         CycleNumber = last.Number,
-                        Cavities = activeTask?.Mold.Cavities ?? 0,
+                        Cavities = activeTask?.Cavities ?? 0,
                         PauseDurationMs = await ResolvePauseAsync(immId, last.StartTime, ct)
                     };
                 }
@@ -157,7 +157,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
             if (existing is null)
             {
-                var cavities = activeTask?.Mold.Cavities ?? 0;
+                var cavities = activeTask?.Cavities ?? 0;
                 var pauseMs = await ResolvePauseAsync(immId, current.StartTime, ct);
                 var opened = new ImmCycle
                 {

@@ -7,15 +7,15 @@ public static class TaskMappingExtensions
 {
     /// <summary>
     /// Маппинг сущности задания в DTO. Имена ТПА/ПФ/изделия/наладчика заполняются,
-    /// только если соответствующие навигации загружены (Include),
-    /// а план задания (PZP-14) — только если загружена <c>Mold</c>.
+    /// только если соответствующие навигации загружены (Include).
+    /// План задания считается по его рабочей гнёздовости (PZP-36).
     /// </summary>
     public static TaskDto ToDto(this ShiftTask t, FactorySchedule schedule)
     {
         var plannedStartAt = schedule.PlannedStartUtc(t.PlannedDate, t.PlannedSetupStartTime);
-        // Гнёзда — текущие Mold.Cavities (прогноз); Mold должен быть загружен (Include).
+        // Гнёзда — рабочая копия задания (прогноз), история остаётся в ImmCycle.Cavities.
         var plan = TaskPlanCalculator.Calculate(plannedStartAt, t.PlannedSetupMinutes, t.PlanQuantity,
-            t.Mold?.Cavities ?? 0, t.PlannedFullCycleSeconds, t.ReleaseBufferFixedMinutes, t.ReleaseBufferPercent);
+            t.Cavities, t.PlannedFullCycleSeconds, t.ReleaseBufferFixedMinutes, t.ReleaseBufferPercent);
 
         return new TaskDto
         {
@@ -32,6 +32,7 @@ public static class TaskMappingExtensions
             PersonnelId = t.PersonnelId,
             PersonnelName = t.Personnel?.FullName,
             PlanQuantity = t.PlanQuantity,
+            Cavities = t.Cavities,
             PartWeightGrams = t.PartWeightGrams,
             PackagingUnit = t.PackagingUnit,
             ActualQuantity = t.ActualQuantity,

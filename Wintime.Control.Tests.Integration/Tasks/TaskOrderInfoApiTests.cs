@@ -35,7 +35,7 @@ public class TaskOrderInfoApiTests : IClassFixture<IntegrationTestFactory>
             db.Orders.Add(order);
             var task = new ShiftTask
             {
-                ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10,
+                ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 10, Cavities = 1,
                 Status = TaskStatus.Planned, OrderId = order.Id
             };
             db.ShiftTasks.Add(task);

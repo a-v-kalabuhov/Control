@@ -64,7 +64,7 @@ function mountModal(task = null) {
 
 const editedTask = {
   id: 'task-1', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
-  planQuantity: 10, recipeEdited: true, partWeightGrams: 18, plannedInjectionCycleSeconds: 30,
+  planQuantity: 10, cavities: 2, recipeEdited: true, partWeightGrams: 18, plannedInjectionCycleSeconds: 30,
   recipeIngredients: [
     { id: 'ri-1', materialId: 'pp-2', materialType: 'Plastic', materialArticle: 'PP-2', materialName: 'Полипропилен 2',
       originalMaterialId: 'pp-1', originalMaterialArticle: 'PP-1', originalMaterialName: 'Полипропилен', percent: 100 }
@@ -124,6 +124,7 @@ describe('TaskFormModal — рецепт (BL-36)', () => {
     await flushPromises()
 
     expect(wrapper.vm.form.productId).toBe('p-X0')
+    expect(wrapper.vm.form.cavities).toBe(2)
     expect(wrapper.vm.form.partWeightGrams).toBe(18)
     expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(30)
   })

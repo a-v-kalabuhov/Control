@@ -48,7 +48,7 @@ public class DailyReportEffectiveStatusTests : IClassFixture<IntegrationTestFact
             // Наладка 7:30–8:00, выпуск 8:00–14:00.
             db.ShiftTasks.Add(new ShiftTask
             {
-                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Status = TaskStatus.Completed,
+                ImmId = imm.Id, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1, Status = TaskStatus.Completed,
                 SetupStartedAt = H(7.5), StartedAt = H(8), CompletedAt = H(14)
             });
             // Сырой режим: manual 7:30–8 · auto 8–10 · offline 10–12 · idle 12–13 · auto 13–14 · idle 14–16 (без задания).

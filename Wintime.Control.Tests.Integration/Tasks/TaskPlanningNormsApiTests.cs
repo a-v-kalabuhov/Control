@@ -69,7 +69,7 @@ public class TaskPlanningNormsApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Note = "указание",
+            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1, Note = "указание",
             Status = status, PlannedDate = Tomorrow, PlannedFullCycleSeconds = 60,
             PlannedSetupMinutes = 30, ReleaseBufferFixedMinutes = 10, ReleaseBufferPercent = 10
         };
@@ -152,6 +152,34 @@ public class TaskPlanningNormsApiTests : IClassFixture<IntegrationTestFactory>
         var start = task.GetProperty("plannedStartAt").GetDateTime();
         var end = task.GetProperty("plannedEndAt").GetDateTime();
         (end - start).Should().Be(TimeSpan.FromSeconds(1800 + 6000 + 1200));
+    }
+
+    [Fact]
+    public async Task GetTask_PlannedRelease_UsesTaskCavities()
+    {
+        var client = await ManagerClientAsync();
+        Guid moldId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var mold = new Mold
+            {
+                Name = "Двухгнёздовая ПФ", FormId = $"PF-{Guid.NewGuid():N}",
+                Cavities = 2, ProductTypeId = _factory.TestProductTypeId
+            };
+            db.Molds.Add(mold);
+            await db.SaveChangesAsync();
+            moldId = mold.Id;
+        }
+        var created = await CreateTaskAsync(client, new()
+        {
+            ["moldId"] = moldId, ["cavities"] = 1, ["plannedSetupMinutes"] = 0,
+            ["releaseBufferFixedMinutes"] = 0, ["releaseBufferPercent"] = 0
+        });
+
+        var task = await GetAsync(client, created.GetProperty("id").GetGuid());
+
+        task.GetProperty("plannedReleaseSeconds").GetInt64().Should().Be(6000);
     }
 
     [Fact]

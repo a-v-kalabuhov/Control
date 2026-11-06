@@ -44,7 +44,7 @@ public class PlanConflictService : IPlanConflictService
         {
             var plannedStart = schedule.PlannedStartUtc(t.PlannedDate, t.PlannedSetupStartTime);
             var plan = TaskPlanCalculator.Calculate(plannedStart, t.PlannedSetupMinutes, t.PlanQuantity,
-                t.Mold.Cavities, t.PlannedFullCycleSeconds, t.ReleaseBufferFixedMinutes, t.ReleaseBufferPercent);
+                t.Cavities, t.PlannedFullCycleSeconds, t.ReleaseBufferFixedMinutes, t.ReleaseBufferPercent);
             forecasts.TryGetValue(t.Id, out var forecast);
             var segments = TaskOccupancy.Build(plannedStart, plan, new OccupancyFacts(t.Status, t.SetupStartedAt),
                                                forecast, nowUtc);

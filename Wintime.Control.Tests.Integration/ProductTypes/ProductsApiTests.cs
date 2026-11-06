@@ -138,6 +138,73 @@ public class ProductsApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task UpdateProduct_ChangesAndClearsCavities()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        var created = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products", new
+        {
+            Article = "PAIR", Name = "Парная деталь", Cavities = 2
+        });
+        var p = await created.Content.ReadFromJsonAsync<ProductDto>();
+
+        var changed = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{p!.Id}", new { Cavities = 3 });
+
+        changed.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await GetTypeAsync(c, t.Id)).Products.Single(x => x.Id == p.Id).Cavities.Should().Be(3);
+
+        var cleared = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{p.Id}", new { ClearCavities = true });
+
+        cleared.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await GetTypeAsync(c, t.Id)).Products.Single(x => x.Id == p.Id).Cavities.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AddProduct_ZeroCavities_BadRequest()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+
+        var r = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products", new
+        {
+            Article = "BAD", Name = "Некорректная деталь", Cavities = 0
+        });
+
+        r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdateProduct_ZeroCavities_BadRequest()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        var p = await AddProductAsync(c, t.Id, "PAIR");
+
+        var r = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{p.Id}", new { Cavities = 0 });
+
+        r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task AddProduct_CavitiesAboveActiveMoldMaximum_BadRequest()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        var mold = await c.PostAsJsonAsync("/api/molds", new
+        {
+            Name = "Двухгнёздовая ПФ", FormId = Uniq("MF"), Cavities = 2, ProductTypeId = t.Id
+        });
+        mold.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var r = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products", new
+        {
+            Article = "BAD", Name = "Слишком много гнёзд", Cavities = 3
+        });
+
+        r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task AddProduct_DuplicatePartInType_Conflict()
     {
         var c = await ClientAsync();

@@ -288,7 +288,7 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     await flushPromises()
 
     expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
-      article: 'BLK', name: 'Чёрный', partWeightGrams: 0, plannedInjectionCycleSeconds: null, hasSample: false
+      article: 'BLK', name: 'Чёрный', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
     })
     expect(productTypesApi.getById).toHaveBeenCalledWith('pt-1')
   })
@@ -392,7 +392,7 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
     await flushPromises()
 
     expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
-      article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, plannedInjectionCycleSeconds: 20, hasSample: false
+      article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, cavities: null, plannedInjectionCycleSeconds: 20, hasSample: false
     })
   })
 
@@ -401,17 +401,60 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
     await flushPromises()
     wrapper.vm.editItem(typeA)
     wrapper.vm.editProduct({
-      id: 'p-1', article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, plannedInjectionCycleSeconds: 20
+      id: 'p-1', article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, cavities: 2, plannedInjectionCycleSeconds: 20
     })
-    Object.assign(wrapper.vm.productForm, { partWeightGrams: 14.25, plannedInjectionCycleSeconds: null })
+    expect(wrapper.vm.productForm.cavities).toBe(2)
+    Object.assign(wrapper.vm.productForm, { partWeightGrams: 14.25, cavities: null, plannedInjectionCycleSeconds: null })
 
     await wrapper.vm.saveProduct()
     await flushPromises()
 
     expect(productTypesApi.updateProduct).toHaveBeenCalledWith('pt-1', 'p-1', {
-      article: 'BLK', name: 'Чёрный', partWeightGrams: 14.25,
+      article: 'BLK', name: 'Чёрный', partWeightGrams: 14.25, cavities: null, clearCavities: true,
       plannedInjectionCycleSeconds: null, clearPlannedInjectionCycleSeconds: true, hasSample: false
     })
+  })
+})
+
+describe('ProductTypeDictionary — гнёздовость изделия (PZP-36)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    productTypesApi.getList.mockResolvedValue({ data: [typeA] })
+    productTypesApi.getById.mockResolvedValue({ data: typeA })
+    productTypesApi.addProduct.mockResolvedValue({ data: {} })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    mounted.splice(0).forEach(w => w.unmount())
+    document.body.innerHTML = ''
+  })
+
+  it('поле умолчания гнёзд — целое, необязательное, от одного', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.showProductModal()
+    await flushPromises()
+
+    const input = wrapper.findComponent('[data-test="product-cavities"]')
+    expect(input.exists()).toBe(true)
+    expect(input.props('min')).toBe(1)
+    expect(input.props('precision')).toBe(0)
+    expect(wrapper.vm.productForm.cavities).toBeNull()
+  })
+
+  it('при добавлении передаёт умолчание гнёзд изделия', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.showProductModal()
+    Object.assign(wrapper.vm.productForm, { article: 'PAIR', name: 'Парная', cavities: 2 })
+
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+
+    expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', expect.objectContaining({ cavities: 2 }))
   })
 })
 

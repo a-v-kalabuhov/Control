@@ -52,6 +52,9 @@
               </template>
             </el-table-column>
             <el-table-column prop="partWeightGrams" label="Вес, г" width="100" align="right" />
+            <el-table-column label="Гнёзда" width="100" align="right">
+              <template #default="{ row: p }">{{ p.cavities ?? '—' }}</template>
+            </el-table-column>
             <el-table-column label="Цикл литья, с" width="130" align="right">
               <template #default="{ row: p }">{{ p.plannedInjectionCycleSeconds ?? '—' }}</template>
             </el-table-column>
@@ -194,6 +197,13 @@
             :value-on-clear="0" class="w-full" controls-position="right"
           />
         </el-form-item>
+        <el-form-item label="Гнёзда">
+          <el-input-number
+            v-model="productForm.cavities" :min="1" :precision="0"
+            data-test="product-cavities" class="w-full" controls-position="right"
+          />
+          <div class="text-xs text-gray-500 mt-1">Необязательно; если пусто — максимум выбранной ПФ</div>
+        </el-form-item>
         <el-form-item label="Цикл литья, с">
           <el-input-number
             v-model="productForm.plannedInjectionCycleSeconds" :min="1" :max="86400"
@@ -273,7 +283,7 @@ const productDialogVisible = ref(false)
 const savingProduct = ref(false)
 const editingProduct = ref(null)
 const productForm = reactive({
-  article: '', name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null, hasSample: false
+  article: '', name: '', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
 })
 
 const filters = reactive({ search: '', isActive: null, customer: null, customerEmpty: false })
@@ -379,7 +389,7 @@ function showProductModal() {
   editingProduct.value = null
   Object.assign(productForm, {
     article: nextProductArticle(editing.value.products),
-    name: '', partWeightGrams: 0, plannedInjectionCycleSeconds: null, hasSample: false
+    name: '', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
   })
   productDialogVisible.value = true
 }
@@ -389,6 +399,7 @@ function editProduct(p) {
   Object.assign(productForm, {
     article: p.article, name: p.name,
     partWeightGrams: p.partWeightGrams ?? 0,
+    cavities: p.cavities ?? null,
     plannedInjectionCycleSeconds: p.plannedInjectionCycleSeconds ?? null,
     hasSample: p.hasSample ?? false
   })
@@ -427,12 +438,15 @@ async function saveProduct() {
     const payload = {
       article, name,
       partWeightGrams: productForm.partWeightGrams ?? 0,
+      cavities: productForm.cavities ?? null,
       plannedInjectionCycleSeconds: productForm.plannedInjectionCycleSeconds ?? null,
       hasSample: productForm.hasSample ?? false
     }
     if (editingProduct.value) {
       await productTypesApi.updateProduct(typeId, editingProduct.value.id, {
-        ...payload, clearPlannedInjectionCycleSeconds: payload.plannedInjectionCycleSeconds === null
+        ...payload,
+        clearCavities: payload.cavities === null,
+        clearPlannedInjectionCycleSeconds: payload.plannedInjectionCycleSeconds === null
       })
       ElMessage.success('Изделие обновлено')
     } else {

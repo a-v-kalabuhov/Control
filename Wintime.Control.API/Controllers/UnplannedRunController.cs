@@ -194,7 +194,7 @@ public class UnplannedRunController : ControllerBase
         {
             c.TaskId = task.Id;
             c.MoldId = task.MoldId;
-            c.Cavities = task.Mold.Cavities; // снапшот текущей гнёздности (ADR-0001)
+            c.Cavities = task.Cavities; // снапшот рабочей гнёздовости задания (PZP-36)
             if (c.IsSuccessful)
             {
                 addedQty += c.Cavities;

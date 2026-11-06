@@ -282,6 +282,9 @@ public class TasksController : ControllerBase
             return BadRequest("Указано несуществующее изделие.");
         ProductSelection.EnsureSelectable(product);
         ProductSelection.EnsureBelongsToMold(product, mold.ProductTypeId);
+        var defaultCavities = product.Cavities ?? mold.Cavities;
+        if (request.Cavities is < 1 || request.Cavities > defaultCavities)
+            return BadRequest($"Количество гнёзд в задании должно быть от 1 до {defaultCavities}.");
 
         // PZP-16: ТПА должен входить в список совместимых ПФ (пустой список — любой ТПА).
         if (!MoldImmCompatibility.IsCompatible(mold.CompatibleImms.Select(i => i.Id).ToList(), request.ImmId))
@@ -294,6 +297,7 @@ public class TasksController : ControllerBase
             ProductId = request.ProductId.Value,
             PersonnelId = string.IsNullOrWhiteSpace(request.PersonnelId) ? null : request.PersonnelId,
             PlanQuantity = request.PlanQuantity,
+            Cavities = request.Cavities ?? defaultCavities,
             Note = request.Note,
             Status = Core.Enums.TaskStatus.Planned
         };
@@ -346,11 +350,15 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> UpdateTask(Guid id, [FromBody] UpdateTaskRequestDto request)
     {
         var task = await _context.ShiftTasks.Include(t => t.Mold)
+            .Include(t => t.Product)
             .Include(t => t.RecipeIngredients)
             .FirstOrDefaultAsync(t => t.Id == id);
         if (task == null)
             return NotFound();
         var previousPartWeight = task.PartWeightGrams;
+        var previousCavities = task.Cavities;
+        var defaultCavities = task.Product?.Cavities ?? task.Mold.Cavities;
+        var productChanged = false;
 
         if (request.ProductId.HasValue && request.ProductId.Value != task.ProductId)
         {
@@ -365,9 +373,19 @@ public class TasksController : ControllerBase
             // статус и заказ — гард в сущности (ADR-0002)
             if (task.SetProduct(product.Id))
             {
+                productChanged = true;
                 task.ApplyRecipe(product.RecipeIngredients);
                 task.SetPartWeight(product.PartWeightGrams);
+                defaultCavities = product.Cavities ?? task.Mold.Cavities;
+                task.Cavities = defaultCavities;
             }
+        }
+
+        if (request.Cavities.HasValue && (productChanged || request.Cavities.Value != previousCavities))
+        {
+            if (request.Cavities.Value < 1 || request.Cavities.Value > defaultCavities)
+                return BadRequest($"Количество гнёзд в задании должно быть от 1 до {defaultCavities}.");
+            task.Cavities = request.Cavities.Value;
         }
 
         if (request.PartWeightGrams.HasValue)
