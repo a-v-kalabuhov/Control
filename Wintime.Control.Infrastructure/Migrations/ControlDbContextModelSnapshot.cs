@@ -627,6 +627,9 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<int?>("Cavities")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Comment")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 

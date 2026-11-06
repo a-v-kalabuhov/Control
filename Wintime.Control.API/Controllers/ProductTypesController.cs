@@ -20,7 +20,7 @@ public class ProductTypesController : ControllerBase
 
     private static ProductDto ToDto(Product p, ISet<Guid> usedIds) => new()
     {
-        Id = p.Id, Article = p.Article, FullArticle = p.FullArticle, Name = p.Name,
+        Id = p.Id, Article = p.Article, FullArticle = p.FullArticle, Name = p.Name, Comment = p.Comment,
         PartWeightGrams = p.PartWeightGrams, Cavities = p.Cavities, PlannedInjectionCycleSeconds = p.PlannedInjectionCycleSeconds,
         HasSample = p.HasSample, IsActive = p.IsActive, IsUsed = usedIds.Contains(p.Id),
         Recipe = p.RecipeIngredients
@@ -297,7 +297,7 @@ public class ProductTypesController : ControllerBase
         var product = new Product
         {
             ProductTypeId = id, Article = part, Name = request.Name.Trim(), FullArticle = full, IsActive = true,
-            PartWeightGrams = request.PartWeightGrams, Cavities = request.Cavities,
+            Comment = MaterialRules.Clean(request.Comment), PartWeightGrams = request.PartWeightGrams, Cavities = request.Cavities,
             PlannedInjectionCycleSeconds = request.PlannedInjectionCycleSeconds,
             HasSample = request.HasSample
         };
@@ -342,6 +342,10 @@ public class ProductTypesController : ControllerBase
                 return BadRequest("Наименование не может быть пустым.");
             product.Name = request.Name.Trim();
         }
+        if (request.ClearComment)
+            product.Comment = null;
+        else if (request.Comment != null)
+            product.Comment = MaterialRules.Clean(request.Comment);
         if (request.PartWeightGrams.HasValue)
             product.PartWeightGrams = request.PartWeightGrams.Value;
         if (request.ClearCavities)

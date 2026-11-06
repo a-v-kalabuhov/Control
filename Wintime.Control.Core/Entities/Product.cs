@@ -12,6 +12,7 @@ public class Product : BaseEntity
     public ProductType? ProductType { get; set; }
     public string Article { get; set; } = string.Empty;     // часть артикула (заглавными)
     public string Name { get; set; } = string.Empty;        // наименование изделия
+    public string? Comment { get; set; }                    // технологический комментарий (PZP-20)
     public string FullArticle { get; set; } = string.Empty; // хранимый, пересчитывается при правке артикулов
     public decimal PartWeightGrams { get; set; }            // вес одной детали, граммы (PZP-24)
     public int? Cavities { get; set; }                       // умолчание гнёзд изделия; null — максимум ПФ (PZP-36)
