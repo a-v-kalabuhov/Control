@@ -8,5 +8,6 @@ public class UpdateProductRequestDto
     public int? PlannedInjectionCycleSeconds { get; set; }
     /// <summary>Явно очистить необязательный эталон; null у PlannedInjectionCycleSeconds означает «не менять».</summary>
     public bool ClearPlannedInjectionCycleSeconds { get; set; }
+    public bool? HasSample { get; set; }                // null — не менять
     public bool? IsActive { get; set; }
 }

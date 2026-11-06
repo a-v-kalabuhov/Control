@@ -8,6 +8,7 @@ public class ProductDto
     public string Name { get; set; } = string.Empty;
     public decimal PartWeightGrams { get; set; }
     public int? PlannedInjectionCycleSeconds { get; set; }
+    public bool HasSample { get; set; }
     public bool IsActive { get; set; }
     public bool IsUsed { get; set; }                         // есть в заказах/заданиях — удалить нельзя
     public List<RecipeIngredientDto> Recipe { get; set; } = new();   // рецепт изделия (BL-36)

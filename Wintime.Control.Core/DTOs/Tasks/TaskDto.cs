@@ -17,6 +17,7 @@ public class TaskDto
     public string? PersonnelName { get; set; }
     public int PlanQuantity { get; set; }
     public decimal PartWeightGrams { get; set; }
+    public int? PackagingUnit { get; set; }
     public int ActualQuantity { get; set; }
     public decimal ActualMaterialWeightGrams { get; set; }
     public decimal ProgressPercent { get; set; }

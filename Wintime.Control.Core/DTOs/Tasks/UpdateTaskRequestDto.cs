@@ -7,6 +7,10 @@ public class UpdateTaskRequestDto
     public int? PlanQuantity { get; set; }
     /// <summary>Вес детали, г; null — не менять. Доступен в любом статусе (PZP-24).</summary>
     public decimal? PartWeightGrams { get; set; }
+    /// <summary>Тарная единица, шт.; null — не менять. Доступна в любом статусе (PZP-29).</summary>
+    public int? PackagingUnit { get; set; }
+    /// <summary>Явно очистить тарную единицу.</summary>
+    public bool ClearPackagingUnit { get; set; }
     /// <summary>Изделие задания (PZP-19); <c>null</c> — не менять.</summary>
     public Guid? ProductId { get; set; }
     public string? Note { get; set; }

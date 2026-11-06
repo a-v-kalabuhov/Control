@@ -300,6 +300,9 @@ public class TasksController : ControllerBase
 
         var schedule = await _factoryClock.GetScheduleAsync();
         task.SetPartWeight(request.PartWeightGrams ?? product.PartWeightGrams);
+        task.SetPackagingUnit(request.ClearPackagingUnit
+            ? null
+            : request.PackagingUnit ?? product.ProductType!.PackagingUnit);
         task.SetPlannedStart(request.PlannedDate.Value, request.PlannedSetupStartTime,
                              schedule.ToLocal(_factoryClock.UtcNow));
 
@@ -369,6 +372,10 @@ public class TasksController : ControllerBase
 
         if (request.PartWeightGrams.HasValue)
             task.SetPartWeight(request.PartWeightGrams.Value);
+        if (request.ClearPackagingUnit)
+            task.SetPackagingUnit(null);
+        else if (request.PackagingUnit.HasValue)
+            task.SetPackagingUnit(request.PackagingUnit.Value);
         if (request.PlanQuantity.HasValue)
             task.SetPlanQuantity(request.PlanQuantity.Value);
         if (request.Note != null)

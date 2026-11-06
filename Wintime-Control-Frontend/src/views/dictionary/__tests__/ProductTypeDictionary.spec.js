@@ -288,7 +288,7 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     await flushPromises()
 
     expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
-      article: 'BLK', name: 'Чёрный', partWeightGrams: 0, plannedInjectionCycleSeconds: null
+      article: 'BLK', name: 'Чёрный', partWeightGrams: 0, plannedInjectionCycleSeconds: null, hasSample: false
     })
     expect(productTypesApi.getById).toHaveBeenCalledWith('pt-1')
   })
@@ -392,7 +392,7 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
     await flushPromises()
 
     expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
-      article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, plannedInjectionCycleSeconds: 20
+      article: 'BLK', name: 'Чёрный', partWeightGrams: 12.5, plannedInjectionCycleSeconds: 20, hasSample: false
     })
   })
 
@@ -410,7 +410,89 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
 
     expect(productTypesApi.updateProduct).toHaveBeenCalledWith('pt-1', 'p-1', {
       article: 'BLK', name: 'Чёрный', partWeightGrams: 14.25,
-      plannedInjectionCycleSeconds: null, clearPlannedInjectionCycleSeconds: true
+      plannedInjectionCycleSeconds: null, clearPlannedInjectionCycleSeconds: true, hasSample: false
     })
+  })
+})
+
+describe('ProductTypeDictionary — образец и тарная единица (PZP-29)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    productTypesApi.getList.mockResolvedValue({ data: [typeA] })
+    productTypesApi.getById.mockResolvedValue({ data: typeA })
+    productTypesApi.create.mockResolvedValue({ data: { ...typeA, id: 'pt-new' } })
+    productTypesApi.addProduct.mockResolvedValue({ data: {} })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    mounted.splice(0).forEach(w => w.unmount())
+    document.body.innerHTML = ''
+  })
+
+  it('при создании типа передаёт тарную единицу', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.showCreateModal()
+    Object.assign(wrapper.vm.form, { article: 'PACK', name: 'Тарный тип', packagingUnit: 24 })
+    await flushPromises()
+
+    await wrapper.vm.save()
+    await flushPromises()
+
+    expect(productTypesApi.create).toHaveBeenCalledWith(expect.objectContaining({ packagingUnit: 24 }))
+  })
+
+  it('при очистке тарной единицы отправляет явный clear-флаг', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem({ ...typeA, packagingUnit: 24 })
+    expect(wrapper.vm.form.packagingUnit).toBe(24)
+    wrapper.vm.form.packagingUnit = null
+    await flushPromises()
+
+    await wrapper.vm.save()
+    await flushPromises()
+
+    expect(productTypesApi.update).toHaveBeenCalledWith('pt-1', expect.objectContaining({
+      packagingUnit: null, clearPackagingUnit: true
+    }))
+  })
+
+  it('поле тарной единицы настроено на целые числа', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem({ ...typeA, packagingUnit: 24 })
+    await flushPromises()
+
+    expect(wrapper.findComponent('[data-test="type-packaging-unit"]').props('precision')).toBe(0)
+  })
+
+  it('при добавлении изделия передаёт признак образца', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.showProductModal()
+    Object.assign(wrapper.vm.productForm, { article: 'BLK', name: 'Чёрный', hasSample: true })
+
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+
+    expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', expect.objectContaining({ hasSample: true }))
+  })
+
+  it('показывает значок только у изделия с образцом', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem({
+      ...typeA,
+      products: [
+        { ...typeA.products[0], hasSample: true },
+        { ...typeA.products[1], hasSample: false }
+      ]
+    })
+    await flushPromises()
+
+    expect(document.body.querySelectorAll('[data-test="product-sample"]')).toHaveLength(1)
   })
 })

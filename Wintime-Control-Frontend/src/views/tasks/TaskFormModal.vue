@@ -147,6 +147,17 @@
             controls-position="right"
           />
         </el-form-item>
+        <el-form-item label="Тарная единица, шт." prop="packagingUnit">
+          <el-input-number
+            v-model="form.packagingUnit"
+            data-test="packaging-unit"
+            :min="1" :max="1000000" :precision="0"
+            @update:model-value="packagingUnitCustomized = true"
+            class="w-full"
+            controls-position="right"
+          />
+          <div class="text-xs text-gray-500 mt-1">Необязательно; копируется из типа изделия</div>
+        </el-form-item>
         <el-form-item label="Рабочий режим" prop="workMode">
           <el-select v-model="form.workMode" class="w-full" :disabled="isRestricted">
             <el-option label="Автомат" value="Auto" />
@@ -331,6 +342,7 @@ const form = reactive({
   personnelId: null,
   planQuantity: 1000,
   partWeightGrams: 0,
+  packagingUnit: null,
   plannedDate: null,
   plannedSetupStartTime: null,
   note: '',
@@ -343,9 +355,10 @@ const form = reactive({
   releaseBufferPercent: 0
 })
 
-// Признаки ручного ввода отдельно от значения: 0 — валидный вес, null — валидный цикл.
+// Признаки ручного ввода отдельно от значения: 0 — валидный вес, null — валидный цикл или тарная единица.
 const partWeightCustomized = ref(false)
 const injectionCycleCustomized = ref(false)
+const packagingUnitCustomized = ref(false)
 
 const rules = {
   plannedDate: [{ required: true, message: 'Укажите плановую дату', trigger: 'change' }],
@@ -401,7 +414,7 @@ const isFullCycleRequired = computed(() => {
 const isLimitedEdit = computed(() => editingTask.value?.status === 'Issued')
 // PZP-14: после начала наладки и до завершения выпуска правится только буфер выпуска
 const isBufferOnlyEdit = computed(() => ['Setup', 'InProgress'].includes(editingTask.value?.status))
-// PZP-24: после завершения менеджер может исправить только вес детали
+// PZP-24/29: после завершения менеджер может исправить вес детали и тарную единицу
 const isWeightOnlyEdit = computed(() => ['Completed', 'Closed'].includes(editingTask.value?.status))
 // Поля, закрытые во всех ограниченных режимах редактирования
 const isRestricted = computed(() => isLimitedEdit.value || isBufferOnlyEdit.value || isWeightOnlyEdit.value)
@@ -550,6 +563,7 @@ const resetForm = () => {
     personnelId: null,
     planQuantity: 1000,
     partWeightGrams: 0,
+    packagingUnit: null,
     plannedDate: null,
     plannedSetupStartTime: null,
     note: '',
@@ -564,6 +578,7 @@ const resetForm = () => {
   orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
   partWeightCustomized.value = false
   injectionCycleCustomized.value = false
+  packagingUnitCustomized.value = false
   initialOrderId.value = null
   editingProductType.value = null
 }
@@ -669,7 +684,15 @@ watch(selectedProduct, (product, previousProduct) => {
 })
 
 // Автоподстановка изделия по ПФ. Типы могут загрузиться позже ПФ — следим за обоими.
-watch([selectedProductTypeId, productTypes], ([typeId]) => {
+watch([selectedProductTypeId, productTypes], ([typeId], [previousTypeId]) => {
+  // PZP-29: при реальной смене типа умолчание обновляется, а поздняя загрузка
+  // справочника не затирает значение, уже введённое менеджером.
+  if (!editingTask.value) {
+    if (typeId !== previousTypeId) packagingUnitCustomized.value = false
+    if (!packagingUnitCustomized.value) {
+      form.packagingUnit = productTypes.value.find(t => t.id === typeId)?.packagingUnit ?? null
+    }
+  }
   if (props.lockedOrder) {
     form.productId = props.lockedOrder.productId
     return
@@ -753,6 +776,7 @@ const populateForm = (task) => {
     personnelId: task.personnelId ?? null,
     planQuantity: task.planQuantity,
     partWeightGrams: task.partWeightGrams ?? 0,
+    packagingUnit: task.packagingUnit ?? null,
     plannedDate: task.plannedDate,
     plannedSetupStartTime: task.plannedSetupStartTime ?? null,
     note: task.note || '',
@@ -767,6 +791,7 @@ const populateForm = (task) => {
   initialOrderId.value = task.orderId || null
   partWeightCustomized.value = false
   injectionCycleCustomized.value = false
+  packagingUnitCustomized.value = false
   // В режиме редактирования селект ПФ задизейблен и никогда не получает
   // @focus, поэтому molds (а значит и productTypeId для фильтра заказов)
   // нужно подгрузить явно, иначе селект «Заказ» останется пустым/disabled.
@@ -847,6 +872,7 @@ const handleSubmit = async () => {
         updatePayload.clearPlannedSetupStartTime = !form.plannedSetupStartTime
         updatePayload.clearPlannedInjectionCycleSeconds = form.plannedInjectionCycleSeconds === null
           || form.plannedInjectionCycleSeconds === undefined
+        updatePayload.clearPackagingUnit = form.packagingUnit === null || form.packagingUnit === undefined
         // Наладчика меняем первым: его отказ не должен оставить частично сохранённое задание.
         if ((personnelId || null) !== (editingTask.value.personnelId || null)) {
           await tasksApi.setPersonnel(editingTask.value.id, personnelId || null)
@@ -857,7 +883,11 @@ const handleSubmit = async () => {
         }
         await notifySaved(editingTask.value.id, 'Задание обновлено')
       } else {
-        const { data: created } = await tasksApi.create({ ...form, personnelId: form.personnelId || null })
+        const { data: created } = await tasksApi.create({
+          ...form,
+          personnelId: form.personnelId || null,
+          clearPackagingUnit: form.packagingUnit === null || form.packagingUnit === undefined
+        })
         await notifySaved(created?.id,
           'Задание создано в статусе «Планируется». Чтобы наладчик его увидел, нажмите «Выдать»')
       }
