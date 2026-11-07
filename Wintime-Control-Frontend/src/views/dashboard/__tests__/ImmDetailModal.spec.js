@@ -9,12 +9,23 @@ vi.mock('vue-router', async (importOriginal) => ({
   useRouter: () => ({ push: vi.fn() })
 }))
 vi.mock('@/api/dashboard', () => ({
-  dashboardApi: { getImmEffectiveStatusHistory: vi.fn(() => Promise.resolve({ data: [] })) }
+  dashboardApi: {
+    getImmEffectiveStatusHistory: vi.fn(() => Promise.resolve({ data: [] })),
+    getImmCardShift: vi.fn(() => Promise.resolve({ data: {
+      shiftStartAt: '2026-11-07T08:00:00Z',
+      shiftEndAt: '2026-11-07T17:00:00Z',
+      statusSegments: [], activeTasks: [], plannedTasks: []
+    } }))
+  }
 }))
 vi.mock('@/api/tasks', () => ({ tasksApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) } }))
 vi.mock('@/api/shifts', () => ({ shiftsApi: { getShifts: vi.fn(() => Promise.resolve({ data: [] })) } }))
 
 const { default: ImmDetailModal } = await import('../ImmDetailModal.vue')
+const { dashboardApi } = await import('@/api/dashboard')
+const { tasksApi } = await import('@/api/tasks')
+const { shiftsApi } = await import('@/api/shifts')
+const { useAuthStore } = await import('@/stores/auth')
 
 const task = { id: 't1', status: 'InProgress', moldName: 'ПФ-12', planQuantity: 500, actualQuantity: 120 }
 
@@ -50,6 +61,29 @@ describe('ImmDetailModal — задание из хронологии', () => {
     expect(card().props('task')).toEqual(task)
     expect(card().props('readonly')).toBe(true)
     expect(card().props('appendToBody')).toBe(true)
+    w.unmount()
+  })
+
+  it('литейщик получает карточку только через защищённый endpoint текущей смены', async () => {
+    const auth = useAuthStore()
+    auth.user = null
+    auth.userRole = 'Operator'
+    const w = mount(ImmDetailModal, {
+      props: { immId: 'imm-1', modelValue: true },
+      global: {
+        plugins: [ElementPlus],
+        stubs: { ImmCard: true, ShiftTimeline: true, TaskDetailModal: true }
+      }
+    })
+    await flushPromises()
+    expect(w.vm.isOperator).toBe(true)
+    await w.vm.loadData()
+    await flushPromises()
+
+    expect(dashboardApi.getImmCardShift).toHaveBeenCalledWith('imm-1')
+    expect(dashboardApi.getImmEffectiveStatusHistory).not.toHaveBeenCalled()
+    expect(tasksApi.getList).not.toHaveBeenCalled()
+    expect(shiftsApi.getShifts).not.toHaveBeenCalled()
     w.unmount()
   })
 })

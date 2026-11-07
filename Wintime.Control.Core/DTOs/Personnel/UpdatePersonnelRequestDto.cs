@@ -6,4 +6,9 @@ public class UpdatePersonnelRequestDto
     public string? Qualification { get; set; }
     public string? Role { get; set; }
     public bool? IsActive { get; set; }
+
+    // null — логин не меняется; пустая строка/пробелы — отозвать доступ.
+    public string? Login { get; set; }
+    // Пустой пароль не меняется. Обязателен при первом включении входа.
+    public string? Password { get; set; }
 }

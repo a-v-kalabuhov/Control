@@ -106,8 +106,9 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const router = useRouter()
-// Телеметрия доступна только Admin/Manager (API — ManagerOrAdmin), Observer кнопку не видит.
-const { canAccess } = usePermissions()
+// Телеметрия доступна только Admin/Manager (API — ManagerOrAdmin), остальным кнопка не видна.
+const { canAccess, hasRole } = usePermissions()
+const isOperator = computed(() => hasRole('Operator'))
 
 const visible = computed({
   get: () => props.modelValue,
@@ -190,16 +191,29 @@ const items = (res) => res.data?.items ?? res.data ?? []
 const loadData = async () => {
   if (!props.immId) return
   loading.value = true
-  shift.value = computeCurrentShift(shiftSchedule.value)
-
-  const fromIso = shift.value.start.toISOString()
-  const toIso   = shift.value.end.toISOString()
-
-  // BL-40: кроме активных в смене — запланированные около смены (для ряда «План»),
-  // включая ещё не начатые. Точный отбор по plannedStartAt — в ShiftTimeline.
-  const { plannedFrom, plannedTo } = plannedRangeForShift(shift.value.start, shift.value.end)
 
   try {
+    // Operator не получает общие endpoint'ы заданий/истории: окно текущей смены
+    // и допустимый состав данных определяет сервер (PZP-30).
+    if (isOperator.value) {
+      const res = await dashboardApi.getImmCardShift(props.immId)
+      shift.value = {
+        start: new Date(res.data.shiftStartAt),
+        end: new Date(res.data.shiftEndAt)
+      }
+      statusSegments.value = res.data.statusSegments ?? []
+      tasks.value = mergeTimelineTasks(res.data.activeTasks, res.data.plannedTasks)
+      return
+    }
+
+    shift.value = computeCurrentShift(shiftSchedule.value)
+    const fromIso = shift.value.start.toISOString()
+    const toIso = shift.value.end.toISOString()
+
+    // BL-40: кроме активных в смене — запланированные около смены (для ряда «План»),
+    // включая ещё не начатые. Точный отбор по plannedStartAt — в ShiftTimeline.
+    const { plannedFrom, plannedTo } = plannedRangeForShift(shift.value.start, shift.value.end)
+
     // Запросы заданий не фатальны: строка статусов должна показываться, даже если список
     // заданий не загрузился, — упавший запрос даёт пустой список, без тоста.
     const [historyRes, taskRes] = await Promise.all([
@@ -224,11 +238,13 @@ let refreshTimer = null
 let unmounted = false
 
 const onOpen = async () => {
-  try {
-    const res = await shiftsApi.getShifts()
-    shiftSchedule.value = res.data ?? []
-  } catch {
-    shiftSchedule.value = []
+  if (!isOperator.value) {
+    try {
+      const res = await shiftsApi.getShifts()
+      shiftSchedule.value = res.data ?? []
+    } catch {
+      shiftSchedule.value = []
+    }
   }
   if (unmounted || !visible.value) return // компонент снят/диалог закрыт, пока шёл await — таймер не заводим
   loadData()

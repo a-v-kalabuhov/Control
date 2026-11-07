@@ -3,7 +3,7 @@
     <div class="mb-6 flex items-center justify-between">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Справочник персонала</h2>
-        <p class="text-gray-600 mt-1">Управление пользователями и наладчиками</p>
+        <p class="text-gray-600 mt-1">Управление персоналом и доступом в систему</p>
       </div>
       <el-button type="primary" @click="showCreateModal">
         <el-icon class="mr-1"><Plus /></el-icon>
@@ -21,6 +21,7 @@
           <el-select v-model="filters.role" placeholder="Все" clearable style="width: 140px;">
             <el-option label="Все роли" value="" />
             <el-option label="Наладчик" value="Adjuster" />
+            <el-option label="Литейщик" value="Operator" />
             <el-option label="Менеджер" value="Manager" />
             <el-option label="Админ" value="Admin" />
             <el-option label="Наблюдатель" value="Observer" />
@@ -47,6 +48,13 @@
         <template #default="{ row }">
           <el-tag :type="getRoleType(row.role)">
             {{ getRoleLabel(row.role) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="Вход в систему" width="140" align="center">
+        <template #default="{ row }">
+          <el-tag :type="row.login ? 'success' : 'info'">
+            {{ row.login ? 'Есть' : 'Нет' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -94,17 +102,26 @@
           <el-input v-model="form.qualification" placeholder="Слесарь-наладчик 4 разряда" />
         </el-form-item>
 
-        <el-form-item label="Логин" prop="login" :required="!editingPersonnel">
-          <el-input v-model="form.login" placeholder="ivanov" :disabled="!!editingPersonnel" />
+        <el-form-item label="Логин" prop="login">
+          <el-input v-model="form.login" placeholder="Без логина вход запрещён" />
         </el-form-item>
 
-        <el-form-item v-if="!editingPersonnel" label="Пароль" prop="password" required>
-          <el-input v-model="form.password" type="password" placeholder="••••••" />
+        <el-form-item
+          :label="editingPersonnel ? 'Новый пароль' : 'Пароль'"
+          prop="password"
+          :required="!!form.login.trim() && (!editingPersonnel || !editingPersonnel.login)"
+        >
+          <el-input
+            v-model="form.password"
+            type="password"
+            :placeholder="editingPersonnel ? 'Оставьте пустым, чтобы не менять' : '••••••'"
+          />
         </el-form-item>
 
         <el-form-item label="Роль" prop="role" required>
           <el-select v-model="form.role" placeholder="Выберите роль" class="w-full">
             <el-option label="Наладчик" value="Adjuster" />
+            <el-option label="Литейщик" value="Operator" />
             <el-option label="Менеджер" value="Manager" />
             <el-option v-if="isAdmin" label="Администратор" value="Admin" />
             <el-option label="Наблюдатель" value="Observer" />
@@ -156,14 +173,23 @@ const form = reactive({
   qualification: '',
   login: '',
   password: '',
-  role: 'Adjuster',
+  role: '',
   isActive: true
 })
+
+const validatePassword = (rule, value, callback) => {
+  const grantingAccess = !!form.login.trim() && (!editingPersonnel.value || !editingPersonnel.value.login)
+  if (grantingAccess && !value) {
+    callback(new Error('При указании логина введите пароль'))
+  } else {
+    callback()
+  }
+}
 
 const rules = {
   employeeId: [{ required: true, message: 'Введите табельный номер', trigger: 'blur' }],
   fullName: [{ required: true, message: 'Введите ФИО', trigger: 'blur' }],
-  login: [{ required: true, message: 'Введите логин', trigger: 'blur' }],
+  password: [{ validator: validatePassword, trigger: 'blur' }],
   role: [{ required: true, message: 'Выберите роль', trigger: 'change' }]
 }
 
@@ -196,7 +222,7 @@ const showCreateModal = () => {
     qualification: '',
     login: '',
     password: '',
-    role: 'Adjuster',
+    role: '',
     isActive: true
   })
   dialogVisible.value = true
@@ -224,10 +250,9 @@ const savePersonnel = async () => {
 
     saving.value = true
     try {
-      const payload = { ...form }
+      const payload = { ...form, login: form.login.trim() }
       if (editingPersonnel.value) {
-        delete payload.password // при редактировании пароль не обновляем если пустой
-        delete payload.login // login не меняется
+        if (!payload.password) delete payload.password // пустой новый пароль не меняет текущий
         await personnelApi.update(editingPersonnel.value.id, payload)
         ElMessage.success('Сотрудник обновлён')
       } else {
@@ -289,6 +314,7 @@ const getRoleLabel = (role) => {
     Admin: 'Админ',
     Manager: 'Менеджер',
     Adjuster: 'Наладчик',
+    Operator: 'Литейщик',
     Observer: 'Наблюдатель'
   }
   return labels[role] || role

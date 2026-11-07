@@ -33,6 +33,16 @@ export const dashboardApi = {
     })
   },
 
+  // Карточка ТПА литейщика: окно смены и данные определяет сервер (PZP-30)
+  getImmCardShift(id) {
+    return apiClient.get(`/dashboard/imm-card/${id}`)
+  },
+
+  // Итоги задания литейщика с серверной проверкой принадлежности текущей смене
+  getTaskResults(id) {
+    return apiClient.get(`/dashboard/task-results/${id}`)
+  },
+
   // Средняя загрузка цеха за период (взвешенная по времени)
   getShiftUtilization(from, to) {
     return apiClient.get('/dashboard/shift-utilization', {

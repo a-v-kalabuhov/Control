@@ -6,8 +6,12 @@ import ElementPlus from 'element-plus'
 vi.mock('@/api/tasks', () => ({
   tasksApi: { getResults: vi.fn() }
 }))
+vi.mock('@/api/dashboard', () => ({
+  dashboardApi: { getTaskResults: vi.fn() }
+}))
 
 import { tasksApi } from '@/api/tasks'
+import { dashboardApi } from '@/api/dashboard'
 import TaskResultsTab from '../TaskResultsTab.vue'
 
 const completed = () => ({
@@ -203,5 +207,18 @@ describe('TaskResultsTab', () => {
     tasksApi.getResults.mockResolvedValue({ data: { ...completed(), inProgress: true } })
     await vi.advanceTimersByTimeAsync(60_000)
     expect(tasksApi.getResults).toHaveBeenCalledTimes(3)
+  })
+
+  it('литейщик загружает результаты через endpoint с проверкой текущей смены', async () => {
+    dashboardApi.getTaskResults.mockResolvedValue({ data: { releaseStarted: false, inProgress: false } })
+    const w = mount(TaskResultsTab, {
+      props: { taskId: 't1', operator: true },
+      global: { plugins: [ElementPlus] }
+    })
+    await flushPromises()
+
+    expect(dashboardApi.getTaskResults).toHaveBeenCalledWith('t1')
+    expect(tasksApi.getResults).not.toHaveBeenCalled()
+    expect(w.text()).toContain('Выпуск ещё не начат')
   })
 })
