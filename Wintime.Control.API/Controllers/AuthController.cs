@@ -116,6 +116,14 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Пользователь не найден или деактивирован" });
         }
 
+        // Справочная запись без логина не имеет права продлевать сессию (PZP-30).
+        // Это также защищает от старых refresh-токенов, выданных до очистки логина.
+        if (string.IsNullOrWhiteSpace(user.UserName))
+        {
+            _refreshTokenStore.RevokeAllForUser(user.Id);
+            return Unauthorized(new { message = "Вход для пользователя отключён" });
+        }
+
         // Ротация: старый refresh-токен отзывается, выдаётся новая пара.
         _refreshTokenStore.Revoke(request.RefreshToken);
         var newAccessToken = _tokenService.GenerateAccessToken(user);

@@ -189,7 +189,11 @@
           </el-card>
         </el-tab-pane>
         <el-tab-pane label="Результаты выполнения" name="results">
-          <TaskResultsTab v-if="visible && activeTab === 'results' && task?.id" :task-id="task.id" />
+          <TaskResultsTab
+            v-if="visible && activeTab === 'results' && task?.id"
+            :task-id="task.id"
+            :operator="authStore.userRole === 'Operator'"
+          />
         </el-tab-pane>
       </el-tabs>
 

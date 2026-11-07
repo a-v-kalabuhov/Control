@@ -226,6 +226,7 @@ const roleLabel = computed(() => {
     'Admin': 'Администратор',
     'Manager': 'Руководитель',
     'Adjuster': 'Наладчик',
+    'Operator': 'Литейщик',
     'Observer': 'Наблюдатель'
   }
   return labels[authStore.user?.role] || authStore.user?.role

@@ -2,11 +2,14 @@ using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.DTOs.Personnel;
 using Wintime.Control.Core.DTOs.Shifts;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
+using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Infrastructure.Auth;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -59,6 +62,23 @@ public class PersonnelManagementTests : IClassFixture<IntegrationTestFactory>
         using var scope = _factory.Services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
         return (await userManager.FindByIdAsync(id))!;
+    }
+
+    private async Task<string> SeedUserWithoutLoginAsync(UserRole role)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var user = new User
+        {
+            UserName = null,
+            Email = null,
+            FullName = "Сотрудник без входа",
+            Role = role,
+            IsActive = true
+        };
+        var result = await userManager.CreateAsync(user);
+        result.Succeeded.Should().BeTrue(string.Join("; ", result.Errors.Select(e => e.Description)));
+        return user.Id;
     }
 
     private static CreatePersonnelRequestDto NewPerson(string role) => new()
@@ -153,6 +173,141 @@ public class PersonnelManagementTests : IClassFixture<IntegrationTestFactory>
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await LoadUserAsync(id)).IsActive.Should().BeTrue();
+    }
+
+    // ---------- PZP-30: необязательный логин ----------
+
+    [Fact]
+    public async Task Manager_CanCreateMultipleOperatorsWithoutLogin()
+    {
+        var client = await ManagerClientAsync();
+
+        foreach (var i in new[] { 1, 2 })
+        {
+            var request = NewPerson("Operator");
+            request.Login = null;
+            request.Password = null;
+            request.EmployeeId = $"EMP-NO-LOGIN-{i}";
+
+            var resp = await client.PostAsJsonAsync("/api/personnel", request);
+
+            resp.StatusCode.Should().Be(HttpStatusCode.Created);
+            var dto = await resp.Content.ReadFromJsonAsync<PersonnelDto>();
+            var saved = await LoadUserAsync(dto!.Id);
+            saved.UserName.Should().BeNull();
+            saved.NormalizedUserName.Should().BeNull();
+            saved.PasswordHash.Should().BeNull();
+            saved.Role.Should().Be(UserRole.Operator);
+        }
+    }
+
+    [Fact]
+    public async Task Manager_CannotCreateLoginWithoutPassword()
+    {
+        var client = await ManagerClientAsync();
+        var request = NewPerson("Operator");
+        request.Password = null;
+
+        var resp = await client.PostAsJsonAsync("/api/personnel", request);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Manager_CanGrantAndRevokeAccess()
+    {
+        var id = await SeedUserWithoutLoginAsync(UserRole.Operator);
+        var client = await ManagerClientAsync();
+        var login = $"operator_{Guid.NewGuid():N}";
+
+        var grant = await client.PutAsJsonAsync($"/api/personnel/{id}",
+            new UpdatePersonnelRequestDto { Login = login, Password = "Passw0rd!" });
+
+        grant.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var granted = await LoadUserAsync(id);
+        granted.UserName.Should().Be(login);
+        granted.PasswordHash.Should().NotBeNull();
+
+        string refreshToken;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var tokens = scope.ServiceProvider.GetRequiredService<IRefreshTokenStore>();
+            refreshToken = $"refresh-{Guid.NewGuid():N}";
+            tokens.Store(refreshToken, id, DateTime.UtcNow.AddDays(1));
+        }
+
+        var revoke = await client.PutAsJsonAsync($"/api/personnel/{id}",
+            new UpdatePersonnelRequestDto { Login = "" });
+
+        revoke.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var revoked = await LoadUserAsync(id);
+        revoked.UserName.Should().BeNull();
+        revoked.NormalizedUserName.Should().BeNull();
+        revoked.PasswordHash.Should().BeNull();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var tokens = scope.ServiceProvider.GetRequiredService<IRefreshTokenStore>();
+            tokens.GetActive(refreshToken).Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public async Task Refresh_RejectsActiveUserWithoutLogin()
+    {
+        var id = await SeedUserWithoutLoginAsync(UserRole.Operator);
+        string accessToken;
+        string refreshToken;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+            var user = await userManager.FindByIdAsync(id);
+            accessToken = scope.ServiceProvider.GetRequiredService<IJwtTokenService>().GenerateAccessToken(user!);
+            refreshToken = $"refresh-{Guid.NewGuid():N}";
+            scope.ServiceProvider.GetRequiredService<IRefreshTokenStore>()
+                .Store(refreshToken, id, DateTime.UtcNow.AddDays(1));
+        }
+        var client = _factory.CreateClient();
+
+        var resp = await client.PostAsJsonAsync("/api/auth/refresh", new { accessToken, refreshToken });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("deactivate")]
+    [InlineData("demote")]
+    public async Task Admin_CannotRemoveAccessOfLastActiveAdmin(string mode)
+    {
+        var id = await SeedUserAsync(UserRole.Admin);
+        var admin = await LoadUserAsync(id);
+        var client = await ClientAsync(admin.UserName!, AdminPassword);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+            var otherAdmins = await userManager.Users
+                .Where(u => u.Role == UserRole.Admin && u.Id != id && u.IsActive)
+                .ToListAsync();
+            foreach (var other in otherAdmins)
+            {
+                other.IsActive = false;
+                await userManager.UpdateAsync(other);
+            }
+        }
+
+        var request = mode switch
+        {
+            "deactivate" => new UpdatePersonnelRequestDto { IsActive = false },
+            "demote" => new UpdatePersonnelRequestDto { Role = "Manager" },
+            _ => new UpdatePersonnelRequestDto { Login = "" }
+        };
+        var resp = await client.PutAsJsonAsync($"/api/personnel/{id}", request);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var saved = await LoadUserAsync(id);
+        saved.IsActive.Should().BeTrue();
+        saved.UserName.Should().Be(admin.UserName);
+        saved.Role.Should().Be(UserRole.Admin);
     }
 
     // ---------- Shifts ----------

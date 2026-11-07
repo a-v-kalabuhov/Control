@@ -8,7 +8,7 @@ export const personnelApi = {
    * Получить список персонала
    * @param {Object} params - Параметры фильтрации
    * @param {boolean|null} params.isActive - Фильтр по статусу активности
-   * @param {string|null} params.role - Фильтр по роли (Admin, Manager, Adjuster, Observer)
+   * @param {string|null} params.role - Фильтр по роли (Admin, Manager, Adjuster, Observer, Operator)
    * @returns {Promise<AxiosResponse>}
    */
   getList(params = {}) {
@@ -30,9 +30,9 @@ export const personnelApi = {
    * @param {string} data.employeeId - Табельный номер
    * @param {string} data.fullName - ФИО
    * @param {string} data.qualification - Квалификация
-   * @param {string} data.login - Логин
-   * @param {string} data.password - Пароль
-   * @param {string} data.role - Роль (Admin, Manager, Adjuster, Observer)
+   * @param {string|null} data.login - Логин; пустое значение создаёт запись без входа
+   * @param {string|null} data.password - Обязателен при наличии логина
+   * @param {string} data.role - Роль (Admin, Manager, Adjuster, Observer, Operator)
    * @returns {Promise<AxiosResponse>}
    */
   create(data) {
@@ -46,6 +46,8 @@ export const personnelApi = {
    * @param {string} data.fullName - ФИО
    * @param {string} data.qualification - Квалификация
    * @param {boolean} data.isActive - Статус активности
+   * @param {string|null} data.login - Пустая строка очищает логин; null не меняет его
+   * @param {string|null} data.password - Новый пароль; null не меняет текущий
    * @returns {Promise<AxiosResponse>}
    */
   update(id, data) {

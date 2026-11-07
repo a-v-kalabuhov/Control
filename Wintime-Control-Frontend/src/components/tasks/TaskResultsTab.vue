@@ -92,12 +92,14 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import dayjs from 'dayjs'
 import { tasksApi } from '@/api/tasks'
+import { dashboardApi } from '@/api/dashboard'
 import { EFFECTIVE_STATUS } from '@/constants/effectiveStatus'
 import { formatDuration } from '@/utils/taskPlan'
 import { formatSeconds, sharePercent, deviationPercent, formatDeviation, formatCushion } from '@/utils/taskResults'
 
 const props = defineProps({
-  taskId: { type: String, required: true }
+  taskId: { type: String, required: true },
+  operator: { type: Boolean, default: false }
 })
 
 const REFRESH_MS = 60_000
@@ -139,7 +141,9 @@ function formatDate(date) {
 async function load() {
   loading.value = results.value === null   // спиннер только на первой загрузке, не на тихом обновлении
   try {
-    const res = await tasksApi.getResults(props.taskId)
+    const res = props.operator
+      ? await dashboardApi.getTaskResults(props.taskId)
+      : await tasksApi.getResults(props.taskId)
     if (unmounted) return
     results.value = res.data
     loadFailed.value = false

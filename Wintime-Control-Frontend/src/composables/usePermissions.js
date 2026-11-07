@@ -10,7 +10,7 @@ export function usePermissions() {
    */
   function canAccess(roles) {
     if (!authStore.isAuthenticated) return false
-    return roles.includes(authStore.user?.role)
+    return roles.includes(authStore.user?.role ?? authStore.userRole)
   }
 
   /**
@@ -19,7 +19,7 @@ export function usePermissions() {
    * @returns {boolean}
    */
   function hasRole(role) {
-    return authStore.user?.role === role
+    return (authStore.user?.role ?? authStore.userRole) === role
   }
 
   /**

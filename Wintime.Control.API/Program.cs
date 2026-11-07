@@ -45,7 +45,9 @@ var corsSettings = builder.Configuration.GetSection(CorsSettings.SectionName).Ge
 builder.Services.AddDbContext<ControlDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Identity
+// Identity. Валидатор регистрируется до AddIdentity, чтобы заменить стандартный
+// UserValidator: сотрудник без логина существует только в справочнике (PZP-30).
+builder.Services.AddScoped<IUserValidator<User>, OptionalLoginUserValidator>();
 builder.Services.AddIdentity<User, IdentityRole>(options =>
 {
     // Политика паролей для производственной MES-системы. Демо-аккаунты
@@ -90,9 +92,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
     .AddPolicy("ManagerOrAdmin", policy => policy.RequireRole("Manager", "Admin"))
-    .AddPolicy("AdjusterOrHigher", policy => policy.RequireRole("Adjuster", "Manager", "Admin"))
-    // Заглушка под РОСОМС (ROS-03): пока не привязана ни к одному endpoint. См. UserRole.Operator.
-    .AddPolicy("OperatorOrHigher", policy => policy.RequireRole("Operator", "Adjuster", "Manager", "Admin"));
+    .AddPolicy("AdjusterOrHigher", policy => policy.RequireRole("Adjuster", "Manager", "Admin"));
 
 // CORS
 builder.Services.AddCors(options =>
