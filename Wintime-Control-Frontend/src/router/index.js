@@ -63,6 +63,13 @@ const routes = [
         meta: { roles: ['Admin', 'Manager', 'Observer'], title: 'План-график цеха' }
       },
       {
+        // PZP-18: ежедневное назначение наладчиков и выдача заданий на смену
+        path: 'planning/shift-work-plan',
+        name: 'ShiftWorkPlan',
+        component: () => import('@/views/planning/ShiftWorkPlanView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'План работ на смену' }
+      },
+      {
         // Мониторинг телеметрии; ТПА — в query: ?imm=<id>[&from=card]
         path: 'monitoring',
         name: 'Monitoring',
@@ -232,6 +239,12 @@ router.beforeEach((to, from, next) => {
 
     // Другие роли не имеют доступа к мобильному интерфейсу
     if (!authStore.isAdjuster && isMobileRoute) {
+      next('/')
+      return
+    }
+
+    // Ограничения ролей действуют и при прямом переходе по URL, не только в меню.
+    if (to.meta.roles && !authStore.hasRole(to.meta.roles)) {
       next('/')
       return
     }
