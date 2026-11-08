@@ -70,6 +70,13 @@ const routes = [
         meta: { roles: ['Admin', 'Manager'], title: 'План работ на смену' }
       },
       {
+        // PZP-32: назначение старших на позиции заводского графика
+        path: 'planning/shift-plan',
+        name: 'ShiftPlan',
+        component: () => import('@/views/planning/ShiftPlanView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'План смен' }
+      },
+      {
         // Мониторинг телеметрии; ТПА — в query: ?imm=<id>[&from=card]
         path: 'monitoring',
         name: 'Monitoring',
