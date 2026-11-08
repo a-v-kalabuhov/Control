@@ -760,6 +760,119 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.ToTable("Shifts");
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftImmOperatorAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ImmId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OperatorId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ShiftPlanItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UnassignedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImmId");
+
+                    b.HasIndex("OperatorId");
+
+                    b.HasIndex("ShiftPlanItemId", "ImmId", "OperatorId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ShiftImmOperatorAssignments_ActiveOperator")
+                        .HasFilter("\"UnassignedAt\" IS NULL");
+
+                    b.HasIndex("ShiftPlanItemId", "ImmId", "Slot")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ShiftImmOperatorAssignments_ActiveSlot")
+                        .HasFilter("\"UnassignedAt\" IS NULL");
+
+                    b.ToTable("ShiftImmOperatorAssignments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShiftImmOperatorAssignments_Slot", "\"Slot\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_ShiftImmOperatorAssignments_UnassignedAt", "\"UnassignedAt\" IS NULL OR \"UnassignedAt\" >= \"AssignedAt\"");
+                        });
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftPlanDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("ShiftDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ShiftDate")
+                        .IsUnique();
+
+                    b.ToTable("ShiftPlanDays", (string)null);
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftPlanItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("EndAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ShiftLeadId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ShiftPlanDayId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ShiftLeadId");
+
+                    b.HasIndex("ShiftPlanDayId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("ShiftPlanItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShiftPlanItems_Position", "\"Position\" >= 1");
+
+                            t.HasCheckConstraint("CK_ShiftPlanItems_StartAtUtc_EndAtUtc", "\"StartAtUtc\" < \"EndAtUtc\"");
+                        });
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1319,6 +1432,51 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftImmOperatorAssignment", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.Imm", "Imm")
+                        .WithMany()
+                        .HasForeignKey("ImmId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.User", "Operator")
+                        .WithMany()
+                        .HasForeignKey("OperatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftPlanItem", "ShiftPlanItem")
+                        .WithMany("OperatorAssignments")
+                        .HasForeignKey("ShiftPlanItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Imm");
+
+                    b.Navigation("Operator");
+
+                    b.Navigation("ShiftPlanItem");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftPlanItem", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.User", "ShiftLead")
+                        .WithMany()
+                        .HasForeignKey("ShiftLeadId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftPlanDay", "Day")
+                        .WithMany("Items")
+                        .HasForeignKey("ShiftPlanDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+
+                    b.Navigation("ShiftLead");
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
                 {
                     b.HasOne("Wintime.Control.Core.Entities.Imm", "Imm")
@@ -1450,6 +1608,16 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Molds");
 
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftPlanDay", b =>
+                {
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftPlanItem", b =>
+                {
+                    b.Navigation("OperatorAssignments");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftTask", b =>
