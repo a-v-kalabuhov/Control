@@ -63,6 +63,34 @@ describe('PersonnelDictionary (PZP-30)', () => {
     }))
   })
 
+  it('предлагает роль старшего смены при создании сотрудника', async () => {
+    const wrapper = mountDictionary()
+    await flushPromises()
+    wrapper.vm.showCreateModal()
+    await flushPromises()
+
+    expect(wrapper.findAllComponents({ name: 'ElOption' })
+      .some(option => option.props('value') === 'ShiftLead' && option.props('label') === 'Старший смены')).toBe(true)
+  })
+
+  it('создаёт старшего смены без логина и пароля', async () => {
+    const wrapper = mountDictionary()
+    await flushPromises()
+    wrapper.vm.showCreateModal()
+    await flushPromises()
+    fillRequiredIdentity(wrapper)
+    Object.assign(wrapper.vm.form, { role: 'ShiftLead', login: '', password: '' })
+
+    await wrapper.vm.savePersonnel()
+    await flushPromises()
+
+    expect(personnelApi.create).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'ShiftLead',
+      login: '',
+      password: ''
+    }))
+  })
+
   it('не создаёт учётную запись с логином, но без пароля', async () => {
     const wrapper = mountDictionary()
     await flushPromises()

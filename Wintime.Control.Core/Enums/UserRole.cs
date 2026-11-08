@@ -8,5 +8,6 @@ public enum UserRole
     Observer = 3,
     Emulator = 4,
     // Литейщик (PZP-30): только дашборд и карточка ТПА в режиме чтения.
-    Operator = 5
+    Operator = 5,
+    ShiftLead = 6
 }

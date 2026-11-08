@@ -113,6 +113,36 @@ public class PersonnelManagementTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Manager_CanCreateShiftLead_WithoutGrantingExistingOperationalPermissions()
+    {
+        var manager = await ManagerClientAsync();
+        var request = NewPerson("ShiftLead");
+
+        var createdResponse = await manager.PostAsJsonAsync("/api/personnel", request);
+
+        createdResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createdResponse.Content.ReadFromJsonAsync<PersonnelDto>();
+        created.Should().NotBeNull();
+        created!.IsActive.Should().BeTrue();
+
+        var getResponse = await manager.GetAsync($"/api/personnel/{created.Id}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var saved = await getResponse.Content.ReadFromJsonAsync<PersonnelDto>();
+        saved!.Role.Should().Be("ShiftLead");
+
+        var shiftLead = _factory.CreateClient();
+        var token = await AuthHelper.GetTokenAsync(shiftLead, request.Login!, request.Password!);
+        token.Should().NotBeNull();
+        AuthHelper.SetBearerToken(shiftLead, token!);
+
+        foreach (var url in new[] { "/api/tasks", "/api/personnel", "/api/imm" })
+        {
+            var response = await shiftLead.GetAsync(url);
+            response.StatusCode.Should().Be(HttpStatusCode.Forbidden, url);
+        }
+    }
+
+    [Fact]
     public async Task Admin_CanCreateAdmin()
     {
         var adminId = await SeedUserAsync(UserRole.Admin);
