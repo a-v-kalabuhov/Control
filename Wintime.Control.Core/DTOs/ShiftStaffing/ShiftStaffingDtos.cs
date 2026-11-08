@@ -6,6 +6,7 @@ namespace Wintime.Control.Core.DTOs.ShiftStaffing;
 
 public sealed record NearestShiftDto(ShiftStaffingSummaryDto? Item);
 public sealed record StaffingCaller(string UserId, bool IsShiftLead, bool IsManagerOrAdmin);
+public sealed record AssignOperatorRequest(Guid ImmId, string OperatorId);
 
 public class ShiftStaffingSummaryDto
 {

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Wintime.Control.Core.Constants;
 using Wintime.Control.Core.DTOs.ShiftPlans;
 using Wintime.Control.Core.DTOs.ShiftStaffing;
@@ -17,6 +18,8 @@ namespace Wintime.Control.Infrastructure.Services;
 
 public sealed class ShiftStaffingService : IShiftStaffingService
 {
+    private const string ConcurrencyMessage = "Состав литейщиков изменился. Обновите данные смены";
+
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
     private readonly IImmStatusCache _statusCache;
@@ -144,6 +147,156 @@ public sealed class ShiftStaffingService : IShiftStaffingService
             .OrderBy(u => u.FullName).ThenBy(u => u.Id)
             .ToListAsync(ct);
         return users.Select(u => new StaffPersonDto(u.Id, u.FullName, u.EmployeeId)).ToList();
+    }
+
+    public async Task<ShiftOperatorAssignmentDto> AssignAsync(
+        Guid itemId, AssignOperatorRequest request, StaffingCaller caller, CancellationToken ct)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            try
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+                var exists = await _context.ShiftPlanItems
+                    .AsNoTracking()
+                    .AnyAsync(i => i.Id == itemId, ct);
+                if (!exists) throw new ShiftNotFoundException("Смена не найдена");
+
+                // Тот же порядок блокировок, что при смене графика и замене старшего:
+                // после ожидания все проверки выполняются по актуальной версии позиции.
+                await ShiftScheduleLock.AcquireAsync(_context, ct);
+                var item = await LockItemAsync(itemId, ct);
+                var now = Now;
+                await ValidateMutationAccessAsync(item, caller, now, ct);
+
+                var imm = await _context.Imms.SingleOrDefaultAsync(i => i.Id == request.ImmId, ct)
+                    ?? throw new ShiftNotFoundException("ТПА не найден");
+                if (!imm.IsActive)
+                    throw new DomainException("Нельзя назначить литейщика на архивный ТПА");
+
+                var operatorUser = await _context.Users.SingleOrDefaultAsync(
+                    u => u.Id == request.OperatorId, ct)
+                    ?? throw new ShiftNotFoundException("Литейщик не найден");
+                if (!operatorUser.IsActive || operatorUser.Role != UserRole.Operator)
+                    throw new DomainException("Можно назначить только активного литейщика");
+
+                var activeAssignments = item.OperatorAssignments
+                    .Where(a => a.ImmId == request.ImmId && a.UnassignedAt == null)
+                    .ToList();
+                if (activeAssignments.Any(a => a.OperatorId == request.OperatorId))
+                    throw new DomainException("Этот литейщик уже назначен на выбранный ТПА");
+
+                var usedSlots = activeAssignments.Select(a => a.Slot).ToHashSet();
+                var slot = new[] { 1, 2 }.FirstOrDefault(s => !usedSlots.Contains(s));
+                if (slot == 0)
+                    throw new DomainException("На один ТПА можно назначить не более двух литейщиков");
+
+                var assignment = new ShiftImmOperatorAssignment
+                {
+                    ShiftPlanItemId = item.Id,
+                    ImmId = request.ImmId,
+                    OperatorId = request.OperatorId,
+                    Operator = operatorUser,
+                    Slot = slot,
+                    AssignedAt = now
+                };
+                _context.ShiftImmOperatorAssignments.Add(assignment);
+                await _context.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return ToAssignmentDto(assignment, item.StartAtUtc, item.EndAtUtc);
+            }
+            catch (Exception exception) when (IsConcurrencyFailure(exception))
+            {
+                throw new ShiftConcurrencyException(ConcurrencyMessage);
+            }
+        });
+    }
+
+    public async Task<ShiftOperatorAssignmentDto> UnassignAsync(
+        Guid assignmentId, StaffingCaller caller, CancellationToken ct)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            try
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+                var initial = await _context.ShiftImmOperatorAssignments
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(a => a.Id == assignmentId, ct)
+                    ?? throw new ShiftNotFoundException("Назначение литейщика не найдено");
+
+                await ShiftScheduleLock.AcquireAsync(_context, ct);
+                var item = await LockItemAsync(initial.ShiftPlanItemId, ct);
+                var now = Now;
+                await ValidateMutationAccessAsync(item, caller, now, ct);
+                var assignment = item.OperatorAssignments.SingleOrDefault(a => a.Id == assignmentId)
+                    ?? throw new ShiftConcurrencyException(ConcurrencyMessage);
+                if (assignment.UnassignedAt != null)
+                    throw new DomainException("Литейщик уже снят с этого ТПА");
+
+                assignment.UnassignedAt = now;
+                await _context.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return ToAssignmentDto(assignment, item.StartAtUtc, item.EndAtUtc);
+            }
+            catch (Exception exception) when (IsConcurrencyFailure(exception))
+            {
+                throw new ShiftConcurrencyException(ConcurrencyMessage);
+            }
+        });
+    }
+
+    private async Task<ShiftPlanItem> LockItemAsync(Guid itemId, CancellationToken ct) =>
+        await _context.ShiftPlanItems
+            .FromSqlInterpolated(
+                $"SELECT * FROM \"ShiftPlanItems\" WHERE \"Id\" = {itemId} FOR UPDATE")
+            .Include(i => i.Day)
+            .Include(i => i.ShiftLead)
+            .Include(i => i.OperatorAssignments).ThenInclude(a => a.Operator)
+            .SingleOrDefaultAsync(ct)
+        ?? throw new ShiftConcurrencyException(ConcurrencyMessage);
+
+    private async Task ValidateMutationAccessAsync(
+        ShiftPlanItem item, StaffingCaller caller, DateTime now, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(item.ShiftLeadId))
+            throw new DomainException("Сначала назначьте старшего смены");
+        if (now >= Utc(item.EndAtUtc))
+            throw new DomainException("Нельзя изменять состав литейщиков в исторической смене");
+
+        var nearestCandidates = await _context.ShiftPlanItems
+            .AsNoTracking()
+            .Where(i => i.ShiftLeadId != null)
+            .ToListAsync(ct);
+        if (caller.IsManagerOrAdmin)
+        {
+            if (!NearestShiftSelector.IsNearestForManager(nearestCandidates, item, now))
+                throw new ShiftAccessException("Руководителю доступно изменение только ближайшей смены");
+            return;
+        }
+        if (caller.IsShiftLead)
+        {
+            var nearest = NearestShiftSelector.ForLead(nearestCandidates, caller.UserId, now);
+            if (item.ShiftLeadId != caller.UserId || nearest?.Id != item.Id)
+                throw new ShiftAccessException("Старшему доступно изменение только собственной ближайшей смены");
+            return;
+        }
+        throw new ShiftAccessException("Недостаточно прав для изменения состава смены");
+    }
+
+    private static bool IsConcurrencyFailure(Exception exception)
+    {
+        for (Exception? current = exception; current != null; current = current.InnerException)
+        {
+            if (current is PostgresException postgres &&
+                (postgres.SqlState == PostgresErrorCodes.UniqueViolation ||
+                 postgres.SqlState == PostgresErrorCodes.SerializationFailure ||
+                 postgres.SqlState == PostgresErrorCodes.DeadlockDetected))
+                return true;
+        }
+        return false;
     }
 
     private async Task<List<ShiftStaffingImmDto>> LoadImmsAsync(

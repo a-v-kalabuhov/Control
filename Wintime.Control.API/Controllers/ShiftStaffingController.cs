@@ -41,6 +41,17 @@ public class ShiftStaffingController : ControllerBase
     public Task<IReadOnlyList<StaffPersonDto>> Operators(CancellationToken ct) =>
         _service.GetOperatorsAsync(ct);
 
+    [HttpPost("items/{itemId:guid}/operators")]
+    [Authorize(Policy = "ShiftLeadOrManagerOrAdmin")]
+    public Task<ShiftOperatorAssignmentDto> Assign(
+        Guid itemId, [FromBody] AssignOperatorRequest request, CancellationToken ct) =>
+        _service.AssignAsync(itemId, request, Caller, ct);
+
+    [HttpPost("assignments/{assignmentId:guid}/unassign")]
+    [Authorize(Policy = "ShiftLeadOrManagerOrAdmin")]
+    public Task<ShiftOperatorAssignmentDto> Unassign(Guid assignmentId, CancellationToken ct) =>
+        _service.UnassignAsync(assignmentId, Caller, ct);
+
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? throw new ShiftAccessException("Пользователь не идентифицирован");
 
