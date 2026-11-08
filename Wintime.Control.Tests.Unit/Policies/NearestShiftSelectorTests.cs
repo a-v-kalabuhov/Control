@@ -74,6 +74,17 @@ public class NearestShiftSelectorTests
         NearestShiftSelector.IsNearestForManager(new[] { current }, current, now).Should().BeFalse();
     }
 
+    [Fact]
+    public void IsNearestForManager_allows_detached_candidate_with_same_persistent_id()
+    {
+        var now = Utc("2026-11-08T12:00:00Z");
+        var saved = Item("lead", "2026-11-08T08:00:00Z", "2026-11-08T16:00:00Z", 1);
+        var candidate = Item("lead", "2026-11-08T08:00:00Z", "2026-11-08T16:00:00Z", 1);
+        candidate.Id = saved.Id;
+
+        NearestShiftSelector.IsNearestForManager(new[] { saved }, candidate, now).Should().BeTrue();
+    }
+
     private static ShiftPlanItem Item(string? shiftLeadId, string start, string end, int position) => new()
     {
         ShiftLeadId = shiftLeadId,

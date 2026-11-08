@@ -40,6 +40,6 @@ public static class NearestShiftSelector
                 .ThenBy(item => item.Position)
                 .FirstOrDefault();
 
-        return ReferenceEquals(nearest, candidate);
+        return nearest?.Id == candidate.Id;
     }
 }
