@@ -170,13 +170,23 @@ public sealed class ShiftStaffingService : IShiftStaffingService
                 var now = Now;
                 await ValidateMutationAccessAsync(item, caller, now, ct);
 
-                var imm = await _context.Imms.SingleOrDefaultAsync(i => i.Id == request.ImmId, ct)
+                // Общий порядок: schedule advisory -> ShiftPlanItem -> IMM/User.
+                // Свежие no-tracking FOR UPDATE чтения не используют сущности, загруженные
+                // через Include, а блокировки удерживаются транзакцией до SaveChanges.
+                var imm = await _context.Imms
+                    .FromSqlInterpolated(
+                        $"SELECT * FROM \"Imms\" WHERE \"Id\" = {request.ImmId} FOR UPDATE")
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(ct)
                     ?? throw new ShiftNotFoundException("ТПА не найден");
                 if (!imm.IsActive)
                     throw new DomainException("Нельзя назначить литейщика на архивный ТПА");
 
-                var operatorUser = await _context.Users.SingleOrDefaultAsync(
-                    u => u.Id == request.OperatorId, ct)
+                var operatorUser = await _context.Users
+                    .FromSqlInterpolated(
+                        $"SELECT * FROM \"Users\" WHERE \"Id\" = {request.OperatorId} FOR UPDATE")
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(ct)
                     ?? throw new ShiftNotFoundException("Литейщик не найден");
                 if (!operatorUser.IsActive || operatorUser.Role != UserRole.Operator)
                     throw new DomainException("Можно назначить только активного литейщика");
@@ -197,14 +207,16 @@ public sealed class ShiftStaffingService : IShiftStaffingService
                     ShiftPlanItemId = item.Id,
                     ImmId = request.ImmId,
                     OperatorId = request.OperatorId,
-                    Operator = operatorUser,
                     Slot = slot,
                     AssignedAt = now
                 };
                 _context.ShiftImmOperatorAssignments.Add(assignment);
                 await _context.SaveChangesAsync(ct);
                 await transaction.CommitAsync(ct);
-                return ToAssignmentDto(assignment, item.StartAtUtc, item.EndAtUtc);
+                var dto = ToAssignmentDto(assignment, item.StartAtUtc, item.EndAtUtc);
+                dto.OperatorName = operatorUser.FullName;
+                dto.OperatorEmployeeId = operatorUser.EmployeeId;
+                return dto;
             }
             catch (Exception exception) when (IsConcurrencyFailure(exception))
             {

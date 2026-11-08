@@ -405,6 +405,125 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         rows[0].UnassignedAt.Should().BeCloseTo(closed.UnassignedAt!.Value, TimeSpan.FromMilliseconds(1));
     }
 
+    [Theory]
+    [InlineData("archive")]
+    [InlineData("role")]
+    public async Task Assign_OperatorChangedDuringValidation_Returns400AndNoActiveAssignment(string change)
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var @operator = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync(isActive: true);
+        var item = (await SeedDayAsync(Item(1, lead.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
+        await SeedAssignmentAsync(item, immId, @operator.Id, now.AddMinutes(-30),
+            unassignedAt: now.AddMinutes(-20));
+        var client = await ClientAsync(lead);
+        var update = change == "archive"
+            ? "\"IsActive\" = FALSE"
+            : $"\"Role\" = {(int)UserRole.Adjuster}";
+
+        var (response, blockedByUpdate) = await AssignBehindResourceUpdateAsync(
+            client, item.Id, immId, @operator.Id, "Users", @operator.Id, update);
+
+        await RussianErrorAsync(response, HttpStatusCode.BadRequest);
+        blockedByUpdate.Should().BeTrue(
+            "assignment must wait for the exact PostgreSQL backend changing the Operator");
+        var rows = await AssignmentsAsync(item.Id);
+        rows.Should().ContainSingle(a => a.UnassignedAt != null);
+        rows.Should().NotContain(a => a.OperatorId == @operator.Id && a.UnassignedAt == null);
+    }
+
+    [Fact]
+    public async Task Assign_ImmArchivedDuringValidation_Returns400AndNoActiveAssignment()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var @operator = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync(isActive: true);
+        var item = (await SeedDayAsync(Item(1, lead.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
+        var client = await ClientAsync(lead);
+
+        var (response, blockedByUpdate) = await AssignBehindResourceUpdateAsync(
+            client, item.Id, immId, @operator.Id, "Imms", immId, "\"IsActive\" = FALSE");
+
+        await RussianErrorAsync(response, HttpStatusCode.BadRequest);
+        blockedByUpdate.Should().BeTrue(
+            "assignment must wait for the exact PostgreSQL backend archiving the IMM");
+        (await AssignmentsAsync(item.Id)).Should().NotContain(a => a.UnassignedAt == null);
+    }
+
+    private async Task<(HttpResponseMessage Response, bool BlockedByUpdate)>
+        AssignBehindResourceUpdateAsync(
+            HttpClient client,
+            Guid itemId,
+            Guid immId,
+            string operatorId,
+            string table,
+            object resourceId,
+            string update)
+    {
+        string connectionString;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            connectionString = db.Database.GetDbConnection().ConnectionString;
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        int holderPid;
+        await using (var pidCommand = new NpgsqlCommand(
+                         "SELECT pg_backend_pid()", connection, transaction))
+            holderPid = Convert.ToInt32(await pidCommand.ExecuteScalarAsync());
+
+        await using (var lockCommand = new NpgsqlCommand(
+                         $"SELECT 1 FROM \"{table}\" WHERE \"Id\" = @id FOR UPDATE",
+                         connection, transaction))
+        {
+            lockCommand.Parameters.AddWithValue("id", resourceId);
+            (await lockCommand.ExecuteScalarAsync()).Should().Be(1);
+        }
+        await using (var updateCommand = new NpgsqlCommand(
+                         $"UPDATE \"{table}\" SET {update} WHERE \"Id\" = @id",
+                         connection, transaction))
+        {
+            updateCommand.Parameters.AddWithValue("id", resourceId);
+            (await updateCommand.ExecuteNonQueryAsync()).Should().Be(1);
+        }
+
+        var request = AssignAsync(client, itemId, immId, operatorId);
+        var blockedByUpdate = false;
+        try
+        {
+            for (var attempt = 0; attempt < 200 && !blockedByUpdate; attempt++)
+            {
+                if (request.IsCompleted) break;
+                await using var command = new NpgsqlCommand("""
+                    SELECT count(*)
+                    FROM pg_locks
+                    WHERE locktype = 'transactionid'
+                      AND NOT granted
+                      AND transactionid = (
+                        SELECT transactionid
+                        FROM pg_locks
+                        WHERE pid = @holderPid
+                          AND locktype = 'transactionid'
+                          AND granted)
+                    """, connection, transaction);
+                command.Parameters.AddWithValue("holderPid", holderPid);
+                blockedByUpdate = Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
+                if (!blockedByUpdate) await Task.Delay(25);
+            }
+        }
+        finally
+        {
+            await transaction.CommitAsync();
+        }
+
+        return (await request, blockedByUpdate);
+    }
+
     private async Task<HttpResponseMessage[]> RunPairBehindParentRowLockAsync(
         Guid itemId,
         Func<Task<HttpResponseMessage>> first,
@@ -583,7 +702,8 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
     }
 
     private async Task<ShiftImmOperatorAssignment> SeedAssignmentAsync(
-        ShiftPlanItem item, Guid immId, string operatorId, DateTime assignedAt)
+        ShiftPlanItem item, Guid immId, string operatorId, DateTime assignedAt,
+        DateTime? unassignedAt = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
@@ -593,7 +713,10 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
             ImmId = immId,
             OperatorId = operatorId,
             Slot = 1,
-            AssignedAt = DateTime.SpecifyKind(assignedAt, DateTimeKind.Utc)
+            AssignedAt = DateTime.SpecifyKind(assignedAt, DateTimeKind.Utc),
+            UnassignedAt = unassignedAt.HasValue
+                ? DateTime.SpecifyKind(unassignedAt.Value, DateTimeKind.Utc)
+                : null
         };
         db.ShiftImmOperatorAssignments.Add(assignment);
         await db.SaveChangesAsync();
