@@ -15,8 +15,15 @@ export const useAuthStore = defineStore('auth', {
     isAdmin: (state) => (state.user?.role ?? state.userRole) === 'Admin',
     isManager: (state) => (state.user?.role ?? state.userRole) === 'Manager',
     isAdjuster: (state) => (state.user?.role ?? state.userRole) === 'Adjuster',
+    isShiftLead: (state) => (state.user?.role ?? state.userRole) === 'ShiftLead',
     isObserver: (state) => (state.user?.role ?? state.userRole) === 'Observer',
-    hasRole: (state) => (roles) => roles.includes(state.user?.role ?? state.userRole)
+    hasRole: (state) => (roles) => roles.includes(state.user?.role ?? state.userRole),
+    homePath: (state) => {
+      const role = state.user?.role ?? state.userRole
+      if (role === 'Adjuster') return '/mobile/tasks'
+      if (role === 'ShiftLead') return '/shift-lead'
+      return '/'
+    }
   },
   
   actions: {

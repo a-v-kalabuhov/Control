@@ -122,12 +122,8 @@ const handleLogin = async () => {
     if (result.success) {
       ElMessage.success(`Добро пожаловать, ${authStore.user?.fullName}!`)
       
-      // Редирект в зависимости от роли
-      if (authStore.isAdjuster) {
-        router.push('/mobile/tasks')
-      } else {
-        router.push('/')
-      }
+      // Отдельный домашний маршрут роли: десктоп, планшет наладчика или контур старшего смены.
+      router.push(authStore.homePath)
     } else {
       errorMessage.value = result.message
       ElMessage.error(result.message)

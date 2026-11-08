@@ -209,6 +209,37 @@ const routes = [
     ]
 },  
   {
+    path: '/shift-lead',
+    component: () => import('@/layouts/ShiftLeadLayout.vue'),
+    meta: { requiresAuth: true, isShiftLeadUi: true },
+    children: [
+      {
+        path: '',
+        name: 'ShiftLeadHome',
+        component: () => import('@/views/shift-lead/ShiftLeadPlaceholderView.vue'),
+        meta: { roles: ['ShiftLead'], title: 'Моя смена' }
+      },
+      {
+        path: 'history',
+        name: 'ShiftLeadHistory',
+        component: () => import('@/views/shift-lead/ShiftLeadPlaceholderView.vue'),
+        meta: { roles: ['ShiftLead'], title: 'История смен' }
+      },
+      {
+        path: 'items/:itemId',
+        name: 'ShiftStaffingItem',
+        component: () => import('@/views/shift-lead/ShiftLeadPlaceholderView.vue'),
+        meta: { roles: ['ShiftLead', 'Manager', 'Admin'], title: 'Смена' }
+      },
+      {
+        path: 'items/:itemId/tasks/:taskId',
+        name: 'ShiftStaffingTask',
+        component: () => import('@/views/shift-lead/ShiftLeadPlaceholderView.vue'),
+        meta: { roles: ['ShiftLead', 'Manager', 'Admin'], title: 'Задание' }
+      }
+    ]
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/errors/NotFoundView.vue'),
@@ -226,7 +257,7 @@ router.beforeEach((to, from, next) => {
 
   // Аутентифицированный пользователь не должен попадать на страницу логина
   if (to.name === 'Login' && authStore.isAuthenticated) {
-    next(authStore.isAdjuster ? '/mobile/tasks' : '/')
+    next(authStore.homePath)
     return
   }
 
@@ -237,22 +268,29 @@ router.beforeEach((to, from, next) => {
 
   if (authStore.isAuthenticated) {
     const isMobileRoute = to.matched.some(r => r.meta.isMobile)
+    const isShiftLeadRoute = to.matched.some(r => r.meta.isShiftLeadUi)
 
-    // Наладчик не должен видеть десктопные страницы
+    // Наладчик не должен видеть десктопные страницы и контур старшего смены.
     if (authStore.isAdjuster && !isMobileRoute) {
-      next('/mobile/tasks')
+      next(authStore.homePath)
       return
     }
 
-    // Другие роли не имеют доступа к мобильному интерфейсу
+    // Другие роли не имеют доступа к мобильному интерфейсу наладчика.
     if (!authStore.isAdjuster && isMobileRoute) {
-      next('/')
+      next(authStore.homePath)
+      return
+    }
+
+    // Старший смены работает только в отдельном семействе маршрутов.
+    if (authStore.isShiftLead && !isShiftLeadRoute) {
+      next(authStore.homePath)
       return
     }
 
     // Ограничения ролей действуют и при прямом переходе по URL, не только в меню.
     if (to.meta.roles && !authStore.hasRole(to.meta.roles)) {
-      next('/')
+      next(authStore.homePath)
       return
     }
   }
