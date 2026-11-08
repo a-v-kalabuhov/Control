@@ -229,7 +229,7 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task FirstLeadAssignment_MaterializesAllPositionsAndSavedWindowsSurviveScheduleChange()
+    public async Task FirstLeadAssignment_MaterializesAllPositionsAndFutureSavedWindowsFollowScheduleChange()
     {
         var lead = await SeedUserAsync(UserRole.ShiftLead);
         var date = NewDate();
@@ -246,12 +246,9 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
             items.Should().OnlyContain(i => i.GetProperty("id").ValueKind == JsonValueKind.String);
             Item(day, 1).GetProperty("shiftLeadId").ValueKind.Should().Be(JsonValueKind.Null);
             Item(day, 2).GetProperty("shiftLeadId").GetString().Should().Be(lead.Id);
-            var originalWindows = items.Select(i => new
-            {
-                Position = i.GetProperty("position").GetInt32(),
-                Start = i.GetProperty("startAtUtc").GetString(),
-                End = i.GetProperty("endAtUtc").GetString()
-            }).ToList();
+            var itemIds = items.ToDictionary(
+                i => i.GetProperty("position").GetInt32(),
+                i => i.GetProperty("id").GetGuid());
 
             using (var scope = _factory.Services.CreateScope())
             {
@@ -269,12 +266,27 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
 
             var reread = await GetDayAsync(client, date);
             reread.GetProperty("isSaved").GetBoolean().Should().BeTrue();
-            reread.GetProperty("items").EnumerateArray().Select(i => new
+            var expected = ShiftWindowCalculator.Build(date, changed.Select(s => new Shift
+            {
+                StartMinutes = s.StartMinutes,
+                DurationMinutes = s.DurationMinutes,
+                TimeZoneId = s.TimeZoneId
+            }).ToList());
+            var rereadItems = reread.GetProperty("items").EnumerateArray().ToList();
+            rereadItems.Select(i => new
             {
                 Position = i.GetProperty("position").GetInt32(),
-                Start = i.GetProperty("startAtUtc").GetString(),
-                End = i.GetProperty("endAtUtc").GetString()
-            }).Should().Equal(originalWindows);
+                Start = i.GetProperty("startAtUtc").GetDateTime(),
+                End = i.GetProperty("endAtUtc").GetDateTime()
+            }).Should().Equal(expected.Select(w => new
+            {
+                Position = w.Position,
+                Start = w.StartAtUtc,
+                End = w.EndAtUtc
+            }));
+            rereadItems.Select(i => i.GetProperty("id").GetGuid()).Should()
+                .Equal(itemIds[1], itemIds[2]);
+            Item(reread, 2).GetProperty("shiftLeadId").GetString().Should().Be(lead.Id);
         });
     }
 

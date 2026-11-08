@@ -7,6 +7,7 @@ using Wintime.Control.Core.Exceptions;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Infrastructure.Reports;
 
 namespace Wintime.Control.Infrastructure.Services;
 
@@ -149,6 +150,29 @@ public sealed class ShiftPlanService : IShiftPlanService
                 throw new ShiftConcurrencyException(ConcurrencyMessage);
             }
         });
+    }
+
+    public async Task SynchronizeFutureDaysAsync(
+        IReadOnlyList<Shift> newSchedule, DateTime nowUtc, CancellationToken ct)
+    {
+        var first = newSchedule.OrderBy(s => s.StartMinutes).FirstOrDefault();
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById(
+            first?.TimeZoneId ?? FactoryCalendar.DefaultTimeZoneId);
+        var schedule = new FactorySchedule(timeZone, first?.StartMinutes);
+        var factoryToday = DateOnly.FromDateTime(schedule.ToLocal(nowUtc));
+        var futureDays = await _context.ShiftPlanDays
+            .Where(d => d.ShiftDate > factoryToday)
+            .Include(d => d.Items).ThenInclude(i => i.OperatorAssignments)
+            .ToListAsync(ct);
+
+        foreach (var day in futureDays)
+        {
+            var windows = ShiftWindowCalculator.Build(day.ShiftDate, newSchedule);
+            var removed = ShiftPlanSynchronizer.Apply(day, windows);
+            _context.ShiftPlanItems.RemoveRange(removed);
+            if (day.Items.All(i => i.ShiftLeadId == null))
+                _context.ShiftPlanDays.Remove(day);
+        }
     }
 
     public async Task<IReadOnlyList<StaffPersonDto>> GetLeadCandidatesAsync(CancellationToken ct)

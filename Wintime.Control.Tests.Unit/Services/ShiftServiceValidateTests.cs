@@ -6,7 +6,7 @@ namespace Wintime.Control.Tests.Unit.Services;
 
 public class ShiftServiceValidateTests
 {
-    private static ShiftService CreateSut() => new(null!);
+    private static ShiftService CreateSut() => new(null!, null!, null!);
 
     private static ShiftScheduleItemDto Shift(
         int startMinutes,
