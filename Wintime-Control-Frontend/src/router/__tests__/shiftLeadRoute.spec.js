@@ -1,12 +1,29 @@
 // @vitest-environment jsdom
-import { beforeEach, afterEach, describe, expect, it } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import router from '../index'
 import { useAuthStore } from '@/stores/auth'
+import { authApi } from '@/api/auth'
+
+vi.mock('@/api/auth', () => ({
+  authApi: {
+    login: vi.fn(),
+    logout: vi.fn(),
+    getCurrentUser: vi.fn(),
+    refreshToken: vi.fn()
+  }
+}))
+
+function deferred() {
+  let resolve
+  const promise = new Promise(resolvePromise => { resolve = resolvePromise })
+  return { promise, resolve }
+}
 
 describe('маршруты ShiftLead (PZP-32)', () => {
   beforeEach(async () => {
     localStorage.clear()
+    vi.clearAllMocks()
     setActivePinia(createPinia())
     await router.push('/__route_test_start__')
   })
@@ -17,6 +34,20 @@ describe('маршруты ShiftLead (PZP-32)', () => {
     localStorage.setItem('access_token', `${role}-token`)
     localStorage.setItem('user_role', role)
     setActivePinia(createPinia())
+    useAuthStore().user = { role, fullName: `${role} Test` }
+  }
+
+  function authenticateForRestore(cachedRole) {
+    localStorage.setItem('access_token', 'restore-token')
+    if (cachedRole) localStorage.setItem('user_role', cachedRole)
+    setActivePinia(createPinia())
+    const request = deferred()
+    authApi.getCurrentUser.mockReturnValue(request.promise)
+    return request
+  }
+
+  function resolveRestoredUser(request, role) {
+    request.resolve({ data: { id: `${role}-id`, role, fullName: `${role} Restored` } })
   }
 
   it.each(['/', '/tasks', '/mobile/tasks', '/planning/shift-plan'])(
@@ -129,6 +160,50 @@ describe('маршруты ShiftLead (PZP-32)', () => {
 
     expect(router.currentRoute.value.path).toBe(homePath)
   }, 20_000)
+
+  it.each([
+    [null, 'Manager', '/shift-lead', '/'],
+    [null, 'ShiftLead', '/', '/shift-lead'],
+    ['ShiftLead', 'Manager', '/shift-lead', '/'],
+    ['Manager', 'ShiftLead', '/', '/shift-lead'],
+    [null, 'Adjuster', '/', '/mobile/tasks'],
+    [null, 'Operator', '/', '/']
+  ])(
+    'ждёт /auth/me: cached %s, restored %s, target %s → %s',
+    async (cachedRole, restoredRole, target, expectedPath) => {
+      const request = authenticateForRestore(cachedRole)
+
+      const navigation = router.push(target)
+      await vi.waitFor(() => expect(authApi.getCurrentUser).toHaveBeenCalledTimes(1))
+      const pathBeforeRestore = router.currentRoute.value.path
+
+      resolveRestoredUser(request, restoredRole)
+      await navigation
+
+      expect(pathBeforeRestore).toBe('/__route_test_start__')
+      expect(router.currentRoute.value.path).toBe(expectedPath)
+      expect(useAuthStore().user.role).toBe(restoredRole)
+      expect(localStorage.getItem('user_role')).toBe(restoredRole)
+      expect(authApi.getCurrentUser).toHaveBeenCalledTimes(1)
+    }, 20_000
+  )
+
+  it('делит один restore promise между инициализациями без дублирования /auth/me', async () => {
+    const request = authenticateForRestore(null)
+    const auth = useAuthStore()
+
+    const first = auth.ensureInitialized()
+    const sharedPromise = auth.initializationPromise
+    const second = auth.ensureInitialized()
+
+    expect(sharedPromise).not.toBeNull()
+    expect(auth.initializationPromise).toBe(sharedPromise)
+    expect(authApi.getCurrentUser).toHaveBeenCalledTimes(1)
+    resolveRestoredUser(request, 'ShiftLead')
+    await Promise.all([first, second])
+    expect(auth.user.role).toBe('ShiftLead')
+    expect(authApi.getCurrentUser).toHaveBeenCalledTimes(1)
+  })
 
   it('регистрирует home и history только для ShiftLead, item/task — для трёх ролей', () => {
     expect(router.resolve('/shift-lead').meta.roles).toEqual(['ShiftLead'])

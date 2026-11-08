@@ -3,28 +3,41 @@ import { ElMessage } from 'element-plus'
 import { shiftStaffingApi } from '@/api/shiftStaffing'
 import { apiErrorMessage } from '@/utils/apiError'
 
+function invalidateMutation(store) {
+  store.mutationSeq += 1
+  store.saving = false
+}
+
 async function runMutation(store, itemId, request, fallback) {
   if (store.saving) return { success: false, pending: true }
 
+  const generation = ++store.mutationSeq
+  const isCurrent = () => store.mutationSeq === generation &&
+    store.currentItem?.shift?.itemId === itemId
   store.saving = true
+
   try {
     const response = await request()
-    if (itemId) await store.loadItem(itemId)
+    if (!isCurrent()) return { success: false, stale: true }
+    await store.loadItem(itemId)
+    if (!isCurrent()) return { success: false, stale: true }
     return { success: true, data: response.data }
   } catch (error) {
+    if (!isCurrent()) return { success: false, stale: true }
+
     const message = apiErrorMessage(error, fallback)
     ElMessage.error(message)
 
     if (error?.response?.status === 403 && store.currentItem?.shift) {
       store.currentItem.shift.canEditOperators = false
     }
-    if (itemId && [403, 409].includes(error?.response?.status)) {
+    if ([403, 409].includes(error?.response?.status)) {
       await store.loadItem(itemId)
     }
 
     return { success: false, message }
   } finally {
-    store.saving = false
+    if (store.mutationSeq === generation) store.saving = false
   }
 }
 
@@ -37,7 +50,10 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
     loading: false,
     refreshing: false,
     saving: false,
-    loadSeq: 0
+    historyLoading: false,
+    loadSeq: 0,
+    historySeq: 0,
+    mutationSeq: 0
   }),
 
   getters: {
@@ -50,23 +66,46 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
       const background = this.currentItem !== null
       this.loading = !background
       this.refreshing = background
+      let nextNearest
+      let detailStarted = false
 
       try {
         const response = await shiftStaffingApi.nearest()
         if (seq !== this.loadSeq) return { success: false, stale: true }
 
-        this.nearest = response.data.item
-        const itemId = this.nearest?.itemId ?? this.currentItem?.shift?.itemId
+        nextNearest = response.data.item
+        const itemId = nextNearest?.itemId ?? this.currentItem?.shift?.itemId
         if (!itemId) {
+          this.nearest = null
           this.currentItem = null
           return { success: true }
         }
 
-        // Если ближайшей смены больше нет, перечитываем прежнюю: сервер вернёт
-        // завершившуюся смену с canEditOperators=false для read-only просмотра.
-        return await this.loadItem(itemId)
+        detailStarted = true
+        const itemResponse = await shiftStaffingApi.item(itemId)
+        if (seq !== this.loadSeq) return { success: false, stale: true }
+
+        const nextItem = itemResponse.data
+        if (this.currentItem?.shift?.itemId !== nextItem.shift.itemId) {
+          invalidateMutation(this)
+        }
+
+        // Summary и detail меняются одной синхронной парой: таймеры и UI никогда
+        // не видят nearest B вместе с currentItem A.
+        this.nearest = nextNearest
+        this.currentItem = nextItem
+        return { success: true, data: nextItem }
       } catch (error) {
         if (seq !== this.loadSeq) return { success: false, stale: true }
+
+        // Если nearest исчез, старый editable detail нельзя оставлять после
+        // неудачного reload завершившейся смены: fail closed в пустое состояние.
+        if (detailStarted && !nextNearest) {
+          invalidateMutation(this)
+          this.nearest = null
+          this.currentItem = null
+        }
+
         const message = apiErrorMessage(error, 'Не удалось загрузить ближайшую смену')
         ElMessage.error(message)
         return { success: false, message }
@@ -80,7 +119,13 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
 
     async loadItem(itemId) {
       const seq = ++this.loadSeq
-      const background = this.currentItem !== null
+      const background = this.currentItem?.shift?.itemId === itemId
+
+      if (!background) {
+        invalidateMutation(this)
+        this.nearest = null
+        this.currentItem = null
+      }
       this.loading = !background
       this.refreshing = background
 
@@ -103,17 +148,20 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
     },
 
     async loadHistory() {
-      this.loading = true
+      const seq = ++this.historySeq
+      this.historyLoading = true
       try {
         const response = await shiftStaffingApi.history()
+        if (seq !== this.historySeq) return { success: false, stale: true }
         this.history = response.data
         return { success: true, data: response.data }
       } catch (error) {
+        if (seq !== this.historySeq) return { success: false, stale: true }
         const message = apiErrorMessage(error, 'Не удалось загрузить историю смен')
         ElMessage.error(message)
         return { success: false, message }
       } finally {
-        this.loading = false
+        if (seq === this.historySeq) this.historyLoading = false
       }
     },
 

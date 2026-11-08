@@ -252,18 +252,20 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore()
+
+  // При перезагрузке сначала восстанавливаем пользователя; все role decisions
+  // ниже видят серверную роль, а не устаревший localStorage snapshot.
+  await authStore.ensureInitialized()
 
   // Аутентифицированный пользователь не должен попадать на страницу логина
   if (to.name === 'Login' && authStore.isAuthenticated) {
-    next(authStore.homePath)
-    return
+    return authStore.homePath
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next('/login')
-    return
+    return '/login'
   }
 
   if (authStore.isAuthenticated) {
@@ -272,30 +274,26 @@ router.beforeEach((to, from, next) => {
 
     // Наладчик не должен видеть десктопные страницы и контур старшего смены.
     if (authStore.isAdjuster && !isMobileRoute) {
-      next(authStore.homePath)
-      return
+      return authStore.homePath
     }
 
     // Другие роли не имеют доступа к мобильному интерфейсу наладчика.
     if (!authStore.isAdjuster && isMobileRoute) {
-      next(authStore.homePath)
-      return
+      return authStore.homePath
     }
 
     // Старший смены работает только в отдельном семействе маршрутов.
     if (authStore.isShiftLead && !isShiftLeadRoute) {
-      next(authStore.homePath)
-      return
+      return authStore.homePath
     }
 
     // Ограничения ролей действуют и при прямом переходе по URL, не только в меню.
     if (to.meta.roles && !authStore.hasRole(to.meta.roles)) {
-      next(authStore.homePath)
-      return
+      return authStore.homePath
     }
   }
 
-  next()
+  return true
 })
 
 // Заголовок вкладки браузера = название текущей страницы (то же, что в шапке).

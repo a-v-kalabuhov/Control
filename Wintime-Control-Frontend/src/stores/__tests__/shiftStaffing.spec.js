@@ -267,4 +267,177 @@ describe('shiftStaffing store', () => {
     expect(store.saving).toBe(false)
     expect(shiftStaffingApi.item).toHaveBeenCalledTimes(1)
   })
+
+  it('foreground navigation к B очищает A и после ошибки не показывает stale editable detail', async () => {
+    const request = deferred()
+    const store = useShiftStaffingStore()
+    store.nearest = summary('item-a')
+    store.currentItem = detail('item-a')
+    shiftStaffingApi.item.mockReturnValue(request.promise)
+
+    const load = store.loadItem('item-b')
+
+    expect(store.currentItem).toBeNull()
+    expect(store.nearest).toBeNull()
+    expect(store.loading).toBe(true)
+    expect(store.refreshing).toBe(false)
+    request.reject({ response: { status: 500, data: { message: 'Смена недоступна' } } })
+    const result = await load
+
+    expect(result.success).toBe(false)
+    expect(store.currentItem).toBeNull()
+    expect(store.nearest).toBeNull()
+    expect(store.canEditOperators).toBe(false)
+    expect(store.loading).toBe(false)
+  })
+
+  it('loadNearest атомарно заменяет summary и detail только после успешного ответа item', async () => {
+    const request = deferred()
+    const store = useShiftStaffingStore()
+    store.nearest = summary('item-a')
+    store.currentItem = detail('item-a')
+    shiftStaffingApi.nearest.mockResolvedValue({ data: { item: summary('item-b') } })
+    shiftStaffingApi.item.mockReturnValue(request.promise)
+
+    const load = store.loadNearest()
+    await vi.waitFor(() => expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-b'))
+
+    expect(store.nearest.itemId).toBe('item-a')
+    expect(store.currentItem.shift.itemId).toBe('item-a')
+    request.resolve({ data: detail('item-b') })
+    await load
+
+    expect(store.nearest.itemId).toBe('item-b')
+    expect(store.currentItem.shift.itemId).toBe('item-b')
+  })
+
+  it('loadNearest при ошибке detail B сохраняет согласованную пару A/A', async () => {
+    const store = useShiftStaffingStore()
+    store.nearest = summary('item-a')
+    store.currentItem = detail('item-a')
+    shiftStaffingApi.nearest.mockResolvedValue({ data: { item: summary('item-b') } })
+    shiftStaffingApi.item.mockRejectedValue({
+      response: { status: 500, data: { message: 'Detail B недоступен' } }
+    })
+
+    const result = await store.loadNearest()
+
+    expect(result.success).toBe(false)
+    expect(store.nearest.itemId).toBe('item-a')
+    expect(store.currentItem.shift.itemId).toBe('item-a')
+  })
+
+  it('loadNearest без next при ошибке завершившегося reload очищает editable stale detail', async () => {
+    const store = useShiftStaffingStore()
+    store.nearest = summary('item-a')
+    store.currentItem = detail('item-a')
+    shiftStaffingApi.nearest.mockResolvedValue({ data: { item: null } })
+    shiftStaffingApi.item.mockRejectedValue({
+      response: { status: 500, data: { message: 'Завершившаяся смена недоступна' } }
+    })
+
+    const result = await store.loadNearest()
+
+    expect(result.success).toBe(false)
+    expect(store.nearest).toBeNull()
+    expect(store.currentItem).toBeNull()
+    expect(store.canEditOperators).toBe(false)
+  })
+
+  it('mutation A после navigation к B не перезагружает A и не перезаписывает B', async () => {
+    const mutationRequest = deferred()
+    const store = useShiftStaffingStore()
+    store.currentItem = detail('item-a')
+    shiftStaffingApi.assign.mockReturnValue(mutationRequest.promise)
+    shiftStaffingApi.item.mockResolvedValue({ data: detail('item-b') })
+
+    const mutation = store.assign('item-a', 'imm-a', 'operator-1')
+    await store.loadItem('item-b')
+    expect(store.saving).toBe(false)
+
+    mutationRequest.resolve({ data: { id: 'assignment-a' } })
+    const result = await mutation
+
+    expect(result.stale).toBe(true)
+    expect(store.currentItem.shift.itemId).toBe('item-b')
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(1)
+    expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-b')
+  })
+
+  it('navigation во время success reload mutation A возвращает stale и сохраняет B', async () => {
+    const reloadA = deferred()
+    const store = useShiftStaffingStore()
+    store.currentItem = detail('item-a')
+    shiftStaffingApi.assign.mockResolvedValue({ data: { id: 'assignment-a' } })
+    shiftStaffingApi.item
+      .mockReturnValueOnce(reloadA.promise)
+      .mockResolvedValueOnce({ data: detail('item-b') })
+
+    const mutation = store.assign('item-a', 'imm-a', 'operator-1')
+    await vi.waitFor(() => expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-a'))
+    await store.loadItem('item-b')
+    reloadA.resolve({ data: detail('item-a') })
+    const result = await mutation
+
+    expect(result.stale).toBe(true)
+    expect(store.currentItem.shift.itemId).toBe('item-b')
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(2)
+  })
+
+  it('поздний 403 mutation A не запрещает редактирование B и не показывает чужую ошибку', async () => {
+    const mutationRequest = deferred()
+    const lateReload = deferred()
+    const store = useShiftStaffingStore()
+    store.currentItem = detail('item-a')
+    shiftStaffingApi.assign.mockReturnValue(mutationRequest.promise)
+    shiftStaffingApi.item
+      .mockResolvedValueOnce({ data: detail('item-b') })
+      .mockReturnValueOnce(lateReload.promise)
+
+    const mutation = store.assign('item-a', 'imm-a', 'operator-1')
+    await store.loadItem('item-b')
+    mutationRequest.reject({
+      response: { status: 403, data: { message: 'Доступ к A запрещён' } }
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(store.currentItem.shift.itemId).toBe('item-b')
+    expect(store.canEditOperators).toBe(true)
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(1)
+    expect(errorMessage).not.toHaveBeenCalled()
+    const result = await mutation
+    expect(result.stale).toBe(true)
+  })
+
+  it('history отбрасывает stale response и не сбрасывает spinner item load', async () => {
+    const oldHistory = deferred()
+    const newHistory = deferred()
+    const itemRequest = deferred()
+    shiftStaffingApi.history
+      .mockReturnValueOnce(oldHistory.promise)
+      .mockReturnValueOnce(newHistory.promise)
+    shiftStaffingApi.item.mockReturnValue(itemRequest.promise)
+    const store = useShiftStaffingStore()
+
+    const itemLoad = store.loadItem('item-1')
+    const oldLoad = store.loadHistory()
+    const newLoad = store.loadHistory()
+    newHistory.resolve({ data: [summary('new-history')] })
+    await newLoad
+
+    expect(store.history.map(item => item.itemId)).toEqual(['new-history'])
+    expect(store.historyLoading).toBe(false)
+    expect(store.loading).toBe(true)
+
+    oldHistory.resolve({ data: [summary('old-history')] })
+    await oldLoad
+    expect(store.history.map(item => item.itemId)).toEqual(['new-history'])
+    expect(store.historyLoading).toBe(false)
+    expect(store.loading).toBe(true)
+
+    itemRequest.resolve({ data: detail('item-1') })
+    await itemLoad
+    expect(store.loading).toBe(false)
+  })
 })

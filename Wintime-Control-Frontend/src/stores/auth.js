@@ -8,7 +8,9 @@ export const useAuthStore = defineStore('auth', {
     accessToken: localStorage.getItem('access_token') || null,
     refreshToken: localStorage.getItem('refresh_token') || null,
     isAuthenticated: !!localStorage.getItem('access_token'),
-    userRole: localStorage.getItem('user_role') || null
+    userRole: localStorage.getItem('user_role') || null,
+    authInitialized: false,
+    initializationPromise: null
   }),
 
   getters: {
@@ -27,6 +29,43 @@ export const useAuthStore = defineStore('auth', {
   },
   
   actions: {
+    ensureInitialized() {
+      if (this.authInitialized) return Promise.resolve({ success: true })
+      if (this.initializationPromise) return this.initializationPromise
+
+      if (!this.isAuthenticated || this.user) {
+        this.authInitialized = true
+        return Promise.resolve({ success: true })
+      }
+
+      this.initializationPromise = (async () => {
+        try {
+          const result = await this.fetchCurrentUser()
+          if (result.success) return result
+
+          if (result.status === 401) {
+            const refreshed = await this.refreshTokens()
+            if (refreshed.success) {
+              const retry = await this.fetchCurrentUser()
+              if (retry.success) return retry
+            }
+            this.softClearAuth()
+            return result
+          }
+
+          // Без восстановленной или cached роли role guard не может выбрать
+          // безопасный home route; fail closed вместо redirect loop.
+          if (!this.user && !this.userRole) this.softClearAuth()
+          return result
+        } finally {
+          this.authInitialized = true
+          this.initializationPromise = null
+        }
+      })()
+
+      return this.initializationPromise
+    },
+
     async login(credentials) {
       try {
         const response = await authApi.login(credentials)

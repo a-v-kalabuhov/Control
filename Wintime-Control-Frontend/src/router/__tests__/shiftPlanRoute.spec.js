@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import router from '../index'
+import { useAuthStore } from '@/stores/auth'
 
 describe('маршрут PZP-32: план смен', () => {
   afterEach(() => localStorage.clear())
@@ -20,6 +21,7 @@ describe('маршрут PZP-32: план смен', () => {
       localStorage.setItem('access_token', `${role}-token`)
       localStorage.setItem('user_role', role)
       setActivePinia(createPinia())
+      useAuthStore().user = { role, fullName: `${role} Test` }
 
       await router.push('/planning/shift-plan')
 

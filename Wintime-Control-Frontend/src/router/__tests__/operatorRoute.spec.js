@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import router from '../index'
+import { useAuthStore } from '@/stores/auth'
 
 describe('маршруты Operator (PZP-30)', () => {
   afterEach(() => localStorage.clear())
@@ -10,6 +11,7 @@ describe('маршруты Operator (PZP-30)', () => {
     localStorage.setItem('access_token', 'operator-token')
     localStorage.setItem('user_role', 'Operator')
     setActivePinia(createPinia())
+    useAuthStore().user = { role: 'Operator', fullName: 'Operator Test' }
   }
 
   it('разрешает литейщику дашборд', async () => {
