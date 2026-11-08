@@ -3,7 +3,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { useShiftStaffingStore } from '../shiftStaffing'
+import { useAuthStore } from '../auth'
 import { shiftStaffingApi } from '@/api/shiftStaffing'
+import { authApi } from '@/api/auth'
+
+vi.mock('@/api/auth', () => ({
+  authApi: {
+    login: vi.fn(),
+    logout: vi.fn(),
+    getCurrentUser: vi.fn(),
+    refreshToken: vi.fn()
+  }
+}))
+
+vi.mock('@/router', () => ({ default: { push: vi.fn() } }))
 
 vi.mock('@/api/shiftStaffing', () => ({
   shiftStaffingApi: {
@@ -55,6 +68,7 @@ describe('shiftStaffing store', () => {
 
   beforeEach(() => {
     setActivePinia(createPinia())
+    localStorage.clear()
     vi.clearAllMocks()
     errorMessage = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
   })
@@ -491,5 +505,146 @@ describe('shiftStaffing store', () => {
     expect(store.currentItem).toBeNull()
     expect(store.nearest).toBeNull()
     expect(shiftStaffingApi.item).not.toHaveBeenCalled()
+  })
+
+  it.each([403, 404])('фоновый loadItem %s очищает item/nearest и отменяет pending mutation', async status => {
+    const mutationRequest = deferred()
+    const store = useShiftStaffingStore()
+    store.ownerUserId = 'lead-a'
+    store.nearest = summary('item-1')
+    store.nearestContextItemId = 'item-1'
+    store.currentItem = detail('item-1')
+    store.activateItem('item-1')
+    shiftStaffingApi.assign.mockReturnValue(mutationRequest.promise)
+    shiftStaffingApi.item.mockRejectedValue({
+      response: { status, data: { message: 'Смена больше недоступна' } }
+    })
+    const mutation = store.assign('item-1', 'imm-1', 'operator-1')
+    await vi.waitFor(() => expect(shiftStaffingApi.assign).toHaveBeenCalledTimes(1))
+    const mutationGeneration = store.mutationSeq
+
+    const result = await store.loadItem('item-1')
+
+    expect(result.success).toBe(false)
+    expect(store.currentItem).toBeNull()
+    expect(store.nearest).toBeNull()
+    expect(store.nearestContextItemId).toBeNull()
+    expect(store.canEditOperators).toBe(false)
+    expect(store.mutationSeq).toBeGreaterThan(mutationGeneration)
+    expect(store.saving).toBe(false)
+    expect(store.refreshing).toBe(false)
+
+    mutationRequest.resolve({ data: { id: 'assignment-late' } })
+    expect((await mutation).stale).toBe(true)
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([403, 404])('фоновый loadNearest при %s detail не оставляет прежнюю защищённую пару', async status => {
+    const store = useShiftStaffingStore()
+    store.nearest = summary('item-a')
+    store.currentItem = detail('item-a')
+    store.nearestContextItemId = 'item-a'
+    shiftStaffingApi.nearest.mockResolvedValue({ data: { item: summary('item-b') } })
+    shiftStaffingApi.item.mockRejectedValue({
+      response: { status, data: { message: 'Доступ к смене отозван' } }
+    })
+
+    const result = await store.loadNearest()
+
+    expect(result.success).toBe(false)
+    expect(store.nearest).toBeNull()
+    expect(store.currentItem).toBeNull()
+    expect(store.nearestContextItemId).toBeNull()
+    expect(store.canEditOperators).toBe(false)
+    expect(store.refreshing).toBe(false)
+  })
+
+  it('фоновый loadItem при обычной ошибке 500 сохраняет прежний read model', async () => {
+    const store = useShiftStaffingStore()
+    store.nearest = summary('item-a')
+    store.currentItem = detail('item-a')
+    store.nearestContextItemId = 'item-a'
+    store.activateItem('item-a')
+    shiftStaffingApi.item.mockRejectedValue({
+      response: { status: 500, data: { message: 'Временная ошибка сервера' } }
+    })
+
+    const result = await store.loadItem('item-a')
+
+    expect(result.success).toBe(false)
+    expect(store.currentItem.shift.itemId).toBe('item-a')
+    expect(store.nearest.itemId).toBe('item-a')
+    expect(store.canEditOperators).toBe(true)
+    expect(store.refreshing).toBe(false)
+  })
+
+  it('A logout → B login не показывает B кеш A даже после ошибки первого запроса', async () => {
+    const store = useShiftStaffingStore()
+    const auth = useAuthStore()
+    store.ownerUserId = 'lead-a'
+    store.nearest = summary('item-a')
+    store.nearestContextItemId = 'item-a'
+    store.currentItem = detail('item-a', {
+      imms: [{ immId: 'imm-a', name: 'ТПА A' }]
+    })
+    store.history = [summary('history-a', { state: 'Historical', canEditOperators: false })]
+    store.operators = [{ id: 'operator-a', fullName: 'Литейщик A' }]
+    auth.user = { id: 'lead-a', role: 'ShiftLead' }
+    auth.userRole = 'ShiftLead'
+    auth.isAuthenticated = true
+    authApi.logout.mockResolvedValue({})
+    authApi.login.mockResolvedValue({
+      data: {
+        accessToken: 'token-b',
+        refreshToken: 'refresh-b',
+        user: { id: 'lead-b', role: 'ShiftLead' }
+      }
+    })
+
+    await auth.logout()
+
+    expect(store.currentItem).toBeNull()
+    expect(store.nearest).toBeNull()
+    expect(store.history).toEqual([])
+    expect(store.operators).toEqual([])
+
+    await auth.login({ username: 'lead-b', password: 'secret' })
+    shiftStaffingApi.nearest.mockRejectedValue({
+      response: { status: 500, data: { message: 'Сеть временно недоступна' } }
+    })
+    const result = await store.loadNearest()
+
+    expect(result.success).toBe(false)
+    expect(store.ownerUserId).toBe('lead-b')
+    expect(store.currentItem).toBeNull()
+    expect(store.nearest).toBeNull()
+    expect(store.nearestContextItemId).toBeNull()
+    expect(store.history).toEqual([])
+    expect(store.operators).toEqual([])
+    expect(store.canEditOperators).toBe(false)
+  })
+
+  it('смена аккаунта отбрасывает поздний ответ operators прежнего пользователя', async () => {
+    const request = deferred()
+    const store = useShiftStaffingStore()
+    const auth = useAuthStore()
+    store.ownerUserId = 'lead-a'
+    shiftStaffingApi.operators.mockReturnValue(request.promise)
+    const pending = store.loadOperators()
+    authApi.login.mockResolvedValue({
+      data: {
+        accessToken: 'token-b',
+        refreshToken: 'refresh-b',
+        user: { id: 'lead-b', role: 'ShiftLead' }
+      }
+    })
+
+    await auth.login({ username: 'lead-b', password: 'secret' })
+    request.resolve({ data: [{ id: 'operator-a', fullName: 'Литейщик A' }] })
+    const result = await pending
+
+    expect(result.stale).toBe(true)
+    expect(store.ownerUserId).toBe('lead-b')
+    expect(store.operators).toEqual([])
   })
 })

@@ -45,4 +45,30 @@ public class ShiftWindowCalculatorTests
         windows[0].TimeZoneId.Should().Be("America/New_York");
         windows.Should().OnlyContain(w => w.StartAtUtc.Kind == DateTimeKind.Utc && w.EndAtUtc.Kind == DateTimeKind.Utc);
     }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void Build_when_dst_normalization_collapses_window_restores_scheduled_positive_duration(
+        int durationMinutes)
+    {
+        var shifts = new[]
+        {
+            new Shift
+            {
+                StartMinutes = 2 * 60,
+                DurationMinutes = durationMinutes,
+                TimeZoneId = "America/New_York"
+            }
+        };
+
+        var window = ShiftWindowCalculator.Build(new DateOnly(2027, 3, 14), shifts).Should()
+            .ContainSingle().Subject;
+
+        window.StartAtUtc.Should().Be(DateTime.Parse("2027-03-14T07:00:00Z").ToUniversalTime());
+        window.EndAtUtc.Should().Be(window.StartAtUtc.AddMinutes(durationMinutes));
+        window.StartAtUtc.Should().BeBefore(window.EndAtUtc);
+        window.StartAtUtc.Kind.Should().Be(DateTimeKind.Utc);
+        window.EndAtUtc.Kind.Should().Be(DateTimeKind.Utc);
+    }
 }

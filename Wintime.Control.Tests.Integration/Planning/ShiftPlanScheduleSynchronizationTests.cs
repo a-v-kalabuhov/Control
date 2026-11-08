@@ -613,6 +613,49 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
         }
     }
 
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public async Task DstCollapsedWindow_ScheduleSynchronizationKeepsPositiveDuration(int durationMinutes)
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = new DateOnly(2027, 3, 14);
+        var client = await ManagerClientAsync();
+        await DeleteDayAsync(date);
+
+        try
+        {
+            await WithScheduleAsync(client, Schedule(0, 480), async () =>
+            {
+                (await PutLeadAsync(client, date, 1, lead.Id)).StatusCode.Should().Be(HttpStatusCode.OK);
+                var dstSchedule = new List<ShiftScheduleItemDto>
+                {
+                    new()
+                    {
+                        StartMinutes = 120,
+                        DurationMinutes = durationMinutes,
+                        TimeZoneId = "America/New_York"
+                    }
+                };
+
+                var response = await SaveScheduleAsync(client, dstSchedule);
+
+                response.StatusCode.Should().Be(HttpStatusCode.OK,
+                    await response.Content.ReadAsStringAsync());
+                var saved = await LoadDayAsync(date);
+                var item = saved.Items.Should().ContainSingle().Subject;
+                item.ShiftLeadId.Should().Be(lead.Id);
+                item.TimeZoneId.Should().Be("America/New_York");
+                item.StartAtUtc.Should().BeBefore(item.EndAtUtc);
+                item.EndAtUtc.Should().Be(item.StartAtUtc.AddMinutes(durationMinutes));
+            });
+        }
+        finally
+        {
+            await DeleteDayAsync(date);
+        }
+    }
+
     [Fact]
     public async Task SaveSchedule_KeepsManagerAdminAuthorizationAndValidationErrors()
     {

@@ -290,6 +290,56 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
         });
     }
 
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public async Task DstCollapsedWindow_FirstLeadMaterializationPersistsPositiveDuration(int durationMinutes)
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = new DateOnly(2027, 3, 14);
+        var client = await ManagerClientAsync();
+        var schedule = new List<ShiftScheduleItemDto>
+        {
+            new()
+            {
+                StartMinutes = 120,
+                DurationMinutes = durationMinutes,
+                TimeZoneId = "America/New_York"
+            }
+        };
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            await db.ShiftPlanDays.Where(d => d.ShiftDate == date).ExecuteDeleteAsync();
+        }
+
+        try
+        {
+            await WithScheduleAsync(client, schedule, async () =>
+            {
+                var day = await RequiredJsonAsync(await PutLeadAsync(client, date, 1, lead.Id));
+                var dto = Item(day, 1);
+                var start = dto.GetProperty("startAtUtc").GetDateTime();
+                var end = dto.GetProperty("endAtUtc").GetDateTime();
+                start.Should().BeBefore(end);
+                end.Should().Be(start.AddMinutes(durationMinutes));
+
+                using var scope = _factory.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                var saved = await db.ShiftPlanItems.SingleAsync(i => i.Day.ShiftDate == date);
+                saved.StartAtUtc.Should().BeBefore(saved.EndAtUtc);
+                saved.EndAtUtc.Should().Be(saved.StartAtUtc.AddMinutes(durationMinutes));
+            });
+        }
+        finally
+        {
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            await db.ShiftPlanDays.Where(d => d.ShiftDate == date).ExecuteDeleteAsync();
+        }
+    }
+
     [Fact]
     public async Task LeadReplacement_PreservesItemAndAssignmentsAndManagerCanAssignSelf()
     {
@@ -517,6 +567,73 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task ConcurrentExistingDayLeadChanges_ReturnsOneSuccessAndOne409WithoutOverwrite()
+    {
+        var originalLead = await SeedUserAsync(UserRole.ShiftLead);
+        var managerLead = await SeedUserAsync(UserRole.ShiftLead);
+        var adminLead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = NewDate();
+        await SeedDayAsync(date, FutureItem(1, originalLead.Id));
+        var manager = await ManagerClientAsync();
+        var admin = await AdminClientAsync();
+
+        string connectionString;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            connectionString = db.Database.GetDbConnection().ConnectionString;
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using (var lockCommand = new NpgsqlCommand(
+            "LOCK TABLE \"ShiftPlanItems\" IN EXCLUSIVE MODE", connection, transaction))
+            await lockCommand.ExecuteNonQueryAsync();
+
+        // EXCLUSIVE разрешает обоим запросам прочитать исходного старшего A,
+        // но задерживает UPDATE первого и переводит второй на advisory lock.
+        var managerRequest = PutLeadAsync(manager, date, 1, managerLead.Id);
+        var adminRequest = PutLeadAsync(admin, date, 1, adminLead.Id);
+        var blocked = 0;
+        var advisoryWaiting = 0;
+        for (var attempt = 0; attempt < 200 && (blocked < 1 || advisoryWaiting < 1); attempt++)
+        {
+            await using var command = new NpgsqlCommand("""
+                SELECT
+                  (SELECT count(*) FROM pg_locks
+                   WHERE relation = '"ShiftPlanItems"'::regclass
+                     AND mode = 'RowExclusiveLock' AND NOT granted),
+                  (SELECT count(*) FROM pg_locks
+                   WHERE locktype = 'advisory' AND NOT granted)
+                """, connection, transaction);
+            await using var reader = await command.ExecuteReaderAsync();
+            (await reader.ReadAsync()).Should().BeTrue();
+            blocked = reader.GetInt32(0);
+            advisoryWaiting = reader.GetInt32(1);
+            if (blocked < 1 || advisoryWaiting < 1) await Task.Delay(50);
+        }
+        blocked.Should().Be(1, "первый запрос должен дойти до изменения уже существующей позиции");
+        advisoryWaiting.Should().Be(1, "второй запрос должен прочитать A и ожидать первый");
+
+        await transaction.CommitAsync();
+        var responses = await Task.WhenAll(managerRequest, adminRequest);
+        responses.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
+        responses.Count(r => r.StatusCode == HttpStatusCode.Conflict).Should().Be(1);
+        var conflict = responses.Single(r => r.StatusCode == HttpStatusCode.Conflict);
+        (await JsonAsync(conflict)).GetProperty("message").GetString().Should()
+            .Be("План смены уже изменён другим пользователем");
+
+        var committedLeadId = responses[0].StatusCode == HttpStatusCode.OK
+            ? managerLead.Id
+            : adminLead.Id;
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        (await verifyDb.ShiftPlanItems.SingleAsync(i => i.Day.ShiftDate == date && i.Position == 1))
+            .ShiftLeadId.Should().Be(committedLeadId, "проигравший запрос не должен перезаписать победителя");
+    }
+
+    [Fact]
     public async Task ConcurrentLastLeadClearAndReassign_Returns409WhenSavedDayWasDeleted()
     {
         var oldLead = await SeedUserAsync(UserRole.ShiftLead);
@@ -536,8 +653,10 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var transaction = await connection.BeginTransactionAsync();
+        // EXCLUSIVE пропускает pre-lock snapshot SELECT, но задерживает DELETE/UPDATE:
+        // оба запроса видят исходный день до сериализации на advisory lock.
         await using (var lockCommand = new NpgsqlCommand(
-            "LOCK TABLE \"ShiftPlanItems\" IN ACCESS EXCLUSIVE MODE", connection, transaction))
+            "LOCK TABLE \"ShiftPlanItems\" IN EXCLUSIVE MODE", connection, transaction))
             await lockCommand.ExecuteNonQueryAsync();
 
         var clearRequest = PutLeadAsync(manager, date, 1, null);

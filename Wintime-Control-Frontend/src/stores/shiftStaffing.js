@@ -1,11 +1,32 @@
-import { defineStore } from 'pinia'
+import { defineStore, getActivePinia } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { shiftStaffingApi } from '@/api/shiftStaffing'
 import { apiErrorMessage } from '@/utils/apiError'
+import { registerAuthScopedReset } from '@/stores/authScopedStores'
 
 function invalidateMutation(store) {
   store.mutationSeq += 1
   store.saving = false
+}
+
+function clearInaccessibleItem(store, itemId = null) {
+  store.loadSeq += 1
+  invalidateMutation(store)
+
+  const currentId = store.currentItem?.shift?.itemId
+  if (!itemId || currentId === itemId) store.currentItem = null
+
+  const nearestId = store.nearest?.itemId ?? store.nearestContextItemId
+  if (!itemId || nearestId === itemId) {
+    store.nearest = null
+    store.nearestContextItemId = null
+  }
+  store.loading = false
+  store.refreshing = false
+}
+
+function isAccessRevoked(error) {
+  return [403, 404].includes(error?.response?.status)
 }
 
 async function runMutation(store, itemId, request, fallback) {
@@ -64,7 +85,9 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
     nearestContextItemId: null,
     loadSeq: 0,
     historySeq: 0,
-    mutationSeq: 0
+    mutationSeq: 0,
+    operatorSeq: 0,
+    ownerUserId: null
   }),
 
   getters: {
@@ -72,6 +95,26 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
   },
 
   actions: {
+    resetForAuthChange(userId = null) {
+      // Поколения не сбрасываем в ноль: поздний ответ прежнего аккаунта
+      // не должен совпасть по sequence с первым запросом следующего.
+      this.loadSeq += 1
+      this.historySeq += 1
+      this.operatorSeq += 1
+      invalidateMutation(this)
+      this.nearest = null
+      this.currentItem = null
+      this.history = []
+      this.operators = []
+      this.loading = false
+      this.refreshing = false
+      this.historyLoading = false
+      this.viewKind = 'nearest'
+      this.activeItemId = null
+      this.nearestContextItemId = null
+      this.ownerUserId = userId
+    },
+
     activateNearest() {
       this.loadSeq += 1
       invalidateMutation(this)
@@ -149,11 +192,9 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
 
         // Если nearest исчез, старый editable detail нельзя оставлять после
         // неудачного reload завершившейся смены: fail closed в пустое состояние.
-        if (detailStarted && !nextNearest) {
-          invalidateMutation(this)
-          this.nearest = null
-          this.currentItem = null
-          this.nearestContextItemId = null
+        // 403/404 — авторитетный отзыв доступа независимо от наличия nearest.
+        if (isAccessRevoked(error) || (detailStarted && !nextNearest)) {
+          clearInaccessibleItem(this)
         }
 
         const message = apiErrorMessage(error, 'Не удалось загрузить ближайшую смену')
@@ -191,6 +232,7 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
         return { success: true, data: response.data }
       } catch (error) {
         if (!isCurrent()) return { success: false, stale: true }
+        if (isAccessRevoked(error)) clearInaccessibleItem(this, id)
         const message = apiErrorMessage(error, 'Не удалось загрузить смену')
         ElMessage.error(message)
         return { success: false, message }
@@ -221,11 +263,14 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
     },
 
     async loadOperators() {
+      const seq = ++this.operatorSeq
       try {
         const response = await shiftStaffingApi.operators()
+        if (seq !== this.operatorSeq) return { success: false, stale: true }
         this.operators = response.data
         return { success: true, data: response.data }
       } catch (error) {
+        if (seq !== this.operatorSeq) return { success: false, stale: true }
         const message = apiErrorMessage(error, 'Не удалось загрузить список литейщиков')
         ElMessage.error(message)
         return { success: false, message }
@@ -251,4 +296,11 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
       )
     }
   }
+})
+
+registerAuthScopedReset((userId, force) => {
+  const pinia = getActivePinia()
+  if (!pinia) return
+  const store = useShiftStaffingStore(pinia)
+  if (force || store.ownerUserId !== userId) store.resetForAuthChange(userId)
 })

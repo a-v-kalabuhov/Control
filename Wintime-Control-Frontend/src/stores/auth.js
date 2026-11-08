@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { authApi } from '@/api/auth'
 import router from '@/router'
+import { resetAuthScopedStores } from '@/stores/authScopedStores'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -70,7 +71,8 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await authApi.login(credentials)
         const { accessToken, refreshToken, user } = response.data
-        
+
+        resetAuthScopedStores(user.id, true)
         this.accessToken = accessToken
         this.refreshToken = refreshToken
         this.user = user
@@ -107,6 +109,7 @@ export const useAuthStore = defineStore('auth', {
           refreshToken: this.refreshToken
         })
         const { accessToken, refreshToken, user } = response.data
+        resetAuthScopedStores(user.id)
         this.accessToken = accessToken
         this.refreshToken = refreshToken
         this.user = user
@@ -124,6 +127,7 @@ export const useAuthStore = defineStore('auth', {
     async fetchCurrentUser() {
       try {
         const response = await authApi.getCurrentUser()
+        resetAuthScopedStores(response.data.id)
         this.user = response.data
         this.userRole = response.data.role
         localStorage.setItem('user_role', response.data.role)
@@ -137,6 +141,7 @@ export const useAuthStore = defineStore('auth', {
     },
     
     clearAuth() {
+      resetAuthScopedStores(null, true)
       this.user = null
       this.userRole = null
       this.accessToken = null
@@ -152,6 +157,7 @@ export const useAuthStore = defineStore('auth', {
 
     // Мягкая очистка аутентификации без перенаправления
     softClearAuth() {
+      resetAuthScopedStores(null, true)
       this.user = null
       this.userRole = null
       this.accessToken = null

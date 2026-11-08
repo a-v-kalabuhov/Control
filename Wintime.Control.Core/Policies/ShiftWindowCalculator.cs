@@ -13,7 +13,12 @@ public static class ShiftWindowCalculator
             var localStart = shiftDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified)
                 .AddMinutes(shift.StartMinutes);
             var localEnd = localStart.AddMinutes(shift.DurationMinutes);
-            return new ShiftWindow(index + 1, ToUtc(localStart, tz), ToUtc(localEnd, tz), shift.TimeZoneId);
+            var startAtUtc = ToUtc(localStart, tz);
+            var endAtUtc = ToUtc(localEnd, tz);
+            // Весной DST нормализация обеих границ может схлопнуть интервал.
+            // В этом случае сохраняем заданную длительность от нормализованного начала.
+            if (endAtUtc <= startAtUtc) endAtUtc = startAtUtc.AddMinutes(shift.DurationMinutes);
+            return new ShiftWindow(index + 1, startAtUtc, endAtUtc, shift.TimeZoneId);
         }).ToList();
 
     private static DateTime ToUtc(DateTime local, TimeZoneInfo tz)

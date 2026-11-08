@@ -72,6 +72,11 @@ public sealed class ShiftPlanService : IShiftPlanService
                     .Where(d => d.ShiftDate == date)
                     .Select(d => d.Id)
                     .SingleOrDefaultAsync(ct);
+                var initialItem = await _context.ShiftPlanItems
+                    .AsNoTracking()
+                    .Where(i => i.Day.ShiftDate == date && i.Position == position)
+                    .Select(i => new { i.Id, i.ShiftLeadId })
+                    .SingleOrDefaultAsync(ct);
                 await ShiftScheduleLock.AcquireAsync(_context, ct);
                 var now = DateTime.SpecifyKind(_factoryClock.UtcNow, DateTimeKind.Utc);
                 var dayId = await _context.ShiftPlanDays
@@ -101,6 +106,9 @@ public sealed class ShiftPlanService : IShiftPlanService
 
                 var item = day.Items.SingleOrDefault(i => i.Position == position)
                     ?? throw new ShiftNotFoundException("Позиция смены не найдена");
+                if (!isMaterializing &&
+                    (initialItem == null || item.Id != initialItem.Id || item.ShiftLeadId != initialItem.ShiftLeadId))
+                    throw new ShiftConcurrencyException(ConcurrencyMessage);
                 if (now >= DateTime.SpecifyKind(item.StartAtUtc, DateTimeKind.Utc))
                     throw new DomainException("Старшего можно изменить только до начала смены");
 
