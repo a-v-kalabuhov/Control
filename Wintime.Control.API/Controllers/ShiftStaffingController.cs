@@ -32,6 +32,11 @@ public class ShiftStaffingController : ControllerBase
     public Task<ShiftStaffingItemDto> Item(Guid itemId, CancellationToken ct) =>
         _service.GetItemAsync(itemId, Caller, ct);
 
+    [HttpGet("items/{itemId:guid}/tasks/{taskId:guid}")]
+    [Authorize(Policy = "ShiftLeadOrManagerOrAdmin")]
+    public Task<ShiftStaffingTaskDto> GetTask(Guid itemId, Guid taskId, CancellationToken ct) =>
+        _service.GetTaskAsync(itemId, taskId, Caller, ct);
+
     [HttpGet("operators")]
     public Task<IReadOnlyList<StaffPersonDto>> Operators(CancellationToken ct) =>
         _service.GetOperatorsAsync(ct);

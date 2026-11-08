@@ -19,6 +19,12 @@ public class ShiftStaffingSummaryDto
     public bool CanEditOperators { get; set; }
 }
 
+public sealed class ShiftStaffingTaskDto
+{
+    public TaskDto Task { get; set; } = new();
+    public TaskResultsDto Results { get; set; } = new();
+}
+
 public class ShiftStaffingItemDto
 {
     public ShiftStaffingSummaryDto Shift { get; set; } = new();

@@ -21,6 +21,7 @@ public sealed class ShiftStaffingService : IShiftStaffingService
     private readonly IFactoryClock _factoryClock;
     private readonly IImmStatusCache _statusCache;
     private readonly IEffectiveStatusHistoryService _effectiveStatusHistory;
+    private readonly ITaskResultsService _taskResults;
     private readonly DowntimeSettings _downtime;
 
     public ShiftStaffingService(
@@ -28,12 +29,14 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         IFactoryClock factoryClock,
         IImmStatusCache statusCache,
         IEffectiveStatusHistoryService effectiveStatusHistory,
+        ITaskResultsService taskResults,
         IOptions<DowntimeSettings> downtime)
     {
         _context = context;
         _factoryClock = factoryClock;
         _statusCache = statusCache;
         _effectiveStatusHistory = effectiveStatusHistory;
+        _taskResults = taskResults;
         _downtime = downtime.Value;
     }
 
@@ -65,7 +68,29 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         return items.Select(i => ToSummary(i, now, canEditOperators: false)).ToList();
     }
 
-    public async Task<ShiftStaffingItemDto> GetItemAsync(
+    public Task<ShiftStaffingItemDto> GetItemAsync(
+        Guid itemId, StaffingCaller caller, CancellationToken ct) =>
+        LoadAccessibleItemAsync(itemId, caller, ct);
+
+    public async Task<ShiftStaffingTaskDto> GetTaskAsync(
+        Guid itemId, Guid taskId, StaffingCaller caller, CancellationToken ct)
+    {
+        var item = await LoadAccessibleItemAsync(itemId, caller, ct);
+        var task = await TaskQuery().SingleOrDefaultAsync(t => t.Id == taskId, ct)
+            ?? throw new ShiftNotFoundException("Задание не найдено в этой смене");
+        var schedule = await _factoryClock.GetScheduleAsync(ct);
+        var dto = task.ToDto(schedule);
+        var allowedImm = item.Imms.Any(i => i.ImmId == task.ImmId);
+        if (!allowedImm || !ShiftTaskWindow.Belongs(
+                task, dto.PlannedStartAt, item.Shift.StartAtUtc, item.Shift.EndAtUtc, Now))
+            throw new ShiftNotFoundException("Задание не найдено в этой смене");
+
+        var results = await _taskResults.GetAsync(taskId, ct)
+            ?? throw new ShiftNotFoundException("Задание не найдено в этой смене");
+        return new ShiftStaffingTaskDto { Task = dto, Results = results };
+    }
+
+    private async Task<ShiftStaffingItemDto> LoadAccessibleItemAsync(
         Guid itemId, StaffingCaller caller, CancellationToken ct)
     {
         var item = await _context.ShiftPlanItems
