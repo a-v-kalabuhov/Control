@@ -477,18 +477,25 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
             try
             {
                 var blocked = 0;
-                for (var attempt = 0; attempt < 100 && blocked < 2; attempt++)
+                var advisoryWaiting = 0;
+                for (var attempt = 0; attempt < 100 && (blocked < 1 || advisoryWaiting < 1); attempt++)
                 {
                     await using var command = new NpgsqlCommand("""
-                        SELECT count(*) FROM pg_locks
-                        WHERE relation = '"ShiftPlanDays"'::regclass
-                          AND mode = 'RowExclusiveLock'
-                          AND NOT granted
+                        SELECT
+                          (SELECT count(*) FROM pg_locks
+                           WHERE relation = '"ShiftPlanDays"'::regclass
+                             AND mode = 'RowExclusiveLock' AND NOT granted),
+                          (SELECT count(*) FROM pg_locks
+                           WHERE locktype = 'advisory' AND NOT granted)
                         """, connection, transaction);
-                    blocked = Convert.ToInt32(await command.ExecuteScalarAsync());
-                    if (blocked < 2) await Task.Delay(50);
+                    await using var reader = await command.ExecuteReaderAsync();
+                    (await reader.ReadAsync()).Should().BeTrue();
+                    blocked = reader.GetInt32(0);
+                    advisoryWaiting = reader.GetInt32(1);
+                    if (blocked < 1 || advisoryWaiting < 1) await Task.Delay(50);
                 }
-                blocked.Should().Be(2, "оба запроса должны одновременно ожидать материализацию виртуального дня");
+                blocked.Should().Be(1, "первый запрос должен ожидать материализацию виртуального дня");
+                advisoryWaiting.Should().Be(1, "второй запрос должен ожидать общую блокировку графика");
             }
             finally
             {
@@ -540,7 +547,7 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
         {
             await WaitForBlockedLockAsync("ShiftPlanItems", "relation");
             reassignRequest = PutLeadAsync(admin, date, 1, newLead.Id);
-            await WaitForGrantedDayLocksAsync();
+            await WaitForReassignLockAsync();
             await transaction.CommitAsync();
             committed = true;
         }
@@ -572,22 +579,28 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
             blocked.Should().Be(1, "очистка должна удерживать день до блокировки переназначения");
         }
 
-        async Task WaitForGrantedDayLocksAsync()
+        async Task WaitForReassignLockAsync()
         {
             var locked = 0;
-            for (var attempt = 0; attempt < 100 && locked < 2; attempt++)
+            var advisoryWaiting = 0;
+            for (var attempt = 0; attempt < 100 && (locked < 1 || advisoryWaiting < 1); attempt++)
             {
                 await using var command = new NpgsqlCommand("""
-                    SELECT count(*) FROM pg_locks
-                    WHERE relation = '"ShiftPlanDays"'::regclass
-                      AND locktype = 'relation'
-                      AND mode = 'RowShareLock'
-                      AND granted
+                    SELECT
+                      (SELECT count(*) FROM pg_locks
+                       WHERE relation = '"ShiftPlanDays"'::regclass
+                         AND locktype = 'relation' AND mode = 'RowShareLock' AND granted),
+                      (SELECT count(*) FROM pg_locks
+                       WHERE locktype = 'advisory' AND NOT granted)
                     """, connection, transaction);
-                locked = Convert.ToInt32(await command.ExecuteScalarAsync());
-                if (locked < 2) await Task.Delay(50);
+                await using var reader = await command.ExecuteReaderAsync();
+                (await reader.ReadAsync()).Should().BeTrue();
+                locked = reader.GetInt32(0);
+                advisoryWaiting = reader.GetInt32(1);
+                if (locked < 1 || advisoryWaiting < 1) await Task.Delay(50);
             }
-            locked.Should().Be(2, "оба запроса должны дойти до блокировки одного сохранённого дня");
+            locked.Should().Be(1, "очистка должна удерживать сохранённый день");
+            advisoryWaiting.Should().Be(1, "переназначение должно ожидать общую блокировку графика");
         }
     }
 

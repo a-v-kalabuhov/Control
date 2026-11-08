@@ -92,6 +92,57 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
         HttpClient client, IReadOnlyList<ShiftScheduleItemDto> shifts) =>
         client.PutAsJsonAsync("/api/shifts", new SaveShiftsRequestDto { Shifts = shifts.ToList() });
 
+    private static Task<HttpResponseMessage> PutLeadAsync(
+        HttpClient client, DateOnly date, int position, string? shiftLeadId) =>
+        client.PutAsJsonAsync($"/api/shift-plan/days/{date:yyyy-MM-dd}/items/{position}/lead",
+            new { shiftLeadId });
+
+    private static async Task<JsonElement> GetDayAsync(HttpClient client, DateOnly date)
+    {
+        var days = await RequiredJsonAsync(await client.GetAsync(
+            $"/api/shift-plan?from={date:yyyy-MM-dd}&to={date:yyyy-MM-dd}"));
+        return days.EnumerateArray().Should().ContainSingle().Subject;
+    }
+
+    private async Task<string> ConnectionStringAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        return db.Database.GetDbConnection().ConnectionString;
+    }
+
+    private static async Task<(int BlockedWrites, int WaitingAdvisory)> LockStateAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, string table)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+              (SELECT count(*) FROM pg_locks
+               WHERE relation = CAST(quote_ident(@table) AS regclass)
+                 AND mode = 'RowExclusiveLock' AND NOT granted),
+              (SELECT count(*) FROM pg_locks
+               WHERE locktype = 'advisory' AND NOT granted);
+            """, connection, transaction);
+        command.Parameters.AddWithValue("table", table);
+        await using var reader = await command.ExecuteReaderAsync();
+        (await reader.ReadAsync()).Should().BeTrue();
+        return (reader.GetInt32(0), reader.GetInt32(1));
+    }
+
+    private static async Task<bool> WaitForAsync(Func<Task<bool>> condition)
+    {
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            if (await condition()) return true;
+            await Task.Delay(50);
+        }
+        return false;
+    }
+
+    private static IEnumerable<string> ScheduleKeys(IEnumerable<ShiftScheduleItemDto> shifts) =>
+        shifts.OrderBy(s => s.StartMinutes).Select(s =>
+            $"{s.StartMinutes}:{s.DurationMinutes}:{s.BreakStartMinutes}:" +
+            $"{s.BreakDurationMinutes}:{s.TimeZoneId}");
+
     private async Task WithScheduleAsync(
         HttpClient client, List<ShiftScheduleItemDto> schedule, Func<Task> test)
     {
@@ -436,6 +487,130 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
                 await command.ExecuteNonQueryAsync();
             }
         });
+    }
+
+    [Fact]
+    public async Task LeadMaterialization_ConcurrentScheduleReplacement_CannotPersistStaleWindows()
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = NewFutureDate();
+        var manager = await ManagerClientAsync();
+        var admin = await AdminClientAsync();
+
+        await WithScheduleAsync(manager, Schedule(0, 480), async () =>
+        {
+            await DeleteDayAsync(date);
+            var connectionString = await ConnectionStringAsync();
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+            await using (var lockCommand = new NpgsqlCommand(
+                "LOCK TABLE \"ShiftPlanDays\" IN EXCLUSIVE MODE", connection, transaction))
+                await lockCommand.ExecuteNonQueryAsync();
+
+            var leadRequest = PutLeadAsync(manager, date, 1, lead.Id);
+            var leadBlocked = await WaitForAsync(async () =>
+                (await LockStateAsync(connection, transaction, "ShiftPlanDays")).BlockedWrites == 1);
+
+            var changed = Schedule(120, 600);
+            var scheduleRequest = SaveScheduleAsync(admin, changed);
+            var scheduleReachedLock = await WaitForAsync(async () =>
+                scheduleRequest.IsCompleted ||
+                (await LockStateAsync(connection, transaction, "ShiftPlanDays")).WaitingAdvisory > 0);
+
+            await transaction.CommitAsync();
+            var responses = await Task.WhenAll(leadRequest, scheduleRequest);
+
+            leadBlocked.Should().BeTrue("lead request must read S0 and pause on its first insert");
+            scheduleReachedLock.Should().BeTrue("schedule replacement must commit or wait for the lead lock");
+            responses.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.OK);
+
+            var day = await GetDayAsync(manager, date);
+            day.GetProperty("isSaved").GetBoolean().Should().BeTrue();
+            var expected = ShiftWindowCalculator.Build(date, changed.Select(s => new Shift
+            {
+                StartMinutes = s.StartMinutes,
+                DurationMinutes = s.DurationMinutes,
+                TimeZoneId = s.TimeZoneId
+            }).ToList());
+            var items = day.GetProperty("items").EnumerateArray().ToList();
+            items.Select(i => i.GetProperty("startAtUtc").GetDateTime()).Should()
+                .Equal(expected.Select(w => w.StartAtUtc));
+            items.Select(i => i.GetProperty("endAtUtc").GetDateTime()).Should()
+                .Equal(expected.Select(w => w.EndAtUtc));
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConcurrentScheduleReplacements_AreSerializedWithout500OrUnion(bool startEmpty)
+    {
+        var manager = await ManagerClientAsync();
+        var admin = await AdminClientAsync();
+        var original = await manager.GetFromJsonAsync<List<ShiftDto>>("/api/shifts", JsonOptions);
+        original.Should().NotBeNull().And.NotBeEmpty();
+        if (startEmpty)
+        {
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            await db.Shifts.ExecuteDeleteAsync();
+        }
+        else
+        {
+            (await SaveScheduleAsync(manager, Schedule(0, 480))).StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        try
+        {
+            var connectionString = await ConnectionStringAsync();
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+            await using (var lockCommand = new NpgsqlCommand(
+                "LOCK TABLE \"Shifts\" IN EXCLUSIVE MODE", connection, transaction))
+                await lockCommand.ExecuteNonQueryAsync();
+
+            var firstSchedule = Schedule(120, 600);
+            var secondSchedule = Schedule(360);
+            var firstRequest = SaveScheduleAsync(manager, firstSchedule);
+            var secondRequest = SaveScheduleAsync(admin, secondSchedule);
+            var bothReachedWrites = await WaitForAsync(async () =>
+            {
+                var state = await LockStateAsync(connection, transaction, "Shifts");
+                return state.BlockedWrites == 2 ||
+                    (state.BlockedWrites >= 1 && state.WaitingAdvisory >= 1);
+            });
+
+            await transaction.CommitAsync();
+            var responses = await Task.WhenAll(firstRequest, secondRequest);
+
+            bothReachedWrites.Should().BeTrue("both replacements must reach their write phase");
+            responses.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.OK,
+                "concurrent replacement must not surface DbUpdateConcurrencyException as 500");
+
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var actual = await db.Shifts.AsNoTracking().OrderBy(s => s.StartMinutes).ToListAsync();
+            var actualKeys = actual.Select(s =>
+                $"{s.StartMinutes}:{s.DurationMinutes}:{s.BreakStartMinutes}:" +
+                $"{s.BreakDurationMinutes}:{s.TimeZoneId}").ToList();
+            (actualKeys.SequenceEqual(ScheduleKeys(firstSchedule)) ||
+                actualKeys.SequenceEqual(ScheduleKeys(secondSchedule))).Should().BeTrue(
+                    "serialized replacements must leave exactly one complete schedule, not a union");
+        }
+        finally
+        {
+            var restore = original!.Select(s => new ShiftScheduleItemDto
+            {
+                StartMinutes = s.StartMinutes,
+                DurationMinutes = s.DurationMinutes,
+                BreakStartMinutes = s.BreakStartMinutes,
+                BreakDurationMinutes = s.BreakDurationMinutes,
+                TimeZoneId = s.TimeZoneId
+            }).ToList();
+            (await SaveScheduleAsync(manager, restore)).StatusCode.Should().Be(HttpStatusCode.OK);
+        }
     }
 
     [Fact]

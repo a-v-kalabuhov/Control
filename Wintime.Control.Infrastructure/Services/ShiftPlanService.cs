@@ -68,11 +68,18 @@ public sealed class ShiftPlanService : IShiftPlanService
             try
             {
                 await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+                var initialDayId = await _context.ShiftPlanDays
+                    .Where(d => d.ShiftDate == date)
+                    .Select(d => d.Id)
+                    .SingleOrDefaultAsync(ct);
+                await ShiftScheduleLock.AcquireAsync(_context, ct);
                 var now = DateTime.SpecifyKind(_factoryClock.UtcNow, DateTimeKind.Utc);
                 var dayId = await _context.ShiftPlanDays
                     .Where(d => d.ShiftDate == date)
                     .Select(d => d.Id)
                     .SingleOrDefaultAsync(ct);
+                if (dayId != initialDayId)
+                    throw new ShiftConcurrencyException(ConcurrencyMessage);
 
                 ShiftPlanDay day;
                 var isMaterializing = dayId == Guid.Empty;

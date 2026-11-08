@@ -102,8 +102,9 @@ public class ShiftService : IShiftService
     public async Task<IReadOnlyList<ShiftDto>> SaveShiftsAsync(
         IReadOnlyList<ShiftScheduleItemDto> shifts, CancellationToken ct = default)
     {
-        var nowUtc = _factoryClock.UtcNow;
         await using var tx = await _context.Database.BeginTransactionAsync(ct);
+        await ShiftScheduleLock.AcquireAsync(_context, ct);
+        var nowUtc = _factoryClock.UtcNow;
         var existing = await _context.Shifts.ToListAsync(ct);
         _context.Shifts.RemoveRange(existing);
 
