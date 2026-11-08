@@ -67,4 +67,15 @@ describe('DefaultLayout: план работ на смену', () => {
     mountAs('Observer')
     expect(wrapper.text()).not.toContain('План работ на смену')
   })
+
+  it.each(['Manager', 'Admin'])('показывает план смен роли %s, сохраняя план работ PZP-18', role => {
+    mountAs(role)
+    expect(wrapper.text()).toContain('План смен')
+    expect(wrapper.text()).toContain('План работ на смену')
+  })
+
+  it('не показывает план смен наблюдателю', () => {
+    mountAs('Observer')
+    expect(wrapper.text()).not.toContain('План смен')
+  })
 })

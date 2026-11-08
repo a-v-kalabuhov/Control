@@ -49,6 +49,10 @@
               v-if="canAccess(['Admin', 'Manager'])"
               index="/planning/shift-work-plan"
             >План работ на смену</el-menu-item>
+            <el-menu-item
+              v-if="canAccess(['Admin', 'Manager'])"
+              index="/planning/shift-plan"
+            >План смен</el-menu-item>
             <el-menu-item index="/planning/gantt">План-график цеха <PlanConflictsBadge /></el-menu-item>
           </el-sub-menu>
 
@@ -227,6 +231,7 @@ const roleLabel = computed(() => {
     'Manager': 'Руководитель',
     'Adjuster': 'Наладчик',
     'Operator': 'Литейщик',
+    'ShiftLead': 'Старший смены',
     'Observer': 'Наблюдатель'
   }
   return labels[authStore.user?.role] || authStore.user?.role

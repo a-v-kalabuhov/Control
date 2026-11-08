@@ -32,6 +32,9 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<Material> Materials { get; set; }
     public DbSet<ProductRecipeIngredient> ProductRecipeIngredients { get; set; }
     public DbSet<ShiftTaskRecipeIngredient> ShiftTaskRecipeIngredients { get; set; }
+    public DbSet<ShiftPlanDay> ShiftPlanDays { get; set; }
+    public DbSet<ShiftPlanItem> ShiftPlanItems { get; set; }
+    public DbSet<ShiftImmOperatorAssignment> ShiftImmOperatorAssignments { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -303,5 +306,59 @@ public class ControlDbContext : IdentityDbContext<User>
             .OnDelete(DeleteBehavior.SetNull);
         builder.Entity<Wintime.Control.Core.Entities.ShiftTask>()
             .HasIndex(t => t.OrderId);                   // под Σ-агрегацию прогресса
+
+        // План смен и интервалы назначения литейщиков (PZP-32).
+        builder.Entity<ShiftPlanDay>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.HasIndex(e => e.ShiftDate).IsUnique();
+            entity.ToTable("ShiftPlanDays");
+        });
+
+        builder.Entity<ShiftPlanItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.StartAtUtc).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.EndAtUtc).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.TimeZoneId).HasMaxLength(100).IsRequired();
+            entity.HasOne(e => e.Day).WithMany(d => d.Items)
+                  .HasForeignKey(e => e.ShiftPlanDayId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ShiftLead).WithMany()
+                  .HasForeignKey(e => e.ShiftLeadId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new { e.ShiftPlanDayId, e.Position }).IsUnique();
+            entity.ToTable("ShiftPlanItems", t =>
+            {
+                t.HasCheckConstraint("CK_ShiftPlanItems_Position", "\"Position\" >= 1");
+                t.HasCheckConstraint("CK_ShiftPlanItems_StartAtUtc_EndAtUtc", "\"StartAtUtc\" < \"EndAtUtc\"");
+            });
+        });
+
+        builder.Entity<ShiftImmOperatorAssignment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.AssignedAt).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.UnassignedAt).HasColumnType("timestamp with time zone");
+            entity.HasOne(e => e.ShiftPlanItem).WithMany(i => i.OperatorAssignments)
+                  .HasForeignKey(e => e.ShiftPlanItemId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Imm).WithMany()
+                  .HasForeignKey(e => e.ImmId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Operator).WithMany()
+                  .HasForeignKey(e => e.OperatorId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new { e.ShiftPlanItemId, e.ImmId, e.Slot })
+                  .IsUnique().HasFilter("\"UnassignedAt\" IS NULL")
+                  .HasDatabaseName("IX_ShiftImmOperatorAssignments_ActiveSlot");
+            entity.HasIndex(e => new { e.ShiftPlanItemId, e.ImmId, e.OperatorId })
+                  .IsUnique().HasFilter("\"UnassignedAt\" IS NULL")
+                  .HasDatabaseName("IX_ShiftImmOperatorAssignments_ActiveOperator");
+            entity.ToTable("ShiftImmOperatorAssignments", t =>
+            {
+                t.HasCheckConstraint("CK_ShiftImmOperatorAssignments_Slot", "\"Slot\" IN (1, 2)");
+                t.HasCheckConstraint("CK_ShiftImmOperatorAssignments_UnassignedAt",
+                    "\"UnassignedAt\" IS NULL OR \"UnassignedAt\" >= \"AssignedAt\"");
+            });
+        });
     }
 }

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { authApi } from '@/api/auth'
 import router from '@/router'
+import { resetAuthScopedStores } from '@/stores/authScopedStores'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -8,23 +9,70 @@ export const useAuthStore = defineStore('auth', {
     accessToken: localStorage.getItem('access_token') || null,
     refreshToken: localStorage.getItem('refresh_token') || null,
     isAuthenticated: !!localStorage.getItem('access_token'),
-    userRole: localStorage.getItem('user_role') || null
+    userRole: localStorage.getItem('user_role') || null,
+    authInitialized: false,
+    initializationPromise: null
   }),
 
   getters: {
     isAdmin: (state) => (state.user?.role ?? state.userRole) === 'Admin',
     isManager: (state) => (state.user?.role ?? state.userRole) === 'Manager',
     isAdjuster: (state) => (state.user?.role ?? state.userRole) === 'Adjuster',
+    isShiftLead: (state) => (state.user?.role ?? state.userRole) === 'ShiftLead',
     isObserver: (state) => (state.user?.role ?? state.userRole) === 'Observer',
-    hasRole: (state) => (roles) => roles.includes(state.user?.role ?? state.userRole)
+    hasRole: (state) => (roles) => roles.includes(state.user?.role ?? state.userRole),
+    homePath: (state) => {
+      const role = state.user?.role ?? state.userRole
+      if (role === 'Adjuster') return '/mobile/tasks'
+      if (role === 'ShiftLead') return '/shift-lead'
+      return '/'
+    }
   },
   
   actions: {
+    ensureInitialized() {
+      if (this.authInitialized) return Promise.resolve({ success: true })
+      if (this.initializationPromise) return this.initializationPromise
+
+      if (!this.isAuthenticated || this.user) {
+        this.authInitialized = true
+        return Promise.resolve({ success: true })
+      }
+
+      this.initializationPromise = (async () => {
+        try {
+          const result = await this.fetchCurrentUser()
+          if (result.success) return result
+
+          if (result.status === 401) {
+            const refreshed = await this.refreshTokens()
+            if (refreshed.success) {
+              const retry = await this.fetchCurrentUser()
+              if (retry.success) return retry
+            }
+            this.softClearAuth()
+            return result
+          }
+
+          // Без восстановленной или cached роли role guard не может выбрать
+          // безопасный home route; fail closed вместо redirect loop.
+          if (!this.user && !this.userRole) this.softClearAuth()
+          return result
+        } finally {
+          this.authInitialized = true
+          this.initializationPromise = null
+        }
+      })()
+
+      return this.initializationPromise
+    },
+
     async login(credentials) {
       try {
         const response = await authApi.login(credentials)
         const { accessToken, refreshToken, user } = response.data
-        
+
+        resetAuthScopedStores(user.id, true)
         this.accessToken = accessToken
         this.refreshToken = refreshToken
         this.user = user
@@ -61,6 +109,7 @@ export const useAuthStore = defineStore('auth', {
           refreshToken: this.refreshToken
         })
         const { accessToken, refreshToken, user } = response.data
+        resetAuthScopedStores(user.id)
         this.accessToken = accessToken
         this.refreshToken = refreshToken
         this.user = user
@@ -78,6 +127,7 @@ export const useAuthStore = defineStore('auth', {
     async fetchCurrentUser() {
       try {
         const response = await authApi.getCurrentUser()
+        resetAuthScopedStores(response.data.id)
         this.user = response.data
         this.userRole = response.data.role
         localStorage.setItem('user_role', response.data.role)
@@ -91,6 +141,7 @@ export const useAuthStore = defineStore('auth', {
     },
     
     clearAuth() {
+      resetAuthScopedStores(null, true)
       this.user = null
       this.userRole = null
       this.accessToken = null
@@ -106,6 +157,7 @@ export const useAuthStore = defineStore('auth', {
 
     // Мягкая очистка аутентификации без перенаправления
     softClearAuth() {
+      resetAuthScopedStores(null, true)
       this.user = null
       this.userRole = null
       this.accessToken = null

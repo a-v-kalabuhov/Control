@@ -93,13 +93,15 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import dayjs from 'dayjs'
 import { tasksApi } from '@/api/tasks'
 import { dashboardApi } from '@/api/dashboard'
+import { shiftStaffingApi } from '@/api/shiftStaffing'
 import { EFFECTIVE_STATUS } from '@/constants/effectiveStatus'
 import { formatDuration } from '@/utils/taskPlan'
 import { formatSeconds, sharePercent, deviationPercent, formatDeviation, formatCushion } from '@/utils/taskResults'
 
 const props = defineProps({
   taskId: { type: String, required: true },
-  operator: { type: Boolean, default: false }
+  operator: { type: Boolean, default: false },
+  staffingItemId: { type: String, default: '' }
 })
 
 const REFRESH_MS = 60_000
@@ -141,9 +143,15 @@ function formatDate(date) {
 async function load() {
   loading.value = results.value === null   // спиннер только на первой загрузке, не на тихом обновлении
   try {
-    const res = props.operator
-      ? await dashboardApi.getTaskResults(props.taskId)
-      : await tasksApi.getResults(props.taskId)
+    let res
+    if (props.staffingItemId) {
+      const response = await shiftStaffingApi.task(props.staffingItemId, props.taskId)
+      res = { data: response.data.results }
+    } else {
+      res = props.operator
+        ? await dashboardApi.getTaskResults(props.taskId)
+        : await tasksApi.getResults(props.taskId)
+    }
     if (unmounted) return
     results.value = res.data
     loadFailed.value = false

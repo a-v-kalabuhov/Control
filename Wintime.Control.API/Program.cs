@@ -12,6 +12,7 @@ using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Infrastructure.Auth;
 using Wintime.Control.Infrastructure.MQTT;
 using Wintime.Control.Shared.Settings;
+using Wintime.Control.Shared.Constants;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Cache;
@@ -90,9 +91,11 @@ builder.Services.AddAuthentication(options =>
 
 // Authorization Policies
 builder.Services.AddAuthorizationBuilder()
-    .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
-    .AddPolicy("ManagerOrAdmin", policy => policy.RequireRole("Manager", "Admin"))
-    .AddPolicy("AdjusterOrHigher", policy => policy.RequireRole("Adjuster", "Manager", "Admin"));
+    .AddPolicy("AdminOnly", policy => policy.RequireRole(Roles.Admin))
+    .AddPolicy("ManagerOrAdmin", policy => policy.RequireRole(Roles.Manager, Roles.Admin))
+    .AddPolicy("AdjusterOrHigher", policy => policy.RequireRole(Roles.Adjuster, Roles.Manager, Roles.Admin))
+    .AddPolicy("ShiftLeadOrManagerOrAdmin",
+        policy => policy.RequireRole(Roles.ShiftLead, Roles.Manager, Roles.Admin));
 
 // CORS
 builder.Services.AddCors(options =>
@@ -171,6 +174,8 @@ else
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IRefreshTokenStore, MemoryRefreshTokenStore>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
+builder.Services.AddScoped<IShiftPlanService, ShiftPlanService>();
+builder.Services.AddScoped<IShiftStaffingService, ShiftStaffingService>();
 builder.Services.AddScoped<IFactoryClock, FactoryClock>();
 builder.Services.AddScoped<IPlanningDefaultsService, PlanningDefaultsService>();
 builder.Services.AddScoped<IEffectiveStatusHistoryService, EffectiveStatusHistoryService>();

@@ -22,6 +22,7 @@
             <el-option label="Все роли" value="" />
             <el-option label="Наладчик" value="Adjuster" />
             <el-option label="Литейщик" value="Operator" />
+            <el-option label="Старший смены" value="ShiftLead" />
             <el-option label="Менеджер" value="Manager" />
             <el-option label="Админ" value="Admin" />
             <el-option label="Наблюдатель" value="Observer" />
@@ -122,6 +123,7 @@
           <el-select v-model="form.role" placeholder="Выберите роль" class="w-full">
             <el-option label="Наладчик" value="Adjuster" />
             <el-option label="Литейщик" value="Operator" />
+            <el-option label="Старший смены" value="ShiftLead" />
             <el-option label="Менеджер" value="Manager" />
             <el-option v-if="isAdmin" label="Администратор" value="Admin" />
             <el-option label="Наблюдатель" value="Observer" />
@@ -315,6 +317,7 @@ const getRoleLabel = (role) => {
     Manager: 'Менеджер',
     Adjuster: 'Наладчик',
     Operator: 'Литейщик',
+    ShiftLead: 'Старший смены',
     Observer: 'Наблюдатель'
   }
   return labels[role] || role

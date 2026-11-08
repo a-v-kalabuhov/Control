@@ -70,6 +70,13 @@ const routes = [
         meta: { roles: ['Admin', 'Manager'], title: 'План работ на смену' }
       },
       {
+        // PZP-32: назначение старших на позиции заводского графика
+        path: 'planning/shift-plan',
+        name: 'ShiftPlan',
+        component: () => import('@/views/planning/ShiftPlanView.vue'),
+        meta: { roles: ['Admin', 'Manager'], title: 'План смен' }
+      },
+      {
         // Мониторинг телеметрии; ТПА — в query: ?imm=<id>[&from=card]
         path: 'monitoring',
         name: 'Monitoring',
@@ -202,6 +209,37 @@ const routes = [
     ]
 },  
   {
+    path: '/shift-lead',
+    component: () => import('@/layouts/ShiftLeadLayout.vue'),
+    meta: { requiresAuth: true, isShiftLeadUi: true },
+    children: [
+      {
+        path: '',
+        name: 'ShiftLeadHome',
+        component: () => import('@/views/shift-lead/ShiftLeadHomeView.vue'),
+        meta: { roles: ['ShiftLead'], title: 'Моя смена' }
+      },
+      {
+        path: 'history',
+        name: 'ShiftLeadHistory',
+        component: () => import('@/views/shift-lead/ShiftLeadHistoryView.vue'),
+        meta: { roles: ['ShiftLead'], title: 'История смен' }
+      },
+      {
+        path: 'items/:itemId',
+        name: 'ShiftStaffingItem',
+        component: () => import('@/views/shift-lead/ShiftStaffingItemView.vue'),
+        meta: { roles: ['ShiftLead', 'Manager', 'Admin'], title: 'Смена' }
+      },
+      {
+        path: 'items/:itemId/tasks/:taskId',
+        name: 'ShiftStaffingTask',
+        component: () => import('@/views/shift-lead/ShiftStaffingTaskView.vue'),
+        meta: { roles: ['ShiftLead', 'Manager', 'Admin'], title: 'Задание' }
+      }
+    ]
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/errors/NotFoundView.vue'),
@@ -214,43 +252,48 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore()
+
+  // При перезагрузке сначала восстанавливаем пользователя; все role decisions
+  // ниже видят серверную роль, а не устаревший localStorage snapshot.
+  await authStore.ensureInitialized()
 
   // Аутентифицированный пользователь не должен попадать на страницу логина
   if (to.name === 'Login' && authStore.isAuthenticated) {
-    next(authStore.isAdjuster ? '/mobile/tasks' : '/')
-    return
+    return authStore.homePath
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next('/login')
-    return
+    return '/login'
   }
 
   if (authStore.isAuthenticated) {
     const isMobileRoute = to.matched.some(r => r.meta.isMobile)
+    const isShiftLeadRoute = to.matched.some(r => r.meta.isShiftLeadUi)
 
-    // Наладчик не должен видеть десктопные страницы
+    // Наладчик не должен видеть десктопные страницы и контур старшего смены.
     if (authStore.isAdjuster && !isMobileRoute) {
-      next('/mobile/tasks')
-      return
+      return authStore.homePath
     }
 
-    // Другие роли не имеют доступа к мобильному интерфейсу
+    // Другие роли не имеют доступа к мобильному интерфейсу наладчика.
     if (!authStore.isAdjuster && isMobileRoute) {
-      next('/')
-      return
+      return authStore.homePath
+    }
+
+    // Старший смены работает только в отдельном семействе маршрутов.
+    if (authStore.isShiftLead && !isShiftLeadRoute) {
+      return authStore.homePath
     }
 
     // Ограничения ролей действуют и при прямом переходе по URL, не только в меню.
     if (to.meta.roles && !authStore.hasRole(to.meta.roles)) {
-      next('/')
-      return
+      return authStore.homePath
     }
   }
 
-  next()
+  return true
 })
 
 // Заголовок вкладки браузера = название текущей страницы (то же, что в шапке).

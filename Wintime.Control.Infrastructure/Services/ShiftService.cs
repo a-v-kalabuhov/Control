@@ -9,8 +9,16 @@ namespace Wintime.Control.Infrastructure.Services;
 public class ShiftService : IShiftService
 {
     private readonly ControlDbContext _context;
+    private readonly IFactoryClock _factoryClock;
+    private readonly IShiftPlanService _shiftPlan;
 
-    public ShiftService(ControlDbContext context) => _context = context;
+    public ShiftService(
+        ControlDbContext context, IFactoryClock factoryClock, IShiftPlanService shiftPlan)
+    {
+        _context = context;
+        _factoryClock = factoryClock;
+        _shiftPlan = shiftPlan;
+    }
 
     public async Task<IReadOnlyList<ShiftDto>> GetShiftsAsync()
     {
@@ -91,9 +99,13 @@ public class ShiftService : IShiftService
         return errors;
     }
 
-    public async Task<IReadOnlyList<ShiftDto>> SaveShiftsAsync(IReadOnlyList<ShiftScheduleItemDto> shifts)
+    public async Task<IReadOnlyList<ShiftDto>> SaveShiftsAsync(
+        IReadOnlyList<ShiftScheduleItemDto> shifts, CancellationToken ct = default)
     {
-        var existing = await _context.Shifts.ToListAsync();
+        await using var tx = await _context.Database.BeginTransactionAsync(ct);
+        await ShiftScheduleLock.AcquireAsync(_context, ct);
+        var nowUtc = _factoryClock.UtcNow;
+        var existing = await _context.Shifts.ToListAsync(ct);
         _context.Shifts.RemoveRange(existing);
 
         var newShifts = shifts
@@ -109,7 +121,9 @@ public class ShiftService : IShiftService
             .ToList();
 
         _context.Shifts.AddRange(newShifts);
-        await _context.SaveChangesAsync();
+        await _shiftPlan.SynchronizeFutureDaysAsync(newShifts, nowUtc, ct);
+        await _context.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         return newShifts.Select((s, i) => ToDto(s, i + 1)).ToList();
     }
