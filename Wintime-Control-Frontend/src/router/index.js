@@ -216,25 +216,25 @@ const routes = [
       {
         path: '',
         name: 'ShiftLeadHome',
-        component: () => import('@/views/shift-lead/ShiftLeadPlaceholderView.vue'),
+        component: () => import('@/views/shift-lead/ShiftLeadHomeView.vue'),
         meta: { roles: ['ShiftLead'], title: 'Моя смена' }
       },
       {
         path: 'history',
         name: 'ShiftLeadHistory',
-        component: () => import('@/views/shift-lead/ShiftLeadPlaceholderView.vue'),
+        component: () => import('@/views/shift-lead/ShiftLeadHistoryView.vue'),
         meta: { roles: ['ShiftLead'], title: 'История смен' }
       },
       {
         path: 'items/:itemId',
         name: 'ShiftStaffingItem',
-        component: () => import('@/views/shift-lead/ShiftLeadPlaceholderView.vue'),
+        component: () => import('@/views/shift-lead/ShiftStaffingItemView.vue'),
         meta: { roles: ['ShiftLead', 'Manager', 'Admin'], title: 'Смена' }
       },
       {
         path: 'items/:itemId/tasks/:taskId',
         name: 'ShiftStaffingTask',
-        component: () => import('@/views/shift-lead/ShiftLeadPlaceholderView.vue'),
+        component: () => import('@/views/shift-lead/ShiftStaffingTaskView.vue'),
         meta: { roles: ['ShiftLead', 'Manager', 'Admin'], title: 'Задание' }
       }
     ]

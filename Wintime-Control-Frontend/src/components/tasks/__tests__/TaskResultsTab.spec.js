@@ -9,9 +9,13 @@ vi.mock('@/api/tasks', () => ({
 vi.mock('@/api/dashboard', () => ({
   dashboardApi: { getTaskResults: vi.fn() }
 }))
+vi.mock('@/api/shiftStaffing', () => ({
+  shiftStaffingApi: { task: vi.fn() }
+}))
 
 import { tasksApi } from '@/api/tasks'
 import { dashboardApi } from '@/api/dashboard'
+import { shiftStaffingApi } from '@/api/shiftStaffing'
 import TaskResultsTab from '../TaskResultsTab.vue'
 
 const completed = () => ({
@@ -220,5 +224,42 @@ describe('TaskResultsTab', () => {
     expect(dashboardApi.getTaskResults).toHaveBeenCalledWith('t1')
     expect(tasksApi.getResults).not.toHaveBeenCalled()
     expect(w.text()).toContain('Выпуск ещё не начат')
+  })
+
+  it('staffingItemId загружает results из shiftStaffingApi.task без tasks/dashboard APIs', async () => {
+    shiftStaffingApi.task.mockResolvedValue({
+      data: { task: { id: 't1' }, results: completed() }
+    })
+    const w = mount(TaskResultsTab, {
+      props: { taskId: 't1', staffingItemId: 'item-1' },
+      global: { plugins: [ElementPlus] }
+    })
+    await flushPromises()
+
+    expect(shiftStaffingApi.task).toHaveBeenCalledWith('item-1', 't1')
+    expect(tasksApi.getResults).not.toHaveBeenCalled()
+    expect(dashboardApi.getTaskResults).not.toHaveBeenCalled()
+    expect(rowText(w, 'output')).toContain('110')
+  })
+
+  it('staffing-режим сохраняет silent refresh inProgress раз в 60 секунд и cleanup', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    shiftStaffingApi.task.mockResolvedValue({
+      data: { task: { id: 't1' }, results: { ...completed(), inProgress: true } }
+    })
+    const w = mount(TaskResultsTab, {
+      props: { taskId: 't1', staffingItemId: 'item-1' },
+      global: { plugins: [ElementPlus] }
+    })
+    await flushPromises()
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(shiftStaffingApi.task).toHaveBeenCalledTimes(2)
+    expect(tasksApi.getResults).not.toHaveBeenCalled()
+    expect(dashboardApi.getTaskResults).not.toHaveBeenCalled()
+
+    w.unmount()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(shiftStaffingApi.task).toHaveBeenCalledTimes(2)
   })
 })
