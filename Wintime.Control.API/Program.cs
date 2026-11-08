@@ -175,6 +175,7 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IRefreshTokenStore, MemoryRefreshTokenStore>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<IShiftPlanService, ShiftPlanService>();
+builder.Services.AddScoped<IShiftStaffingService, ShiftStaffingService>();
 builder.Services.AddScoped<IFactoryClock, FactoryClock>();
 builder.Services.AddScoped<IPlanningDefaultsService, PlanningDefaultsService>();
 builder.Services.AddScoped<IEffectiveStatusHistoryService, EffectiveStatusHistoryService>();
