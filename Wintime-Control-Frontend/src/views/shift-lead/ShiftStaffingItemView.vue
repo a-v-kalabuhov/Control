@@ -1,16 +1,16 @@
 <template>
   <div v-loading="store.loading" class="min-h-[160px]">
-    <template v-if="store.currentItem">
+    <template v-if="currentItem">
       <div class="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 class="text-xl font-bold text-gray-800">
-            Смена {{ store.currentItem.shift.position }} · {{ formatDate(store.currentItem.shift.shiftDate) }}
+            Смена {{ currentItem.shift.position }} · {{ formatDate(currentItem.shift.shiftDate) }}
           </h2>
           <p class="mt-1 text-sm text-gray-600">
-            {{ formatDateTime(store.currentItem.shift.startAtUtc) }} —
-            {{ formatDateTime(store.currentItem.shift.endAtUtc) }}
+            {{ formatDateTime(currentItem.shift.startAtUtc) }} —
+            {{ formatDateTime(currentItem.shift.endAtUtc) }}
           </p>
-          <p class="mt-1 text-sm text-gray-500">Старший: {{ store.currentItem.shiftLeadName }}</p>
+          <p class="mt-1 text-sm text-gray-500">Старший: {{ currentItem.shiftLeadName }}</p>
         </div>
         <el-button
           data-test="refresh-item"
@@ -32,7 +32,7 @@
 
       <div class="space-y-4">
         <section
-          v-for="imm in store.currentItem.imms"
+          v-for="imm in currentItem.imms"
           :key="imm.immId"
           :data-test="`imm-${imm.immId}`"
           class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
@@ -113,7 +113,7 @@
                     <div v-else class="mt-1 text-primary-700">Активен · место {{ assignment.slot }}</div>
                   </div>
                   <el-button
-                    v-if="!assignment.unassignedAt && store.canEditOperators"
+                    v-if="!assignment.unassignedAt && canEditOperators"
                     type="danger"
                     plain
                     size="small"
@@ -129,7 +129,7 @@
             <p v-else class="text-sm text-gray-500">Литейщики не назначены</p>
 
             <div
-              v-if="assigningImmId === imm.immId && store.canEditOperators"
+              v-if="assigningImmId === imm.immId && canEditOperators"
               class="mt-3 rounded border border-primary-200 bg-primary-50 p-3"
             >
               <el-select
@@ -148,13 +148,16 @@
                   :label="operatorLabel(operator)"
                 />
               </el-select>
+              <p v-if="!canAssign(imm)" class="mt-2 text-sm text-amber-700">
+                Оба места на этом ТПА уже заняты
+              </p>
               <div class="mt-3 flex justify-end gap-2">
                 <el-button size="small" :disabled="store.saving" @click="closeAssign">Отмена</el-button>
                 <el-button
                   type="primary"
                   size="small"
                   data-test="confirm-assign"
-                  :disabled="!selectedOperatorId || controlsDisabled"
+                  :disabled="!selectedOperatorId || !canAssign(imm) || controlsDisabled"
                   :loading="store.saving"
                   @click="assign(imm)"
                 >
@@ -172,7 +175,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, effectScope, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { useShiftStaffingStore } from '@/stores/shiftStaffing'
@@ -183,32 +186,63 @@ import { useShiftStaffingRefresh } from '@/composables/useShiftStaffingRefresh'
 const route = useRoute()
 const router = useRouter()
 const store = useShiftStaffingStore()
-const itemId = String(route.params.itemId)
+const itemId = computed(() => String(route.params.itemId))
+const currentItem = computed(() => {
+  const item = store.currentItem
+  return item?.shift?.itemId === itemId.value ? item : null
+})
+const canEditOperators = computed(() => currentItem.value?.shift?.canEditOperators === true)
 const assigningImmId = ref(null)
 const selectedOperatorId = ref(null)
 const operatorsLoading = ref(false)
+let operatorsSeq = 0
+let pollingScope = null
+let guardedRefresh = null
+let mounted = false
 
 const controlsDisabled = computed(() => store.loading || store.saving)
 const showFutureHint = computed(() => {
-  const shift = store.currentItem?.shift
+  const shift = currentItem.value?.shift
   if (!shift || Date.now() >= Date.parse(shift.startAtUtc)) return false
-  return store.currentItem.imms.some(imm =>
+  return currentItem.value.imms.some(imm =>
     imm.assignments.some(assignment => !assignment.unassignedAt))
 })
 
-// Home уже загрузил согласованную пару summary/detail. При прямом открытии
-// запускаем тот же таймер; независимого второго polling поверх Home нет.
-const openedFromHome = store.nearest?.itemId === itemId &&
-  store.currentItem?.shift?.itemId === itemId
-let guardedRefresh = null
-if (!openedFromHome) {
-  const { refresh } = useShiftStaffingRefresh({
-    getEndAtUtc: () => store.currentItem?.shift?.endAtUtc,
-    refresh: () => store.loadItem(itemId)
+// Вход в Item синхронно отменяет nearest/mutations прежнего экрана и скрывает
+// чужой cached item ещё до первого render нового маршрута.
+store.activateItem(itemId.value)
+
+function startPolling(id) {
+  pollingScope?.stop()
+  pollingScope = effectScope()
+  pollingScope.run(() => {
+    const { refresh } = useShiftStaffingRefresh({
+      getEndAtUtc: () => currentItem.value?.shift?.endAtUtc,
+      refresh: () => store.loadItem(id)
+    })
+    guardedRefresh = refresh
+    refresh()
   })
-  guardedRefresh = refresh
-  onMounted(refresh)
 }
+
+onMounted(() => {
+  mounted = true
+  startPolling(itemId.value)
+})
+
+onUnmounted(() => {
+  mounted = false
+  pollingScope?.stop()
+  pollingScope = null
+})
+
+watch(itemId, (id, previousId) => {
+  if (id === previousId) return
+  closeAssign()
+  operatorsLoading.value = false
+  store.activateItem(id)
+  if (mounted) startPolling(id)
+})
 
 function statusMeta(status) {
   return getEffectiveStatusMeta(status)
@@ -227,7 +261,7 @@ function formatDateTime(value) {
 }
 
 function canAssign(imm) {
-  return store.canEditOperators && imm.activeOperatorCount < 2
+  return canEditOperators.value && imm.activeOperatorCount < 2
 }
 
 function candidatesFor(imm) {
@@ -243,37 +277,40 @@ function operatorLabel(operator) {
 
 async function openAssign(imm) {
   if (!canAssign(imm) || controlsDisabled.value) return
+  const seq = ++operatorsSeq
   assigningImmId.value = String(imm.immId)
   selectedOperatorId.value = null
   operatorsLoading.value = true
   const result = await store.loadOperators()
+  if (seq !== operatorsSeq) return
   operatorsLoading.value = false
   if (!result.success) closeAssign()
 }
 
 function closeAssign() {
+  operatorsSeq += 1
   assigningImmId.value = null
   selectedOperatorId.value = null
 }
 
 async function assign(imm) {
   if (!selectedOperatorId.value || !canAssign(imm) || controlsDisabled.value) return
-  const result = await store.assign(itemId, imm.immId, selectedOperatorId.value)
+  const result = await store.assign(itemId.value, imm.immId, selectedOperatorId.value)
   if (result.success) closeAssign()
 }
 
 async function unassign(assignment) {
-  if (assignment.unassignedAt || !store.canEditOperators || controlsDisabled.value) return
+  if (assignment.unassignedAt || !canEditOperators.value || controlsDisabled.value) return
   await store.unassign(assignment.id)
 }
 
 async function refreshItem() {
   if (store.saving) return
   if (guardedRefresh) await guardedRefresh()
-  else await store.loadItem(itemId)
+  else await store.loadItem(itemId.value)
 }
 
 function openTask(taskId) {
-  router.push(`/shift-lead/items/${itemId}/tasks/${taskId}`)
+  router.push(`/shift-lead/items/${itemId.value}/tasks/${taskId}`)
 }
 </script>

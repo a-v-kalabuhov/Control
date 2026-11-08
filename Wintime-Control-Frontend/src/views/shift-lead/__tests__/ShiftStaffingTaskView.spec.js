@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
+import { nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import ShiftStaffingTaskView from '../ShiftStaffingTaskView.vue'
 import { shiftStaffingApi } from '@/api/shiftStaffing'
@@ -13,10 +15,14 @@ const { route, push } = vi.hoisted(() => ({
   route: { params: { itemId: 'item-1', taskId: 'task-1' } },
   push: vi.fn()
 }))
-vi.mock('vue-router', () => ({
-  useRoute: () => route,
-  useRouter: () => ({ push })
-}))
+vi.mock('vue-router', async () => {
+  const { reactive } = await import('vue')
+  const state = reactive(route)
+  return {
+    useRoute: () => state,
+    useRouter: () => ({ push })
+  }
+})
 vi.mock('@/api/shiftStaffing', () => ({
   shiftStaffingApi: {
     nearest: vi.fn(), history: vi.fn(), item: vi.fn(), task: vi.fn(),
@@ -56,6 +62,9 @@ describe('ShiftStaffingTaskView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    useRoute().params.itemId = 'item-1'
+    useRoute().params.taskId = 'task-1'
     shiftStaffingApi.item.mockResolvedValue({ data: detail })
     shiftStaffingApi.task.mockResolvedValue({
       data: { task, results: { releaseStarted: false, inProgress: false } }
@@ -66,6 +75,7 @@ describe('ShiftStaffingTaskView', () => {
     wrapper?.unmount()
     wrapper = null
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('читает detail и результаты только через shiftStaffingApi.item/task без mutation controls', async () => {
@@ -91,5 +101,68 @@ describe('ShiftStaffingTaskView', () => {
     expect(wrapper.text()).not.toContain('Продолжить выпуск')
     expect(wrapper.text()).not.toContain('Завершить наладку')
     expect(wrapper.find('[data-test^="mutation-"]').exists()).toBe(false)
+  })
+
+  it('ошибка initial item loading показывает on-page retry вместо false not-found', async () => {
+    shiftStaffingApi.item.mockRejectedValueOnce({
+      response: { status: 500, data: { message: 'Смена временно недоступна' } }
+    })
+    wrapper = mount(ShiftStaffingTaskView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Смена временно недоступна')
+    expect(wrapper.text()).not.toContain('Задание не найдено в этой смене')
+    expect(shiftStaffingApi.task).not.toHaveBeenCalled()
+
+    shiftStaffingApi.item.mockResolvedValueOnce({ data: detail })
+    await wrapper.find('[data-test="retry-item-load"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(2)
+    expect(shiftStaffingApi.task).toHaveBeenCalledWith('item-1', 'task-1')
+    expect(wrapper.text()).toContain('Выпуск ещё не начат')
+  })
+
+  it('same-component itemId/taskId navigation загружает новый item и новые results', async () => {
+    const taskB = { ...task, id: 'task-b', productFullArticle: 'ТИП.B' }
+    const detailB = {
+      ...detail,
+      shift: { ...detail.shift, itemId: 'item-b' },
+      imms: [{ ...detail.imms[0], tasks: [taskB] }]
+    }
+    shiftStaffingApi.item.mockImplementation(async itemId => ({
+      data: itemId === 'item-b' ? detailB : detail
+    }))
+    wrapper = mount(ShiftStaffingTaskView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    useRoute().params.itemId = 'item-b'
+    useRoute().params.taskId = 'task-b'
+    await nextTick()
+    await flushPromises()
+
+    expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-b')
+    expect(shiftStaffingApi.task).toHaveBeenCalledWith('item-b', 'task-b')
+    expect(wrapper.text()).toContain('ТИП.B')
+    expect(wrapper.text()).not.toContain('ТИП.001')
+  })
+
+  it('same-item taskId navigation пересоздаёт results без перезагрузки item', async () => {
+    const task2 = { ...task, id: 'task-2', productFullArticle: 'ТИП.002' }
+    const twoTasks = {
+      ...detail,
+      imms: [{ ...detail.imms[0], tasks: [task, task2] }]
+    }
+    shiftStaffingApi.item.mockResolvedValue({ data: twoTasks })
+    wrapper = mount(ShiftStaffingTaskView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    useRoute().params.taskId = 'task-2'
+    await nextTick()
+    await flushPromises()
+
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(1)
+    expect(shiftStaffingApi.task).toHaveBeenCalledWith('item-1', 'task-2')
+    expect(wrapper.text()).toContain('ТИП.002')
   })
 })

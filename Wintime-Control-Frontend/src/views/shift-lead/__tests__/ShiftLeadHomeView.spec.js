@@ -8,6 +8,7 @@ import { shiftStaffingApi } from '@/api/shiftStaffing'
 import { tasksApi } from '@/api/tasks'
 import { personnelApi } from '@/api/personnel'
 import router from '@/router'
+import { useShiftStaffingStore } from '@/stores/shiftStaffing'
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('vue-router', async importOriginal => ({
@@ -116,6 +117,26 @@ describe('ShiftLeadHomeView', () => {
     expect(tasksApi.getResults).not.toHaveBeenCalled()
     expect(personnelApi.getAll).not.toHaveBeenCalled()
     expect(personnelApi.getPersonnel).not.toHaveBeenCalled()
+  })
+
+  it('History→Home с nearest=null не показывает и не перезагружает unrelated cached item', async () => {
+    const historical = detail({
+      shift: summary({ itemId: 'history-1', state: 'Historical', canEditOperators: false })
+    })
+    shiftStaffingApi.item.mockResolvedValue({ data: historical })
+    const store = useShiftStaffingStore()
+    await store.loadItem('history-1')
+    vi.clearAllMocks()
+    shiftStaffingApi.nearest.mockResolvedValue({ data: { item: null } })
+    shiftStaffingApi.item.mockResolvedValue({ data: historical })
+
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Назначенная смена не найдена')
+    expect(wrapper.text()).not.toContain('Смена 1 · 08.11.2026')
+    expect(store.currentItem).toBeNull()
+    expect(shiftStaffingApi.item).not.toHaveBeenCalled()
   })
 
   it('маршрут Manager из плана ведёт в ShiftStaffingItemView, а не в мобильный контур наладчика', async () => {

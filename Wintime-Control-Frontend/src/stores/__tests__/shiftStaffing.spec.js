@@ -440,4 +440,56 @@ describe('shiftStaffing store', () => {
     await itemLoad
     expect(store.loading).toBe(false)
   })
+
+  it('activateItem при forced navigation отменяет in-flight nearest B и изолирует item A', async () => {
+    const nearestRequest = deferred()
+    shiftStaffingApi.nearest.mockReturnValue(nearestRequest.promise)
+    const store = useShiftStaffingStore()
+    const pendingNearest = store.loadNearest()
+
+    store.activateItem('item-a')
+    shiftStaffingApi.item.mockResolvedValue({ data: detail('item-a') })
+    await store.loadItem('item-a')
+    nearestRequest.resolve({ data: { item: summary('item-b') } })
+    const nearestResult = await pendingNearest
+
+    expect(nearestResult.stale).toBe(true)
+    expect(store.currentItem.shift.itemId).toBe('item-a')
+    expect(store.activeItemId).toBe('item-a')
+    expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-a')
+    expect(shiftStaffingApi.item).not.toHaveBeenCalledWith('item-b')
+  })
+
+  it.each(['assign', 'unassign'])('%s не отправляется при рассинхроне activeItemId/currentItem', async action => {
+    const store = useShiftStaffingStore()
+    store.activateItem('item-a')
+    store.currentItem = detail('item-b')
+    shiftStaffingApi.assign.mockResolvedValue({ data: {} })
+    shiftStaffingApi.unassign.mockResolvedValue({ data: {} })
+
+    const result = action === 'assign'
+      ? await store.assign('item-a', 'imm-a', 'operator-1')
+      : await store.unassign('assignment-b')
+
+    expect(result.stale).toBe(true)
+    expect(shiftStaffingApi[action]).not.toHaveBeenCalled()
+    expect(store.activeItemId).toBe('item-a')
+    expect(store.currentItem.shift.itemId).toBe('item-b')
+  })
+
+  it('activateNearest отбрасывает unrelated history и nearest=null не перезагружает её', async () => {
+    const store = useShiftStaffingStore()
+    store.nearest = null
+    store.currentItem = detail('history-item', {
+      shift: summary('history-item', { state: 'Historical', canEditOperators: false })
+    })
+    shiftStaffingApi.nearest.mockResolvedValue({ data: { item: null } })
+
+    store.activateNearest()
+    await store.loadNearest()
+
+    expect(store.currentItem).toBeNull()
+    expect(store.nearest).toBeNull()
+    expect(shiftStaffingApi.item).not.toHaveBeenCalled()
+  })
 })

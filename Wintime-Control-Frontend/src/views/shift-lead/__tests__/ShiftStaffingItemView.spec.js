@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
+import { useRoute } from 'vue-router'
+import { useShiftStaffingStore } from '@/stores/shiftStaffing'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
@@ -14,10 +17,14 @@ const { route, push } = vi.hoisted(() => ({
   route: { params: { itemId: 'item-1' } },
   push: vi.fn()
 }))
-vi.mock('vue-router', () => ({
-  useRoute: () => route,
-  useRouter: () => ({ push })
-}))
+vi.mock('vue-router', async () => {
+  const { reactive } = await import('vue')
+  const state = reactive(route)
+  return {
+    useRoute: () => state,
+    useRouter: () => ({ push })
+  }
+})
 vi.mock('@/api/shiftStaffing', () => ({
   shiftStaffingApi: {
     nearest: vi.fn(), history: vi.fn(), item: vi.fn(), task: vi.fn(),
@@ -107,7 +114,7 @@ describe('ShiftStaffingItemView', () => {
     vi.setSystemTime(new Date('2026-11-08T12:00:00Z'))
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    route.params.itemId = 'item-1'
+    useRoute().params.itemId = 'item-1'
     shiftStaffingApi.item.mockResolvedValue({ data: detail() })
     shiftStaffingApi.operators.mockResolvedValue({
       data: [
@@ -255,6 +262,97 @@ describe('ShiftStaffingItemView', () => {
 
     request.resolve({ data: {} })
     await flushPromises()
+  })
+
+  it('всегда запускает собственный polling при переходе из Home', async () => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-08T12:00:00Z'))
+    const store = useShiftStaffingStore()
+    store.nearest = summary()
+    store.currentItem = detail()
+
+    wrapper = mountView()
+    await flushPromises()
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(2)
+  })
+
+  it('forced navigation Item A отменяет in-flight Home nearest B', async () => {
+    const store = useShiftStaffingStore()
+    store.nearest = summary()
+    store.currentItem = detail()
+    const nearestRequest = deferred()
+    shiftStaffingApi.nearest.mockReturnValue(nearestRequest.promise)
+    const pendingNearest = store.loadNearest()
+    shiftStaffingApi.item.mockImplementation(async itemId => ({
+      data: detail({ shift: summary({ itemId }) })
+    }))
+
+    wrapper = mountView()
+    await flushPromises()
+    nearestRequest.resolve({ data: { item: summary({ itemId: 'item-b' }) } })
+    await pendingNearest
+    await flushPromises()
+
+    expect(store.currentItem.shift.itemId).toBe('item-1')
+    expect(shiftStaffingApi.item).not.toHaveBeenCalledWith('item-b')
+  })
+
+  it('Confirm недоступен, если второе место занято после открытия формы', async () => {
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('[data-test="assign-imm-1"]').trigger('click')
+    await flushPromises()
+    const select = wrapper.findComponent('[data-test="operator-select"]')
+    await select.vm.$emit('update:modelValue', 'op3')
+
+    const store = useShiftStaffingStore()
+    store.currentItem = detail({
+      assignments: [
+        assignment('a1', 'op1', 'Иванов'),
+        assignment('a2', 'op2', 'Петров', { slot: 2 })
+      ]
+    })
+    await nextTick()
+
+    const confirm = wrapper.find('[data-test="confirm-assign"]')
+    expect(confirm.attributes('disabled')).toBeDefined()
+    await confirm.trigger('click')
+    expect(shiftStaffingApi.assign).not.toHaveBeenCalled()
+  })
+
+  it('same-component itemId navigation сбрасывает форму, запросы и timers', async () => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-08T12:00:00Z'))
+    shiftStaffingApi.item.mockImplementation(async itemId => ({
+      data: detail({
+        shift: summary({ itemId }),
+        tasks: [task({ id: `task-${itemId}` })]
+      })
+    }))
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('[data-test="assign-imm-1"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="operator-select"]').exists()).toBe(true)
+
+    useRoute().params.itemId = 'item-b'
+    await nextTick()
+    await flushPromises()
+
+    expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-b')
+    expect(wrapper.find('[data-test="operator-select"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="task-task-item-b"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="task-task-1"]').exists()).toBe(false)
+    expect(shiftStaffingApi.item.mock.calls.filter(([id]) => id === 'item-1')).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(shiftStaffingApi.item.mock.calls.filter(([id]) => id === 'item-b')).toHaveLength(2)
+    expect(shiftStaffingApi.item.mock.calls.filter(([id]) => id === 'item-1')).toHaveLength(1)
   })
 
   it('ручное Обновить не пересекается с polling direct item', async () => {

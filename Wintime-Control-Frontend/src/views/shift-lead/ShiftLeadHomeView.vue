@@ -88,6 +88,7 @@ import { useShiftStaffingRefresh } from '@/composables/useShiftStaffingRefresh'
 
 const store = useShiftStaffingStore()
 const router = useRouter()
+store.activateNearest()
 
 const { refresh } = useShiftStaffingRefresh({
   getEndAtUtc: () => store.nearest?.endAtUtc,

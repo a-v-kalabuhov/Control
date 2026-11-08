@@ -4,7 +4,19 @@
       ← К смене
     </el-button>
 
-    <template v-if="task">
+    <el-alert
+      v-if="loadError"
+      data-test="item-load-error"
+      type="error"
+      :title="loadError"
+      :closable="false"
+    >
+      <el-button size="small" data-test="retry-item-load" @click="loadCurrentItem">
+        Повторить
+      </el-button>
+    </el-alert>
+
+    <template v-else-if="task">
       <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -52,16 +64,20 @@
 
       <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h3 class="mb-4 text-lg font-semibold text-gray-800">Итоги задания</h3>
-        <TaskResultsTab :task-id="taskId" :staffing-item-id="itemId" />
+        <TaskResultsTab
+          :key="`${itemId}/${taskId}`"
+          :task-id="taskId"
+          :staffing-item-id="itemId"
+        />
       </div>
     </template>
 
-    <el-empty v-else-if="!store.loading" description="Задание не найдено в этой смене" />
+    <el-empty v-else-if="!store.loading && !loadError" description="Задание не найдено в этой смене" />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import TaskResultsTab from '@/components/tasks/TaskResultsTab.vue'
@@ -70,16 +86,50 @@ import { useShiftStaffingStore } from '@/stores/shiftStaffing'
 const route = useRoute()
 const router = useRouter()
 const store = useShiftStaffingStore()
-const itemId = String(route.params.itemId)
-const taskId = String(route.params.taskId)
+const itemId = computed(() => String(route.params.itemId))
+const taskId = computed(() => String(route.params.taskId))
+const currentItem = computed(() => {
+  const item = store.currentItem
+  return item?.shift?.itemId === itemId.value ? item : null
+})
+const loadError = ref('')
+let loadSeq = 0
+let unmounted = false
 
-const imm = computed(() => store.currentItem?.imms.find(item =>
-  item.tasks.some(candidate => String(candidate.id) === taskId)))
-const task = computed(() => imm.value?.tasks.find(candidate => String(candidate.id) === taskId))
+const imm = computed(() => currentItem.value?.imms.find(item =>
+  item.tasks.some(candidate => String(candidate.id) === taskId.value)))
+const task = computed(() => imm.value?.tasks.find(candidate => String(candidate.id) === taskId.value))
+
+store.activateItem(itemId.value)
 
 onMounted(() => {
-  if (store.currentItem?.shift?.itemId !== itemId) return store.loadItem(itemId)
+  if (!currentItem.value) loadCurrentItem()
 })
+
+onUnmounted(() => {
+  unmounted = true
+  loadSeq += 1
+})
+
+watch(itemId, (id, previousId) => {
+  if (id === previousId) return
+  loadError.value = ''
+  store.activateItem(id)
+  loadCurrentItem()
+})
+
+watch(taskId, (id, previousId) => {
+  if (id !== previousId && loadError.value) loadCurrentItem()
+})
+
+async function loadCurrentItem() {
+  const id = itemId.value
+  const seq = ++loadSeq
+  loadError.value = ''
+  const result = await store.loadItem(id)
+  if (unmounted || seq !== loadSeq || id !== itemId.value || result.stale) return
+  if (!result.success) loadError.value = result.message || 'Не удалось загрузить смену'
+}
 
 function secondsLabel(value) {
   return value == null ? '—' : `${value} с`

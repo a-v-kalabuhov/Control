@@ -10,9 +10,17 @@ function invalidateMutation(store) {
 
 async function runMutation(store, itemId, request, fallback) {
   if (store.saving) return { success: false, pending: true }
+  if ((store.activeItemId && store.activeItemId !== itemId) ||
+    store.currentItem?.shift?.itemId !== itemId) {
+    return { success: false, stale: true }
+  }
+  if (store.viewKind !== 'item' || store.activeItemId !== itemId) {
+    store.activateItem(itemId)
+  }
 
   const generation = ++store.mutationSeq
   const isCurrent = () => store.mutationSeq === generation &&
+    store.viewKind === 'item' && store.activeItemId === itemId &&
     store.currentItem?.shift?.itemId === itemId
   store.saving = true
 
@@ -51,6 +59,9 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
     refreshing: false,
     saving: false,
     historyLoading: false,
+    viewKind: 'nearest',
+    activeItemId: null,
+    nearestContextItemId: null,
     loadSeq: 0,
     historySeq: 0,
     mutationSeq: 0
@@ -61,8 +72,44 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
   },
 
   actions: {
+    activateNearest() {
+      this.loadSeq += 1
+      invalidateMutation(this)
+      this.viewKind = 'nearest'
+      this.activeItemId = null
+
+      const currentId = this.currentItem?.shift?.itemId
+      const nearestContextId = this.nearest?.itemId ?? this.nearestContextItemId
+      if (currentId && currentId !== nearestContextId) {
+        this.nearest = null
+        this.currentItem = null
+        this.nearestContextItemId = null
+      } else if (nearestContextId) {
+        this.nearestContextItemId = nearestContextId
+      }
+    },
+
+    activateItem(itemId) {
+      const id = String(itemId)
+      this.loadSeq += 1
+      invalidateMutation(this)
+      this.viewKind = 'item'
+      this.activeItemId = id
+
+      const nearestContextId = this.nearest?.itemId ?? this.nearestContextItemId
+      if (nearestContextId !== id) {
+        this.nearest = null
+        this.nearestContextItemId = null
+      } else {
+        this.nearestContextItemId = id
+      }
+      if (this.currentItem?.shift?.itemId !== id) this.currentItem = null
+    },
+
     async loadNearest() {
+      if (this.viewKind !== 'nearest') this.activateNearest()
       const seq = ++this.loadSeq
+      const isCurrent = () => seq === this.loadSeq && this.viewKind === 'nearest'
       const background = this.currentItem !== null
       this.loading = !background
       this.refreshing = background
@@ -71,19 +118,20 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
 
       try {
         const response = await shiftStaffingApi.nearest()
-        if (seq !== this.loadSeq) return { success: false, stale: true }
+        if (!isCurrent()) return { success: false, stale: true }
 
         nextNearest = response.data.item
-        const itemId = nextNearest?.itemId ?? this.currentItem?.shift?.itemId
+        const itemId = nextNearest?.itemId ?? this.nearest?.itemId ?? this.nearestContextItemId
         if (!itemId) {
           this.nearest = null
           this.currentItem = null
+          this.nearestContextItemId = null
           return { success: true }
         }
 
         detailStarted = true
         const itemResponse = await shiftStaffingApi.item(itemId)
-        if (seq !== this.loadSeq) return { success: false, stale: true }
+        if (!isCurrent()) return { success: false, stale: true }
 
         const nextItem = itemResponse.data
         if (this.currentItem?.shift?.itemId !== nextItem.shift.itemId) {
@@ -94,9 +142,10 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
         // не видят nearest B вместе с currentItem A.
         this.nearest = nextNearest
         this.currentItem = nextItem
+        this.nearestContextItemId = nextItem.shift.itemId
         return { success: true, data: nextItem }
       } catch (error) {
-        if (seq !== this.loadSeq) return { success: false, stale: true }
+        if (!isCurrent()) return { success: false, stale: true }
 
         // Если nearest исчез, старый editable detail нельзя оставлять после
         // неудачного reload завершившейся смены: fail closed в пустое состояние.
@@ -104,6 +153,7 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
           invalidateMutation(this)
           this.nearest = null
           this.currentItem = null
+          this.nearestContextItemId = null
         }
 
         const message = apiErrorMessage(error, 'Не удалось загрузить ближайшую смену')
@@ -118,24 +168,29 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
     },
 
     async loadItem(itemId) {
+      const id = String(itemId)
+      if (this.viewKind !== 'item' || this.activeItemId !== id) this.activateItem(id)
       const seq = ++this.loadSeq
-      const background = this.currentItem?.shift?.itemId === itemId
+      const isCurrent = () => seq === this.loadSeq &&
+        this.viewKind === 'item' && this.activeItemId === id
+      const background = this.currentItem?.shift?.itemId === id
 
       if (!background) {
         invalidateMutation(this)
         this.nearest = null
         this.currentItem = null
+        this.nearestContextItemId = null
       }
       this.loading = !background
       this.refreshing = background
 
       try {
         const response = await shiftStaffingApi.item(itemId)
-        if (seq !== this.loadSeq) return { success: false, stale: true }
+        if (!isCurrent()) return { success: false, stale: true }
         this.currentItem = response.data
         return { success: true, data: response.data }
       } catch (error) {
-        if (seq !== this.loadSeq) return { success: false, stale: true }
+        if (!isCurrent()) return { success: false, stale: true }
         const message = apiErrorMessage(error, 'Не удалось загрузить смену')
         ElMessage.error(message)
         return { success: false, message }
