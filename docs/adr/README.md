@@ -55,3 +55,4 @@
 - [ADR-0024](0024-part-weight-product-task-snapshot.md) — Вес детали в изделии и его снапшот в задании
 - [ADR-0025](0025-cavities-mold-product-task.md) — Гнёздовость: максимум ПФ, умолчание изделия, рабочая копия задания *(заменяет ADR-0001)*
 - [ADR-0026](0026-nomenclature-xlsx-import.md) — Двухэтапный импорт номенклатуры из XLSX
+- [ADR-0027](0027-shift-plan-and-operator-assignments.md) — Позиционный план смен и интервальные назначения литейщиков
