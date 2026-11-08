@@ -67,7 +67,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
@@ -89,6 +89,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'saved', 'reload'])
 const selectedLeadId = ref(null)
 const requestSaving = ref(false)
+let contextVersion = 0
+let saveSequence = 0
 
 const visible = computed({
   get: () => props.modelValue,
@@ -112,9 +114,22 @@ const options = computed(() => {
   return result
 })
 
-watch(() => [props.modelValue, props.item?.id, props.item?.position, props.item?.shiftLeadId], () => {
+watch(() => [
+  props.modelValue,
+  props.day?.shiftDate,
+  props.item?.position,
+  props.item?.shiftLeadId
+], () => {
+  contextVersion++
+  saveSequence++
+  requestSaving.value = false
   selectedLeadId.value = props.item?.shiftLeadId ?? null
 }, { immediate: true })
+
+onBeforeUnmount(() => {
+  contextVersion++
+  saveSequence++
+})
 
 function candidateLabel(candidate) {
   return candidate.employeeId
@@ -144,20 +159,25 @@ async function clearLead() {
 
 async function persist(shiftLeadId) {
   if (!props.day || !props.item || requestSaving.value) return
+  const date = props.day.shiftDate
+  const position = props.item.position
+  const version = contextVersion
+  const request = ++saveSequence
+  const isCurrent = () => request === saveSequence && version === contextVersion &&
+    props.modelValue && props.day?.shiftDate === date && props.item?.position === position
+
   requestSaving.value = true
   try {
-    const { data } = await shiftPlansApi.setLead(
-      props.day.shiftDate,
-      props.item.position,
-      shiftLeadId
-    )
+    const { data } = await shiftPlansApi.setLead(date, position, shiftLeadId)
+    if (!isCurrent()) return
     selectedLeadId.value = shiftLeadId
-    emit('saved', data)
+    emit('saved', data, { date, position, request })
   } catch (error) {
+    if (!isCurrent()) return
     ElMessage.error(apiErrorMessage(error, 'Не удалось назначить старшего смены'))
     if (error?.response?.status === 409) emit('reload')
   } finally {
-    requestSaving.value = false
+    if (request === saveSequence) requestSaving.value = false
   }
 }
 </script>

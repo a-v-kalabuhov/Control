@@ -115,6 +115,18 @@ async function load() {
     if (seq !== loadSeq) return
     days.value = daysResponse.data ?? []
     candidates.value = candidatesResponse.data ?? []
+    if (selectedDay.value && selectedItem.value) {
+      const shiftDate = selectedDay.value.shiftDate
+      const position = selectedItem.value.position
+      const freshDay = days.value.find(day => day.shiftDate === shiftDate)
+      const freshItem = freshDay?.items?.find(item => item.position === position)
+      if (freshDay && freshItem) {
+        selectedDay.value = freshDay
+        selectedItem.value = freshItem
+      } else {
+        closeDialog()
+      }
+    }
   } catch (error) {
     if (seq === loadSeq) {
       ElMessage.error(apiErrorMessage(error, 'Не удалось загрузить план смен'))
@@ -137,8 +149,9 @@ function formatShiftWindow(item) {
 function rowClassName({ row }) {
   const classes = ['shift-plan-row']
   if (row.isFactoryToday) classes.push('shift-current-date')
-  else if (row.shiftDate < dayjs().format('YYYY-MM-DD')) classes.push('shift-past')
-  else classes.push('shift-future')
+  else if (row.items?.length > 0 && row.items.every(item => item.state === 'Historical')) {
+    classes.push('shift-past')
+  } else classes.push('shift-future')
   return classes.join(' ')
 }
 
@@ -152,10 +165,15 @@ function closeDialog() {
   selectedItem.value = null
 }
 
-function onSaved(savedDay) {
-  const index = days.value.findIndex(day => day.shiftDate === savedDay.shiftDate)
+function onSaved(savedDay, context) {
+  const date = context?.date ?? savedDay.shiftDate
+  const position = context?.position ?? selectedItem.value?.position
+  if (!selectedDay.value || !selectedItem.value ||
+    selectedDay.value.shiftDate !== date || selectedItem.value.position !== position ||
+    savedDay.shiftDate !== date) return
+
+  const index = days.value.findIndex(day => day.shiftDate === date)
   if (index !== -1) days.value[index] = savedDay
-  const position = selectedItem.value?.position
   selectedDay.value = savedDay
   selectedItem.value = savedDay.items?.find(item => item.position === position) ?? null
 }

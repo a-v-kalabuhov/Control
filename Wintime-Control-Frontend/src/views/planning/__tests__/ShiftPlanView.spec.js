@@ -141,6 +141,26 @@ describe('ShiftPlanView', () => {
     expect(rows[2].classes()).toContain('shift-future')
   })
 
+  it('классифицирует прошлое и будущее по серверным state, а не по дате браузера', async () => {
+    const historicalDespiteBrowserTomorrow = day('2026-11-09', [
+      item(1, { state: 'Historical' })
+    ], { isFactoryToday: false })
+    const futureDespiteBrowserYesterday = day('2026-11-07', [
+      item(1, { state: 'Future' })
+    ], { isFactoryToday: false })
+    shiftPlansApi.getRange.mockResolvedValue({
+      data: [historicalDespiteBrowserTomorrow, futureDespiteBrowserYesterday]
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const rows = wrapper.findAll('.shift-plan-row')
+    expect(rows[0].classes()).toContain('shift-past')
+    expect(rows[0].classes()).not.toContain('shift-future')
+    expect(rows[1].classes()).toContain('shift-future')
+    expect(rows[1].classes()).not.toContain('shift-past')
+  })
+
   it('повторно загружает диапазон и одновременно обновляет кандидатов', async () => {
     const wrapper = mountView()
     await flushPromises()
@@ -195,10 +215,61 @@ describe('ShiftPlanView', () => {
     expect(wrapper.findComponent({ name: 'ShiftPlanItemDialog' }).props('item')).toEqual(savedDay.items[1])
   })
 
-  it('после 409 полностью перезагружает план', async () => {
+  it('игнорирует saved старого диалога после закрытия A и сохранения B', async () => {
     const wrapper = mountView()
     await flushPromises()
-    shiftPlansApi.getRange.mockResolvedValue({ data: [futureDay] })
+
+    await wrapper.findAll('.shift-plan-item')[2].trigger('click')
+    await flushPromises()
+    const dialogA = wrapper.findComponent({ name: 'ShiftPlanItemDialog' })
+    await dialogA.vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    await wrapper.findAll('.shift-plan-item')[4].trigger('click')
+    await flushPromises()
+    const dialogB = wrapper.findComponent({ name: 'ShiftPlanItemDialog' })
+    const savedFuture = day('2026-11-09', futureDay.items.map(futureItem =>
+      futureItem.position === 2
+        ? { ...futureItem, id: 'future-2', shiftLeadId: 'lead-1', shiftLeadName: 'Новый B' }
+        : futureItem), { isSaved: true })
+    await dialogB.vm.$emit('saved', savedFuture, {
+      date: '2026-11-09', position: 2, request: 2
+    })
+    await flushPromises()
+
+    const staleCurrent = day('2026-11-08', currentDay.items.map(currentItem =>
+      currentItem.position === 2
+        ? { ...currentItem, shiftLeadId: 'manager-1', shiftLeadName: 'Поздний A' }
+        : currentItem), { isSaved: true })
+    wrapper.vm.onSaved(staleCurrent, {
+      date: '2026-11-08', position: 2, request: 1
+    })
+    await flushPromises()
+
+    const currentDialog = wrapper.findComponent({ name: 'ShiftPlanItemDialog' })
+    expect(currentDialog.props('day')).toEqual(savedFuture)
+    expect(currentDialog.props('item').shiftLeadName).toBe('Новый B')
+    expect(wrapper.findAll('.shift-plan-row')[1].text()).not.toContain('Поздний A')
+  })
+
+  it('после 409 перечитывает открытую карточку по дате и позиции', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const freshDay = day('2026-11-08', [
+      item(1, { id: 'current-1', state: 'Current', canEditLead: false }),
+      item(2, {
+        id: 'current-2',
+        startAtUtc: '2026-11-08T17:00:00Z',
+        endAtUtc: '2026-11-09T05:00:00Z',
+        shiftLeadId: 'lead-1',
+        shiftLeadName: 'Иванов Иван',
+        state: 'Future',
+        canEditLead: true,
+        canEditOperators: true,
+        operatorAssignmentCount: 3
+      })
+    ], { isSaved: true })
+    shiftPlansApi.getRange.mockResolvedValue({ data: [freshDay] })
 
     await wrapper.findAll('.shift-plan-item')[2].trigger('click')
     await flushPromises()
@@ -207,6 +278,29 @@ describe('ShiftPlanView', () => {
     await flushPromises()
 
     expect(shiftPlansApi.getRange).toHaveBeenCalledTimes(2)
-    expect(wrapper.findAll('.shift-plan-row')).toHaveLength(1)
+    const refreshedDialog = wrapper.findComponent({ name: 'ShiftPlanItemDialog' })
+    expect(refreshedDialog.props('day')).toEqual(freshDay)
+    expect(refreshedDialog.props('item')).toEqual(freshDay.items[1])
+    expect(refreshedDialog.props('item').shiftLeadName).toBe('Иванов Иван')
+    expect(refreshedDialog.props('item').canEditLead).toBe(true)
+    expect(refreshedDialog.props('item').canEditOperators).toBe(true)
+    expect(refreshedDialog.props('item').operatorAssignmentCount).toBe(3)
+    expect(refreshedDialog.props('item').id).toBe('current-2')
+  })
+
+  it('после перезагрузки закрывает карточку, если её позиция исчезла', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const freshDay = day('2026-11-08', [
+      item(1, { id: 'current-1', state: 'Current', canEditLead: false })
+    ], { isSaved: true })
+    shiftPlansApi.getRange.mockResolvedValue({ data: [freshDay] })
+
+    await wrapper.findAll('.shift-plan-item')[2].trigger('click')
+    await flushPromises()
+    await wrapper.findComponent({ name: 'ShiftPlanItemDialog' }).vm.$emit('reload')
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'ShiftPlanItemDialog' }).exists()).toBe(false)
   })
 })

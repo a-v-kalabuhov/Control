@@ -39,9 +39,9 @@ function makeItem(overrides = {}) {
   }
 }
 
-function mountDialog(item = makeItem(), saving = false) {
+function mountDialog(item = makeItem(), saving = false, dayValue = day) {
   return mount(ShiftPlanItemDialog, {
-    props: { modelValue: true, day, item, candidates, saving },
+    props: { modelValue: true, day: dayValue, item, candidates, saving },
     global: {
       plugins: [ElementPlus],
       stubs: {
@@ -120,7 +120,12 @@ describe('ShiftPlanItemDialog', () => {
     await flushPromises()
 
     expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, 'manager-current')
-    expect(wrapper.emitted('saved')).toEqual([[savedDay]])
+    const events = wrapper.emitted('saved')
+    expect(events).toHaveLength(1)
+    expect(events[0][0]).toEqual(savedDay)
+    expect(events[0][1]).toEqual({
+      date: '2026-11-10', position: 2, request: expect.any(Number)
+    })
   })
 
   it('очистка передаёт null', async () => {
@@ -145,6 +150,9 @@ describe('ShiftPlanItemDialog', () => {
     expect(wrapper.vm.isSaving).toBe(true)
     expect(button('save-lead').disabled).toBe(true)
     expect(button('save-lead').classList).toContain('is-loading')
+    button('save-lead').click()
+    await wrapper.vm.saveLead()
+    expect(shiftPlansApi.setLead).toHaveBeenCalledTimes(1)
 
     request.resolve({ data: day })
     await flushPromises()
@@ -179,6 +187,43 @@ describe('ShiftPlanItemDialog', () => {
 
     expect(ElMessage.error).toHaveBeenCalledWith('План смены уже изменён другим пользователем')
     expect(wrapper.emitted('reload')).toEqual([[]])
+  })
+
+  it('не публикует позднее сохранение A после закрытия и сохранения B', async () => {
+    const requestA = deferred()
+    const requestB = deferred()
+    shiftPlansApi.setLead
+      .mockImplementationOnce(() => requestA.promise)
+      .mockImplementationOnce(() => requestB.promise)
+    const dayB = { ...day, shiftDate: '2026-11-11' }
+    const itemB = makeItem({ id: 'item-b', position: 1, shiftLeadId: null, shiftLeadName: null })
+    const savedDayA = { ...day, items: [makeItem()] }
+    const savedDayB = { ...dayB, items: [makeItem({ id: 'item-b', position: 1 })] }
+    const wrapper = mountDialog()
+    await nextTick()
+
+    button('save-lead').click()
+    await nextTick()
+    expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, 'lead-1')
+
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true, day: dayB, item: itemB })
+    wrapper.vm.selectedLeadId = 'manager-current'
+    await nextTick()
+    expect(button('save-lead').disabled).toBe(false)
+    button('save-lead').click()
+    await nextTick()
+    expect(shiftPlansApi.setLead).toHaveBeenCalledTimes(2)
+    expect(shiftPlansApi.setLead).toHaveBeenLastCalledWith('2026-11-11', 1, 'manager-current')
+
+    requestB.resolve({ data: savedDayB })
+    await flushPromises()
+    requestA.resolve({ data: savedDayA })
+    await flushPromises()
+
+    expect((wrapper.emitted('saved') ?? []).map(args => args[0])).toEqual([savedDayB])
+    expect(wrapper.props('day').shiftDate).toBe('2026-11-11')
+    expect(wrapper.props('item').id).toBe('item-b')
   })
 
   it('открывает ТПА и литейщиков только для сохранённой смены со старшим', async () => {
