@@ -23,7 +23,11 @@ vi.mock('@/api/tasks', () => ({
   }
 }))
 vi.mock('@/api/orders', () => ({
-  ordersApi: { getList: vi.fn(() => Promise.resolve({ data: [] })), setTaskOrder: vi.fn(() => Promise.resolve({ data: {} })) }
+  ordersApi: {
+    getList: vi.fn(() => Promise.resolve({ data: [] })),
+    getById: vi.fn(() => Promise.resolve({ data: { tasks: [] } })),
+    setTaskOrder: vi.fn(() => Promise.resolve({ data: {} }))
+  }
 }))
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: { getList: vi.fn(() => Promise.resolve({ data: [
@@ -86,6 +90,9 @@ describe('TaskFormModal — рецепт (BL-36)', () => {
     expect(wrapper.vm.selectedProductRecipe).toHaveLength(1)
     expect(wrapper.vm.recipeText).toBe('PP-1 — 100 %')
     expect(document.body.textContent).toContain('Рецепт изделия')
+    const recipeItem = wrapper.findAllComponents({ name: 'ElFormItem' })
+      .find(item => item.props('label') === 'Рецепт изделия')
+    expect(recipeItem.classes()).toContain('col-span-2')
   })
 
   it('красный значок при сумме пластиков ≠ 100 %', async () => {

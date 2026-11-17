@@ -37,15 +37,30 @@
 
     <OrderDetailModal v-model="showDetail" :order-id="selectedOrderId" @updated="loadOrders" />
 
-    <el-table :data="orders" stripe style="width: 100%" v-loading="loading">
-      <el-table-column prop="number" label="Номер" width="140" />
+    <el-table :data="sortedOrders" stripe style="width: 100%" v-loading="loading">
+      <el-table-column prop="number" label="Номер" width="140">
+        <template #header><SortableColumnHeader label="Номер" field="number" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
       <el-table-column label="Дата" width="120">
+        <template #header><SortableColumnHeader label="Дата" field="orderDate" :sort="sort" @sort="handleSort" /></template>
         <template #default="{ row }">{{ formatDate(row.orderDate) }}</template>
       </el-table-column>
       <el-table-column label="Завершить до" width="130">
+        <template #header><SortableColumnHeader label="Завершить до" field="dueDate" :sort="sort" @sort="handleSort" /></template>
         <template #default="{ row }">{{ formatDate(row.dueDate) }}</template>
       </el-table-column>
-      <el-table-column prop="productFullArticle" label="Изделие" />
+      <el-table-column prop="productFullArticle" label="Изделие" min-width="180">
+        <template #header><SortableColumnHeader label="Изделие" field="productFullArticle" :sort="sort" @sort="handleSort" /></template>
+        <template #default="{ row }">
+          <div>{{ row.productFullArticle }}</div>
+          <div v-if="productSecondary(row.productTypeName, row.productName)" class="text-xs text-gray-500">
+            {{ productSecondary(row.productTypeName, row.productName) }}
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="customer" label="Заказчик" min-width="160">
+        <template #header><SortableColumnHeader label="Заказчик" field="customer" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
       <el-table-column prop="quantity" label="Заказано" width="110" align="center" />
       <el-table-column label="Прогресс" width="200">
         <template #default="{ row }">
@@ -98,35 +113,28 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? 'Редактирование заказа' : 'Новый заказ'" width="500px">
+    <el-dialog v-model="dialogVisible" :title="editingId ? 'Редактирование заказа' : 'Новый заказ'" width="600px">
       <el-form :model="form" label-width="140px" :rules="rules" ref="formRef">
-        <el-form-item label="Номер" prop="number" required>
-          <el-input v-model="form.number" placeholder="ORD-001" />
-        </el-form-item>
-        <el-form-item label="Заказчик" prop="customer">
-          <SuggestInput v-model="form.customer" :fetch="fetchCompanies" placeholder="Необязательно" />
-        </el-form-item>
-        <el-form-item label="Дата" prop="orderDate">
-          <el-date-picker
-            v-model="form.orderDate"
-            type="date"
-            placeholder="Необязательно"
-            clearable
-            format="DD.MM.YYYY"
-            value-format="YYYY-MM-DD"
-            class="w-full"
-          />
-        </el-form-item>
-        <el-form-item label="Завершить до" prop="dueDate" required>
-          <el-date-picker
-            v-model="form.dueDate"
-            type="date"
-            placeholder="Выберите дату"
-            format="DD.MM.YYYY"
-            value-format="YYYY-MM-DD"
-            class="w-full"
-          />
-        </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="Номер" prop="number" required>
+              <el-input v-model="form.number" placeholder="ORD-001" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="Дата" prop="orderDate">
+              <el-date-picker
+                v-model="form.orderDate"
+                type="date"
+                placeholder="Необязательно"
+                clearable
+                format="DD.MM.YYYY"
+                value-format="YYYY-MM-DD"
+                class="w-full"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="Тип изделия" prop="productTypeId" required>
           <el-select
             v-model="form.productTypeId"
@@ -161,8 +169,21 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="Заказчик" prop="customer">
+          <SuggestInput v-model="form.customer" :fetch="fetchCompanies" placeholder="Необязательно" />
+        </el-form-item>
         <el-form-item label="Количество" prop="quantity" required>
           <el-input-number v-model="form.quantity" :min="1" class="w-full" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="Завершить до" prop="dueDate" required>
+          <el-date-picker
+            v-model="form.dueDate"
+            type="date"
+            placeholder="Выберите дату"
+            format="DD.MM.YYYY"
+            value-format="YYYY-MM-DD"
+            class="w-full"
+          />
         </el-form-item>
         <el-form-item label="Примечание">
           <el-input v-model="form.note" type="textarea" :rows="3" />
@@ -186,8 +207,10 @@ import { productTypesApi } from '@/api/productTypes'
 import { ORDER_STATUS_KEYS, getOrderStatusMeta } from '@/constants/orderStatus'
 import OrderDetailModal from '@/components/orders/OrderDetailModal.vue'
 import { apiErrorMessage } from '@/utils/apiError'
-import { activeProducts } from '@/utils/productLabel'
+import { activeProducts, productSecondary } from '@/utils/productLabel'
 import SuggestInput from '@/components/common/SuggestInput.vue'
+import SortableColumnHeader from '@/components/common/SortableColumnHeader.vue'
+import { useTableSort } from '@/utils/tableSort'
 import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
 
 const authStore = useAuthStore()
@@ -203,6 +226,8 @@ const editingId = ref(null)
 const editingRow = ref(null)
 const formRef = ref(null)
 const orders = ref([])
+const { sort, handleSort, sortedItems } = useTableSort('orders_sort_v1')
+const sortedOrders = sortedItems(orders)
 const productTypes = ref([])
 const productTypesLoading = ref(false)
 const productTypeFilterQuery = ref('')
@@ -261,6 +286,8 @@ let populating = false
 watch(() => form.productTypeId, (id, old) => {
   if (populating) return
   if (id !== old) form.productId = null
+  const company = productTypes.value.find((type) => type.id === id)?.company
+  if (company) form.customer = company
   const list = productOptions.value
   if (list.length === 1) form.productId = list[0].id
 })

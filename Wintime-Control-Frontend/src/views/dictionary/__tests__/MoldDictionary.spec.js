@@ -62,7 +62,10 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  document.cookie = 'molds_sort_v1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+})
 
 describe('MoldDictionary — разметка формы', () => {
   it('показывает наименование отдельной полноширинной строкой между артикулом и типом изделия', async () => {
@@ -83,6 +86,71 @@ describe('MoldDictionary — разметка формы', () => {
     const nameField = dialog.findAllComponents({ name: 'ElFormItem' })
       .find(item => item.props('label') === 'Наименование')
     expect(nameField.element.closest('.el-col').classList).toContain('el-col-24')
+  })
+})
+
+describe('MoldDictionary — остаток ресурса', () => {
+  it('показывает прочерк вместо NaN при незаполненном или нулевом ресурсе', async () => {
+    moldsApi.getList.mockResolvedValueOnce({ data: [
+      { ...moldRow, maxResourceCycles: null, remainingResource: null },
+      { ...moldRow, id: 'mold-2', formId: 'PF-2', maxResourceCycles: 0, remainingResource: 0 }
+    ] })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('NaN%')
+    expect(wrapper.text()).not.toContain('null / null')
+    const rows = wrapper.findAll('tr').filter(row => row.text().includes('PF-'))
+    expect(rows).toHaveLength(2)
+    for (const row of rows) expect(row.text()).toContain('—')
+  })
+})
+
+describe('MoldDictionary — сортировка', () => {
+  const rows = [
+    { ...moldRow, id: 'mold-b', formId: 'PF-B', name: 'Альфа', productTypeArticle: 'A', productTypeName: 'Альфа тип' },
+    { ...moldRow, id: 'mold-a', formId: 'PF-A', name: 'Бета', productTypeArticle: 'B', productTypeName: 'Бета тип' }
+  ]
+
+  function header(wrapper, label) {
+    return wrapper.findAll('th').find(th => th.text().includes(label)).find('span')
+  }
+
+  function firstRowText(wrapper) {
+    return wrapper.findAll('tbody tr')[0].text()
+  }
+
+  it('сортирует по артикулу, наименованию и типу изделия в три состояния', async () => {
+    moldsApi.getList.mockResolvedValueOnce({ data: rows })
+    const wrapper = mountView()
+    await flushPromises()
+
+    for (const testCase of [
+      { label: 'Артикул', desc: 'PF-B', asc: 'PF-A' },
+      { label: 'Наименование', desc: 'PF-A', asc: 'PF-B' },
+      { label: 'Тип изделия', desc: 'PF-A', asc: 'PF-B' }
+    ]) {
+      const column = header(wrapper, testCase.label)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain(testCase.desc)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain(testCase.asc)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain('PF-B')
+    }
+  })
+
+  it('сохраняет выбранную сортировку в cookie', async () => {
+    moldsApi.getList.mockResolvedValue({ data: rows })
+    const wrapper = mountView()
+    await flushPromises()
+    await header(wrapper, 'Наименование').trigger('click')
+    expect(document.cookie).toContain('molds_sort_v1=')
+    wrapper.unmount()
+
+    const reopened = mountView()
+    await flushPromises()
+    expect(firstRowText(reopened)).toContain('PF-A')
   })
 })
 

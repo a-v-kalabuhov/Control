@@ -284,8 +284,8 @@ public class TasksController : ControllerBase
         ProductSelection.EnsureSelectable(product);
         ProductSelection.EnsureBelongsToMold(product, mold.ProductTypeId);
         var defaultCavities = product.Cavities ?? mold.Cavities;
-        if (request.Cavities is < 1 || request.Cavities > defaultCavities)
-            return BadRequest($"Количество гнёзд в задании должно быть от 1 до {defaultCavities}.");
+        if (request.Cavities is < 1 || request.Cavities > mold.Cavities)
+            return BadRequest($"Количество гнёзд в задании должно быть от 1 до {mold.Cavities}.");
 
         // PZP-16: ТПА должен входить в список совместимых ПФ (пустой список — любой ТПА).
         if (!MoldImmCompatibility.IsCompatible(mold.CompatibleImms.Select(i => i.Id).ToList(), request.ImmId))
@@ -382,11 +382,12 @@ public class TasksController : ControllerBase
             }
         }
 
-        if (request.Cavities.HasValue && (productChanged || request.Cavities.Value != previousCavities))
+        if (request.Cavities.HasValue)
         {
-            if (request.Cavities.Value < 1 || request.Cavities.Value > defaultCavities)
-                return BadRequest($"Количество гнёзд в задании должно быть от 1 до {defaultCavities}.");
-            task.Cavities = request.Cavities.Value;
+            if (request.Cavities.Value < 1 || request.Cavities.Value > task.Mold.Cavities)
+                return BadRequest($"Количество гнёзд в задании должно быть от 1 до {task.Mold.Cavities}.");
+            if (productChanged || request.Cavities.Value != previousCavities)
+                task.Cavities = request.Cavities.Value;
         }
 
         if (request.PartWeightGrams.HasValue)

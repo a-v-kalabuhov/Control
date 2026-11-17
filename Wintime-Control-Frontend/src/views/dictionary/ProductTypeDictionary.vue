@@ -39,7 +39,7 @@
       </el-form>
     </el-card>
 
-    <el-table :data="items" stripe style="width: 100%" v-loading="loading" row-key="id">
+    <el-table :data="sortedTypes" stripe style="width: 100%" v-loading="loading" row-key="id">
       <el-table-column type="expand">
         <template #default="{ row }">
           <el-table :data="row.products" size="small" class="m-2">
@@ -79,8 +79,11 @@
           </el-table>
         </template>
       </el-table-column>
-      <el-table-column prop="article" label="Артикул" width="200" />
+      <el-table-column prop="article" label="Артикул" width="200">
+        <template #header><SortableColumnHeader label="Артикул" field="article" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
       <el-table-column label="Наименование">
+        <template #header><SortableColumnHeader label="Наименование" field="name" :sort="sort" @sort="handleSort" /></template>
         <template #default="{ row }">
           <div class="flex items-center gap-1">
             <span>{{ row.name }}</span>
@@ -93,7 +96,9 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="company" label="Заказчик" min-width="180" />
+      <el-table-column prop="company" label="Заказчик" min-width="180">
+        <template #header><SortableColumnHeader label="Заказчик" field="company" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
       <el-table-column label="Изделия" width="110" align="center">
         <template #default="{ row }">
           <span class="products-count">{{ activeProducts(row).length }}</span>
@@ -259,6 +264,8 @@ import ProductRecipeDialog from './ProductRecipeDialog.vue'
 import NomenclatureImportDialog from './NomenclatureImportDialog.vue'
 import SuggestInput from '@/components/common/SuggestInput.vue'
 import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
+import SortableColumnHeader from '@/components/common/SortableColumnHeader.vue'
+import { useTableSort } from '@/utils/tableSort'
 import { formatPercent, isRecipeSumOk, recipeSumHint as recipeSumHintText } from '@/utils/recipe'
 
 // Текст ошибки сервера; нестроковое тело (ProblemDetails и т.п.) заменяется запасным текстом.
@@ -274,6 +281,8 @@ const editing = ref(null)
 const formRef = ref(null)
 const items = ref([])
 const importDialogVisible = ref(false)
+const { sort, handleSort, sortedItems } = useTableSort('product_types_sort_v1')
+const sortedTypes = sortedItems(items)
 
 // BL-36: рецепт изделия — отдельный диалог; после сохранения перечитываем тип.
 const recipeDialogVisible = ref(false)

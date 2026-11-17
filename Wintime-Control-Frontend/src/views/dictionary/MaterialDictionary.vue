@@ -28,11 +28,18 @@
       </el-form>
     </el-card>
 
-    <el-table :data="items" stripe style="width: 100%" v-loading="loading" row-key="id">
-      <el-table-column prop="article" label="Артикул" width="160" />
-      <el-table-column prop="name" label="Наименование" />
-      <el-table-column prop="manufacturer" label="Производитель" width="200" />
+    <el-table :data="sortedMaterials" stripe style="width: 100%" v-loading="loading" row-key="id">
+      <el-table-column prop="article" label="Артикул" width="160">
+        <template #header><SortableColumnHeader label="Артикул" field="article" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
+      <el-table-column prop="name" label="Наименование">
+        <template #header><SortableColumnHeader label="Наименование" field="name" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
+      <el-table-column prop="manufacturer" label="Производитель" width="200">
+        <template #header><SortableColumnHeader label="Производитель" field="manufacturer" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
       <el-table-column label="Цвет" width="220">
+        <template #header><SortableColumnHeader label="Цвет" field="color" :sort="sort" @sort="handleSort" /></template>
         <template #default="{ row }">{{ rowColorLabel(row) }}</template>
       </el-table-column>
       <el-table-column label="Статус" width="120" align="center">
@@ -99,6 +106,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { materialsApi } from '@/api/materials'
 import { apiErrorMessage } from '@/utils/apiError'
 import SuggestInput from '@/components/common/SuggestInput.vue'
+import SortableColumnHeader from '@/components/common/SortableColumnHeader.vue'
+import { useTableSort } from '@/utils/tableSort'
 
 // Справочник материалов (PZP-22): один компонент для пластиков и красителей, тип — из маршрута.
 const props = defineProps({
@@ -130,6 +139,9 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const editing = ref(null)
 const items = ref([])
+const { sort, handleSort, sortedItems } = useTableSort(
+  () => `${props.materialType.toLowerCase()}_sort_v1`
+)
 
 const filters = reactive({ search: '', isActive: null })
 const emptyForm = () => ({ article: '', name: '', manufacturer: '', colorName: '', colorCode: '', comment: '' })
@@ -143,6 +155,8 @@ watch(() => props.materialType, loadItems)
 function rowColorLabel(row) {
   return [row.colorName, row.colorCode].filter(Boolean).join(' · ')
 }
+
+const sortedMaterials = sortedItems(items, { color: rowColorLabel })
 
 // Подсказка цвета: { name, code }.
 function suggestionColorLabel(c) {

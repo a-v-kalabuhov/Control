@@ -33,6 +33,59 @@ function mountView(materialType = 'Plastic') {
   return w
 }
 
+describe('MaterialDictionary — сортировка', () => {
+  function header(wrapper, label) {
+    return wrapper.findAll('th').find(th => th.text().includes(label)).find('span')
+  }
+
+  function firstRowText(wrapper) {
+    return wrapper.findAll('tbody tr')[0].text()
+  }
+
+  async function expectCycles(wrapper, cases, originalArticle) {
+    for (const testCase of cases) {
+      const column = header(wrapper, testCase.label)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain(testCase.desc)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain(testCase.asc)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain(originalArticle)
+    }
+  }
+
+  it('пластики сортируются по артикулу, наименованию и производителю', async () => {
+    materialsApi.getList.mockResolvedValue({ data: [
+      { ...plastic, id: 'pb', article: 'PP-B', name: 'Альфа', manufacturer: 'Аврора' },
+      { ...plastic, id: 'pa', article: 'PP-A', name: 'Бета', manufacturer: 'Яуза' }
+    ] })
+    const wrapper = mountView('Plastic')
+    await flushPromises()
+
+    await expectCycles(wrapper, [
+      { label: 'Артикул', desc: 'PP-B', asc: 'PP-A' },
+      { label: 'Наименование', desc: 'PP-A', asc: 'PP-B' },
+      { label: 'Производитель', desc: 'PP-A', asc: 'PP-B' }
+    ], 'PP-B')
+  })
+
+  it('красители сортируются по артикулу, наименованию, цвету и производителю', async () => {
+    materialsApi.getList.mockResolvedValue({ data: [
+      { ...plastic, id: 'cb', type: 'Colorant', article: 'C-B', name: 'Альфа', manufacturer: 'Аврора', colorName: 'Алый', colorCode: 'RAL 1' },
+      { ...plastic, id: 'ca', type: 'Colorant', article: 'C-A', name: 'Бета', manufacturer: 'Яуза', colorName: 'Чёрный', colorCode: 'RAL 2' }
+    ] })
+    const wrapper = mountView('Colorant')
+    await flushPromises()
+
+    await expectCycles(wrapper, [
+      { label: 'Артикул', desc: 'C-B', asc: 'C-A' },
+      { label: 'Наименование', desc: 'C-A', asc: 'C-B' },
+      { label: 'Цвет', desc: 'C-A', asc: 'C-B' },
+      { label: 'Производитель', desc: 'C-A', asc: 'C-B' }
+    ], 'C-B')
+  })
+})
+
 describe('MaterialDictionary (PZP-22)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -43,6 +96,8 @@ describe('MaterialDictionary (PZP-22)', () => {
     vi.restoreAllMocks()
     mounted.splice(0).forEach(w => w.unmount())
     document.body.innerHTML = ''
+    document.cookie = 'plastic_sort_v1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+    document.cookie = 'colorant_sort_v1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
   })
 
   it('пластики: заголовок, кнопка и запрос списка по типу', async () => {

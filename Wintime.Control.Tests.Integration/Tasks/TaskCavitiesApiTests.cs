@@ -108,6 +108,51 @@ public class TaskCavitiesApiTests : IClassFixture<IntegrationTestFactory>
         task.RootElement.GetProperty("cavities").GetInt32().Should().Be(2);
     }
 
+    [Fact]
+    public async Task CreateTask_CavitiesAboveProductDefaultUpToMoldMaximum_IsAllowed()
+    {
+        var (immId, moldId, _, typeId) = await SeedAsync(moldCavities: 4);
+        var client = await ClientAsync();
+        var productResponse = await client.PostAsJsonAsync($"/api/producttypes/{typeId}/products", new
+        {
+            Article = "PAIR", Name = "Парная деталь", Cavities = 2
+        });
+        productResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var product = await JsonDocument.ParseAsync(await productResponse.Content.ReadAsStreamAsync());
+        var productId = product.RootElement.GetProperty("id").GetGuid();
+
+        var response = await client.PostAsJsonAsync("/api/tasks", CreateRequest(immId, moldId, productId, cavities: 3));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var task = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        task.RootElement.GetProperty("cavities").GetInt32().Should().Be(3);
+    }
+
+    [Fact]
+    public async Task UpdateTask_CavitiesAboveProductDefaultUpToMoldMaximum_IsAllowed()
+    {
+        var (immId, moldId, _, typeId) = await SeedAsync(moldCavities: 4);
+        var client = await ClientAsync();
+        var productResponse = await client.PostAsJsonAsync($"/api/producttypes/{typeId}/products", new
+        {
+            Article = "PAIR", Name = "Парная деталь", Cavities = 2
+        });
+        productResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var product = await JsonDocument.ParseAsync(await productResponse.Content.ReadAsStreamAsync());
+        var productId = product.RootElement.GetProperty("id").GetGuid();
+        var created = await client.PostAsJsonAsync("/api/tasks", CreateRequest(immId, moldId, productId));
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var createdTask = await JsonDocument.ParseAsync(await created.Content.ReadAsStreamAsync());
+        var taskId = createdTask.RootElement.GetProperty("id").GetGuid();
+
+        var response = await client.PutAsJsonAsync($"/api/tasks/{taskId}", new { Cavities = 3 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        using var updated = await JsonDocument.ParseAsync(await (await client.GetAsync($"/api/tasks/{taskId}"))
+            .Content.ReadAsStreamAsync());
+        updated.RootElement.GetProperty("cavities").GetInt32().Should().Be(3);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(5)]
@@ -152,6 +197,26 @@ public class TaskCavitiesApiTests : IClassFixture<IntegrationTestFactory>
         var taskId = createdTask.RootElement.GetProperty("id").GetGuid();
 
         var response = await client.PutAsJsonAsync($"/api/tasks/{taskId}", new { Cavities = cavities });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdateTask_UnchangedCavitiesAboveMoldMaximum_BadRequest()
+    {
+        var (immId, moldId, productId, _) = await SeedAsync(moldCavities: 4);
+        var client = await ClientAsync();
+        var created = await client.PostAsJsonAsync("/api/tasks", CreateRequest(immId, moldId, productId));
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var createdTask = await JsonDocument.ParseAsync(await created.Content.ReadAsStreamAsync());
+        var taskId = createdTask.RootElement.GetProperty("id").GetGuid();
+        var moldUpdate = await client.PutAsJsonAsync($"/api/molds/{moldId}", new { Cavities = 2 });
+        moldUpdate.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var response = await client.PutAsJsonAsync($"/api/tasks/{taskId}", new
+        {
+            Cavities = 4, Note = "Значение задания не менялось"
+        });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

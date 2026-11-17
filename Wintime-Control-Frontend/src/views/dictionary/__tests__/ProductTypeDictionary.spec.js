@@ -51,6 +51,41 @@ function mountView() {
   return w
 }
 
+describe('ProductTypeDictionary — сортировка', () => {
+  const rows = [
+    { ...typeA, id: 'pt-b', article: 'B', name: 'Альфа', company: 'Аврора', products: [] },
+    { ...typeA, id: 'pt-a', article: 'A', name: 'Бета', company: 'Яуза', products: [] }
+  ]
+
+  function header(wrapper, label) {
+    return wrapper.findAll('th').find(th => th.text().includes(label)).find('span')
+  }
+
+  function firstRowText(wrapper) {
+    return wrapper.findAll('tbody tr')[0].text()
+  }
+
+  it('сортирует по артикулу, наименованию и заказчику в три состояния', async () => {
+    productTypesApi.getList.mockResolvedValueOnce({ data: rows })
+    const wrapper = mountView()
+    await flushPromises()
+
+    for (const testCase of [
+      { label: 'Артикул', desc: 'B', asc: 'A' },
+      { label: 'Наименование', desc: 'A', asc: 'B' },
+      { label: 'Заказчик', desc: 'A', asc: 'B' }
+    ]) {
+      const column = header(wrapper, testCase.label)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain(testCase.desc)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain(testCase.asc)
+      await column.trigger('click')
+      expect(firstRowText(wrapper)).toContain('B')
+    }
+  })
+})
+
 describe('ProductTypeDictionary (PZP-19)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -62,6 +97,7 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     vi.restoreAllMocks()
     mounted.splice(0).forEach(w => w.unmount())
     document.body.innerHTML = ''
+    document.cookie = 'product_types_sort_v1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
   })
 
   it('показывает заголовок и кнопку добавления типа', async () => {
@@ -458,6 +494,7 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
     vi.restoreAllMocks()
     mounted.splice(0).forEach(w => w.unmount())
     document.body.innerHTML = ''
+    document.cookie = 'product_types_sort_v1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
   })
 
   it('при добавлении передаёт вес детали и эталонный цикл литья', async () => {
@@ -510,6 +547,7 @@ describe('ProductTypeDictionary — гнёздовость изделия (PZP-3
     vi.restoreAllMocks()
     mounted.splice(0).forEach(w => w.unmount())
     document.body.innerHTML = ''
+    document.cookie = 'product_types_sort_v1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
   })
 
   it('поле умолчания гнёзд — целое, необязательное, от одного', async () => {
@@ -553,6 +591,7 @@ describe('ProductTypeDictionary — образец и тарная единиц�
     vi.restoreAllMocks()
     mounted.splice(0).forEach(w => w.unmount())
     document.body.innerHTML = ''
+    document.cookie = 'product_types_sort_v1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
   })
 
   it('при создании типа передаёт тарную единицу', async () => {
