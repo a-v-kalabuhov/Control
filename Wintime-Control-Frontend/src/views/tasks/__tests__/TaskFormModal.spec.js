@@ -103,7 +103,7 @@ describe('TaskFormModal — разметка', () => {
 describe('TaskFormModal — заказ', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('при выборе ПФ с одним изделием подставляет его и запрашивает активные заказы по изделию', async () => {
+  it('при выборе ПФ с одним изделием подставляет его без загрузки заказов', async () => {
     const wrapper = mountModal()
     await flushPromises()
 
@@ -112,30 +112,30 @@ describe('TaskFormModal — заказ', () => {
     await flushPromises()
 
     expect(wrapper.vm.form.productId).toBe('p-X0')
-    expect(ordersApi.getList).toHaveBeenCalledWith({ status: 'Active', productId: 'p-X0' })
+    expect(ordersApi.getList).not.toHaveBeenCalled()
   })
 
-  it('при выборе ПФ с несколькими изделиями изделие не подставляется, заказ заблокирован', async () => {
+  it('при выборе ПФ с несколькими изделиями изделие не подставляется, заказ доступен', async () => {
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()
     wrapper.vm.form.moldId = 'mold-2'
     await flushPromises()
 
     expect(wrapper.vm.form.productId).toBeNull()
-    // архивного p-YW среди опций нет
-    expect(wrapper.vm.productOptions.map(p => p.id)).toEqual(['p-Y0', 'p-YB'])
+    // Доступны активные изделия всех типов; архивного p-YW среди опций нет.
+    expect(wrapper.vm.productOptions.map(p => p.id)).toEqual(['p-X0', 'p-Y0', 'p-YB'])
     expect(ordersApi.getList).not.toHaveBeenCalled()
     const orderSelect = wrapper.findAllComponents({ name: 'ElSelect' }).find(s => s.props('placeholder') === 'Выберите заказ')
-    expect(orderSelect.props('disabled')).toBe(true)
+    expect(orderSelect.props('disabled')).toBe(false)
   })
 
-  it('при создании: пустой список заказов называет полный артикул изделия', async () => {
+  it('при создании: пустой общий список заказов имеет нейтральный текст', async () => {
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()
     wrapper.vm.form.moldId = 'mold-1'
     await flushPromises()
 
-    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на изделие ART-X.0')
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов')
   })
 
   it('при редактировании: пустой список заказов называет изделие задания', async () => {
@@ -152,42 +152,17 @@ describe('TaskFormModal — заказ', () => {
     wrapper.vm.form.moldId = 'mold-2'
     await flushPromises()
 
-    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов на выбранное изделие')
+    expect(wrapper.vm.orderNoDataText).toBe('Нет активных заказов')
   })
 
-  it('при смене ПФ сбрасывает изделие и заказ, если они не подходят новой ПФ', async () => {
+  it('при выбранном изделии список ПФ ограничен его типом', async () => {
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()
-    wrapper.vm.form.moldId = 'mold-1'
-    await flushPromises()
-    expect(wrapper.vm.form.productId).toBe('p-X0')
-    wrapper.vm.form.orderId = 'order-1'
-
-    wrapper.vm.form.moldId = 'mold-2'
+    wrapper.vm.form.productId = 'p-X0'
     await flushPromises()
 
-    expect(wrapper.vm.form.productId).toBeNull()
-    expect(wrapper.vm.form.orderId).toBeFalsy()
-  })
-
-  it('при смене изделия сбрасывает orderId, если заказ больше не входит в список', async () => {
-    ordersApi.getList
-      .mockResolvedValueOnce({ data: [{ id: 'order-1', number: 'ORD-1' }] })
-      .mockResolvedValueOnce({ data: [{ id: 'order-2', number: 'ORD-2' }] })
-
-    const wrapper = mountModal()
-    await wrapper.vm.loadMolds()
-    wrapper.vm.form.moldId = 'mold-2'
-    await flushPromises()
-    wrapper.vm.form.productId = 'p-Y0'
-    await flushPromises()
-    wrapper.vm.form.orderId = 'order-1'
-
-    wrapper.vm.form.productId = 'p-YB'
-    await flushPromises()
-
-    expect(ordersApi.getList).toHaveBeenLastCalledWith({ status: 'Active', productId: 'p-YB' })
-    expect(wrapper.vm.form.orderId).toBeFalsy()
+    expect(wrapper.vm.availableMolds.map(mold => mold.id)).toEqual(['mold-1'])
+    expect(wrapper.vm.form.moldId).toBe('mold-1')
   })
 
   it('при создании задания передаёт productId в tasksApi.create', async () => {
@@ -406,11 +381,11 @@ describe('TaskFormModal — заблокированный заказ (lockedOrd
     expect(ordersApi.getList).not.toHaveBeenCalled()
   })
 
-  it('до выбора ПФ изделие заказа есть в опциях (иначе селект покажет сырой GUID)', async () => {
+  it('автоматически выбирает первую ПФ и сохраняет изделие заказа в опциях', async () => {
     const wrapper = mountModal({ lockedOrder })
     await flushPromises()
 
-    expect(wrapper.vm.form.moldId).toBeFalsy()
+    expect(wrapper.vm.form.moldId).toBe('mold-1')
     const option = wrapper.vm.productOptions.find(p => p.id === lockedOrder.productId)
     expect(option).toBeTruthy()
     expect(option.fullArticle).toBe(lockedOrder.productFullArticle)
@@ -531,8 +506,9 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
   it('передаёт режим и эталоны в tasksApi.create', async () => {
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()
-    wrapper.vm.form.immId = 'imm-1'
     wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+    wrapper.vm.form.immId = 'imm-1'
     wrapper.vm.form.planQuantity = 10
     wrapper.vm.form.workMode = 'SemiAuto'
     wrapper.vm.form.plannedFullCycleSeconds = 60
@@ -570,8 +546,9 @@ describe('TaskFormModal — рабочий режим и эталоны цикл
   it('не отправляет форму, если цикл литья больше полного цикла', async () => {
     const wrapper = mountModal()
     await wrapper.vm.loadMolds()
-    wrapper.vm.form.immId = 'imm-1'
     wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+    wrapper.vm.form.immId = 'imm-1'
     wrapper.vm.form.planQuantity = 10
     wrapper.vm.form.plannedFullCycleSeconds = 60
     wrapper.vm.form.plannedInjectionCycleSeconds = 61
@@ -686,13 +663,13 @@ describe('TaskFormModal — вес детали (PZP-24)', () => {
     expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(30)
   })
 
-  it('явно введённый нулевой вес не заменяется справочным при отложенном автовыборе', async () => {
+  it('после автовыбора ПФ вес можно обнулить вручную', async () => {
     const wrapper = mountModal()
     await flushPromises()
-    wrapper.findComponent('[data-test="part-weight"]').vm.$emit('update:modelValue', 0)
-
     await wrapper.vm.loadMolds()
     wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+    wrapper.findComponent('[data-test="part-weight"]').vm.$emit('update:modelValue', 0)
     await flushPromises()
 
     expect(wrapper.vm.form.partWeightGrams).toBe(0)
@@ -931,12 +908,14 @@ describe('TaskFormModal — гнёздовость задания (PZP-36)', () 
     expect(tasksApi.create).not.toHaveBeenCalled()
   })
 
-  it('предпросмотр плана использует уменьшенную гнёздовость задания', async () => {
+  it('предпросмотр плана использует уменьшенную гнёздность задания', async () => {
     const wrapper = mountModal()
     await flushPromises()
     await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
     Object.assign(wrapper.vm.form, {
-      moldId: 'mold-1', planQuantity: 100, plannedFullCycleSeconds: 60, cavities: 2
+      planQuantity: 100, plannedFullCycleSeconds: 60, cavities: 2
     })
     await flushPromises()
 
@@ -1281,6 +1260,7 @@ describe('TaskFormModal — совместимость ПФ↔ТПА (PZP-16)', 
     expect(wrapper.vm.availableImms.map(i => i.id)).toEqual(['imm-1'])
     wrapper.vm.form.moldId = undefined
     await flushPromises()
+    expect(wrapper.vm.form.moldId).toBeUndefined()
     expect(wrapper.vm.availableImms.map(i => i.id)).toEqual(['imm-1', 'imm-2'])
   })
 

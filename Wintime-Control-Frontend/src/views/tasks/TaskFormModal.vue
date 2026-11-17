@@ -21,9 +21,10 @@
             placeholder="Выберите заказ"
             class="w-full"
             filterable
-            :clearable="false"
+            :clearable="!editingTask && !lockedOrder"
             :no-data-text="orderNoDataText"
-            :disabled="isRestricted || !!lockedOrder || !form.productId"
+            :disabled="isRestricted || !!lockedOrder"
+            @focus="loadOrderOptions"
           >
             <el-option
               v-for="order in orderOptions"
@@ -39,7 +40,7 @@
             placeholder="Выберите изделие"
             class="w-full"
             filterable
-            :disabled="isProductLocked || !form.moldId"
+            :disabled="isProductLocked"
             @focus="loadProductTypes"
           >
             <el-option
@@ -348,6 +349,13 @@ const personnel = ref([])
 const orderOptions = ref([])
 const initialOrderId = ref(null)
 
+function getDefaultPlannedDate() {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`
+}
+
 const form = reactive({
   immId: '',
   moldId: '',
@@ -357,7 +365,7 @@ const form = reactive({
   cavities: null,
   partWeightGrams: 0,
   packagingUnit: null,
-  plannedDate: null,
+  plannedDate: getDefaultPlannedDate(),
   plannedSetupStartTime: null,
   note: '',
   orderId: null,
@@ -483,7 +491,19 @@ const loadPlanningDefaults = async () => {
   }
 }
 
-const selectedProductTypeId = computed(() => selectedMoldInfo.value?.productTypeId || null)
+const selectedOrder = computed(() =>
+  orderOptions.value.find(order => order.id === form.orderId)
+  || (props.lockedOrder?.id === form.orderId ? props.lockedOrder : null))
+
+const selectedProductTypeId = computed(() => {
+  const type = [...productTypes.value, editingProductType.value]
+    .find(item => item?.products?.some(product => product.id === form.productId))
+  return type?.id
+    || selectedOrder.value?.productTypeId
+    || props.lockedOrder?.productTypeId
+    || selectedMoldInfo.value?.productTypeId
+    || null
+})
 
 // Опция-заглушка изделия, которого нет в активном списке (архивное у задания, изделие заказа до выбора ПФ),
 // — иначе el-select выведет сырой GUID. source — задание или заказ с полями productId/productFullArticle.
@@ -498,24 +518,30 @@ const withFallbackProduct = (list, source, isActive) => {
     name: source.productName,
     isActive,
     cavities: matchingProduct?.cavities,
+    partWeightGrams: matchingProduct?.partWeightGrams,
+    plannedInjectionCycleSeconds: matchingProduct?.plannedInjectionCycleSeconds,
     recipe: matchingProduct?.recipe
   }]
 }
 
-// PZP-19: изделия берём из типа выбранной ПФ
+// При создании доступны все активные изделия; ПФ подбирается после выбора изделия.
+// При редактировании список по-прежнему ограничен типом неизменной ПФ задания.
 const productOptions = computed(() => {
-  const type = productTypes.value.find(t => t.id === selectedProductTypeId.value)
-  const list = activeProducts(type)
+  const list = editingTask.value
+    ? activeProducts(productTypes.value.find(t => t.id === selectedProductTypeId.value))
+    : productTypes.value.flatMap(type => activeProducts(type))
   // Текущее (архивное) изделие редактируемого задания показываем по артикулу из задания
   if (editingTask.value) return withFallbackProduct(list, editingTask.value, false)
-  // Изделие заказа известно сразу, а список появляется только после выбора ПФ
+  // Изделие заказа известно сразу, даже до загрузки справочника изделий
   if (props.lockedOrder) return withFallbackProduct(list, props.lockedOrder, true)
+  if (selectedOrder.value) return withFallbackProduct(list, selectedOrder.value, true)
   return list
 })
 
-// Изделие диктует заказ (из карточки заказа или уже привязанный); править его можно только в «Планируется»
+// Изделие диктует выбранный заказ; без заказа в новом задании его можно выбрать самостоятельно.
 const isProductLocked = computed(() =>
-  !!props.lockedOrder || (!!editingTask.value && (editingTask.value.status !== 'Planned' || !!editingTask.value.orderId)))
+  !!props.lockedOrder || (!editingTask.value && !!form.orderId)
+  || (!!editingTask.value && (editingTask.value.status !== 'Planned' || !!editingTask.value.orderId)))
 
 const selectedProduct = computed(() => productOptions.value.find(p => p.id === form.productId) || null)
 const defaultCavities = computed(() => selectedProduct.value?.cavities ?? selectedMoldInfo.value?.cavities ?? null)
@@ -547,8 +573,11 @@ const recipeSumHintText = computed(() =>
 const filterByCompatibility = computed(() => !editingTask.value)
 
 const availableMolds = computed(() => {
-  let list = props.lockedOrder
-    ? molds.value.filter(m => m.productTypeId === props.lockedOrder.productTypeId)
+  const productTypeId = !editingTask.value && (form.productId || props.lockedOrder)
+    ? selectedProductTypeId.value
+    : null
+  let list = productTypeId
+    ? molds.value.filter(m => m.productTypeId === productTypeId)
     : molds.value
   if (filterByCompatibility.value && form.immId) {
     list = list.filter(m => isMoldCompatibleWithImm(m, form.immId))
@@ -592,12 +621,10 @@ const moldNoDataText = computed(() => {
   return byImm ? 'Нет пресс-форм, совместимых с этим ТПА' : undefined
 })
 
-// Заказы подбираются по выбранному изделию (селект без изделия заблокирован).
+// В редактировании заказы ограничены изделием задания; при создании список общий.
 const orderNoDataText = computed(() => {
-  const article = selectedProduct.value?.fullArticle
-  return article
-    ? `Нет активных заказов на изделие ${article}`
-    : 'Нет активных заказов на выбранное изделие'
+  const article = editingTask.value ? selectedProduct.value?.fullArticle : null
+  return article ? `Нет активных заказов на изделие ${article}` : 'Нет активных заказов'
 })
 
 const resetForm = () => {
@@ -610,7 +637,7 @@ const resetForm = () => {
     cavities: null,
     partWeightGrams: 0,
     packagingUnit: null,
-    plannedDate: null,
+    plannedDate: getDefaultPlannedDate(),
     plannedSetupStartTime: null,
     note: '',
     orderId: props.lockedOrder?.id ?? null,
@@ -652,11 +679,58 @@ const loadOrdersForProduct = async (productId) => {
   }
 }
 
+// При создании заказ выбирается первым, поэтому загружаем все активные заказы.
+// В редактировании сохраняем прежнее ограничение изделием неизменной ПФ.
+async function loadOrderOptions() {
+  if (props.lockedOrder) return
+  if (editingTask.value) return loadOrdersForProduct(form.productId)
+  const generation = ++orderLoadGeneration
+  try {
+    const response = await ordersApi.getList({ status: 'Active' })
+    if (generation !== orderLoadGeneration || editingTask.value) return
+    orderOptions.value = response.data
+  } catch (error) {
+    if (generation !== orderLoadGeneration || editingTask.value) return
+    ElMessage.error('Ошибка загрузки заказов')
+  }
+}
+
+let moldSelectionGeneration = 0
+let productAutoSelectedByMold
+async function selectMoldForProduct(productId) {
+  const generation = ++moldSelectionGeneration
+  if (!productId) {
+    form.moldId = ''
+    return
+  }
+  await Promise.all([loadMolds(), loadProductTypes()])
+  if (generation !== moldSelectionGeneration || form.productId !== productId || editingTask.value) return
+  const firstActiveMold = availableMolds.value.find(mold => mold.isActive !== false)
+  form.moldId = firstActiveMold?.id ?? ''
+}
+
+watch(() => form.orderId, (orderId) => {
+  if (revertingProduct || editingTask.value || props.lockedOrder || !orderId) return
+  const order = selectedOrder.value
+  if (!order) return
+  const productChanged = form.productId !== order.productId
+  form.productId = order.productId
+  // Если заказ сменился на другой с тем же изделием, watcher изделия не сработает.
+  if (!productChanged) selectMoldForProduct(order.productId)
+})
+
 watch(() => form.productId, (productId) => {
   if (revertingProduct) return
-  // При заблокированном заказе список заказов не нужен, а вызов затёр бы form.orderId.
-  if (props.lockedOrder) return
-  loadOrdersForProduct(productId)
+  if (productAutoSelectedByMold !== undefined) {
+    productAutoSelectedByMold = undefined
+    return
+  }
+  if (editingTask.value) {
+    loadOrdersForProduct(productId)
+    return
+  }
+  if (form.orderId && selectedOrder.value?.productId !== productId) form.orderId = null
+  selectMoldForProduct(productId)
 })
 
 // BL-36: у задания с правленой копией рецепта смена изделия очистит правку —
@@ -739,6 +813,21 @@ watch(selectedProduct, (product, previousProduct) => {
   }
 })
 
+// Реальный выбор ПФ (вручную или автоматически) обновляет рабочие параметры задания.
+// Полный цикл справочного умолчания не имеет и остаётся как задал менеджер.
+watch(() => form.moldId, (moldId, previousMoldId) => {
+  if (!moldId || moldId === previousMoldId || editingTask.value || revertingProduct) return
+  const product = selectedProduct.value
+  form.cavities = product?.cavities ?? selectedMoldInfo.value?.cavities ?? null
+  form.partWeightGrams = product?.partWeightGrams ?? 0
+  form.packagingUnit = productTypes.value.find(type => type.id === selectedProductTypeId.value)?.packagingUnit ?? null
+  form.plannedInjectionCycleSeconds = product?.plannedInjectionCycleSeconds ?? null
+  cavitiesCustomized.value = false
+  partWeightCustomized.value = false
+  packagingUnitCustomized.value = false
+  injectionCycleCustomized.value = false
+})
+
 // Автоподстановка изделия по ПФ. Типы могут загрузиться позже ПФ — следим за обоими.
 watch([selectedProductTypeId, productTypes], ([typeId], [previousTypeId]) => {
   // PZP-29: при реальной смене типа умолчание обновляется, а поздняя загрузка
@@ -759,8 +848,18 @@ watch([selectedProductTypeId, productTypes], ([typeId], [previousTypeId]) => {
     loadProductTypes()
     return
   }
-  if (!productOptions.value.some(p => p.id === form.productId)) {
-    form.productId = productOptions.value.length === 1 ? productOptions.value[0].id : null
+  if (!productOptions.value.some(p => p.id === form.productId) && !form.moldId) {
+    form.productId = null
+  }
+  // Обратный, необязательный путь остаётся удобным: если ПФ выбрали первой
+  // и у её типа одно активное изделие, подставляем его как раньше.
+  const typeProducts = activeProducts(productTypes.value.find(t => t.id === typeId))
+  if (form.moldId && !typeProducts.some(p => p.id === form.productId)) {
+    const productId = typeProducts.length === 1 ? typeProducts[0].id : null
+    if (productId !== form.productId) {
+      productAutoSelectedByMold = productId
+      form.productId = productId
+    }
   }
 })
 
@@ -808,10 +907,8 @@ const applyLockedOrder = () => {
   orderOptions.value = [props.lockedOrder]
   form.orderId = props.lockedOrder.id
   form.productId = props.lockedOrder.productId
-  // Список ПФ фильтруется по типу изделия заказа, поэтому нужен сразу,
-  // не дожидаясь @focus на селекте.
-  loadMolds()
-  loadProductTypes()
+  // ПФ подбирается по изделию заказа сразу, не дожидаясь @focus на селекте.
+  selectMoldForProduct(props.lockedOrder.productId)
 }
 
 watch(() => props.lockedOrder, applyLockedOrder, { immediate: true })

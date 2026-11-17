@@ -1,0 +1,160 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import ElementPlus from 'element-plus'
+import { createPinia, setActivePinia } from 'pinia'
+import TaskFormModal from '../TaskFormModal.vue'
+import { moldsApi } from '@/api/molds'
+import { ordersApi } from '@/api/orders'
+import { productTypesApi } from '@/api/productTypes'
+
+const productTypes = [
+  { id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, packagingUnit: 24, products: [
+    { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'Основное', isActive: true, partWeightGrams: 10, plannedInjectionCycleSeconds: 20 }
+  ] },
+  { id: 'pt-Y', article: 'ART-Y', name: 'Тип Y', isActive: true, packagingUnit: 12, products: [
+    { id: 'p-Y0', article: '0', fullArticle: 'ART-Y.0', name: 'Основное', isActive: true, partWeightGrams: 11, plannedInjectionCycleSeconds: 21 },
+    { id: 'p-YB', article: 'BLK', fullArticle: 'ART-Y.BLK', name: 'Чёрное', isActive: true, partWeightGrams: 12.5, plannedInjectionCycleSeconds: 25 }
+  ] }
+]
+
+const molds = [
+  { id: 'mold-X-archived', name: 'Архивная X', productTypeId: 'pt-X', cavities: 8, isActive: false },
+  { id: 'mold-X-first', name: 'Первая X', productTypeId: 'pt-X', cavities: 6, isActive: true },
+  { id: 'mold-X-second', name: 'Вторая X', productTypeId: 'pt-X', cavities: 7, isActive: true },
+  { id: 'mold-Y', name: 'Форма Y', productTypeId: 'pt-Y', cavities: 4, isActive: true }
+]
+
+const orders = [
+  { id: 'order-X', number: 'ORD-X', productId: 'p-X0', productTypeId: 'pt-X', productFullArticle: 'ART-X.0' },
+  { id: 'order-Y', number: 'ORD-Y', productId: 'p-YB', productTypeId: 'pt-Y', productFullArticle: 'ART-Y.BLK' }
+]
+
+vi.mock('@/api/imm', () => ({ immApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) } }))
+vi.mock('@/api/molds', () => ({ moldsApi: { getList: vi.fn(() => Promise.resolve({ data: molds })) } }))
+vi.mock('@/api/personnel', () => ({ personnelApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) } }))
+vi.mock('@/api/tasks', () => ({
+  tasksApi: { create: vi.fn(), update: vi.fn(), setPersonnel: vi.fn() }
+}))
+vi.mock('@/api/orders', () => ({
+  ordersApi: { getList: vi.fn(() => Promise.resolve({ data: orders })), setTaskOrder: vi.fn() }
+}))
+vi.mock('@/api/productTypes', () => ({
+  productTypesApi: { getList: vi.fn(() => Promise.resolve({ data: productTypes })), getById: vi.fn() }
+}))
+vi.mock('@/api/planning', () => ({
+  planningApi: { getConflicts: vi.fn(() => Promise.resolve({ data: { items: [] } })) }
+}))
+vi.mock('@/api/settings', () => ({
+  settingsApi: { getPlanningDefaults: vi.fn(() => Promise.resolve({ data: {
+    setupMinutes: 30, releaseBufferFixedMinutes: 10, releaseBufferPercent: 10
+  } })) }
+}))
+
+function mountModal() {
+  setActivePinia(createPinia())
+  return mount(TaskFormModal, {
+    props: { modelValue: true, task: null },
+    global: { plugins: [ElementPlus] }
+  })
+}
+
+function select(wrapper, placeholder) {
+  return wrapper.findAllComponents({ name: 'ElSelect' })
+    .find(component => component.props('placeholder') === placeholder)
+}
+
+async function selectOrder(wrapper, orderId = 'order-X') {
+  wrapper.vm.orderOptions = orders
+  wrapper.vm.form.orderId = orderId
+  await flushPromises()
+}
+
+describe('TaskFormModal — новая последовательность создания', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('заказ и изделие доступны сразу, заказы загружаются без фильтра по изделию', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    const orderSelect = select(wrapper, 'Выберите заказ')
+    const productSelect = select(wrapper, 'Выберите изделие')
+
+    expect(orderSelect.props('disabled')).toBe(false)
+    expect(orderSelect.props('clearable')).toBe(true)
+    expect(productSelect.props('disabled')).toBe(false)
+
+    await orderSelect.find('input').trigger('focus')
+    await flushPromises()
+    expect(ordersApi.getList).toHaveBeenCalledWith({ status: 'Active' })
+    expect(wrapper.vm.orderOptions).toEqual(orders)
+  })
+
+  it('выбор заказа подставляет его изделие и первую активную подходящую ПФ', async () => {
+    const wrapper = mountModal()
+    await selectOrder(wrapper)
+
+    expect(wrapper.vm.form.productId).toBe('p-X0')
+    expect(wrapper.vm.form.moldId).toBe('mold-X-first')
+    expect(wrapper.vm.isProductLocked).toBe(true)
+  })
+
+  it('без заказа выбор изделия подставляет ПФ и параметры, кроме полного цикла', async () => {
+    const wrapper = mountModal()
+    wrapper.vm.form.productId = 'p-X0'
+    await flushPromises()
+
+    expect(wrapper.vm.form.moldId).toBe('mold-X-first')
+    expect(wrapper.vm.form.cavities).toBe(6)
+    expect(wrapper.vm.form.partWeightGrams).toBe(10)
+    expect(wrapper.vm.form.packagingUnit).toBe(24)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(20)
+    expect(wrapper.vm.form.plannedFullCycleSeconds).toBeNull()
+    expect(moldsApi.getList).toHaveBeenCalledWith({ isActive: true })
+    expect(productTypesApi.getList).toHaveBeenCalledWith({ isActive: true })
+  })
+
+  it('очистка заказа сохраняет изделие и снова разрешает его выбор', async () => {
+    const wrapper = mountModal()
+    await selectOrder(wrapper)
+    wrapper.vm.form.orderId = null
+    await flushPromises()
+
+    expect(wrapper.vm.form.productId).toBe('p-X0')
+    expect(wrapper.vm.isProductLocked).toBe(false)
+    expect(select(wrapper, 'Выберите изделие').props('disabled')).toBe(false)
+  })
+
+  it('ручная смена ПФ повторно заполняет параметры и сохраняет ручной полный цикл', async () => {
+    const wrapper = mountModal()
+    wrapper.vm.form.productId = 'p-X0'
+    await flushPromises()
+    Object.assign(wrapper.vm.form, {
+      cavities: 1,
+      partWeightGrams: 99,
+      packagingUnit: 99,
+      plannedInjectionCycleSeconds: 99,
+      plannedFullCycleSeconds: 45
+    })
+
+    wrapper.vm.form.moldId = 'mold-X-second'
+    await flushPromises()
+
+    expect(wrapper.vm.form.cavities).toBe(7)
+    expect(wrapper.vm.form.partWeightGrams).toBe(10)
+    expect(wrapper.vm.form.packagingUnit).toBe(24)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(20)
+    expect(wrapper.vm.form.plannedFullCycleSeconds).toBe(45)
+  })
+
+  it('плановая дата по умолчанию — завтра по локальному календарю', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 10, 18, 12))
+    try {
+      const wrapper = mountModal()
+      await flushPromises()
+      expect(wrapper.vm.form.plannedDate).toBe('2026-11-19')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
