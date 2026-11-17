@@ -74,10 +74,19 @@ public class MyTasksApiTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task GetMyTasks_ActiveSectionHasSetupAndInProgress()
     {
-        var (imm, search) = await FreshImmAsync();
-        var setup = await SeedAsync(imm, TaskStatus.Setup, Tomorrow);
-        var work  = await SeedAsync(imm, TaskStatus.InProgress, Tomorrow);
-        await SeedAsync(imm, TaskStatus.Issued, Tomorrow);
+        var (setupImm, _) = await FreshImmAsync();
+        var (workImm, _) = await FreshImmAsync();
+        var search = $"ACTIVE-{Guid.NewGuid():N}";
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            (await db.Imms.FindAsync(setupImm))!.Name = search;
+            (await db.Imms.FindAsync(workImm))!.Name = search;
+            await db.SaveChangesAsync();
+        }
+        var setup = await SeedAsync(setupImm, TaskStatus.Setup, Tomorrow);
+        var work = await SeedAsync(workImm, TaskStatus.InProgress, Tomorrow);
+        await SeedAsync(setupImm, TaskStatus.Issued, Tomorrow);
 
         var my = await GetMyAsync(search);
 

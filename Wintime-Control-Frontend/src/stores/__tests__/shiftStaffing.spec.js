@@ -211,6 +211,32 @@ describe('shiftStaffing store', () => {
     expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-1')
   })
 
+  it.each(['assign', 'unassign'])('%s: ошибка перезагрузки после успешного POST блокирует редактирование до восстановления', async action => {
+    const store = useShiftStaffingStore()
+    store.currentItem = detail()
+    shiftStaffingApi[action].mockResolvedValue({ data: { id: 'assignment-1' } })
+    shiftStaffingApi.item
+      .mockRejectedValueOnce({ response: { status: 500, data: { message: 'Не удалось обновить смену' } } })
+      .mockResolvedValueOnce({ data: detail() })
+
+    const result = action === 'assign'
+      ? await store.assign('item-1', 'imm-1', 'operator-1')
+      : await store.unassign('assignment-1')
+
+    expect(result).toEqual({
+      success: false,
+      committed: true,
+      message: 'Не удалось обновить смену'
+    })
+    expect(shiftStaffingApi[action]).toHaveBeenCalledTimes(1)
+    expect(store.canEditOperators).toBe(false)
+    expect(errorMessage).toHaveBeenCalledWith('Не удалось обновить смену')
+
+    await store.loadItem('item-1')
+
+    expect(store.canEditOperators).toBe(true)
+  })
+
   it('400 показывает доменное сообщение и не перезагружает item', async () => {
     const store = useShiftStaffingStore()
     store.currentItem = detail()
@@ -220,7 +246,7 @@ describe('shiftStaffing store', () => {
 
     const result = await store.assign('item-1', 'imm-1', 'operator-1')
 
-    expect(result).toEqual({ success: false, message: 'На ТПА уже назначены два литейщика' })
+    expect(result).toEqual({ success: false, committed: false, message: 'На ТПА уже назначены два литейщика' })
     expect(errorMessage).toHaveBeenCalledWith('На ТПА уже назначены два литейщика')
     expect(shiftStaffingApi.item).not.toHaveBeenCalled()
   })

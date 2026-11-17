@@ -48,8 +48,13 @@ async function runMutation(store, itemId, request, fallback) {
   try {
     const response = await request()
     if (!isCurrent()) return { success: false, stale: true }
-    await store.loadItem(itemId)
+    const reloadResult = await store.loadItem(itemId)
     if (!isCurrent()) return { success: false, stale: true }
+    if (!reloadResult.success) {
+      // POST уже зафиксирован в БД: stale read model нельзя использовать для новых mutations.
+      if (store.currentItem?.shift) store.currentItem.shift.canEditOperators = false
+      return { success: false, committed: true, message: reloadResult.message }
+    }
     return { success: true, data: response.data }
   } catch (error) {
     if (!isCurrent()) return { success: false, stale: true }
@@ -64,7 +69,7 @@ async function runMutation(store, itemId, request, fallback) {
       await store.loadItem(itemId)
     }
 
-    return { success: false, message }
+    return { success: false, committed: false, message }
   } finally {
     if (store.mutationSeq === generation) store.saving = false
   }

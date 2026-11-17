@@ -108,6 +108,9 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
             var run = await db.UnplannedRuns.FindAsync(runId);
+            var previousTask = await db.ShiftTasks.FindAsync(taskA);
+            previousTask!.Status = TaskStatus.Completed;
+            previousTask.CompletedAt = DateTime.UtcNow;
             var t = new EntityTask { ImmId = immId, MoldId = moldId, ProductId = _factory.TestProductId, PlanQuantity = 50, Cavities = 3, Status = TaskStatus.Setup, IssuedAt = run!.StartTime, PlannedDate = DateOnly.FromDateTime(run!.StartTime), SetupStartedAt = run.ClosedAt, PartWeightGrams = 13 };
             db.ShiftTasks.Add(t);
             await db.SaveChangesAsync();

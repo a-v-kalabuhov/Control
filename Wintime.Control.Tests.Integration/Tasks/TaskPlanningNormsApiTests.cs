@@ -65,11 +65,14 @@ public class TaskPlanningNormsApiTests : IClassFixture<IntegrationTestFactory>
 
     private async Task<Guid> SeedTaskAsync(TaskStatus status)
     {
+        var immId = status is TaskStatus.Setup or TaskStatus.InProgress
+            ? await _factory.CreateFreshImmAsync()
+            : _factory.TestImmId;
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var task = new ShiftTask
         {
-            ImmId = _factory.TestImmId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1, Note = "указание",
+            ImmId = immId, MoldId = _factory.TestMoldId, ProductId = _factory.TestProductId, PlanQuantity = 100, Cavities = 1, Note = "указание",
             Status = status, PlannedDate = Tomorrow, PlannedFullCycleSeconds = 60,
             PlannedSetupMinutes = 30, ReleaseBufferFixedMinutes = 10, ReleaseBufferPercent = 10
         };

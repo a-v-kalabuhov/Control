@@ -165,6 +165,28 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
     }
 
     [Fact]
+    public async Task Mutations_ForeignHistoricalItem_Return403AndKeepAssignmentUnchanged()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var otherLead = await SeedUserAsync(UserRole.ShiftLead);
+        var @operator = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync(isActive: true);
+        var foreignHistorical = (await SeedDayAsync(
+            Item(NextPosition(), otherLead.Id, now.AddHours(-5), now.AddHours(-4)))).Items.Single();
+        var existing = await SeedAssignmentAsync(
+            foreignHistorical, immId, @operator.Id, foreignHistorical.StartAtUtc.AddMinutes(10));
+        var client = await ClientAsync(lead);
+
+        await RussianErrorAsync(await AssignAsync(client, foreignHistorical.Id, immId, @operator.Id),
+            HttpStatusCode.Forbidden);
+        await RussianErrorAsync(await UnassignAsync(client, existing.Id), HttpStatusCode.Forbidden);
+
+        (await AssignmentsAsync(foreignHistorical.Id)).Should().ContainSingle()
+            .Which.UnassignedAt.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ManagerAndAdmin_CanAssignAndUnassignNearestShift()
     {
         var now = DateTime.UtcNow;
@@ -255,8 +277,10 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         read.GetProperty("workEnd").GetDateTime().Should().BeCloseTo(historical.EndAtUtc, TimeSpan.FromSeconds(1));
     }
 
-    [Fact]
-    public async Task ReassignAfterUnassign_ReusesSlotWithNewRowAndPreservesHistory()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReassignAfterUnassign_ReusesSlotWithNewRowAndPreservesHistory(bool sameOperator)
     {
         var now = DateTime.UtcNow;
         var lead = await SeedUserAsync(UserRole.ShiftLead);
@@ -268,9 +292,12 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         var old = await RequiredAssignmentAsync(await AssignAsync(client, item.Id, immId, first.Id));
         var closed = await RequiredAssignmentAsync(await UnassignAsync(client, old.Id));
 
-        var replacement = await RequiredAssignmentAsync(await AssignAsync(client, item.Id, immId, second.Id));
+        var replacementOperatorId = sameOperator ? first.Id : second.Id;
+        var replacement = await RequiredAssignmentAsync(
+            await AssignAsync(client, item.Id, immId, replacementOperatorId));
 
         replacement.Id.Should().NotBe(old.Id);
+        replacement.OperatorId.Should().Be(replacementOperatorId);
         replacement.Slot.Should().Be(1);
         replacement.UnassignedAt.Should().BeNull();
         var rows = await AssignmentsAsync(item.Id);

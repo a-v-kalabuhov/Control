@@ -14,6 +14,7 @@ namespace Wintime.Control.Infrastructure.Services;
 public sealed class ShiftPlanService : IShiftPlanService
 {
     private const string ConcurrencyMessage = "План смены уже изменён другим пользователем";
+    private const int MaxRangeDays = 366;
 
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
@@ -29,6 +30,8 @@ public sealed class ShiftPlanService : IShiftPlanService
     {
         if (from > to)
             throw new DomainException("Дата начала диапазона не может быть позже даты окончания");
+        if (to.DayNumber - from.DayNumber + 1 > MaxRangeDays)
+            throw new DomainException($"Диапазон плана смен не может превышать {MaxRangeDays} дней");
 
         var now = DateTime.SpecifyKind(_factoryClock.UtcNow, DateTimeKind.Utc);
         var schedule = await _factoryClock.GetScheduleAsync(ct);
@@ -50,6 +53,7 @@ public sealed class ShiftPlanService : IShiftPlanService
 
         for (var date = from; ; date = date.AddDays(1))
         {
+            ct.ThrowIfCancellationRequested();
             var isSaved = savedByDate.TryGetValue(date, out var day);
             day ??= BuildVirtualDay(date, shifts);
             result.Add(ToDto(day, isSaved, factoryToday, now, nearestCandidates));

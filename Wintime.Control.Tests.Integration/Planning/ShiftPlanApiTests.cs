@@ -204,6 +204,29 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
         (await JsonAsync(response)).GetProperty("message").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
+    [Theory]
+    [InlineData(366, HttpStatusCode.OK)]
+    [InlineData(367, HttpStatusCode.BadRequest)]
+    public async Task Get_RangeLength_IsCappedAt366Days(int days, HttpStatusCode expected)
+    {
+        var client = await ManagerClientAsync();
+        var from = new DateOnly(2026, 1, 1);
+        var to = from.AddDays(days - 1);
+
+        var response = await client.GetAsync(
+            $"/api/shift-plan?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
+
+        response.StatusCode.Should().Be(expected);
+        if (expected == HttpStatusCode.OK)
+        {
+            (await RequiredJsonAsync(response)).EnumerateArray().Should().HaveCount(days);
+        }
+        else
+        {
+            (await JsonAsync(response)).GetProperty("message").GetString().Should().Contain("366");
+        }
+    }
+
     [Fact]
     public async Task LeadCandidates_ContainOnlyActiveLeadsAndManagersWithExactDtoShape()
     {
