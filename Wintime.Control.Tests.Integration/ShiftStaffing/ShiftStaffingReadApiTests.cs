@@ -253,7 +253,7 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
             .BeCloseTo(end.AddHours(1), TimeSpan.FromSeconds(1));
         assignments[1].GetProperty("workEnd").GetDateTime().Should().BeCloseTo(end, TimeSpan.FromSeconds(1));
         assignments[1].GetProperty("isWorkIntervalEmpty").GetBoolean().Should().BeTrue();
-        withAssignments.GetProperty("activeOperatorCount").GetInt32().Should().Be(1);
+        withAssignments.GetProperty("activeOperatorCount").GetInt32().Should().Be(0);
     }
 
     [Fact]

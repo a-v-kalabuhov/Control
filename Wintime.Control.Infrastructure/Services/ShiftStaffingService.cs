@@ -387,7 +387,7 @@ public sealed class ShiftStaffingService : IShiftStaffingService
                     : LiveEffectiveStatus(imm.Id, activeTasks, openDowntimeIds, now),
                 Tasks = tasksByImm.TryGetValue(imm.Id, out var tasks) ? tasks : new List<TaskDto>(),
                 Assignments = assignments,
-                ActiveOperatorCount = assignments.Count(a => a.UnassignedAt == null)
+                ActiveOperatorCount = historical ? 0 : assignments.Count(a => a.UnassignedAt == null)
             });
         }
 

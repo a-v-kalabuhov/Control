@@ -96,7 +96,7 @@
                 :key="assignment.id"
                 :data-test="`assignment-${assignment.id}`"
                 class="rounded border px-3 py-2 text-sm"
-                :class="assignment.unassignedAt ? 'border-gray-200 bg-gray-50 text-gray-500' : 'border-primary-200 bg-primary-50'"
+                :class="isActiveAssignment(assignment) ? 'border-primary-200 bg-primary-50' : 'border-gray-200 bg-gray-50 text-gray-500'"
               >
                 <div class="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -110,7 +110,13 @@
                     <div v-if="assignment.unassignedAt" class="mt-1">
                       Снят: {{ formatDateTime(assignment.unassignedAt) }}
                     </div>
-                    <div v-else class="mt-1 text-primary-700">Активен · место {{ assignment.slot }}</div>
+                    <div
+                      v-else
+                      class="mt-1"
+                      :class="isActiveAssignment(assignment) ? 'text-primary-700' : 'text-gray-500'"
+                    >
+                      {{ isActiveAssignment(assignment) ? 'Активен' : 'До конца смены' }} · место {{ assignment.slot }}
+                    </div>
                   </div>
                   <el-button
                     v-if="!assignment.unassignedAt && canEditOperators"
@@ -192,6 +198,7 @@ const currentItem = computed(() => {
   return item?.shift?.itemId === itemId.value ? item : null
 })
 const canEditOperators = computed(() => currentItem.value?.shift?.canEditOperators === true)
+const isHistorical = computed(() => currentItem.value?.shift?.state === 'Historical')
 const assigningImmId = ref(null)
 const selectedOperatorId = ref(null)
 const operatorsLoading = ref(false)
@@ -258,6 +265,10 @@ function formatDate(value) {
 
 function formatDateTime(value) {
   return value ? dayjs(value).format('DD.MM.YYYY HH:mm') : '—'
+}
+
+function isActiveAssignment(assignment) {
+  return !assignment.unassignedAt && !isHistorical.value
 }
 
 function canAssign(imm) {

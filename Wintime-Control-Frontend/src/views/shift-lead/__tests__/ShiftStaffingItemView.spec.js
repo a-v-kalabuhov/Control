@@ -72,7 +72,9 @@ function detail({
   const imms = [{
     immId: 'imm-1', name: 'ТПА-1', inventoryNumber: 'ИНВ-1', isActive: true,
     effectiveStatus: tasks.length ? 'Production' : 'NoTask', tasks,
-    activeOperatorCount: assignments.filter(item => !item.unassignedAt).length,
+    activeOperatorCount: shift.state === 'Historical'
+      ? 0
+      : assignments.filter(item => !item.unassignedAt).length,
     assignments
   }]
   if (secondImm) {
@@ -224,6 +226,21 @@ describe('ShiftStaffingItemView', () => {
     expect(wrapper.find('[data-test^="assign-"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Иванов')
     expect(wrapper.text()).toContain('Петров')
+  })
+
+  it('в исторической смене неснятое назначение не отображается активным', async () => {
+    shiftStaffingApi.item.mockResolvedValue({
+      data: detail({ shift: summary({ state: 'Historical', canEditOperators: false }) })
+    })
+    wrapper = mountView()
+    await flushPromises()
+
+    const row = wrapper.get('[data-test="assignment-a1"]')
+    expect(wrapper.text()).toContain('Литейщики: 0/2')
+    expect(row.text()).toContain('До конца смены · место 1')
+    expect(row.text()).not.toContain('Активен')
+    expect(row.classes()).toContain('bg-gray-50')
+    expect(row.classes()).not.toContain('bg-primary-50')
   })
 
   it('после 409 показывает сообщение, перезагружает item и применяет server read-only', async () => {
