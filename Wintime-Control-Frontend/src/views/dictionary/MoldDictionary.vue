@@ -38,10 +38,15 @@
     </el-card>
 
     <!-- Таблица пресс-форм -->
-    <el-table :data="molds" stripe style="width: 100%" v-loading="loading">
-      <el-table-column prop="formId" label="Артикул" width="120" />
-      <el-table-column prop="name" label="Наименование" />
+    <el-table :data="sortedMolds" stripe style="width: 100%" v-loading="loading">
+      <el-table-column prop="formId" label="Артикул" width="120">
+        <template #header><SortableColumnHeader label="Артикул" field="formId" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
+      <el-table-column prop="name" label="Наименование">
+        <template #header><SortableColumnHeader label="Наименование" field="name" :sort="sort" @sort="handleSort" /></template>
+      </el-table-column>
       <el-table-column label="Тип изделия" width="200">
+        <template #header><SortableColumnHeader label="Тип изделия" field="productType" :sort="sort" @sort="handleSort" /></template>
         <template #default="{ row }">
           <span v-if="row.productTypeName">{{ row.productTypeArticle }} · {{ row.productTypeName }}</span>
           <el-tag v-else type="warning" size="small">не задан</el-tag>
@@ -78,12 +83,15 @@
       </el-table-column>
       <el-table-column label="Остаток ресурса" width="150">
         <template #default="{ row }">
-          <el-progress
-            :percentage="Math.round((row.remainingResource / row.maxResourceCycles) * 100)"
-            :status="(row.maxResourceCycles - row.remainingResource) > row.to2Cycles ? 'exception' : (row.maxResourceCycles - row.remainingResource) > row.to1Cycles ? 'warning' : ''"
-            :format="p => p + '%'"
-          />
-          <div class="text-xs text-gray-500">{{ row.remainingResource }} / {{ row.maxResourceCycles }}</div>
+          <template v-if="resourcePercent(row) !== null">
+            <el-progress
+              :percentage="resourcePercent(row)"
+              :status="(row.maxResourceCycles - row.remainingResource) > row.to2Cycles ? 'exception' : (row.maxResourceCycles - row.remainingResource) > row.to1Cycles ? 'warning' : ''"
+              :format="p => p + '%'"
+            />
+            <div class="text-xs text-gray-500">{{ row.remainingResource }} / {{ row.maxResourceCycles }}</div>
+          </template>
+          <span v-else class="text-gray-400">—</span>
         </template>
       </el-table-column>
       <el-table-column label="Статус" width="100" align="center">
@@ -267,6 +275,8 @@ import { immApi } from '@/api/imm'
 import { immOptionLabel, formatCompatibleImms } from '@/utils/moldCompatibility'
 import QrCodeDialog from '@/components/common/QrCodeDialog.vue'
 import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
+import SortableColumnHeader from '@/components/common/SortableColumnHeader.vue'
+import { useTableSort } from '@/utils/tableSort'
 import { apiErrorMessage } from '@/utils/apiError'
 import dayjs from 'dayjs'
 
@@ -280,6 +290,11 @@ const featuresDisabled = computed(() => editingMold.value?.isActive === false)
 const molds = ref([])
 const productTypes = ref([])
 const imms = ref([])
+
+const { sort, handleSort, sortedItems } = useTableSort('molds_sort_v1')
+const sortedMolds = sortedItems(molds, {
+  productType: row => [row.productTypeArticle, row.productTypeName].filter(Boolean).join(' ') || null
+})
 
 // PZP-16: опции — активные ТПА плюс уже привязанные к редактируемой ПФ архивные.
 // Архивные не disabled: тег отключённой опции в Element Plus снять нельзя, а повторно
@@ -329,6 +344,13 @@ const productWeightRows = computed(() => {
   }
   return rows
 })
+
+function resourcePercent(row) {
+  if (!Number.isFinite(row.maxResourceCycles) || !Number.isFinite(row.remainingResource)
+    || row.maxResourceCycles <= 0) return null
+  const percent = Math.round((row.remainingResource / row.maxResourceCycles) * 100)
+  return Number.isFinite(percent) ? percent : null
+}
 
 const qrDialogVisible = ref(false)
 const qrData = ref('')
