@@ -1,6 +1,6 @@
 # ADR-0025. Гнёздовость: максимум ПФ, умолчание изделия, рабочая копия задания
 
-- Status: Accepted
+- Status: Superseded by [ADR-0028](0028-task-cavities-mold-maximum.md)
 - Date: 2026-11-06
 - Supersedes: [ADR-0001](0001-imm-cycle-cavities-snapshot.md)
 - Related: [ADR-0023](0023-product-defaults-and-task-copy.md), [ADR-0024](0024-part-weight-product-task-snapshot.md), [ADR-0017](0017-release-forecast-mean-cycle-period.md)

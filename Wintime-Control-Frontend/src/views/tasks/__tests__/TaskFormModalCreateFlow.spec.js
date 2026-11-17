@@ -7,10 +7,11 @@ import TaskFormModal from '../TaskFormModal.vue'
 import { moldsApi } from '@/api/molds'
 import { ordersApi } from '@/api/orders'
 import { productTypesApi } from '@/api/productTypes'
+import { tasksApi } from '@/api/tasks'
 
 const productTypes = [
   { id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, packagingUnit: 24, products: [
-    { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'Основное', isActive: true, partWeightGrams: 10, plannedInjectionCycleSeconds: 20 }
+    { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'Основное', isActive: true, cavities: 2, partWeightGrams: 10, plannedInjectionCycleSeconds: 20 }
   ] },
   { id: 'pt-Y', article: 'ART-Y', name: 'Тип Y', isActive: true, packagingUnit: 12, products: [
     { id: 'p-Y0', article: '0', fullArticle: 'ART-Y.0', name: 'Основное', isActive: true, partWeightGrams: 11, plannedInjectionCycleSeconds: 21 },
@@ -104,7 +105,8 @@ describe('TaskFormModal — новая последовательность со
     await flushPromises()
 
     expect(wrapper.vm.form.moldId).toBe('mold-X-first')
-    expect(wrapper.vm.form.cavities).toBe(6)
+    expect(wrapper.vm.form.cavities).toBe(2)
+    expect(wrapper.findComponent('[data-test="task-cavities"]').props('max')).toBe(6)
     expect(wrapper.vm.form.partWeightGrams).toBe(10)
     expect(wrapper.vm.form.packagingUnit).toBe(24)
     expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(20)
@@ -139,11 +141,39 @@ describe('TaskFormModal — новая последовательность со
     wrapper.vm.form.moldId = 'mold-X-second'
     await flushPromises()
 
-    expect(wrapper.vm.form.cavities).toBe(7)
+    expect(wrapper.vm.form.cavities).toBe(2)
+    expect(wrapper.findComponent('[data-test="task-cavities"]').props('max')).toBe(7)
     expect(wrapper.vm.form.partWeightGrams).toBe(10)
     expect(wrapper.vm.form.packagingUnit).toBe(24)
     expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(20)
     expect(wrapper.vm.form.plannedFullCycleSeconds).toBe(45)
+  })
+
+  it('разрешает сохранить гнёзда выше умолчания изделия, но не выше максимума ПФ', async () => {
+    tasksApi.create.mockResolvedValueOnce({ data: { id: 'new-task' } })
+    const wrapper = mountModal()
+    wrapper.vm.form.productId = 'p-X0'
+    await flushPromises()
+    Object.assign(wrapper.vm.form, {
+      immId: 'imm-1', plannedFullCycleSeconds: 60, cavities: 4
+    })
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalledWith(expect.objectContaining({ cavities: 4 }))
+  })
+
+  it('проверка перед сохранением не пропускает гнёзда выше максимума выбранной ПФ', async () => {
+    const wrapper = mountModal()
+    wrapper.vm.form.productId = 'p-X0'
+    await flushPromises()
+    let validationError = null
+
+    wrapper.vm.rules.cavities[0].validator(null, 7, error => { validationError = error })
+
+    expect(validationError?.message).toContain('Не больше 6')
+    expect(tasksApi.create).not.toHaveBeenCalled()
   })
 
   it('плановая дата по умолчанию — завтра по локальному календарю', async () => {

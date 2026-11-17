@@ -14,7 +14,7 @@
       label-position="left"
     >
       <!-- Две колонки: поля попарно по смыслу, чтобы окно помещалось по высоте (FullHD) -->
-      <div class="grid grid-cols-2 gap-x-6">
+      <div class="grid grid-cols-2 gap-x-6 items-start">
         <el-form-item label="Заказ">
           <el-select
             v-model="form.orderId"
@@ -118,7 +118,7 @@
             :disabled="isBufferOnlyEdit || isWeightOnlyEdit"
             class="w-full"
           />
-          <div class="text-xs text-gray-500 mt-1">Необязательно. Пусто — задание начинается с начала смены</div>
+          <div class="text-xs text-gray-500 mt-1">Пусто - наладка с начала смены</div>
         </el-form-item>
         <el-form-item label="ТПА" prop="immId">
           <el-select
@@ -179,7 +179,6 @@
             class="w-full"
             controls-position="right"
           />
-          <div class="text-xs text-gray-500 mt-1">Рабочее значение задания; не больше {{ defaultCavities ?? '—' }}</div>
         </el-form-item>
         <el-form-item label="Вес детали, г" prop="partWeightGrams">
           <el-input-number
@@ -200,7 +199,6 @@
             class="w-full"
             controls-position="right"
           />
-          <div class="text-xs text-gray-500 mt-1">Необязательно; копируется из типа изделия</div>
         </el-form-item>
         <el-form-item label="Полный цикл, с" prop="plannedFullCycleSeconds" :required="isFullCycleRequired">
           <el-input-number
@@ -222,7 +220,6 @@
             class="w-full"
             controls-position="right"
           />
-          <div class="text-xs text-gray-500 mt-1">Необязательно — нужен для анализа стабильности</div>
         </el-form-item>
         <el-form-item label="Норматив наладки, мин" prop="plannedSetupMinutes">
           <el-input-number
@@ -257,8 +254,8 @@
             </el-form-item>
             <span class="text-gray-500">%</span>
           </div>
-          <div class="text-xs text-gray-500 mt-1" data-test="plan-preview">{{ planPreview }}</div>
         </el-form-item>
+        <div class="col-span-2 -mt-3 text-xs text-gray-500" data-test="plan-preview">{{ planPreview }}</div>
         <el-form-item label="Примечание" class="col-span-2">
           <el-input
             v-model="form.note"
@@ -396,11 +393,8 @@ const rules = {
     validator: (rule, value, callback) => {
       if (value === null || value === undefined) return callback(new Error('Укажите количество гнёзд'))
       if (!Number.isInteger(value) || value < 1) return callback(new Error('Гнёзда — целое число больше 0'))
-      const unchangedTaskValue = editingTask.value
-        && form.productId === editingTask.value.productId
-        && value === editingTask.value.cavities
-      if (!unchangedTaskValue && defaultCavities.value && value > defaultCavities.value) {
-        return callback(new Error(`Не больше ${defaultCavities.value} гнёзд по умолчанию`))
+      if (moldCavitiesMax.value && value > moldCavitiesMax.value) {
+        return callback(new Error(`Не больше ${moldCavitiesMax.value} гнёзд по пресс-форме`))
       }
       callback()
     },
@@ -545,10 +539,11 @@ const isProductLocked = computed(() =>
 
 const selectedProduct = computed(() => productOptions.value.find(p => p.id === form.productId) || null)
 const defaultCavities = computed(() => selectedProduct.value?.cavities ?? selectedMoldInfo.value?.cavities ?? null)
+const moldCavitiesMax = computed(() => selectedMoldInfo.value?.cavities ?? null)
 // Компонент не должен обрезать исходный снапшот при уменьшении справочного умолчания.
-// Валидатор выше всё равно ограничивает новое значение текущим defaultCavities.
+// Валидатор выше ограничивает любое переданное значение гнёздностью выбранной ПФ.
 const cavitiesInputMax = computed(() =>
-  Math.max(defaultCavities.value ?? 0, editingTask.value?.cavities ?? 0) || Number.MAX_SAFE_INTEGER)
+  Math.max(moldCavitiesMax.value ?? 0, editingTask.value?.cavities ?? 0) || Number.MAX_SAFE_INTEGER)
 
 // PZP-36: при поздней загрузке справочников подставляем умолчание только если менеджер
 // ещё не изменил значение; снапшот редактируемого задания никогда не затираем.

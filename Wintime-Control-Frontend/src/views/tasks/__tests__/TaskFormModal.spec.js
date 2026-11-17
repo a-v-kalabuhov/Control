@@ -97,6 +97,22 @@ describe('TaskFormModal — разметка', () => {
       'Примечание'
     ])
     expect(items.at(-1).classes()).toContain('col-span-2')
+    expect(grid.classes()).toContain('items-start')
+    const preview = wrapper.get('[data-test="plan-preview"]')
+    expect(preview.classes()).toContain('col-span-2')
+    expect(preview.element.closest('.el-form-item')).toBeNull()
+  })
+
+  it('не показывает лишние подсказки и выводит короткое пояснение начала наладки', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    const text = wrapper.text()
+
+    expect(text).not.toContain('Рабочее значение задания')
+    expect(text).not.toContain('Необязательно; копируется из типа изделия')
+    expect(text).not.toContain('Необязательно — нужен для анализа стабильности')
+    expect(text).not.toContain('Необязательно. Пусто — задание начинается с начала смены')
+    expect(text).toContain('Пусто - наладка с начала смены')
   })
 })
 
@@ -906,6 +922,22 @@ describe('TaskFormModal — гнёздовость задания (PZP-36)', () 
 
     expect(validationError?.message).toContain('Не больше 4')
     expect(tasksApi.create).not.toHaveBeenCalled()
+  })
+
+  it('не позволяет сохранить неизменное значение выше текущего максимума ПФ', async () => {
+    const task = {
+      id: 'task-cavities-above-mold', status: 'Planned', immId: 'imm-1', moldId: 'mold-1', productId: 'p-X0',
+      planQuantity: 10, cavities: 4, plannedDate: '2099-01-01', plannedFullCycleSeconds: 60
+    }
+    const wrapper = mountModal({ task })
+    await flushPromises()
+    wrapper.vm.molds.find(mold => mold.id === 'mold-1').cavities = 2
+    await flushPromises()
+    let validationError = null
+
+    wrapper.vm.rules.cavities[0].validator(null, 4, error => { validationError = error })
+
+    expect(validationError?.message).toContain('Не больше 2')
   })
 
   it('предпросмотр плана использует уменьшенную гнёздность задания', async () => {
