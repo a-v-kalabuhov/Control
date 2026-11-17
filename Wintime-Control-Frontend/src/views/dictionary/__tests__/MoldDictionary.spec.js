@@ -64,6 +64,28 @@ function deferred() {
 
 afterEach(() => vi.restoreAllMocks())
 
+describe('MoldDictionary — разметка формы', () => {
+  it('показывает наименование отдельной полноширинной строкой между артикулом и типом изделия', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.showCreateModal()
+    await flushPromises()
+
+    const dialog = wrapper.findComponent({ name: 'ElDialog' })
+    const relevantLabels = ['Артикул', 'Наименование', 'Тип изделия']
+    const rows = dialog.findAllComponents({ name: 'ElRow' })
+      .map(row => row.findAllComponents({ name: 'ElFormItem' })
+        .map(item => item.props('label'))
+        .filter(label => relevantLabels.includes(label)))
+      .filter(labels => labels.length > 0)
+
+    expect(rows).toEqual([['Артикул'], ['Наименование'], ['Тип изделия']])
+    const nameField = dialog.findAllComponents({ name: 'ElFormItem' })
+      .find(item => item.props('label') === 'Наименование')
+    expect(nameField.element.closest('.el-col').classList).toContain('el-col-24')
+  })
+})
+
 describe('MoldDictionary — совместимые ТПА (PZP-16)', () => {
   beforeEach(() => vi.clearAllMocks())
 

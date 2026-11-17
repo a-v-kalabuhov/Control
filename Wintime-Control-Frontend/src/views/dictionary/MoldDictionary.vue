@@ -117,7 +117,9 @@
               <el-input v-model="form.formId" placeholder="PF-001" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
             <el-form-item label="Наименование" prop="name" required>
               <el-input v-model="form.name" placeholder="КлипДак (48)" />
             </el-form-item>

@@ -121,12 +121,12 @@
 
         <el-form-item label="Роль" prop="role" required>
           <el-select v-model="form.role" placeholder="Выберите роль" class="w-full">
-            <el-option label="Наладчик" value="Adjuster" />
-            <el-option label="Литейщик" value="Operator" />
-            <el-option label="Старший смены" value="ShiftLead" />
-            <el-option label="Менеджер" value="Manager" />
             <el-option v-if="isAdmin" label="Администратор" value="Admin" />
+            <el-option label="Литейщик" value="Operator" />
+            <el-option label="Менеджер" value="Manager" />
             <el-option label="Наблюдатель" value="Observer" />
+            <el-option label="Наладчик" value="Adjuster" />
+            <el-option label="Старший смены" value="ShiftLead" />
           </el-select>
         </el-form-item>
 

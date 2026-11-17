@@ -45,6 +45,26 @@ describe('PersonnelDictionary (PZP-30)', () => {
       .some(option => option.props('label') === 'Литейщик')).toBe(true)
   })
 
+  it('показывает роли в панели добавления сотрудника по алфавиту', async () => {
+    const wrapper = mountDictionary()
+    await flushPromises()
+    wrapper.vm.showCreateModal()
+    await flushPromises()
+
+    const roleSelect = wrapper.findAllComponents({ name: 'ElSelect' })
+      .find(select => select.props('placeholder') === 'Выберите роль')
+    const labels = roleSelect.findAllComponents({ name: 'ElOption' })
+      .map(option => option.props('label'))
+
+    expect(labels).toEqual([
+      'Литейщик',
+      'Менеджер',
+      'Наблюдатель',
+      'Наладчик',
+      'Старший смены'
+    ])
+  })
+
   it('создаёт литейщика без логина и пароля', async () => {
     const wrapper = mountDictionary()
     await flushPromises()

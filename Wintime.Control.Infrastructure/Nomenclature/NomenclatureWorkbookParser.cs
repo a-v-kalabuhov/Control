@@ -128,7 +128,7 @@ public sealed class NomenclatureWorkbookParser
             }
             else
             {
-                Block(result, row, "Гнёздовость должна быть положительным целым числом.");
+                Block(result, row, "Гнёздность должна быть положительным целым числом.");
             }
 
             if (!IsEmpty(excelRow.Cell(9)))
@@ -183,11 +183,6 @@ public sealed class NomenclatureWorkbookParser
             return;
         }
         var ambiguous = material.Length == 0
-            || material.Contains("зависит", StringComparison.OrdinalIgnoreCase)
-            || material.Contains("без сырья", StringComparison.OrdinalIgnoreCase)
-            || material.Contains('%')
-            || material.Contains(',')
-            || material.Contains('/')
             || plasticNames.Length > 2
             || plasticNames.Any(string.IsNullOrWhiteSpace)
             || plasticNames.Distinct(StringComparer.OrdinalIgnoreCase).Count() != plasticNames.Length;

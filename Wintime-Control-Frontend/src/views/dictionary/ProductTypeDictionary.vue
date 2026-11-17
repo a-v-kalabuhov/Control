@@ -64,7 +64,7 @@
             <el-table-column label="Рецепт" min-width="260">
               <template #default="{ row: p }">
                 <div class="flex items-start gap-1">
-                  <span class="whitespace-normal">{{ recipeText(p) }}</span>
+                  <span class="whitespace-pre-line">{{ recipeText(p) }}</span>
                   <el-tooltip v-if="!recipeSumOk(p)" :content="recipeSumHint(p.recipe)">
                     <el-tag type="danger" size="small">≠ 100 %</el-tag>
                   </el-tooltip>
@@ -80,7 +80,20 @@
         </template>
       </el-table-column>
       <el-table-column prop="article" label="Артикул" width="200" />
-      <el-table-column prop="name" label="Наименование" />
+      <el-table-column label="Наименование">
+        <template #default="{ row }">
+          <div class="flex items-center gap-1">
+            <span>{{ row.name }}</span>
+            <el-tooltip
+              v-if="hasRecipeSumWarning(row)"
+              content="В рецепте одного или нескольких изделий сумма пластиков не равна 100 %"
+            >
+              <el-tag data-test="type-recipe-warning" type="danger" size="small">≠ 100 %</el-tag>
+            </el-tooltip>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="company" label="Заказчик" min-width="180" />
       <el-table-column label="Изделия" width="110" align="center">
         <template #default="{ row }">
           <span class="products-count">{{ activeProducts(row).length }}</span>
@@ -134,8 +147,8 @@
           <el-button size="small" type="primary" @click="showProductModal">Добавить изделие</el-button>
         </div>
         <el-table :data="editing.products" size="small">
-          <el-table-column prop="article" label="Артикул" width="100" />
-          <el-table-column prop="fullArticle" label="Полный артикул" width="150" />
+          <el-table-column prop="article" label="Артикул" width="47" />
+          <el-table-column prop="fullArticle" label="Полный артикул" width="73" />
           <el-table-column label="Наименование">
             <template #default="{ row: p }">
               <div class="flex items-center gap-1">
@@ -146,7 +159,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="Статус" width="100" align="center">
+          <el-table-column label="Статус" width="80" align="center">
             <template #default="{ row: p }">
               <el-tag :type="p.isActive ? 'success' : 'info'">{{ p.isActive ? 'Активно' : 'В архиве' }}</el-tag>
             </template>
@@ -246,7 +259,7 @@ import ProductRecipeDialog from './ProductRecipeDialog.vue'
 import NomenclatureImportDialog from './NomenclatureImportDialog.vue'
 import SuggestInput from '@/components/common/SuggestInput.vue'
 import CustomerFilterSelect from '@/components/common/CustomerFilterSelect.vue'
-import { formatRecipe, isRecipeSumOk, recipeSumHint as recipeSumHintText } from '@/utils/recipe'
+import { formatPercent, isRecipeSumOk, recipeSumHint as recipeSumHintText } from '@/utils/recipe'
 
 // Текст ошибки сервера; нестроковое тело (ProblemDetails и т.п.) заменяется запасным текстом.
 function errText(error, fallback) {
@@ -267,11 +280,19 @@ const recipeDialogVisible = ref(false)
 const recipeProduct = ref(null)
 
 function recipeText(product) {
-  return formatRecipe(product?.recipe) || '—'
+  const recipe = product?.recipe ?? []
+  if (recipe.length === 0) return '—'
+  return recipe
+    .map(row => `${row.materialName || '—'} — ${formatPercent(row.percent)} %`)
+    .join('\n')
 }
 
 function recipeSumOk(product) {
   return isRecipeSumOk(product?.recipe)
+}
+
+function hasRecipeSumWarning(productType) {
+  return (productType?.products ?? []).some(product => product.isActive && !recipeSumOk(product))
 }
 
 function recipeSumHint(productRecipe) {

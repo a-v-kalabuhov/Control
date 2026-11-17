@@ -145,7 +145,7 @@ public class NomenclatureImportApiTests : IClassFixture<IntegrationTestFactory>
         var data = UniqueData();
         var response = await Upload(c, WorkbookBytes(data.Type, data.Mold,
             row => { row.Cell(3).Value = data.Type + ".PAIR"; row.Cell(10).Value = "ПП;ПЭ"; },
-            row => { row.Cell(3).Value = data.Type + ".UNKNOWN"; row.Cell(10).Value = "Зависит от заказа"; }));
+            row => { row.Cell(3).Value = data.Type + ".UNKNOWN"; row.Cell(10).Value = "ПП;ПЭ;ПВХ"; }));
 
         var result = await response.Content.ReadFromJsonAsync<ImportResponse>();
         result!.Status.Should().Be("Imported");
