@@ -24,10 +24,10 @@ vi.mock('@/api/orders', () => ({
 }))
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: { getList: vi.fn(() => Promise.resolve({ data: [
-    { id: 'pt-1', article: 'A123', name: 'Крышка', products: [
+    { id: 'pt-1', article: 'A123', name: 'Крышка', company: 'ООО Заказчик типа', products: [
       { id: 'p-1', article: 'BLK', fullArticle: 'A123.BLK', name: 'Чёрная', isActive: true }
     ] },
-    { id: 'pt-2', article: 'B7', name: 'Ведро', products: [
+    { id: 'pt-2', article: 'B7', name: 'Ведро', company: null, products: [
       { id: 'p-2', article: 'RED', fullArticle: 'B7.RED', name: 'Красное', isActive: true },
       { id: 'p-3', article: 'BLU', fullArticle: 'B7.BLU', name: 'Синее', isActive: true },
       { id: 'p-4', article: 'OLD', fullArticle: 'B7.OLD', name: 'Старое', isActive: false }
@@ -371,6 +371,49 @@ describe('OrdersView', () => {
     )
     const callArg = ordersApi.create.mock.calls[0][0]
     expect(callArg.date).toBeUndefined()
+  })
+
+  describe('разметка и заказчик в форме заказа', () => {
+    async function openCreate() {
+      const wrapper = mountView([])
+      await flushPromises()
+      await wrapper.findAll('button').find(b => b.text().includes('Создать заказ')).trigger('click')
+      await flushPromises()
+      return wrapper
+    }
+
+    it('располагает номер и дату на одной строке, а остальные поля — в заданном порядке', async () => {
+      const wrapper = await openCreate()
+      const allItems = wrapper.findAllComponents({ name: 'ElFormItem' })
+      const numberIndex = allItems.findIndex(item => item.props('label') === 'Номер')
+      const items = allItems.slice(numberIndex)
+
+      expect(items.map(item => item.props('label'))).toEqual([
+        'Номер', 'Дата', 'Тип изделия', 'Изделие', 'Заказчик', 'Количество', 'Завершить до', 'Примечание'
+      ])
+      const numberRow = items.find(item => item.props('label') === 'Номер').element.closest('.el-row')
+      const dateRow = items.find(item => item.props('label') === 'Дата').element.closest('.el-row')
+      expect(numberRow).not.toBeNull()
+      expect(dateRow).toBe(numberRow)
+    })
+
+    it('при выборе типа с заказчиком заменяет введённое вручную значение', async () => {
+      const wrapper = await openCreate()
+      wrapper.vm.form.customer = 'Введено вручную'
+      wrapper.vm.form.productTypeId = 'pt-1'
+      await flushPromises()
+
+      expect(wrapper.vm.form.customer).toBe('ООО Заказчик типа')
+    })
+
+    it('при выборе типа без заказчика сохраняет введённое вручную значение', async () => {
+      const wrapper = await openCreate()
+      wrapper.vm.form.customer = 'Введено вручную'
+      wrapper.vm.form.productTypeId = 'pt-2'
+      await flushPromises()
+
+      expect(wrapper.vm.form.customer).toBe('Введено вручную')
+    })
   })
 
   describe('выбор типа изделия', () => {

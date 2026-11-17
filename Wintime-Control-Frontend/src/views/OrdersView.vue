@@ -98,35 +98,28 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? 'Редактирование заказа' : 'Новый заказ'" width="500px">
+    <el-dialog v-model="dialogVisible" :title="editingId ? 'Редактирование заказа' : 'Новый заказ'" width="600px">
       <el-form :model="form" label-width="140px" :rules="rules" ref="formRef">
-        <el-form-item label="Номер" prop="number" required>
-          <el-input v-model="form.number" placeholder="ORD-001" />
-        </el-form-item>
-        <el-form-item label="Заказчик" prop="customer">
-          <SuggestInput v-model="form.customer" :fetch="fetchCompanies" placeholder="Необязательно" />
-        </el-form-item>
-        <el-form-item label="Дата" prop="orderDate">
-          <el-date-picker
-            v-model="form.orderDate"
-            type="date"
-            placeholder="Необязательно"
-            clearable
-            format="DD.MM.YYYY"
-            value-format="YYYY-MM-DD"
-            class="w-full"
-          />
-        </el-form-item>
-        <el-form-item label="Завершить до" prop="dueDate" required>
-          <el-date-picker
-            v-model="form.dueDate"
-            type="date"
-            placeholder="Выберите дату"
-            format="DD.MM.YYYY"
-            value-format="YYYY-MM-DD"
-            class="w-full"
-          />
-        </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="Номер" prop="number" required>
+              <el-input v-model="form.number" placeholder="ORD-001" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="Дата" prop="orderDate">
+              <el-date-picker
+                v-model="form.orderDate"
+                type="date"
+                placeholder="Необязательно"
+                clearable
+                format="DD.MM.YYYY"
+                value-format="YYYY-MM-DD"
+                class="w-full"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="Тип изделия" prop="productTypeId" required>
           <el-select
             v-model="form.productTypeId"
@@ -161,8 +154,21 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="Заказчик" prop="customer">
+          <SuggestInput v-model="form.customer" :fetch="fetchCompanies" placeholder="Необязательно" />
+        </el-form-item>
         <el-form-item label="Количество" prop="quantity" required>
           <el-input-number v-model="form.quantity" :min="1" class="w-full" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="Завершить до" prop="dueDate" required>
+          <el-date-picker
+            v-model="form.dueDate"
+            type="date"
+            placeholder="Выберите дату"
+            format="DD.MM.YYYY"
+            value-format="YYYY-MM-DD"
+            class="w-full"
+          />
         </el-form-item>
         <el-form-item label="Примечание">
           <el-input v-model="form.note" type="textarea" :rows="3" />
@@ -261,6 +267,8 @@ let populating = false
 watch(() => form.productTypeId, (id, old) => {
   if (populating) return
   if (id !== old) form.productId = null
+  const company = productTypes.value.find((type) => type.id === id)?.company
+  if (company) form.customer = company
   const list = productOptions.value
   if (list.length === 1) form.productId = list[0].id
 })
