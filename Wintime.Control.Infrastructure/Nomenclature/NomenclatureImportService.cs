@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
@@ -69,7 +70,8 @@ public sealed class NomenclatureImportService
         }
 
         var materials = await _context.Materials.ToListAsync(cancellationToken);
-        Apply(rows, types, molds, materials, result);
+        var nextArticleNumbers = NextImportArticleNumbers(materials);
+        Apply(rows, types, molds, materials, nextArticleNumbers, result);
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -212,7 +214,7 @@ public sealed class NomenclatureImportService
     }
 
     private void Apply(List<NomenclatureImportRow> rows, List<ProductType> types, List<Mold> molds,
-        List<Material> materials, NomenclatureImportResult result)
+        List<Material> materials, Dictionary<MaterialType, long> nextArticleNumbers, NomenclatureImportResult result)
     {
         var moldMaximums = rows.GroupBy(r => r.MoldFormId)
             .ToDictionary(g => g.Key, g => g.Max(r => r.Cavities)!.Value);
@@ -285,15 +287,28 @@ public sealed class NomenclatureImportService
             product.IsActive = true;
 
             var recipe = row.Recipe.Select(i => new ImportRecipeRow(
-                ResolveMaterial(materials, i, result), i.Percent)).ToList();
+                ResolveMaterial(materials, nextArticleNumbers, i, result), i.Percent)).ToList();
             foreach (var item in recipe.Select(r => r.Material))
                 item.IsActive = true;
             ReplaceRecipe(product, recipe);
         }
     }
 
-    private Material ResolveMaterial(List<Material> materials, NomenclatureRecipeIngredient ingredient,
-        NomenclatureImportResult result)
+    private static Dictionary<MaterialType, long> NextImportArticleNumbers(IEnumerable<Material> materials)
+    {
+        var next = Enum.GetValues<MaterialType>().ToDictionary(type => type, _ => 1L);
+        foreach (var material in materials)
+        {
+            if (material.Article.StartsWith("IMP-", StringComparison.OrdinalIgnoreCase)
+                && long.TryParse(material.Article.AsSpan(4), NumberStyles.None, CultureInfo.InvariantCulture,
+                    out var number))
+                next[material.Type] = Math.Max(next[material.Type], number + 1);
+        }
+        return next;
+    }
+
+    private Material ResolveMaterial(List<Material> materials, Dictionary<MaterialType, long> nextArticleNumbers,
+        NomenclatureRecipeIngredient ingredient, NomenclatureImportResult result)
     {
         var sameName = materials.Where(m => m.Type == ingredient.Type
             && string.Equals(m.Name, ingredient.Name, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -302,10 +317,11 @@ public sealed class NomenclatureImportService
         if (material != null)
             return material;
 
+        var articleNumber = nextArticleNumbers[ingredient.Type]++;
         material = new Material
         {
             Type = ingredient.Type,
-            Article = "IMP-" + Guid.NewGuid().ToString("N").ToUpperInvariant(),
+            Article = $"IMP-{articleNumber:D4}",
             Name = ingredient.Name,
             ColorName = ingredient.Type == MaterialType.Colorant ? ingredient.Name : null,
             IsActive = true
