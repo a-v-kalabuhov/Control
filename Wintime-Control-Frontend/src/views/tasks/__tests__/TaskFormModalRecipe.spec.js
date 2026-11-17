@@ -23,7 +23,11 @@ vi.mock('@/api/tasks', () => ({
   }
 }))
 vi.mock('@/api/orders', () => ({
-  ordersApi: { getList: vi.fn(() => Promise.resolve({ data: [] })), setTaskOrder: vi.fn(() => Promise.resolve({ data: {} })) }
+  ordersApi: {
+    getList: vi.fn(() => Promise.resolve({ data: [] })),
+    getById: vi.fn(() => Promise.resolve({ data: { tasks: [] } })),
+    setTaskOrder: vi.fn(() => Promise.resolve({ data: {} }))
+  }
 }))
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: { getList: vi.fn(() => Promise.resolve({ data: [

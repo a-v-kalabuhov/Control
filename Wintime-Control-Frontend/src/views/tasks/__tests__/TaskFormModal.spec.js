@@ -31,6 +31,7 @@ vi.mock('@/api/orders', () => ({
     getList: vi.fn(() => Promise.resolve({ data: [
       { id: 'order-1', number: 'ORD-1' }
     ] })),
+    getById: vi.fn(() => Promise.resolve({ data: { tasks: [] } })),
     setTaskOrder: vi.fn(() => Promise.resolve({ data: {} }))
   }
 }))

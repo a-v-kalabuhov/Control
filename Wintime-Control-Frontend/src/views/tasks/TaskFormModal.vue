@@ -33,6 +33,7 @@
               :value="order.id"
             />
           </el-select>
+          <div class="text-xs text-gray-500 mt-1 min-h-4" data-test="order-plan-hint">{{ orderPlanHint }}</div>
         </el-form-item>
         <el-form-item label="Изделие" prop="productId">
           <el-select
@@ -89,7 +90,7 @@
           <el-input-number
             v-model="form.planQuantity"
             data-test="plan-quantity"
-            :min="1"
+            :min="form.orderId ? 0 : 1"
             :max="1000000"
             :disabled="isRestricted"
             class="w-full"
@@ -345,6 +346,8 @@ const editingProductType = ref(null)
 const personnel = ref([])
 const orderOptions = ref([])
 const initialOrderId = ref(null)
+const orderRemainingQuantity = ref(null)
+const orderedQuantity = ref(null)
 
 function getDefaultPlannedDate() {
   const tomorrow = new Date()
@@ -372,6 +375,11 @@ const form = reactive({
   plannedSetupMinutes: 0,
   releaseBufferFixedMinutes: 0,
   releaseBufferPercent: 0
+})
+
+const orderPlanHint = computed(() => {
+  if (!form.orderId || orderRemainingQuantity.value === null || orderedQuantity.value === null) return ''
+  return `Нужно выпустить ${orderRemainingQuantity.value} из ${orderedQuantity.value} шт.`
 })
 
 // Признаки ручного ввода отдельно от значения: 0 — валидный вес, null — валидный цикл или тарная единица.
@@ -644,6 +652,8 @@ const resetForm = () => {
     releaseBufferPercent: 0
   })
   orderOptions.value = props.lockedOrder ? [props.lockedOrder] : []
+  orderRemainingQuantity.value = null
+  orderedQuantity.value = null
   partWeightCustomized.value = false
   cavitiesCustomized.value = false
   injectionCycleCustomized.value = false
@@ -690,6 +700,28 @@ async function loadOrderOptions() {
   }
 }
 
+let orderPlanGeneration = 0
+async function loadRemainingPlanForOrder(orderId) {
+  const generation = ++orderPlanGeneration
+  const fallbackQuantity = selectedOrder.value?.quantity
+  try {
+    const { data: details } = await ordersApi.getById(orderId)
+    if (generation !== orderPlanGeneration || form.orderId !== orderId || editingTask.value) return
+    const quantity = details.quantity ?? fallbackQuantity
+    if (!Number.isFinite(quantity)) return
+    const completedStatuses = ['Completed', 'Closed']
+    const accountedQuantity = (details.tasks ?? []).reduce((sum, task) => sum + (
+      completedStatuses.includes(task.status) ? task.actualQuantity ?? 0 : task.planQuantity ?? 0
+    ), 0)
+    form.planQuantity = Math.max(0, quantity - accountedQuantity)
+    orderRemainingQuantity.value = form.planQuantity
+    orderedQuantity.value = quantity
+  } catch (error) {
+    if (generation !== orderPlanGeneration || form.orderId !== orderId || editingTask.value) return
+    ElMessage.error('Ошибка расчёта остатка заказа')
+  }
+}
+
 let moldSelectionGeneration = 0
 let productAutoSelectedByMold
 async function selectMoldForProduct(productId) {
@@ -705,9 +737,13 @@ async function selectMoldForProduct(productId) {
 }
 
 watch(() => form.orderId, (orderId) => {
+  orderPlanGeneration += 1
+  orderRemainingQuantity.value = null
+  orderedQuantity.value = null
   if (revertingProduct || editingTask.value || props.lockedOrder || !orderId) return
   const order = selectedOrder.value
   if (!order) return
+  loadRemainingPlanForOrder(orderId)
   const productChanged = form.productId !== order.productId
   form.productId = order.productId
   // Если заказ сменился на другой с тем же изделием, watcher изделия не сработает.
@@ -904,6 +940,7 @@ const applyLockedOrder = () => {
   form.productId = props.lockedOrder.productId
   // ПФ подбирается по изделию заказа сразу, не дожидаясь @focus на селекте.
   selectMoldForProduct(props.lockedOrder.productId)
+  loadRemainingPlanForOrder(props.lockedOrder.id)
 }
 
 watch(() => props.lockedOrder, applyLockedOrder, { immediate: true })

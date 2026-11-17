@@ -27,9 +27,26 @@ const molds = [
 ]
 
 const orders = [
-  { id: 'order-X', number: 'ORD-X', productId: 'p-X0', productTypeId: 'pt-X', productFullArticle: 'ART-X.0' },
-  { id: 'order-Y', number: 'ORD-Y', productId: 'p-YB', productTypeId: 'pt-Y', productFullArticle: 'ART-Y.BLK' }
+  { id: 'order-X', number: 'ORD-X', productId: 'p-X0', productTypeId: 'pt-X', productFullArticle: 'ART-X.0', quantity: 200 },
+  { id: 'order-Y', number: 'ORD-Y', productId: 'p-YB', productTypeId: 'pt-Y', productFullArticle: 'ART-Y.BLK', quantity: 80 },
+  { id: 'order-Z', number: 'ORD-Z', productId: 'p-X0', productTypeId: 'pt-X', productFullArticle: 'ART-X.0', quantity: 40 }
 ]
+
+const orderDetails = {
+  'order-X': { quantity: 200, tasks: [
+    { status: 'Completed', planQuantity: 50, actualQuantity: 30, defectQuantity: 4 },
+    { status: 'Closed', planQuantity: 25, actualQuantity: 20, defectQuantity: 0 },
+    { status: 'InProgress', planQuantity: 40, actualQuantity: 10, defectQuantity: 1 },
+    { status: 'Setup', planQuantity: 10, actualQuantity: 0, defectQuantity: 0 },
+    { status: 'Planned', planQuantity: 5, actualQuantity: 0, defectQuantity: 0 },
+    { status: 'Issued', planQuantity: 5, actualQuantity: 0, defectQuantity: 0 }
+  ] },
+  'order-Y': { quantity: 80, tasks: [] },
+  'order-Z': { quantity: 40, tasks: [
+    { status: 'Completed', planQuantity: 50, actualQuantity: 50, defectQuantity: 0 },
+    { status: 'Planned', planQuantity: 10, actualQuantity: 0, defectQuantity: 0 }
+  ] }
+}
 
 vi.mock('@/api/imm', () => ({ immApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) } }))
 vi.mock('@/api/molds', () => ({ moldsApi: { getList: vi.fn(() => Promise.resolve({ data: molds })) } }))
@@ -38,7 +55,11 @@ vi.mock('@/api/tasks', () => ({
   tasksApi: { create: vi.fn(), update: vi.fn(), setPersonnel: vi.fn() }
 }))
 vi.mock('@/api/orders', () => ({
-  ordersApi: { getList: vi.fn(() => Promise.resolve({ data: orders })), setTaskOrder: vi.fn() }
+  ordersApi: {
+    getList: vi.fn(() => Promise.resolve({ data: orders })),
+    getById: vi.fn((id) => Promise.resolve({ data: orderDetails[id] })),
+    setTaskOrder: vi.fn()
+  }
 }))
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: { getList: vi.fn(() => Promise.resolve({ data: productTypes })), getById: vi.fn() }
@@ -71,6 +92,12 @@ async function selectOrder(wrapper, orderId = 'order-X') {
   await flushPromises()
 }
 
+function deferred() {
+  let resolve
+  const promise = new Promise((res) => { resolve = res })
+  return { promise, resolve }
+}
+
 describe('TaskFormModal — новая последовательность создания', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -97,6 +124,66 @@ describe('TaskFormModal — новая последовательность со
     expect(wrapper.vm.form.productId).toBe('p-X0')
     expect(wrapper.vm.form.moldId).toBe('mold-X-first')
     expect(wrapper.vm.isProductLocked).toBe(true)
+  })
+
+  it('выбор заказа подставляет невыполненную и незапланированную часть в план', async () => {
+    const wrapper = mountModal()
+    await selectOrder(wrapper)
+
+    // 200 − (30 факт Completed + 20 факт Closed) − (40 + 10 + 5 + 5 план остальных) = 90.
+    expect(wrapper.vm.form.planQuantity).toBe(90)
+    expect(ordersApi.getById).toHaveBeenCalledWith('order-X')
+  })
+
+  it('под заказом показывает остаток выпуска и очищает подсказку при снятии заказа', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    const hint = wrapper.find('[data-test="order-plan-hint"]')
+    expect(hint.exists()).toBe(true)
+    expect(hint.text()).toBe('')
+
+    await selectOrder(wrapper)
+    expect(hint.text()).toBe('Нужно выпустить 90 из 200 шт.')
+    wrapper.vm.form.orderId = null
+    await flushPromises()
+    expect(hint.text()).toBe('')
+  })
+
+  it('подсказка под заказом показывает нулевой остаток', async () => {
+    const wrapper = mountModal()
+    await selectOrder(wrapper, 'order-Z')
+
+    const hint = wrapper.find('[data-test="order-plan-hint"]')
+    expect(hint.exists()).toBe(true)
+    expect(hint.text()).toBe('Нужно выпустить 0 из 40 шт.')
+  })
+
+  it('при быстрой смене заказа поздний расчёт не заменяет план нового заказа', async () => {
+    const x = deferred()
+    const y = deferred()
+    ordersApi.getById
+      .mockImplementationOnce(() => x.promise)
+      .mockImplementationOnce(() => y.promise)
+    const wrapper = mountModal()
+    wrapper.vm.orderOptions = orders
+    wrapper.vm.form.orderId = 'order-X'
+    await flushPromises()
+    wrapper.vm.form.orderId = 'order-Y'
+    await flushPromises()
+
+    y.resolve({ data: orderDetails['order-Y'] })
+    await flushPromises()
+    expect(wrapper.vm.form.planQuantity).toBe(80)
+    x.resolve({ data: orderDetails['order-X'] })
+    await flushPromises()
+    expect(wrapper.vm.form.planQuantity).toBe(80)
+  })
+
+  it('отрицательный остаток заказа ограничен нулём', async () => {
+    const wrapper = mountModal()
+    await selectOrder(wrapper, 'order-Z')
+
+    expect(wrapper.vm.form.planQuantity).toBe(0)
   })
 
   it('без заказа выбор изделия подставляет ПФ и параметры, кроме полного цикла', async () => {
