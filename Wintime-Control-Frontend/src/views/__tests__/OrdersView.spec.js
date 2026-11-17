@@ -373,6 +373,51 @@ describe('OrdersView', () => {
     expect(callArg.date).toBeUndefined()
   })
 
+  describe('выбор типа изделия', () => {
+    it('показывает артикул с наименованием и фильтрует список по частичному совпадению с обоими полями', async () => {
+      productTypesApi.getList.mockResolvedValueOnce({ data: [
+        { id: 'pt-1', article: 'КР-10', name: 'Крышка', products: [] },
+        { id: 'pt-2', article: 'КР-20', name: 'Ведро', products: [] },
+        { id: 'pt-3', article: 'БЛ-30', name: 'Крышка большая', products: [] }
+      ] })
+      setActivePinia(createPinia())
+      useAuthStore().userRole = 'Manager'
+      ordersApi.getList.mockResolvedValueOnce({ data: [] })
+      const wrapper = mount(OrdersView, {
+        global: { plugins: [ElementPlus], stubs: { 'el-progress': true, Plus: true } }
+      })
+      await flushPromises()
+      wrapper.vm.showCreateModal()
+      await flushPromises()
+
+      const typeSelect = wrapper.findAllComponents({ name: 'ElSelect' })
+        .find(select => select.props('placeholder') === 'Выберите тип изделия')
+      const optionValues = () => typeSelect.findAllComponents({ name: 'ElOption' })
+        .map(option => option.props('value'))
+      expect(typeSelect.findAllComponents({ name: 'ElOption' })
+        .map(option => option.props('label'))).toEqual([
+        'КР-10 — Крышка',
+        'КР-20 — Ведро',
+        'БЛ-30 — Крышка большая'
+      ])
+
+      const filter = typeSelect.props('filterMethod')
+      expect(filter).toBeTypeOf('function')
+
+      filter('крыш')
+      await flushPromises()
+      expect(optionValues()).toEqual(['pt-1', 'pt-3'])
+
+      filter('кр-')
+      await flushPromises()
+      expect(optionValues()).toEqual(['pt-1', 'pt-2'])
+
+      filter('')
+      await flushPromises()
+      expect(optionValues()).toEqual(['pt-1', 'pt-2', 'pt-3'])
+    })
+  })
+
   describe('выбор изделия', () => {
     async function openCreate() {
       const wrapper = mountView([])

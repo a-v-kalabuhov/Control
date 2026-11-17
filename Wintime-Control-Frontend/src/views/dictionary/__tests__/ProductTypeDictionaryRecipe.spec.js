@@ -36,7 +36,7 @@ vi.mock('@/api/productTypes', () => ({
 function mountView() {
   setActivePinia(createPinia())
   return mount(ProductTypeDictionary, {
-    global: { plugins: [ElementPlus] },
+    global: { plugins: [ElementPlus], stubs: { Plus: true } },
     attachTo: document.body
   })
 }
@@ -51,7 +51,49 @@ describe('ProductTypeDictionary — рецепт (BL-36)', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Рецепт')
-    expect(wrapper.text()).toContain('PP-1 — 100 %')
+    expect(wrapper.text()).toContain('Полипропилен — 100 %')
+  })
+
+  it('показывает наименования материалов и переносит каждый ингредиент на новую строку', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const product = wrapper.vm.items[0].products[0]
+    product.recipe = [
+      { materialType: 'Plastic', materialArticle: 'ПП-1', materialName: 'Полипропилен', percent: 99 },
+      { materialType: 'Colorant', materialArticle: 'КРАС-1', materialName: 'Синий краситель', percent: 1 }
+    ]
+    await wrapper.find('.el-table__expand-icon').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.vm.recipeText(product)).toBe('Полипропилен — 99 %\nСиний краситель — 1 %')
+    expect(wrapper.find('span.whitespace-pre-line').text())
+      .toBe('Полипропилен — 99 %\nСиний краситель — 1 %')
+  })
+
+  it('показывает предупреждение в закрытой строке типа, если сумма неверна хотя бы в одном изделии', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="type-recipe-warning"]').exists()).toBe(false)
+
+    wrapper.vm.items[0].products[0].recipe[0].percent = 98
+    await wrapper.vm.$nextTick()
+
+    const warning = wrapper.find('[data-test="type-recipe-warning"]')
+    expect(warning.exists()).toBe(true)
+    expect(warning.text()).toBe('≠ 100 %')
+    expect(wrapper.find('.el-table__expanded-cell').exists()).toBe(false)
+  })
+
+  it('не учитывает архивные изделия при отображении предупреждения у типа', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const archivedProduct = wrapper.vm.items[0].products[0]
+    archivedProduct.isActive = false
+    archivedProduct.recipe[0].percent = 98
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-test="type-recipe-warning"]').exists()).toBe(false)
   })
 
   it('пустой рецепт показан прочерком', async () => {

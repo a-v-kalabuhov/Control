@@ -23,6 +23,39 @@ describe('NomenclatureImportDialog', () => {
     document.body.innerHTML = ''
   })
 
+  it('показывает краткое описание предварительной проверки файла', async () => {
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Перед импортом выполняется проверка файла.')
+    expect(document.body.textContent).not.toContain('Сначала файл проверяется. При ошибочных строках изменения в БД не сохраняются.')
+    wrapper.unmount()
+  })
+
+  it('показывает имя файла один раз над кнопками выбора и импорта с одинаковым оформлением', async () => {
+    const wrapper = mountDialog()
+    wrapper.vm.onFileSelected({ target: { files: [new File(['xlsx'], 'nomen.xlsx')] } })
+    await wrapper.vm.$nextTick()
+
+    const fileName = document.body.querySelector('[data-test="nomen-selected-file"]')
+    expect(fileName).not.toBeNull()
+    expect(fileName.textContent).toBe('nomen.xlsx')
+    expect(fileName.classList).toContain('w-full')
+    expect(document.body.textContent.match(/nomen\.xlsx/g)).toHaveLength(1)
+
+    const buttons = wrapper.findAllComponents({ name: 'ElButton' })
+    const chooseButton = buttons.find(button => button.text() === 'Выбрать файл')
+    const importButton = buttons.find(button => button.text() === 'Проверить и импортировать')
+    expect(chooseButton).toBeDefined()
+    expect(importButton).toBeDefined()
+    expect(chooseButton.props('type')).toBe('primary')
+    expect(importButton.props('type')).toBe('primary')
+    expect(fileName.compareDocumentPosition(chooseButton.element))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(document.body.querySelector('[data-test="nomen-file"]').classList).toContain('hidden')
+    wrapper.unmount()
+  })
+
   it('чистый файл импортирует сразу и сообщает родителю', async () => {
     nomenclatureImportApi.upload.mockResolvedValue({
       data: { status: 'Imported', importedRows: 2, skippedRows: 0, report: [] }

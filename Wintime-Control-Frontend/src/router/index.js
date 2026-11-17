@@ -127,7 +127,7 @@ const routes = [
             path: 'product-types',
             name: 'DictionaryProductTypes',
             component: () => import('@/views/dictionary/ProductTypeDictionary.vue'),
-            meta: { roles: ['Admin', 'Manager'], title: 'Справочник изделий' }
+            meta: { roles: ['Admin', 'Manager'], title: 'Типы изделий' }
           },
           {
             path: 'plastics',

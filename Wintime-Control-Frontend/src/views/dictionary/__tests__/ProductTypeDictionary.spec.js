@@ -71,6 +71,20 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     expect(wrapper.text()).toContain('Добавить тип изделия')
   })
 
+  it('показывает заказчика в колонке после наименования типа', async () => {
+    productTypesApi.getList.mockResolvedValue({ data: [{ ...typeA, company: 'ООО Заказчик' }] })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const table = wrapper.findComponent({ name: 'ElTable' })
+    const columns = table.findAllComponents({ name: 'ElTableColumn' })
+    const labels = columns.map(column => column.props('label'))
+      .filter(label => ['Артикул', 'Наименование', 'Заказчик', 'Изделия'].includes(label))
+    expect(labels).toEqual(['Артикул', 'Наименование', 'Заказчик', 'Изделия'])
+    expect(columns.find(column => column.props('label') === 'Заказчик').props('prop')).toBe('company')
+    expect(table.text()).toContain('ООО Заказчик')
+  })
+
   it('показывает импорт и перезагружает справочник после успешного импорта', async () => {
     const wrapper = mountView()
     await flushPromises()
@@ -112,6 +126,26 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     expect(wrapper.vm.dialogVisible).toBe(true)
     expect(document.body.textContent).toContain('Изделия')
     expect(document.body.textContent).toContain('NEW.0')
+  })
+
+  it('ширина таблицы изделий позволяет показать все кнопки без горизонтального переполнения', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    await flushPromises()
+
+    const dialog = wrapper.findAllComponents({ name: 'ElDialog' })
+      .find(item => item.props('title') === 'Редактирование типа изделия')
+    const columns = dialog.findComponent({ name: 'ElTable' })
+      .findAllComponents({ name: 'ElTableColumn' })
+    const minimumWidth = columns.reduce((sum, column) =>
+      sum + Number(column.props('width') || column.props('minWidth') || 80), 0)
+    const actions = columns.find(column => column.props('label') === 'Действия')
+
+    expect(Number(columns.find(column => column.props('label') === 'Артикул').props('width'))).toBe(47)
+    expect(Number(columns.find(column => column.props('label') === 'Полный артикул').props('width'))).toBe(73)
+    expect(Number(actions.props('width'))).toBeGreaterThanOrEqual(320)
+    expect(minimumWidth).toBeLessThanOrEqual(660)
   })
 
   it('форма типа редактирует компанию через подсказки и отправляет её в API', async () => {

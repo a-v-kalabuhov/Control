@@ -60,15 +60,6 @@
         class="mt-4"
       />
 
-      <!-- Демо-учётки: только на демо-стенде (DemoMode), у клиентов таких аккаунтов нет -->
-      <div v-if="appInfo.demoMode" class="mt-6 p-4 bg-gray-50 rounded-lg text-sm">
-        <p class="font-medium text-gray-700 mb-2">📋 Демо-учётки:</p>
-        <div class="space-y-1 text-gray-600">
-          <div><span class="font-mono">admin</span> / Admin123! (Администратор)</div>
-          <div><span class="font-mono">manager</span> / Manager123! (Руководитель)</div>
-          <div><span class="font-mono">adjuster</span> / Adjuster123! (Наладчик)</div>
-        </div>
-      </div>
     </div>
   </div>
 </template>

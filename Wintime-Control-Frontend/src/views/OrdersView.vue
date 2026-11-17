@@ -131,14 +131,15 @@
           <el-select
             v-model="form.productTypeId"
             filterable
+            :filter-method="filterProductTypes"
             placeholder="Выберите тип изделия"
             class="w-full"
             :loading="productTypesLoading"
           >
             <el-option
-              v-for="pt in productTypes"
+              v-for="pt in filteredProductTypes"
               :key="pt.id"
-              :label="pt.article"
+              :label="`${pt.article} — ${pt.name}`"
               :value="pt.id"
             />
           </el-select>
@@ -204,6 +205,15 @@ const formRef = ref(null)
 const orders = ref([])
 const productTypes = ref([])
 const productTypesLoading = ref(false)
+const productTypeFilterQuery = ref('')
+
+const filteredProductTypes = computed(() => {
+  const query = productTypeFilterQuery.value.trim().toLowerCase()
+  if (!query) return productTypes.value
+  return productTypes.value.filter(pt =>
+    (pt.article ?? '').toLowerCase().includes(query)
+    || (pt.name ?? '').toLowerCase().includes(query))
+})
 
 const filters = reactive({ status: null, search: '', customer: null, customerEmpty: false })
 const form = reactive({
@@ -263,6 +273,7 @@ watch(dialogVisible, (visible) => {
   if (!visible) {
     editingId.value = null
     editingRow.value = null
+    productTypeFilterQuery.value = ''
   }
 })
 
@@ -310,6 +321,10 @@ async function loadProductTypes() {
   } finally {
     productTypesLoading.value = false
   }
+}
+
+function filterProductTypes(query) {
+  productTypeFilterQuery.value = query
 }
 
 async function fetchCompanies(search) {

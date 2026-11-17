@@ -9,9 +9,16 @@
     <div class="space-y-4">
       <el-alert type="info" :closable="false" show-icon>
         <template #title>Формат XLSX: колонки A–L. Макросы и внешние связи не выполняются.</template>
-        Сначала файл проверяется. При ошибочных строках изменения в БД не сохраняются.
+        Перед импортом выполняется проверка файла.
       </el-alert>
 
+      <div
+        v-if="selectedFile"
+        data-test="nomen-selected-file"
+        class="w-full text-sm text-gray-600 break-all"
+      >
+        {{ selectedFile.name }}
+      </div>
       <div class="flex items-center gap-3">
         <input
           ref="fileInput"
@@ -19,8 +26,12 @@
           type="file"
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           :disabled="loading"
+          class="hidden"
           @change="onFileSelected"
         />
+        <el-button type="primary" :disabled="loading" @click="fileInput?.click()">
+          Выбрать файл
+        </el-button>
         <el-button
           v-if="!result || result.status === 'ConfirmationRequired'"
           type="primary"
@@ -31,7 +42,6 @@
           Проверить и импортировать
         </el-button>
       </div>
-      <div v-if="selectedFile" class="text-sm text-gray-600">{{ selectedFile.name }}</div>
 
       <template v-if="result">
         <el-alert

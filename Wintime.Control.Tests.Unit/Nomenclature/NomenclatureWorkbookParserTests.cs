@@ -76,7 +76,7 @@ public class NomenclatureWorkbookParserTests
         using var stream = Workbook(row =>
         {
             FillRequired(row);
-            row.Cell(10).Value = "Зависит от заказа";
+            row.Cell(10).Value = "ПП;ПЭ;ПВХ";
         });
 
         var result = new NomenclatureWorkbookParser().Parse(stream);
@@ -254,19 +254,28 @@ public class NomenclatureWorkbookParserTests
         act.Should().Throw<InvalidDataException>().WithMessage("*строк*");
     }
 
-    [Fact]
-    public void Parse_mixture_with_explicit_percentages_is_not_imported_as_single_plastic()
+    [Theory]
+    [InlineData("Полипропилен , ПП 401")]
+    [InlineData("Зависит от заказа")]
+    [InlineData("без сырья")]
+    [InlineData("ПП 50%, ПЭ 50%")]
+    [InlineData("ПП/ПЭ")]
+    public void Parse_free_form_material_and_colorant_punctuation_are_preserved(string material)
     {
         using var stream = Workbook(row =>
         {
             FillRequired(row);
-            row.Cell(10).Value = "ПП 50%, ПЭ 50%";
+            row.Cell(10).Value = material;
+            row.Cell(11).Value = "Синий, перламутровый";
+            row.Cell(12).Value = 1.5;
         });
 
         var result = new NomenclatureWorkbookParser().Parse(stream);
 
-        result.Rows.Single().Recipe.Should().BeEmpty();
-        result.Report.Should().ContainSingle(r => !r.BlocksRow && r.Message.Contains("Неоднозначный"));
+        result.Rows.Single().Recipe.Should().Equal(
+            new NomenclatureRecipeIngredient(MaterialType.Plastic, material, 100m),
+            new NomenclatureRecipeIngredient(MaterialType.Colorant, "Синий, перламутровый", 1.5m));
+        result.Report.Should().BeEmpty();
     }
 
     [Fact]
