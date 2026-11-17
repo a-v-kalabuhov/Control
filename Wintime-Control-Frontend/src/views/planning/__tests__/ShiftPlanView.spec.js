@@ -141,6 +141,26 @@ describe('ShiftPlanView', () => {
     expect(rows[2].classes()).toContain('shift-future')
   })
 
+  it('раскрашивает отдельные смены по state и наследует цвет текста старшего от ячейки', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const cells = wrapper.findAll('.shift-plan-item')
+    expect(cells[0].classes()).toContain('shift-plan-item-historical')
+    expect(cells[1].classes()).toContain('shift-plan-item-current')
+    expect(cells[2].classes()).toContain('shift-plan-item-future')
+    expect(cells[0].element.style.backgroundColor).toBe('rgb(31, 41, 55)')
+    expect(cells[0].element.style.color).toBe('rgb(255, 255, 255)')
+    expect(cells[1].element.style.backgroundColor).toBe('rgb(220, 252, 231)')
+    expect(cells[2].element.style.backgroundColor).toBe('rgb(224, 242, 254)')
+
+    const lead = cells[0].find('.shift-plan-lead')
+    expect(lead.exists()).toBe(true)
+    expect(lead.text()).toBe('Иванов Иван')
+    expect(lead.classes()).not.toContain('text-gray-800')
+    expect(lead.classes()).not.toContain('text-gray-500')
+  })
+
   it('классифицирует прошлое и будущее по серверным state, а не по дате браузера', async () => {
     const historicalDespiteBrowserTomorrow = day('2026-11-09', [
       item(1, { state: 'Historical' })

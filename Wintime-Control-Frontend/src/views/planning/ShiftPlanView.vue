@@ -40,12 +40,14 @@
                 v-for="item in row.items"
                 :key="item.position"
                 class="shift-plan-item"
+                :class="`shift-plan-item-${item.state.toLowerCase()}`"
+                :style="shiftItemStyle(item)"
                 @click="openItem(row, item)"
               >
                 <span class="shift-plan-item-content">
                   <span class="font-semibold">Смена {{ item.position }}</span>
                   <span>{{ formatShiftWindow(item) }}</span>
-                  <span :class="item.shiftLeadName ? 'text-gray-800' : 'text-gray-500'">
+                  <span class="shift-plan-lead">
                     {{ item.shiftLeadName || 'Не назначен' }}
                   </span>
                 </span>
@@ -90,6 +92,16 @@ const loading = ref(false)
 const selectedDay = ref(null)
 const selectedItem = ref(null)
 let loadSeq = 0
+
+const shiftItemStyles = {
+  Historical: { backgroundColor: '#1f2937', borderColor: '#1f2937', color: '#ffffff' },
+  Current: { backgroundColor: '#dcfce7', borderColor: '#86efac', color: '#166534' },
+  Future: { backgroundColor: '#e0f2fe', borderColor: '#7dd3fc', color: '#0c4a6e' }
+}
+
+function shiftItemStyle(item) {
+  return shiftItemStyles[item.state] ?? shiftItemStyles.Future
+}
 
 const dateRange = computed({
   get: () => [from.value, to.value],
