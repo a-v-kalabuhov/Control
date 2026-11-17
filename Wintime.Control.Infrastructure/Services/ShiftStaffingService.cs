@@ -275,6 +275,10 @@ public sealed class ShiftStaffingService : IShiftStaffingService
     {
         if (string.IsNullOrEmpty(item.ShiftLeadId))
             throw new DomainException("Сначала назначьте старшего смены");
+        if (caller.IsShiftLead && item.ShiftLeadId != caller.UserId)
+            throw new ShiftAccessException("Старшему доступно изменение только собственной ближайшей смены");
+        if (!caller.IsManagerOrAdmin && !caller.IsShiftLead)
+            throw new ShiftAccessException("Недостаточно прав для изменения состава смены");
         if (now >= Utc(item.EndAtUtc))
             throw new DomainException("Нельзя изменять состав литейщиков в исторической смене");
 
@@ -288,14 +292,10 @@ public sealed class ShiftStaffingService : IShiftStaffingService
                 throw new ShiftAccessException("Руководителю доступно изменение только ближайшей смены");
             return;
         }
-        if (caller.IsShiftLead)
-        {
-            var nearest = NearestShiftSelector.ForLead(nearestCandidates, caller.UserId, now);
-            if (item.ShiftLeadId != caller.UserId || nearest?.Id != item.Id)
-                throw new ShiftAccessException("Старшему доступно изменение только собственной ближайшей смены");
-            return;
-        }
-        throw new ShiftAccessException("Недостаточно прав для изменения состава смены");
+
+        var nearest = NearestShiftSelector.ForLead(nearestCandidates, caller.UserId, now);
+        if (nearest?.Id != item.Id)
+            throw new ShiftAccessException("Старшему доступно изменение только собственной ближайшей смены");
     }
 
     private static bool IsConcurrencyFailure(Exception exception)

@@ -165,6 +165,28 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
     }
 
     [Fact]
+    public async Task Mutations_ForeignHistoricalItem_Return403AndKeepAssignmentUnchanged()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var otherLead = await SeedUserAsync(UserRole.ShiftLead);
+        var @operator = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync(isActive: true);
+        var foreignHistorical = (await SeedDayAsync(
+            Item(NextPosition(), otherLead.Id, now.AddHours(-5), now.AddHours(-4)))).Items.Single();
+        var existing = await SeedAssignmentAsync(
+            foreignHistorical, immId, @operator.Id, foreignHistorical.StartAtUtc.AddMinutes(10));
+        var client = await ClientAsync(lead);
+
+        await RussianErrorAsync(await AssignAsync(client, foreignHistorical.Id, immId, @operator.Id),
+            HttpStatusCode.Forbidden);
+        await RussianErrorAsync(await UnassignAsync(client, existing.Id), HttpStatusCode.Forbidden);
+
+        (await AssignmentsAsync(foreignHistorical.Id)).Should().ContainSingle()
+            .Which.UnassignedAt.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ManagerAndAdmin_CanAssignAndUnassignNearestShift()
     {
         var now = DateTime.UtcNow;
