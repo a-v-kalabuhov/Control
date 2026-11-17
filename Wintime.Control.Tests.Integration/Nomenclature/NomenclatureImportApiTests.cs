@@ -63,6 +63,118 @@ public class NomenclatureImportApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Import_assigns_next_four_digit_articles_independently_for_each_material_type()
+    {
+        var c = await ClientAsync();
+        var data = UniqueData();
+        int plasticSeed;
+        int colorantSeed;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var seedDb = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var articles = await seedDb.Materials.Select(m => new MaterialArticle(m.Type, m.Article)).ToListAsync();
+            var baseline = Math.Max(MaxImportArticleNumber(articles, MaterialType.Plastic),
+                MaxImportArticleNumber(articles, MaterialType.Colorant));
+            plasticSeed = baseline + 10;
+            colorantSeed = baseline + 20;
+            seedDb.Materials.AddRange(
+                new Material
+                {
+                    Type = MaterialType.Plastic, Article = ImportArticle(plasticSeed),
+                    Name = "Существующий пластик " + data.Mold
+                },
+                new Material
+                {
+                    Type = MaterialType.Colorant, Article = ImportArticle(colorantSeed),
+                    Name = "Существующий краситель " + data.Mold, ColorName = "Зелёный"
+                });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var response = await Upload(c, WorkbookBytes(data.Type, data.Mold,
+            row =>
+            {
+                row.Cell(3).Value = data.Type + ".ONE";
+                row.Cell(10).Value = "Новый ПП " + data.Mold;
+                row.Cell(11).Value = "Красный " + data.Mold;
+                row.Cell(12).Value = 1;
+            },
+            row =>
+            {
+                row.Cell(3).Value = data.Type + ".TWO";
+                row.Cell(10).Value = "Новый ПЭ " + data.Mold;
+                row.Cell(11).Value = "Синий " + data.Mold;
+                row.Cell(12).Value = 2;
+            }));
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var materials = await db.Products.Where(p => p.ProductType!.Article == data.Type)
+                .SelectMany(p => p.RecipeIngredients).Select(i => i.Material!).ToListAsync();
+            materials.Where(m => m.Type == MaterialType.Plastic).Select(m => m.Article).Should().BeEquivalentTo(
+                ImportArticle(plasticSeed + 1), ImportArticle(plasticSeed + 2));
+            materials.Where(m => m.Type == MaterialType.Colorant).Select(m => m.Article).Should().BeEquivalentTo(
+                ImportArticle(colorantSeed + 1), ImportArticle(colorantSeed + 2));
+        }
+
+        var repeated = await Upload(c, data.Type, data.Mold, row =>
+        {
+            row.Cell(3).Value = data.Type + ".THREE";
+            row.Cell(10).Value = "Следующий пластик " + data.Mold;
+            row.Cell(11).Value = "Следующий краситель " + data.Mold;
+            row.Cell(12).Value = 1;
+        });
+        repeated.StatusCode.Should().Be(HttpStatusCode.OK, await repeated.Content.ReadAsStringAsync());
+
+        using var verify = _factory.Services.CreateScope();
+        var verifyDb = verify.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var nextMaterials = await verifyDb.Products.Where(p => p.FullArticle == data.Type + ".THREE")
+            .SelectMany(p => p.RecipeIngredients).Select(i => i.Material!).ToListAsync();
+        nextMaterials.Single(m => m.Type == MaterialType.Plastic).Article
+            .Should().Be(ImportArticle(plasticSeed + 3));
+        nextMaterials.Single(m => m.Type == MaterialType.Colorant).Article
+            .Should().Be(ImportArticle(colorantSeed + 3));
+    }
+
+    [Fact]
+    public async Task Import_expands_article_number_beyond_four_digits()
+    {
+        var c = await ClientAsync();
+        var data = UniqueData();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var seedDb = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            seedDb.Materials.AddRange(
+                new Material
+                {
+                    Type = MaterialType.Plastic, Article = "IMP-9999", Name = "Пластик 9999 " + data.Mold
+                },
+                new Material
+                {
+                    Type = MaterialType.Colorant, Article = "IMP-9999", Name = "Краситель 9999 " + data.Mold,
+                    ColorName = "Белый"
+                });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var response = await Upload(c, data.Type, data.Mold, row =>
+        {
+            row.Cell(10).Value = "Пластик 10000 " + data.Mold;
+            row.Cell(11).Value = "Краситель 10000 " + data.Mold;
+            row.Cell(12).Value = 1;
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var verify = _factory.Services.CreateScope();
+        var db = verify.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var articles = await db.Products.Where(p => p.FullArticle == data.Type + ".0")
+            .SelectMany(p => p.RecipeIngredients).Select(i => i.Material!.Article).ToListAsync();
+        articles.Should().HaveCount(2).And.OnlyContain(article => article == "IMP-10000");
+    }
+
+    [Fact]
     public async Task Structural_error_requires_confirmation_then_skip_imports_only_valid_rows()
     {
         var c = await ClientAsync();
@@ -539,6 +651,22 @@ public class NomenclatureImportApiTests : IClassFixture<IntegrationTestFactory>
         workbook.SaveAs(stream);
         return stream.ToArray();
     }
+
+    private static string ImportArticle(int number) => $"IMP-{number:D4}";
+
+    private static int MaxImportArticleNumber(IEnumerable<MaterialArticle> materials, MaterialType type)
+    {
+        var max = 0;
+        foreach (var material in materials)
+        {
+            if (material.Type == type && material.Article.StartsWith("IMP-", StringComparison.Ordinal)
+                && int.TryParse(material.Article.AsSpan(4), out var number))
+                max = Math.Max(max, number);
+        }
+        return max;
+    }
+
+    private sealed record MaterialArticle(MaterialType Type, string Article);
 
     private sealed class ImportResponse
     {
