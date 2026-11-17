@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Wintime.Control.Core.DTOs.Tasks;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
@@ -544,12 +545,13 @@ public class TasksController : ControllerBase
 
         // На ТПА одновременно допустимо только одно активное задание (Setup/InProgress).
         // Сначала завершите текущее, иначе циклы пойдут не тому заданию.
+        const string activeTaskMessage = "На этом ТПА уже есть активное задание. Сначала завершите текущее задание.";
         var hasActiveTask = await _context.ShiftTasks.AnyAsync(t =>
             t.Id != task.Id &&
             t.ImmId == task.ImmId &&
             (t.Status == Core.Enums.TaskStatus.Setup || t.Status == Core.Enums.TaskStatus.InProgress));
         if (hasActiveTask)
-            return BadRequest("На этом ТПА уже есть активное задание. Сначала завершите текущее задание.");
+            return BadRequest(activeTaskMessage);
 
         // PZP-07b: ПФ сейчас в наладке/выпуске на другом ТПА — не запрет, а предупреждение с подтверждением.
         // Журнал таких событий для руководителя — BL-47.
@@ -579,11 +581,26 @@ public class TasksController : ControllerBase
         if (openRun != null)
             openRun.ClosedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception) when (IsActiveTaskPerImmViolation(exception))
+        {
+            // Параллельный /start прошёл предварительную проверку: решает partial unique index.
+            return BadRequest(activeTaskMessage);
+        }
         await _emulator.SetModeAsync(task.ImmId.ToString(), "manual");
 
         return Ok(new { message = "Наладка начата" });
     }
+
+    private static bool IsActiveTaskPerImmViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "UX_ShiftTasks_ImmId_Active"
+        };
 
     /// <summary>
     /// Завершить наладку — перевести задание в статус InProgress

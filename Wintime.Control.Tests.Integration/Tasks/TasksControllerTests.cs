@@ -2,8 +2,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
+using TaskStatus = Wintime.Control.Core.Enums.TaskStatus;
 
 namespace Wintime.Control.Tests.Integration.Tasks;
 
@@ -153,6 +157,31 @@ public class TasksControllerTests : IClassFixture<IntegrationTestFactory>
         var secondStart = await adjusterClient.PostAsync($"/api/tasks/{secondTaskId}/start", null);
 
         secondStart.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task StartTask_ConcurrentStartsOnSameImm_AllowOnlyOneExecutingTask()
+    {
+        var managerClient = await CreateAuthenticatedClientAsync("test_manager", "Manager123!");
+        var firstAdjuster = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
+        var secondAdjuster = await CreateAuthenticatedClientAsync("test_adjuster", "Adjuster123!");
+        var immId = await _factory.CreateFreshImmAsync();
+        var firstTaskId = await CreateTaskAsync(managerClient, immId);
+        var secondTaskId = await CreateTaskAsync(managerClient, immId);
+        await IssueTaskAsync(managerClient, firstTaskId);
+        await IssueTaskAsync(managerClient, secondTaskId);
+
+        var responses = await Task.WhenAll(
+            firstAdjuster.PostAsync($"/api/tasks/{firstTaskId}/start", null),
+            secondAdjuster.PostAsync($"/api/tasks/{secondTaskId}/start", null));
+
+        responses.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
+        responses.Count(r => r.StatusCode == HttpStatusCode.BadRequest).Should().Be(1);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var executingCount = await db.ShiftTasks.CountAsync(t =>
+            t.ImmId == immId && (t.Status == TaskStatus.Setup || t.Status == TaskStatus.InProgress));
+        executingCount.Should().Be(1);
     }
 
     /// <summary>

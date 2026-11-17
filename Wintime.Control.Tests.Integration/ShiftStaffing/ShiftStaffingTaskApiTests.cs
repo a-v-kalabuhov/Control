@@ -92,7 +92,8 @@ public class ShiftStaffingTaskApiTests : IClassFixture<IntegrationTestFactory>
         var plannedOutside = await SeedTaskAsync(immId, TaskStatus.Planned, start.AddSeconds(-1));
         var issuedInside = await SeedTaskAsync(immId, TaskStatus.Issued, start.AddMinutes(20));
         var issuedAtEnd = await SeedTaskAsync(immId, TaskStatus.Issued, end);
-        var setup = await SeedTaskAsync(immId, TaskStatus.Setup, end.AddDays(2),
+        var setupImmId = await SeedImmAsync(isActive: true);
+        var setup = await SeedTaskAsync(setupImmId, TaskStatus.Setup, end.AddDays(2),
             setupStartedAt: start.AddMinutes(30));
         var inProgress = await SeedTaskAsync(immId, TaskStatus.InProgress, end.AddDays(2),
             setupStartedAt: start.AddMinutes(35), startedAt: start.AddMinutes(40));

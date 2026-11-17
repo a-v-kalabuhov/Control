@@ -974,8 +974,6 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ImmId");
-
                     b.HasIndex("MoldId");
 
                     b.HasIndex("OrderId");
@@ -983,6 +981,12 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.HasIndex("PersonnelId");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex(new[] { "ImmId" }, "IX_ShiftTasks_ImmId");
+
+                    b.HasIndex(new[] { "ImmId" }, "UX_ShiftTasks_ImmId_Active")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN (2, 5)");
 
                     b.ToTable("ShiftTasks", null, t =>
                         {

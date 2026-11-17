@@ -165,6 +165,11 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.HasOne(e => e.Mold).WithMany(m => m.ShiftTasks).HasForeignKey(e => e.MoldId);
             entity.HasOne(e => e.Personnel).WithMany(p => p.AssignedTasks).HasForeignKey(e => e.PersonnelId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(e => e.Product).WithMany().HasForeignKey(e => e.ProductId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => e.ImmId, "IX_ShiftTasks_ImmId");
+            // Планы могут пересекаться, но выполняться на ТПА может только одно задание.
+            entity.HasIndex(e => e.ImmId, "UX_ShiftTasks_ImmId_Active")
+                .IsUnique()
+                .HasFilter("\"Status\" IN (2, 5)"); // InProgress, Setup
         });
 
         // Конфигурация Telemetry (Оптимизация)

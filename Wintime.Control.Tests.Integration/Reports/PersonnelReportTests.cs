@@ -33,17 +33,21 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
         return user.Id;
     }
 
-    private async Task SeedAsync(string adjusterId, Guid immId)
+    private async Task<(Guid LongSetupImmId, Guid ShortSetupImmId, Guid OpenSetupImmId)> SeedAsync(
+        string adjusterId, Guid immId)
     {
+        var shortSetupImmId = await _factory.CreateFreshImmAsync();
+        var openSetupImmId = await _factory.CreateFreshImmAsync();
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         var mold = new Mold { Name = $"M-{Guid.NewGuid():N}", FormId = $"F-{Guid.NewGuid():N}", Cavities = 1, IsActive = true, ProductTypeId = _factory.TestProductTypeId };
         db.Molds.Add(mold);
         await db.SaveChangesAsync();
 
-        ShiftTask T(TaskStatus st, DateTime? setup, DateTime? started, DateTime? completed, DateTime? closed = null) => new()
+        ShiftTask T(TaskStatus st, DateTime? setup, DateTime? started, DateTime? completed,
+            DateTime? closed = null, Guid? taskImmId = null) => new()
         {
-            ImmId = immId, MoldId = mold.Id, ProductId = _factory.TestProductId, PersonnelId = adjusterId, PlanQuantity = 10, Status = st,
+            ImmId = taskImmId ?? immId, MoldId = mold.Id, ProductId = _factory.TestProductId, PersonnelId = adjusterId, PlanQuantity = 10, Status = st,
             PlannedDate = DateOnly.FromDateTime(Day), IssuedAt = Day.AddDays(-2),
             SetupStartedAt = setup, StartedAt = started, CompletedAt = completed, ClosedAt = closed
         };
@@ -54,10 +58,10 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
             T(TaskStatus.InProgress, Day.AddHours(-12), Day.AddHours(12), null),
             // Начато позавчера, завершено сегодня — «выполнено заданий» +1, наладка не сегодня
             T(TaskStatus.Completed, Day.AddDays(-2).AddHours(10), Day.AddDays(-2).AddHours(11), Day.AddHours(13)),
-            // Наладка сегодня 1 ч, задание в работе
-            T(TaskStatus.InProgress, Day.AddHours(10), Day.AddHours(11), null),
-            // Идёт наладка — не завершена, не считается
-            T(TaskStatus.Setup, Day.AddHours(14), null, null),
+            // Наладка сегодня 1 ч, задание в работе на другом ТПА
+            T(TaskStatus.InProgress, Day.AddHours(10), Day.AddHours(11), null, taskImmId: shortSetupImmId),
+            // Идёт наладка на третьем ТПА — не завершена, не считается
+            T(TaskStatus.Setup, Day.AddHours(14), null, null, taskImmId: openSetupImmId),
             // Отменённая наладка (CancelSetup сбрасывает SetupStartedAt) — не считается
             T(TaskStatus.Issued, null, null, null),
             // Завершено сегодня, затем закрыто — считается (CompletedAt в периоде)
@@ -65,6 +69,7 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
             // Закрыто досрочно из InProgress (CompletedAt = null) — не считается
             T(TaskStatus.Closed, Day.AddDays(-2).AddHours(10), Day.AddDays(-2).AddHours(11), null, Day.AddHours(15)));
         await db.SaveChangesAsync();
+        return (immId, shortSetupImmId, openSetupImmId);
     }
 
     private async Task<AssetsReportDto> GetAsync(string reportType)
@@ -98,7 +103,7 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
     {
         var adjusterId = await CreateAdjusterAsync();
         var immId = await _factory.CreateFreshImmAsync();
-        await SeedAsync(adjusterId, immId);
+        var immIds = await SeedAsync(adjusterId, immId);
 
         var report = await GetAsync("PersonnelByImm");
         var row = report.PersonnelByImmData.Should().ContainSingle(p => p.PersonnelId == adjusterId).Subject;
@@ -106,9 +111,11 @@ public class PersonnelReportTests : IClassFixture<IntegrationTestFactory>
         row.CompletedTasks.Should().Be(2);
         row.CompletedSetups.Should().Be(2);
         row.TotalSetupSeconds.Should().Be(24 * 3600 + 3600);
-        var imm = row.ImmBreakdown.Should().ContainSingle().Subject;
-        imm.ImmId.Should().Be(immId);
-        imm.CompletedSetups.Should().Be(2);
-        imm.CompletedTasks.Should().Be(2);
+        var longSetupImm = row.ImmBreakdown.Should().ContainSingle(i => i.ImmId == immIds.LongSetupImmId).Subject;
+        longSetupImm.CompletedSetups.Should().Be(1);
+        longSetupImm.CompletedTasks.Should().Be(2);
+        var shortSetupImm = row.ImmBreakdown.Should().ContainSingle(i => i.ImmId == immIds.ShortSetupImmId).Subject;
+        shortSetupImm.CompletedSetups.Should().Be(1);
+        shortSetupImm.CompletedTasks.Should().Be(0);
     }
 }

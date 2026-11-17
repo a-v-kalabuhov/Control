@@ -269,7 +269,8 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
         var issued = await SeedTaskAsync(immId, TaskStatus.Issued, start.AddMinutes(20));
         var plannedAtEnd = await SeedTaskAsync(immId, TaskStatus.Planned, end);
         var plannedBefore = await SeedTaskAsync(immId, TaskStatus.Planned, start.AddSeconds(-1));
-        var setup = await SeedTaskAsync(immId, TaskStatus.Setup, end.AddDays(2),
+        var setupImmId = await SeedImmAsync(isActive: true);
+        var setup = await SeedTaskAsync(setupImmId, TaskStatus.Setup, end.AddDays(2),
             setupStartedAt: start.AddHours(-1));
         var inProgress = await SeedTaskAsync(immId, TaskStatus.InProgress, start.AddMinutes(30),
             setupStartedAt: start.AddHours(-1), startedAt: start.AddMinutes(-30));
@@ -287,8 +288,10 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
         var tasks = Imm(body, immId).GetProperty("tasks").EnumerateArray().ToList();
         var ids = tasks.Select(t => t.GetProperty("id").GetGuid()).ToList();
 
-        ids.Should().Contain(new[] { planned.Id, issued.Id, setup.Id, inProgress.Id, completed.Id });
+        ids.Should().Contain(new[] { planned.Id, issued.Id, inProgress.Id, completed.Id });
         ids.Should().NotContain(new[] { plannedAtEnd.Id, plannedBefore.Id, completedBefore.Id, closedAtStart.Id });
+        Imm(body, setupImmId).GetProperty("tasks").EnumerateArray()
+            .Select(t => t.GetProperty("id").GetGuid()).Should().Equal(setup.Id);
         ids.Should().OnlyHaveUniqueItems();
         ids.Count(i => i == inProgress.Id).Should().Be(1,
             "задание одновременно попадает в широкий planned и activity запросы");
