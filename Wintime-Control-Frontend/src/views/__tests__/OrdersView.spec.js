@@ -71,7 +71,66 @@ function mountView(orders, role = 'Manager') {
 
 describe('OrdersView', () => {
   beforeEach(() => vi.clearAllMocks())
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    document.cookie = 'orders_sort_v1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+  })
+
+  describe('сортировка и колонки', () => {
+    const rows = [
+      { id: 'order-b', number: 'ORD-B', orderDate: '2026-01-01T00:00:00Z', dueDate: '2026-03-01T00:00:00Z',
+        productFullArticle: 'B.0', productTypeName: 'Тип B', productName: 'Изделие B', customer: 'Аврора',
+        quantity: 100, goodQuantity: 0, progressPercent: 0, status: 'Active' },
+      { id: 'order-a', number: 'ORD-A', orderDate: '2026-02-01T00:00:00Z', dueDate: '2026-04-01T00:00:00Z',
+        productFullArticle: 'A.0', productTypeName: 'Тип A', productName: 'Изделие A', customer: 'Яуза',
+        quantity: 100, goodQuantity: 0, progressPercent: 0, status: 'Active' }
+    ]
+
+    function header(wrapper, label) {
+      const th = wrapper.findAll('th').find(item => item.text().includes(label))
+      const span = th.find('span')
+      return span.exists() ? span : th
+    }
+
+    function firstRowText(wrapper) {
+      return wrapper.findAll('tbody tr')[0].text()
+    }
+
+    it('показывает изделие с наименованием и отдельную колонку заказчика', async () => {
+      const wrapper = mountView([rows[0]])
+      await flushPromises()
+      const row = wrapper.findAll('tbody tr')[0]
+
+      expect(row.text()).toContain('B.0')
+      expect(row.text()).toContain('Тип B · Изделие B')
+      expect(row.text()).toContain('Аврора')
+      const labels = wrapper.findAllComponents({ name: 'ElTableColumn' })
+        .map(column => column.props('label'))
+      expect(labels).toContain('Заказчик')
+    })
+
+    it('сортирует по номеру, датам, изделию и заказчику в три состояния', async () => {
+      const wrapper = mountView(rows)
+      await flushPromises()
+
+      for (const testCase of [
+        { label: 'Номер', desc: 'ORD-B', asc: 'ORD-A' },
+        { label: 'Дата', desc: 'ORD-A', asc: 'ORD-B' },
+        { label: 'Завершить до', desc: 'ORD-A', asc: 'ORD-B' },
+        { label: 'Изделие', desc: 'ORD-B', asc: 'ORD-A' },
+        { label: 'Заказчик', desc: 'ORD-A', asc: 'ORD-B' }
+      ]) {
+        const column = header(wrapper, testCase.label)
+        await column.trigger('click')
+        expect(firstRowText(wrapper)).toContain(testCase.desc)
+        await column.trigger('click')
+        expect(firstRowText(wrapper)).toContain(testCase.asc)
+        await column.trigger('click')
+        expect(firstRowText(wrapper)).toContain('ORD-B')
+      }
+      expect(document.cookie).toContain('orders_sort_v1=')
+    })
+  })
 
   it('Observer видит заказы, но не кнопки изменения', async () => {
     const wrapper = mountView([
