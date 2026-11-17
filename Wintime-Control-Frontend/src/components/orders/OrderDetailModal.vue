@@ -148,7 +148,7 @@ const progressPercentage = computed(() => {
 
 const isOrderActive = computed(() => order.value?.status === 'Active')
 
-// Всё, что форме задания нужно знать о заказе: отдельный запрос ей не потребуется.
+// Идентификация заказа для формы задания; остаток и связанные задания она уточняет через getById.
 const lockedOrder = computed(() =>
   order.value
     ? {

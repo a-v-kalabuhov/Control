@@ -73,10 +73,10 @@ vi.mock('@/api/settings', () => ({
   } })) }
 }))
 
-function mountModal() {
+function mountModal(props = {}) {
   setActivePinia(createPinia())
   return mount(TaskFormModal, {
-    props: { modelValue: true, task: null },
+    props: { modelValue: true, task: null, ...props },
     global: { plugins: [ElementPlus] }
   })
 }
@@ -117,6 +117,32 @@ describe('TaskFormModal — новая последовательность со
     expect(wrapper.vm.orderOptions).toEqual(orders)
   })
 
+  it('разрешает выбор ПФ только после изделия, а ТПА — только после ПФ', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    const moldSelect = select(wrapper, 'Выберите пресс-форму')
+    const immSelect = select(wrapper, 'Выберите ТПА')
+    expect(moldSelect.props('disabled')).toBe(true)
+    expect(immSelect.props('disabled')).toBe(true)
+
+    wrapper.vm.form.productId = 'p-X0'
+    await flushPromises()
+    expect(moldSelect.props('disabled')).toBe(false)
+    expect(immSelect.props('disabled')).toBe(false)
+
+    wrapper.vm.form.moldId = ''
+    await flushPromises()
+    expect(moldSelect.props('disabled')).toBe(false)
+    expect(immSelect.props('disabled')).toBe(true)
+
+    wrapper.vm.form.moldId = 'mold-X-first'
+    await flushPromises()
+    wrapper.vm.form.productId = null
+    await flushPromises()
+    expect(moldSelect.props('disabled')).toBe(true)
+    expect(immSelect.props('disabled')).toBe(true)
+  })
+
   it('выбор заказа подставляет его изделие и первую активную подходящую ПФ', async () => {
     const wrapper = mountModal()
     await selectOrder(wrapper)
@@ -124,6 +150,31 @@ describe('TaskFormModal — новая последовательность со
     expect(wrapper.vm.form.productId).toBe('p-X0')
     expect(wrapper.vm.form.moldId).toBe('mold-X-first')
     expect(wrapper.vm.isProductLocked).toBe(true)
+  })
+
+  it('при открытии из карточки заказа применяет все автозаполнения и ограничения', async () => {
+    const lockedOrder = {
+      id: 'order-X', number: 'ORD-X', productId: 'p-X0', productTypeId: 'pt-X', productFullArticle: 'ART-X.0'
+    }
+    const wrapper = mountModal({ lockedOrder })
+    await flushPromises()
+
+    expect(wrapper.vm.form.orderId).toBe('order-X')
+    expect(wrapper.vm.form.productId).toBe('p-X0')
+    expect(wrapper.vm.form.moldId).toBe('mold-X-first')
+    expect(wrapper.vm.form.cavities).toBe(2)
+    expect(wrapper.vm.form.partWeightGrams).toBe(10)
+    expect(wrapper.vm.form.packagingUnit).toBe(24)
+    expect(wrapper.vm.form.plannedInjectionCycleSeconds).toBe(20)
+    expect(wrapper.vm.form.plannedFullCycleSeconds).toBeNull()
+    expect(wrapper.vm.form.planQuantity).toBe(90)
+    expect(wrapper.find('[data-test="order-plan-hint"]').text()).toBe('Нужно выпустить 90 из 200 шт.')
+    expect(select(wrapper, 'Выберите заказ').props('disabled')).toBe(true)
+    expect(select(wrapper, 'Выберите изделие').props('disabled')).toBe(true)
+    expect(select(wrapper, 'Выберите пресс-форму').props('disabled')).toBe(false)
+    expect(select(wrapper, 'Выберите ТПА').props('disabled')).toBe(false)
+    expect(ordersApi.getById).toHaveBeenCalledWith('order-X')
+    expect(ordersApi.getList).not.toHaveBeenCalled()
   })
 
   it('выбор заказа подставляет невыполненную и незапланированную часть в план', async () => {

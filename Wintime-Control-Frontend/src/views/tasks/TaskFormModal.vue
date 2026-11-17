@@ -67,7 +67,7 @@
             placeholder="Выберите пресс-форму"
             class="w-full"
             @focus="loadMolds"
-            :disabled="editingTask"
+            :disabled="editingTask || !form.productId"
             :clearable="!editingTask"
             :no-data-text="moldNoDataText"
             filterable
@@ -127,7 +127,7 @@
             placeholder="Выберите ТПА"
             class="w-full"
             @focus="loadImms"
-            :disabled="editingTask"
+            :disabled="editingTask || !form.moldId"
             :clearable="!editingTask"
           >
             <el-option
@@ -737,7 +737,8 @@ async function selectMoldForProduct(productId) {
 }
 
 watch(() => form.orderId, (orderId) => {
-  orderPlanGeneration += 1
+  // Для lockedOrder расчёт запускает applyLockedOrder — watcher не должен его отменять.
+  if (!props.lockedOrder) orderPlanGeneration += 1
   orderRemainingQuantity.value = null
   orderedQuantity.value = null
   if (revertingProduct || editingTask.value || props.lockedOrder || !orderId) return
