@@ -76,6 +76,30 @@ function mountModal(props = {}) {
   })
 }
 
+describe('TaskFormModal — разметка', () => {
+  it('располагает поля в две колонки в заданном порядке, а примечание — на всю ширину', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    const grid = wrapper.get('.grid.grid-cols-2')
+    const items = grid.findAllComponents({ name: 'ElFormItem' })
+      .filter(item => item.props('label'))
+
+    expect(items.map(item => item.props('label'))).toEqual([
+      'Заказ', 'Изделие',
+      'Пресс-форма', 'План (шт.)',
+      'Плановая дата', 'Начало наладки',
+      'ТПА', 'Наладчик',
+      'Рабочий режим', 'Гнёзда',
+      'Вес детали, г', 'Тарная единица, шт.',
+      'Полный цикл, с', 'Цикл литья, с',
+      'Норматив наладки, мин', 'Буфер выпуска',
+      'Примечание'
+    ])
+    expect(items.at(-1).classes()).toContain('col-span-2')
+  })
+})
+
 describe('TaskFormModal — заказ', () => {
   beforeEach(() => vi.clearAllMocks())
 
