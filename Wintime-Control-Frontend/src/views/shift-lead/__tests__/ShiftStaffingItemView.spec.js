@@ -423,7 +423,7 @@ describe('ShiftStaffingItemView', () => {
 
   it('показывает server timeline и Назначить на сироте открывает форму с immId и границами', async () => {
     const orphan = {
-      startAtUtc: '2026-11-08T10:00:00Z', endAtUtc: '2026-11-08T11:30:00Z',
+      startAtUtc: '2026-11-08T10:00:17Z', endAtUtc: '2026-11-08T11:30:43Z',
       operators: [], automaticOutputQuantity: 4, hasOrphanOutput: true, taskOutputs: []
     }
     shiftClosuresApi.getByItem.mockResolvedValue({ data: closureReport({
@@ -437,9 +437,9 @@ describe('ShiftStaffingItemView', () => {
     await wrapper.get('[data-test="assign-orphan-0"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-test="assigned-at"]').element.value)
-      .toBe(dayjs(orphan.startAtUtc).format('YYYY-MM-DDTHH:mm'))
+      .toContain(dayjs(orphan.startAtUtc).format('YYYY-MM-DDTHH:mm:ss'))
     expect(wrapper.get('[data-test="unassigned-at"]').element.value)
-      .toBe(dayjs(orphan.endAtUtc).format('YYYY-MM-DDTHH:mm'))
+      .toContain(dayjs(orphan.endAtUtc).format('YYYY-MM-DDTHH:mm:ss'))
     await wrapper.findComponent('[data-test="operator-select"]').vm.$emit('update:modelValue', 'op3')
     await wrapper.get('[data-test="submit-interval"]').trigger('click')
     await flushPromises()

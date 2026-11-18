@@ -265,7 +265,9 @@ describe('shiftStaffing store', () => {
 
     const result = await store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
 
-    expect(result).toEqual({ success: false, committed: false, message: 'На ТПА уже назначены два литейщика' })
+    expect(result).toEqual({
+      success: false, committed: false, message: 'На ТПА уже назначены два литейщика', status: 400
+    })
     expect(errorMessage).toHaveBeenCalledWith('На ТПА уже назначены два литейщика')
     expect(shiftStaffingApi.item).not.toHaveBeenCalled()
   })

@@ -90,15 +90,17 @@ describe('OperatorIntervalDialog', () => {
 
   it('create для сироты предзаполняет границы в browser timezone и отправляет ISO UTC', async () => {
     const initialInterval = {
-      assignedAt: '2026-11-18T06:15:00Z',
-      unassignedAt: '2026-11-18T08:45:00Z'
+      assignedAt: '2026-11-18T06:15:27Z',
+      unassignedAt: '2026-11-18T08:45:41Z'
     }
     wrapper = await mountDialog({ initialInterval })
 
     expect(wrapper.get('[data-test="assigned-at"]').element.value)
-      .toBe(dayjs(initialInterval.assignedAt).format('YYYY-MM-DDTHH:mm'))
+      .toContain(dayjs(initialInterval.assignedAt).format('YYYY-MM-DDTHH:mm:ss'))
+    expect(wrapper.get('[data-test="assigned-at"]').attributes('step')).toBe('1')
     expect(wrapper.get('[data-test="unassigned-at"]').element.value)
-      .toBe(dayjs(initialInterval.unassignedAt).format('YYYY-MM-DDTHH:mm'))
+      .toContain(dayjs(initialInterval.unassignedAt).format('YYYY-MM-DDTHH:mm:ss'))
+    expect(wrapper.get('[data-test="unassigned-at"]').attributes('step')).toBe('1')
     await chooseOperator(wrapper)
     await submit(wrapper)
 
@@ -155,6 +157,25 @@ describe('OperatorIntervalDialog', () => {
     expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-1')
     expect(wrapper.emitted('reload')).toHaveLength(1)
     expect(wrapper.emitted('saved')).toBeUndefined()
+  })
+
+  it.each([
+    ['edit', 'updateOperatorInterval'],
+    ['unassign', 'unassignOperator']
+  ])('409 в %s закрывает stale interval и не даёт отправить его повторно', async (mode, apiMethod) => {
+    shiftStaffingApi[apiMethod].mockRejectedValue({
+      response: { status: 409, data: { message: 'Интервал уже изменён' } }
+    })
+    wrapper = await mountDialog({ mode, assignment })
+    await submit(wrapper)
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false])
+    await wrapper.setProps({ modelValue: false })
+    await nextTick()
+    expect(wrapper.find('[data-test="submit-interval"]').exists()).toBe(false)
+
+    await wrapper.vm.submit()
+    expect(shiftStaffingApi[apiMethod]).toHaveBeenCalledTimes(1)
   })
 
   it('canEdit=false блокирует mutation controls', async () => {

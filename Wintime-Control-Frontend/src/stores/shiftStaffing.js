@@ -74,7 +74,12 @@ async function runMutation(store, itemId, request, fallback) {
       await store.loadItem(itemId)
     }
 
-    return { success: false, committed: false, message }
+    return {
+      success: false,
+      committed: false,
+      message,
+      status: error?.response?.status
+    }
   } finally {
     if (store.mutationSeq === generation) store.saving = false
   }

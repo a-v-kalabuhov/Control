@@ -36,6 +36,7 @@
           v-model="assignedAt"
           data-test="assigned-at"
           type="datetime-local"
+          step="1"
           class="w-full rounded border border-gray-300 px-3 py-2"
           :disabled="controlsDisabled"
         >
@@ -49,6 +50,7 @@
           v-model="unassignedAt"
           data-test="unassigned-at"
           type="datetime-local"
+          step="1"
           class="w-full rounded border border-gray-300 px-3 py-2"
           :disabled="controlsDisabled"
         >
@@ -121,7 +123,7 @@ const endHint = computed(() => {
   return 'Если пусто, интервал продолжается до окончания смены'
 })
 const canSubmit = computed(() => {
-  if (controlsDisabled.value || props.operatorsLoading) return false
+  if (controlsDisabled.value || props.operatorsLoading || !props.modelValue) return false
   if (props.mode === 'create') return !!selectedOperatorId.value
   if (props.mode === 'edit') return !!assignedAt.value
   return !!props.assignment?.id
@@ -150,7 +152,7 @@ function resetForm() {
 }
 
 function toInput(value) {
-  return value ? dayjs(value).format('YYYY-MM-DDTHH:mm') : ''
+  return value ? dayjs(value).format('YYYY-MM-DDTHH:mm:ss') : ''
 }
 
 function toUtc(value) {
@@ -185,6 +187,10 @@ async function submit() {
   emit('reload')
   if (result.success) {
     emit('saved', result.data)
+    visible.value = false
+  } else if (result.status === 409 && props.mode !== 'create') {
+    // После конфликта старые границы нельзя повторно отправить: item уже
+    // перезагружен, а следующее открытие получит свежий assignment.
     visible.value = false
   }
 }
