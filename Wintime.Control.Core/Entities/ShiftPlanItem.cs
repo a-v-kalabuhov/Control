@@ -11,4 +11,5 @@ public class ShiftPlanItem : BaseEntity
     public ShiftPlanDay Day { get; set; } = null!;
     public User? ShiftLead { get; set; }
     public List<ShiftImmOperatorAssignment> OperatorAssignments { get; set; } = new();
+    public ShiftClosure? Closure { get; set; }
 }

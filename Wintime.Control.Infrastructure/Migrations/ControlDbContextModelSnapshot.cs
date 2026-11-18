@@ -355,13 +355,16 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasIndex("MoldId");
 
-                    b.HasIndex("TaskId");
+                    b.HasIndex("TaskId")
+                        .HasDatabaseName("IX_ImmCycles_TaskId");
 
                     b.HasIndex("ImmId", "EndTime")
                         .HasDatabaseName("IX_ImmCycles_Imm_Orphan")
                         .HasFilter("\"TaskId\" IS NULL");
 
                     b.HasIndex("ImmId", "StartTime");
+
+                    b.HasIndex("TaskId", "EndTime");
 
                     b.HasIndex("ImmId", "CycleNumber", "StartTime")
                         .IsUnique()
@@ -758,6 +761,239 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Shifts");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosure", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClosedById")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedById")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ShiftPlanItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClosedById");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("ShiftPlanItemId")
+                        .IsUnique();
+
+                    b.ToTable("ShiftClosures", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShiftClosures_State_Audit", "(\"State\" = 0 AND \"ClosedAt\" IS NULL AND \"ClosedById\" IS NULL) OR (\"State\" = 1 AND \"ClosedAt\" IS NOT NULL AND \"ClosedById\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosureCorrection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ChangedById")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ChangesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ShiftClosureId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChangedById");
+
+                    b.HasIndex("ShiftClosureId");
+
+                    b.ToTable("ShiftClosureCorrections", (string)null);
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosureEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("ActualPackagingUnit")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("ActualPartWeightGrams")
+                        .HasColumnType("numeric");
+
+                    b.Property<double?>("AutomaticAverageFullCycleSeconds")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("AutomaticOutputQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Cavities")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ColorantIngredientsSnapshot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ImmId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ImmNameSnapshot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsManualFallbackRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("ManualDefectQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ManualFullCycleSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ManualGoodQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("NormPartWeightGrams")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("PackagingPlaces")
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int?>("PlannedFullCycleSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("PlannedMaterialWeightGrams")
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("PlasticIngredientsSnapshot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProductNameSnapshot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("RemainingAtStart")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ShiftClosureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ShiftPlanQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ShiftTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("TaskPackagingUnit")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImmId");
+
+                    b.HasIndex("ShiftTaskId");
+
+                    b.HasIndex("ShiftClosureId", "ShiftTaskId")
+                        .IsUnique();
+
+                    b.ToTable("ShiftClosureEntries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShiftClosureEntries_ActualPackagingUnit", "\"ActualPackagingUnit\" IS NULL OR \"ActualPackagingUnit\" > 0");
+
+                            t.HasCheckConstraint("CK_ShiftClosureEntries_ActualPartWeightGrams", "\"ActualPartWeightGrams\" IS NULL OR \"ActualPartWeightGrams\" > 0");
+
+                            t.HasCheckConstraint("CK_ShiftClosureEntries_ManualDefectQuantity", "\"ManualDefectQuantity\" IS NULL OR \"ManualDefectQuantity\" >= 0");
+
+                            t.HasCheckConstraint("CK_ShiftClosureEntries_ManualFullCycleSeconds", "\"ManualFullCycleSeconds\" IS NULL OR \"ManualFullCycleSeconds\" > 0");
+
+                            t.HasCheckConstraint("CK_ShiftClosureEntries_ManualGoodQuantity", "\"ManualGoodQuantity\" IS NULL OR \"ManualGoodQuantity\" >= 0");
+
+                            t.HasCheckConstraint("CK_ShiftClosureEntries_PackagingPlaces", "\"PackagingPlaces\" IS NULL OR \"PackagingPlaces\" >= 0");
+
+                            t.HasCheckConstraint("CK_ShiftClosureEntries_PlannedFullCycleSeconds", "\"PlannedFullCycleSeconds\" IS NULL OR \"PlannedFullCycleSeconds\" > 0");
+
+                            t.HasCheckConstraint("CK_ShiftClosureEntries_TaskPackagingUnit", "\"TaskPackagingUnit\" IS NULL OR \"TaskPackagingUnit\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosureOutputShare", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("IntervalEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("IntervalStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OperatorEmployeeIdSnapshot")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OperatorFullNameSnapshot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OperatorId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ShiftClosureEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SlotAtIntervalStart")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OperatorId");
+
+                    b.HasIndex("ShiftClosureEntryId", "IntervalStartUtc", "IntervalEndUtc", "OperatorId")
+                        .IsUnique();
+
+                    b.ToTable("ShiftClosureOutputShares", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShiftClosureOutputShares_Quantity", "\"Quantity\" >= 0");
+
+                            t.HasCheckConstraint("CK_ShiftClosureOutputShares_SlotAtIntervalStart", "\"SlotAtIntervalStart\" IN (1, 2)");
+                        });
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftImmOperatorAssignment", b =>
@@ -1442,6 +1678,97 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosure", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.User", "ClosedBy")
+                        .WithMany()
+                        .HasForeignKey("ClosedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Wintime.Control.Core.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftPlanItem", "ShiftPlanItem")
+                        .WithOne("Closure")
+                        .HasForeignKey("Wintime.Control.Core.Entities.ShiftClosure", "ShiftPlanItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClosedBy");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("ShiftPlanItem");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosureCorrection", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.User", "ChangedBy")
+                        .WithMany()
+                        .HasForeignKey("ChangedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftClosure", "ShiftClosure")
+                        .WithMany("Corrections")
+                        .HasForeignKey("ShiftClosureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChangedBy");
+
+                    b.Navigation("ShiftClosure");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosureEntry", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.Imm", "Imm")
+                        .WithMany()
+                        .HasForeignKey("ImmId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftClosure", "ShiftClosure")
+                        .WithMany("Entries")
+                        .HasForeignKey("ShiftClosureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftTask", "ShiftTask")
+                        .WithMany()
+                        .HasForeignKey("ShiftTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Imm");
+
+                    b.Navigation("ShiftClosure");
+
+                    b.Navigation("ShiftTask");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosureOutputShare", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.User", "Operator")
+                        .WithMany()
+                        .HasForeignKey("OperatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wintime.Control.Core.Entities.ShiftClosureEntry", "ShiftClosureEntry")
+                        .WithMany("OutputShares")
+                        .HasForeignKey("ShiftClosureEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Operator");
+
+                    b.Navigation("ShiftClosureEntry");
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftImmOperatorAssignment", b =>
                 {
                     b.HasOne("Wintime.Control.Core.Entities.User", "CreatedBy")
@@ -1635,6 +1962,18 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Products");
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosure", b =>
+                {
+                    b.Navigation("Corrections");
+
+                    b.Navigation("Entries");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosureEntry", b =>
+                {
+                    b.Navigation("OutputShares");
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftPlanDay", b =>
                 {
                     b.Navigation("Items");
@@ -1642,6 +1981,8 @@ namespace Wintime.Control.Infrastructure.Migrations
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftPlanItem", b =>
                 {
+                    b.Navigation("Closure");
+
                     b.Navigation("OperatorAssignments");
                 });
 

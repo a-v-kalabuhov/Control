@@ -35,6 +35,10 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<ShiftPlanDay> ShiftPlanDays { get; set; }
     public DbSet<ShiftPlanItem> ShiftPlanItems { get; set; }
     public DbSet<ShiftImmOperatorAssignment> ShiftImmOperatorAssignments { get; set; }
+    public DbSet<ShiftClosure> ShiftClosures { get; set; }
+    public DbSet<ShiftClosureEntry> ShiftClosureEntries { get; set; }
+    public DbSet<ShiftClosureOutputShare> ShiftClosureOutputShares { get; set; }
+    public DbSet<ShiftClosureCorrection> ShiftClosureCorrections { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -208,6 +212,8 @@ public class ControlDbContext : IdentityDbContext<User>
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.ImmId, e.StartTime });
+            entity.HasIndex(e => e.TaskId).HasDatabaseName("IX_ImmCycles_TaskId");
+            entity.HasIndex(e => new { e.TaskId, e.EndTime });
             entity.HasOne(e => e.Imm).WithMany().HasForeignKey(e => e.ImmId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Task).WithMany().HasForeignKey(e => e.TaskId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(e => e.Mold).WithMany().HasForeignKey(e => e.MoldId).OnDelete(DeleteBehavior.SetNull);
@@ -363,6 +369,98 @@ public class ControlDbContext : IdentityDbContext<User>
                 t.HasCheckConstraint("CK_ShiftImmOperatorAssignments_UnassignedAt",
                     "\"UnassignedAt\" IS NULL OR \"UnassignedAt\" >= \"AssignedAt\"");
             });
+        });
+
+        // Сменный рапорт (PZP-31): рабочие значения и снимок — только типизированные колонки.
+        builder.Entity<ShiftClosure>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ClosedAt).HasColumnType("timestamp with time zone");
+            entity.HasOne(e => e.ShiftPlanItem).WithOne(i => i.Closure)
+                  .HasForeignKey<ShiftClosure>(e => e.ShiftPlanItemId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.CreatedBy).WithMany()
+                  .HasForeignKey(e => e.CreatedById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.ClosedBy).WithMany()
+                  .HasForeignKey(e => e.ClosedById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => e.ShiftPlanItemId).IsUnique();
+            entity.ToTable("ShiftClosures", t =>
+            {
+                t.HasCheckConstraint("CK_ShiftClosures_State_Audit",
+                    "(\"State\" = 0 AND \"ClosedAt\" IS NULL AND \"ClosedById\" IS NULL) OR " +
+                    "(\"State\" = 1 AND \"ClosedAt\" IS NOT NULL AND \"ClosedById\" IS NOT NULL)");
+            });
+        });
+
+        builder.Entity<ShiftClosureEntry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.HasOne(e => e.ShiftClosure).WithMany(c => c.Entries)
+                  .HasForeignKey(e => e.ShiftClosureId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ShiftTask).WithMany()
+                  .HasForeignKey(e => e.ShiftTaskId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Imm).WithMany()
+                  .HasForeignKey(e => e.ImmId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new { e.ShiftClosureId, e.ShiftTaskId }).IsUnique();
+            entity.Property(e => e.NormPartWeightGrams).HasColumnType("numeric");
+            entity.Property(e => e.ActualPartWeightGrams).HasColumnType("numeric");
+            entity.Property(e => e.PlannedMaterialWeightGrams).HasColumnType("numeric(18,2)");
+            entity.Property(e => e.PackagingPlaces).HasColumnType("numeric(18,2)");
+            entity.ToTable("ShiftClosureEntries", t =>
+            {
+                t.HasCheckConstraint("CK_ShiftClosureEntries_ActualPartWeightGrams",
+                    "\"ActualPartWeightGrams\" IS NULL OR \"ActualPartWeightGrams\" > 0");
+                t.HasCheckConstraint("CK_ShiftClosureEntries_PlannedFullCycleSeconds",
+                    "\"PlannedFullCycleSeconds\" IS NULL OR \"PlannedFullCycleSeconds\" > 0");
+                t.HasCheckConstraint("CK_ShiftClosureEntries_ManualFullCycleSeconds",
+                    "\"ManualFullCycleSeconds\" IS NULL OR \"ManualFullCycleSeconds\" > 0");
+                t.HasCheckConstraint("CK_ShiftClosureEntries_TaskPackagingUnit",
+                    "\"TaskPackagingUnit\" IS NULL OR \"TaskPackagingUnit\" > 0");
+                t.HasCheckConstraint("CK_ShiftClosureEntries_ActualPackagingUnit",
+                    "\"ActualPackagingUnit\" IS NULL OR \"ActualPackagingUnit\" > 0");
+                t.HasCheckConstraint("CK_ShiftClosureEntries_PackagingPlaces",
+                    "\"PackagingPlaces\" IS NULL OR \"PackagingPlaces\" >= 0");
+                t.HasCheckConstraint("CK_ShiftClosureEntries_ManualGoodQuantity",
+                    "\"ManualGoodQuantity\" IS NULL OR \"ManualGoodQuantity\" >= 0");
+                t.HasCheckConstraint("CK_ShiftClosureEntries_ManualDefectQuantity",
+                    "\"ManualDefectQuantity\" IS NULL OR \"ManualDefectQuantity\" >= 0");
+            });
+        });
+
+        builder.Entity<ShiftClosureOutputShare>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.IntervalStartUtc).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.IntervalEndUtc).HasColumnType("timestamp with time zone");
+            entity.HasOne(e => e.ShiftClosureEntry).WithMany(e => e.OutputShares)
+                  .HasForeignKey(e => e.ShiftClosureEntryId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Operator).WithMany()
+                  .HasForeignKey(e => e.OperatorId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new
+            {
+                e.ShiftClosureEntryId, e.IntervalStartUtc, e.IntervalEndUtc, e.OperatorId
+            }).IsUnique();
+            entity.ToTable("ShiftClosureOutputShares", t =>
+            {
+                t.HasCheckConstraint("CK_ShiftClosureOutputShares_SlotAtIntervalStart",
+                    "\"SlotAtIntervalStart\" IN (1, 2)");
+                t.HasCheckConstraint("CK_ShiftClosureOutputShares_Quantity", "\"Quantity\" >= 0");
+            });
+        });
+
+        builder.Entity<ShiftClosureCorrection>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ChangedAt).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.ChangesJson).HasColumnType("jsonb");
+            entity.HasOne(e => e.ShiftClosure).WithMany(c => c.Corrections)
+                  .HasForeignKey(e => e.ShiftClosureId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ChangedBy).WithMany()
+                  .HasForeignKey(e => e.ChangedById).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("ShiftClosureCorrections");
         });
     }
 }
