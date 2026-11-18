@@ -205,12 +205,45 @@ describe('маршруты ShiftLead (PZP-32)', () => {
     expect(authApi.getCurrentUser).toHaveBeenCalledTimes(1)
   })
 
+  it.each(['ShiftLead', 'Manager', 'Admin'])(
+    'открывает сменный рапорт выбранной смены роли %s в ShiftLead route family', async role => {
+      authenticate(role)
+      const resolved = router.resolve('/shift-lead/items/item-1/report')
+      const routeComponent = resolved.matched.at(-1).components.default
+      const loaded = typeof routeComponent === 'function'
+        ? await routeComponent()
+        : { default: routeComponent }
+      const expected = await import('@/views/shift-lead/ShiftClosureView.vue')
+
+      await router.push('/shift-lead/items/item-1/report')
+
+      expect(router.currentRoute.value.path).toBe('/shift-lead/items/item-1/report')
+      expect(router.currentRoute.value.name).toBe('ShiftClosureReport')
+      expect(router.currentRoute.value.matched.some(record => record.meta.isShiftLeadUi)).toBe(true)
+      expect(loaded.default).toBe(expected.default)
+    }, 20_000
+  )
+
+  it.each([
+    ['Adjuster', '/mobile/tasks'],
+    ['Observer', '/'],
+    ['Operator', '/']
+  ])('запрещает роль %s на сменном рапорте', async (role, homePath) => {
+    authenticate(role)
+
+    await router.push('/shift-lead/items/item-1/report')
+
+    expect(router.currentRoute.value.path).toBe(homePath)
+  }, 20_000)
+
   it('регистрирует home и history только для ShiftLead, item/task — для трёх ролей', () => {
     expect(router.resolve('/shift-lead').meta.roles).toEqual(['ShiftLead'])
     expect(router.resolve('/shift-lead/history').meta.roles).toEqual(['ShiftLead'])
     expect(router.resolve('/shift-lead/items/item-1').meta.roles)
       .toEqual(['ShiftLead', 'Manager', 'Admin'])
     expect(router.resolve('/shift-lead/items/item-1/tasks/task-1').meta.roles)
+      .toEqual(['ShiftLead', 'Manager', 'Admin'])
+    expect(router.resolve('/shift-lead/items/item-1/report').meta.roles)
       .toEqual(['ShiftLead', 'Manager', 'Admin'])
   })
 })

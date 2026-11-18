@@ -226,6 +226,12 @@ const routes = [
         meta: { roles: ['ShiftLead'], title: 'История смен' }
       },
       {
+        path: 'items/:itemId/report',
+        name: 'ShiftClosureReport',
+        component: () => import('@/views/shift-lead/ShiftClosureView.vue'),
+        meta: { roles: ['ShiftLead', 'Manager', 'Admin'], title: 'Сменный рапорт' }
+      },
+      {
         path: 'items/:itemId',
         name: 'ShiftStaffingItem',
         component: () => import('@/views/shift-lead/ShiftStaffingItemView.vue'),
