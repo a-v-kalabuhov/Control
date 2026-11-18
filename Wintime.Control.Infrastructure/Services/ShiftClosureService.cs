@@ -40,25 +40,19 @@ public sealed class ShiftClosureService : IShiftClosureService
             query = query.Where(i => i.ShiftLeadId == caller.UserId);
         var items = await query.OrderByDescending(i => i.StartAtUtc).ThenByDescending(i => i.Id)
             .ToListAsync(ct);
-        var result = new List<ShiftClosurePendingDto>(items.Count);
-        foreach (var item in items)
+        var orphanByItem = await _loader.GetOrphanOutputByItemAsync(items, now, ct);
+        return items.Select(item => new ShiftClosurePendingDto
         {
-            var report = await _loader.LoadAsync(item.Id, caller, now, ct);
-            result.Add(new ShiftClosurePendingDto
-            {
-                ShiftPlanItemId = item.Id,
-                ShiftDate = item.Day.ShiftDate,
-                Position = item.Position,
-                StartAtUtc = item.StartAtUtc,
-                EndAtUtc = item.EndAtUtc,
-                TimeZoneId = item.TimeZoneId,
-                ShiftLeadId = item.ShiftLeadId!,
-                ShiftLeadName = item.ShiftLead?.FullName ?? string.Empty,
-                HasOrphanOutput = report.Timelines.SelectMany(t => t.Intervals)
-                    .Any(i => i.HasOrphanOutput)
-            });
-        }
-        return result;
+            ShiftPlanItemId = item.Id,
+            ShiftDate = item.Day.ShiftDate,
+            Position = item.Position,
+            StartAtUtc = item.StartAtUtc,
+            EndAtUtc = item.EndAtUtc,
+            TimeZoneId = item.TimeZoneId,
+            ShiftLeadId = item.ShiftLeadId!,
+            ShiftLeadName = item.ShiftLead?.FullName ?? string.Empty,
+            HasOrphanOutput = orphanByItem[item.Id]
+        }).ToList();
     }
 
     public Task<ShiftClosureDto> GetClosedAsync(

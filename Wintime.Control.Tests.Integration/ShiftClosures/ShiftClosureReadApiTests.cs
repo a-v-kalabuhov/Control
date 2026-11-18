@@ -365,7 +365,7 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task ClosedRead_ProjectsOnlySnapshotsDespiteCurrentTaskCyclesStatusesAndAssignments()
+    public async Task ClosedRead_ProjectsFrozenEntrySnapshotsDespiteCurrentTaskCyclesAndStatuses()
     {
         var now = DateTime.UtcNow;
         var start = Utc(now.AddHours(-4));
@@ -379,6 +379,7 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
             planQuantity: 10, cavities: 1, partWeight: 5, fullCycleSeconds: 60,
             productId: productId,
             setupStartedAt: start, startedAt: start, completedAt: end);
+        await SeedAssignmentAsync(item.Id, immId, operatorUser, 1, start, null);
         Guid closureId;
         using (var scope = _factory.Services.CreateScope())
         {
@@ -434,7 +435,6 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
             closureId = closure.Id;
         }
         await SeedCycleAsync(task, start.AddMinutes(30), cavities: 100, durationSeconds: 100);
-        await SeedAssignmentAsync(item.Id, immId, operatorUser, 1, start, null);
         await SeedStatusAsync(immId, ImmStatus.Idle, start, end);
         using (var scope = _factory.Services.CreateScope())
         {
@@ -474,6 +474,170 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
         share.GetProperty("quantity").GetInt32().Should().Be(3);
         entry.GetProperty("operatorTotals").EnumerateArray().Single()
             .GetProperty("quantity").GetInt32().Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Draft_MarksOrphanOutputWhenItOnlyPartiallyOverlapsMergedInterval()
+    {
+        var now = DateTime.UtcNow;
+        var start = Utc(now.AddHours(-4));
+        var end = Utc(now.AddHours(-2));
+        var activityStart = start.AddHours(1);
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var immId = await SeedImmAsync();
+        var item = (await SeedDayAsync(Item(1, lead.Id, start, end))).Items.Single();
+        var task = await SeedTaskAsync(immId, TaskStatus.Completed, end.AddDays(1),
+            setupStartedAt: activityStart, startedAt: activityStart, completedAt: end);
+        await SeedCycleAsync(task, activityStart.AddMinutes(15), cavities: 2);
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync($"/api/shift-closures/items/{item.Id}"));
+
+        var interval = body.GetProperty("timelines").EnumerateArray()
+            .Single(t => t.GetProperty("immId").GetGuid() == immId)
+            .GetProperty("intervals").EnumerateArray().Single();
+        interval.GetProperty("startAtUtc").GetDateTime().Should().BeCloseTo(start, TimeSpan.FromSeconds(1));
+        interval.GetProperty("operators").EnumerateArray().Should().BeEmpty();
+        interval.GetProperty("automaticOutputQuantity").GetInt32().Should().Be(2);
+        interval.GetProperty("hasOrphanOutput").GetBoolean().Should().BeTrue(
+            "сирота обрезан по началу активности задания, но пересекает объединённый интервал");
+    }
+
+    [Fact]
+    public async Task Pending_MarksOrphanOutputWhenItOnlyPartiallyOverlapsMergedInterval()
+    {
+        var now = DateTime.UtcNow;
+        var start = Utc(now.AddHours(-4));
+        var end = Utc(now.AddHours(-2));
+        var activityStart = start.AddHours(1);
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var immId = await SeedImmAsync();
+        var item = (await SeedDayAsync(Item(1, lead.Id, start, end))).Items.Single();
+        var task = await SeedTaskAsync(immId, TaskStatus.Completed, end.AddDays(1),
+            setupStartedAt: activityStart, startedAt: activityStart, completedAt: end);
+        await SeedCycleAsync(task, activityStart.AddMinutes(15), cavities: 2);
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync("/api/shift-closures/pending"));
+
+        body.EnumerateArray().Single(i => i.GetProperty("shiftPlanItemId").GetGuid() == item.Id)
+            .GetProperty("hasOrphanOutput").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Draft_TimelineTaskOutputsClipCyclesToTaskActivityWithinMergedInterval()
+    {
+        var now = DateTime.UtcNow;
+        var start = Utc(now.AddHours(-4));
+        var end = Utc(now.AddHours(-2));
+        var activityStart = start.AddHours(1);
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var operatorUser = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync();
+        var item = (await SeedDayAsync(Item(1, lead.Id, start, end))).Items.Single();
+        var task = await SeedTaskAsync(immId, TaskStatus.Completed, end.AddDays(1),
+            setupStartedAt: activityStart, startedAt: activityStart, completedAt: end);
+        await SeedAssignmentAsync(item.Id, immId, operatorUser, 1, start, null);
+        await SeedCycleAsync(task, start.AddMinutes(15), cavities: 5);
+        await SeedCycleAsync(task, activityStart.AddMinutes(15), cavities: 3);
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync($"/api/shift-closures/items/{item.Id}"));
+
+        var interval = body.GetProperty("timelines").EnumerateArray()
+            .Single(t => t.GetProperty("immId").GetGuid() == immId)
+            .GetProperty("intervals").EnumerateArray().Single();
+        interval.GetProperty("automaticOutputQuantity").GetInt32().Should().Be(3,
+            "цикл до начала активности задания не входит в выпуск объединённого интервала");
+        interval.GetProperty("taskOutputs").EnumerateArray().Single()
+            .GetProperty("quantity").GetInt32().Should().Be(3);
+        Entry(body, task.Id).GetProperty("outputShares").EnumerateArray()
+            .Sum(s => s.GetProperty("quantity").GetInt32()).Should().Be(3);
+    }
+
+    [Fact]
+    public async Task ClosedRead_RebuildsZeroOutputUnstaffedIntervalsFromAssignmentJournal()
+    {
+        var now = DateTime.UtcNow;
+        var start = Utc(now.AddHours(-4));
+        var end = Utc(now.AddHours(-2));
+        var staffedStart = start.AddMinutes(30);
+        var staffedEnd = start.AddMinutes(90);
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var operatorUser = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync();
+        var item = (await SeedDayAsync(Item(1, lead.Id, start, end))).Items.Single();
+        var task = await SeedTaskAsync(immId, TaskStatus.Completed, end.AddDays(1),
+            setupStartedAt: start, startedAt: start, completedAt: end);
+        await SeedAssignmentAsync(item.Id, immId, operatorUser, 1, staffedStart, staffedEnd);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            db.ShiftClosures.Add(new ShiftClosure
+            {
+                ShiftPlanItemId = item.Id,
+                State = ShiftClosureState.Closed,
+                CreatedById = lead.Id,
+                ClosedById = lead.Id,
+                ClosedAt = end,
+                Entries =
+                {
+                    new ShiftClosureEntry
+                    {
+                        ShiftTaskId = task.Id,
+                        ImmId = immId,
+                        ImmNameSnapshot = "SNAPSHOT IMM",
+                        AutomaticOutputQuantity = 3,
+                        OutputShares =
+                        {
+                            new ShiftClosureOutputShare
+                            {
+                                IntervalStartUtc = staffedStart,
+                                IntervalEndUtc = staffedEnd,
+                                OperatorId = operatorUser.Id,
+                                OperatorFullNameSnapshot = "SNAPSHOT OPERATOR",
+                                SlotAtIntervalStart = 1,
+                                Quantity = 3
+                            }
+                        }
+                    }
+                }
+            });
+            await db.SaveChangesAsync();
+        }
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync($"/api/shift-closures/items/{item.Id}"));
+
+        var intervals = body.GetProperty("timelines").EnumerateArray().Single()
+            .GetProperty("intervals").EnumerateArray().ToList();
+        intervals.Should().HaveCount(3);
+        var expectedBounds = new[]
+        {
+            (Start: start, End: staffedStart),
+            (Start: staffedStart, End: staffedEnd),
+            (Start: staffedEnd, End: end)
+        };
+        for (var i = 0; i < intervals.Count; i++)
+        {
+            intervals[i].GetProperty("startAtUtc").GetDateTime().Should()
+                .BeCloseTo(expectedBounds[i].Start, TimeSpan.FromSeconds(1));
+            intervals[i].GetProperty("endAtUtc").GetDateTime().Should()
+                .BeCloseTo(expectedBounds[i].End, TimeSpan.FromSeconds(1));
+        }
+        intervals[0].GetProperty("operators").EnumerateArray().Should().BeEmpty();
+        intervals[0].GetProperty("automaticOutputQuantity").GetInt32().Should().Be(0);
+        intervals[0].GetProperty("taskOutputs").EnumerateArray().Single()
+            .GetProperty("quantity").GetInt32().Should().Be(0);
+        intervals[1].GetProperty("operators").EnumerateArray().Single()
+            .GetProperty("operatorId").GetString().Should().Be(operatorUser.Id);
+        intervals[1].GetProperty("automaticOutputQuantity").GetInt32().Should().Be(3);
+        intervals[1].GetProperty("taskOutputs").EnumerateArray().Single()
+            .GetProperty("quantity").GetInt32().Should().Be(3);
+        intervals[2].GetProperty("operators").EnumerateArray().Should().BeEmpty();
+        intervals[2].GetProperty("automaticOutputQuantity").GetInt32().Should().Be(0);
+        intervals[2].GetProperty("taskOutputs").EnumerateArray().Single()
+            .GetProperty("quantity").GetInt32().Should().Be(0);
     }
 
     private async Task<HttpClient> ClientAsync(TestUser user)

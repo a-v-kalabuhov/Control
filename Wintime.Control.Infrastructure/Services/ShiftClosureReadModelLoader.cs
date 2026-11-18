@@ -35,9 +35,12 @@ public sealed class ShiftClosureReadModelLoader
         var item = await ItemQuery().SingleOrDefaultAsync(i => i.Id == itemId, ct)
             ?? throw new ShiftNotFoundException("Смена не найдена");
         EnsureAccess(item, caller);
-        return item.Closure?.State == ShiftClosureState.Closed
-            ? ProjectClosed(item)
-            : await ProjectDraftAsync(item, Utc(nowUtc), ct);
+        if (item.Closure?.State == ShiftClosureState.Closed)
+        {
+            var assignments = await AssignmentQuery(item.Id).ToListAsync(ct);
+            return ProjectClosed(item, assignments);
+        }
+        return await ProjectDraftAsync(item, Utc(nowUtc), ct);
     }
 
     public async Task<ShiftClosureDto> LoadClosedAsync(
@@ -48,7 +51,90 @@ public sealed class ShiftClosureReadModelLoader
         EnsureAccess(item, caller);
         if (item.Closure?.State != ShiftClosureState.Closed)
             throw new ShiftNotFoundException("Закрытый рапорт не найден");
-        return ProjectClosed(item);
+        var assignments = await AssignmentQuery(item.Id).ToListAsync(ct);
+        return ProjectClosed(item, assignments);
+    }
+
+    public async Task<Dictionary<Guid, bool>> GetOrphanOutputByItemAsync(
+        IReadOnlyList<ShiftPlanItem> items, DateTime nowUtc, CancellationToken ct)
+    {
+        if (items.Count == 0)
+            return new Dictionary<Guid, bool>();
+
+        nowUtc = Utc(nowUtc);
+        var schedule = await _factoryClock.GetScheduleAsync(ct);
+        var plannedFrom = items.Min(i => DateOnly.FromDateTime(Utc(i.StartAtUtc).AddDays(-1)));
+        var plannedTo = items.Max(i => DateOnly.FromDateTime(Utc(i.EndAtUtc).AddDays(1)));
+        var earliestStart = items.Min(i => Utc(i.StartAtUtc));
+        var latestEnd = items.Max(i => Utc(i.EndAtUtc));
+        var taskQuery = TaskQuery();
+        var plannedCandidates = await taskQuery
+            .Where(t => t.PlannedDate >= plannedFrom && t.PlannedDate <= plannedTo)
+            .ToListAsync(ct);
+        var activityCandidates = await taskQuery
+            .Where(ShiftTaskWindow.ActivityOverlaps(earliestStart, latestEnd))
+            .ToListAsync(ct);
+        var candidates = plannedCandidates.Concat(activityCandidates)
+            .GroupBy(t => t.Id).Select(g => g.First()).ToList();
+        var taskDtos = candidates.ToDictionary(t => t.Id, t => t.ToDto(schedule));
+        var selectedByItem = new Dictionary<Guid, List<SelectedTask>>(items.Count);
+        foreach (var item in items)
+        {
+            var shiftStart = Utc(item.StartAtUtc);
+            var shiftEnd = Utc(item.EndAtUtc);
+            selectedByItem[item.Id] = candidates
+                .Select(t => new SelectedTask(t, taskDtos[t.Id], null))
+                .Where(t => ShiftTaskWindow.Belongs(
+                    t.Entity, t.Dto.PlannedStartAt, shiftStart, shiftEnd, nowUtc))
+                .Select(t => t with { Activity = TaskActivityWindow.Activity(t.Entity, shiftEnd) })
+                .ToList();
+        }
+
+        var taskIds = selectedByItem.Values.SelectMany(t => t).Select(t => t.Entity.Id).Distinct().ToList();
+        var currentCycles = taskIds.Count == 0
+            ? new List<ImmCycle>()
+            : await _context.ImmCycles
+                .AsNoTracking()
+                .Include(c => c.Mold)
+                .Where(c => c.TaskId != null && taskIds.Contains(c.TaskId.Value)
+                    && c.IsSuccessful && c.EndTime != null
+                    && c.EndTime >= earliestStart && c.EndTime < latestEnd)
+                .ToListAsync(ct);
+        var itemIds = items.Select(i => i.Id).ToList();
+        var assignments = await _context.ShiftImmOperatorAssignments
+            .AsNoTracking()
+            .Include(a => a.Operator)
+            .Where(a => itemIds.Contains(a.ShiftPlanItemId))
+            .ToListAsync(ct);
+
+        var result = new Dictionary<Guid, bool>(items.Count);
+        foreach (var item in items)
+        {
+            var shiftStart = Utc(item.StartAtUtc);
+            var shiftEnd = Utc(item.EndAtUtc);
+            var selectedTasks = selectedByItem[item.Id];
+            var selectedIds = selectedTasks.Select(t => t.Entity.Id).ToHashSet();
+            var itemCycles = currentCycles.Where(c => c.TaskId.HasValue
+                && selectedIds.Contains(c.TaskId.Value)
+                && c.EndTime >= shiftStart && c.EndTime < shiftEnd).ToList();
+            var itemAssignments = assignments.Where(a => a.ShiftPlanItemId == item.Id).ToList();
+            result[item.Id] = selectedTasks.GroupBy(t => t.Entity.ImmId).Any(group =>
+            {
+                var slices = itemAssignments.Where(a => a.ImmId == group.Key)
+                    .Select(a => new ShiftOperatorSlice(
+                        a.Id, a.OperatorId, a.Operator.FullName, a.Operator.EmployeeId, a.Slot,
+                        Utc(a.AssignedAt), Utc(a.UnassignedAt ?? shiftEnd)))
+                    .ToList();
+                var cycles = itemCycles.Where(c => c.ImmId == group.Key)
+                    .Select(c => new ShiftOutputCycle(
+                        c.TaskId!.Value, Utc(c.EndTime!.Value), OutputQuantity(c)))
+                    .ToList();
+                var windows = group.ToDictionary(t => t.Entity.Id, t => t.Activity);
+                return ShiftOutputDistributor.Distribute(slices, cycles, windows, shiftStart, shiftEnd)
+                    .Orphans.Any(o => o.Quantity > 0);
+            });
+        }
+        return result;
     }
 
     private IQueryable<ShiftPlanItem> ItemQuery() => _context.ShiftPlanItems
@@ -58,6 +144,12 @@ public sealed class ShiftClosureReadModelLoader
         .Include(i => i.Closure).ThenInclude(c => c!.ClosedBy)
         .Include(i => i.Closure).ThenInclude(c => c!.Entries).ThenInclude(e => e.OutputShares)
         .AsQueryable();
+
+    private IQueryable<ShiftImmOperatorAssignment> AssignmentQuery(Guid itemId) =>
+        _context.ShiftImmOperatorAssignments
+            .AsNoTracking()
+            .Include(a => a.Operator)
+            .Where(a => a.ShiftPlanItemId == itemId);
 
     private static void EnsureAccess(ShiftPlanItem item, StaffingCaller caller)
     {
@@ -192,9 +284,12 @@ public sealed class ShiftClosureReadModelLoader
                     var outputs = immTasks
                         .Where(t => Overlaps(t.Activity, interval.StartUtc, interval.EndUtc))
                         .Select(t => new ShiftClosureTaskOutputDto(t.Entity.Id,
-                            currentCycles.Where(c => c.TaskId == t.Entity.Id
-                                && c.EndTime >= interval.StartUtc && c.EndTime < interval.EndUtc)
-                                .Sum(OutputQuantity)))
+                            distribution.Shares.Where(s => s.TaskId == t.Entity.Id
+                                && Overlaps(s.StartUtc, s.EndUtc, interval.StartUtc, interval.EndUtc))
+                                .Sum(s => s.Quantity)
+                            + distribution.Orphans.Where(o => o.TaskId == t.Entity.Id
+                                && Overlaps(o.StartUtc, o.EndUtc, interval.StartUtc, interval.EndUtc))
+                                .Sum(o => o.Quantity)))
                         .ToList();
                     return new ShiftClosureTimelineIntervalDto
                     {
@@ -208,8 +303,8 @@ public sealed class ShiftClosureReadModelLoader
                             Slot = o.Slot
                         }).ToList(),
                         AutomaticOutputQuantity = outputs.Sum(o => o.Quantity),
-                        HasOrphanOutput = distribution.Orphans.Any(o =>
-                            o.StartUtc == interval.StartUtc && o.EndUtc == interval.EndUtc && o.Quantity > 0),
+                        HasOrphanOutput = distribution.Orphans.Any(o => o.Quantity > 0
+                            && Overlaps(o.StartUtc, o.EndUtc, interval.StartUtc, interval.EndUtc)),
                         TaskOutputs = outputs
                     };
                 }).ToList()
@@ -258,9 +353,11 @@ public sealed class ShiftClosureReadModelLoader
         .Include(t => t.Order)
         .AsQueryable();
 
-    private static ShiftClosureDto ProjectClosed(ShiftPlanItem item)
+    private static ShiftClosureDto ProjectClosed(
+        ShiftPlanItem item, IReadOnlyList<ShiftImmOperatorAssignment> assignments)
     {
         var closure = item.Closure!;
+        var shiftStart = Utc(item.StartAtUtc);
         var shiftEnd = Utc(item.EndAtUtc);
         var closedAt = closure.ClosedAt.HasValue ? Utc(closure.ClosedAt.Value) : shiftEnd;
         var factEnd = closedAt < shiftEnd ? closedAt : shiftEnd;
@@ -302,30 +399,36 @@ public sealed class ShiftClosureReadModelLoader
         var timelines = closure.Entries.GroupBy(e => e.ImmId).Select(group =>
         {
             var immEntries = group.ToList();
-            var intervalGroups = immEntries.SelectMany(e => e.OutputShares)
-                .GroupBy(s => new { s.IntervalStartUtc, s.IntervalEndUtc })
-                .OrderBy(g => g.Key.IntervalStartUtc).ToList();
+            var slices = assignments.Where(a => a.ImmId == group.Key)
+                .Select(a => new ShiftOperatorSlice(
+                    a.Id, a.OperatorId, a.Operator.FullName, a.Operator.EmployeeId, a.Slot,
+                    Utc(a.AssignedAt), Utc(a.UnassignedAt ?? shiftEnd)))
+                .ToList();
+            var merged = ShiftOutputDistributor.Distribute(
+                slices, Array.Empty<ShiftOutputCycle>(), new Dictionary<Guid, Interval?>(),
+                shiftStart, factEnd).MergedIntervals;
             return new ShiftClosureTimelineDto
             {
                 ImmId = group.Key,
                 ImmName = group.First().ImmNameSnapshot,
-                Intervals = intervalGroups.Select(interval =>
+                Intervals = merged.Select(interval =>
                 {
-                    var operators = interval.Select(s => new ShiftClosureTimelineOperatorDto
+                    var operators = interval.Operators.Select(o => new ShiftClosureTimelineOperatorDto
                     {
-                        OperatorId = s.OperatorId,
-                        FullName = s.OperatorFullNameSnapshot,
-                        EmployeeId = s.OperatorEmployeeIdSnapshot,
-                        Slot = s.SlotAtIntervalStart
-                    }).GroupBy(o => o.OperatorId).Select(g => g.First()).ToList();
+                        OperatorId = o.OperatorId,
+                        FullName = o.FullName,
+                        EmployeeId = o.EmployeeId,
+                        Slot = o.Slot
+                    }).ToList();
                     var outputs = immEntries.Select(e => new ShiftClosureTaskOutputDto(e.ShiftTaskId,
-                        e.OutputShares.Where(s => s.IntervalStartUtc == interval.Key.IntervalStartUtc
-                            && s.IntervalEndUtc == interval.Key.IntervalEndUtc).Sum(s => s.Quantity)))
+                        e.OutputShares.Where(s => Overlaps(
+                            s.IntervalStartUtc, s.IntervalEndUtc, interval.StartUtc, interval.EndUtc))
+                            .Sum(s => s.Quantity)))
                         .ToList();
                     return new ShiftClosureTimelineIntervalDto
                     {
-                        StartAtUtc = Utc(interval.Key.IntervalStartUtc),
-                        EndAtUtc = Utc(interval.Key.IntervalEndUtc),
+                        StartAtUtc = Utc(interval.StartUtc),
+                        EndAtUtc = Utc(interval.EndUtc),
                         Operators = operators,
                         AutomaticOutputQuantity = outputs.Sum(o => o.Quantity),
                         HasOrphanOutput = false,
@@ -400,7 +503,11 @@ public sealed class ShiftClosureReadModelLoader
         cycle.Cavities > 0 ? cycle.Cavities : cycle.Mold?.Cavities ?? 0;
 
     private static bool Overlaps(Interval? window, DateTime startUtc, DateTime endUtc) =>
-        window != null && window.Start < endUtc && window.End > startUtc;
+        window != null && Overlaps(window.Start, window.End, startUtc, endUtc);
+
+    private static bool Overlaps(
+        DateTime candidateStartUtc, DateTime candidateEndUtc, DateTime startUtc, DateTime endUtc) =>
+        candidateStartUtc < endUtc && candidateEndUtc > startUtc;
 
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
