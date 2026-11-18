@@ -148,4 +148,36 @@ describe('ShiftClosureCorrectionsDialog', () => {
     expect(api.correct).toHaveBeenCalledTimes(1)
     expect(ElMessage.error).toHaveBeenCalled()
   })
+
+  it('после сохранённого PATCH не закрывает dialog и не сообщает успех при failed report reload', async () => {
+    const { wrapper, reloadReport } = mountDialog()
+    reloadReport.mockResolvedValue(false)
+    await open(wrapper)
+    await wrapper.get('[data-test="correction-reason"]').setValue('Правка')
+
+    await wrapper.get('[data-test="submit-correction"]').trigger('click')
+    await flushPromises()
+
+    expect(api.correct).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-test="submit-correction"]').exists()).toBe(true)
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('Исправление сохранено'))
+  })
+
+  it('после сохранённого PATCH не закрывает dialog и не сообщает успех при failed history reload', async () => {
+    api.getCorrections
+      .mockResolvedValueOnce({ data: [historyRow] })
+      .mockRejectedValueOnce({ response: { data: { message: 'История недоступна' } } })
+    const { wrapper } = mountDialog()
+    await open(wrapper)
+    await wrapper.get('[data-test="correction-reason"]').setValue('Правка')
+
+    await wrapper.get('[data-test="submit-correction"]').trigger('click')
+    await flushPromises()
+
+    expect(api.correct).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-test="submit-correction"]').exists()).toBe(true)
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('Исправление сохранено'))
+  })
 })

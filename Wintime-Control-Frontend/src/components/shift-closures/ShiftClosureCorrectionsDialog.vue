@@ -160,16 +160,18 @@ function resetForm() {
 }
 
 async function loadHistory() {
-  if (!closed.value) return
+  if (!closed.value) return false
   const sequence = ++historySequence
   historyLoading.value = true
   try {
     const response = await shiftClosuresApi.getCorrections(props.report.id)
     if (sequence === historySequence) history.value = response.data ?? []
+    return sequence === historySequence
   } catch (error) {
     if (sequence === historySequence) {
       ElMessage.error(apiErrorMessage(error, 'Не удалось загрузить историю исправлений'))
     }
+    return false
   } finally {
     if (sequence === historySequence) historyLoading.value = false
   }
@@ -195,8 +197,15 @@ function updateManual(taskId, field, value) {
 }
 
 async function reloadData() {
-  await Promise.all([props.reloadReport(), loadHistory()])
-  if (visible.value) {
+  const [reportReloaded, historyReloaded] = await Promise.all([
+    Promise.resolve().then(() => props.reloadReport()).catch(error => {
+      ElMessage.error(apiErrorMessage(error, 'Не удалось обновить сменный рапорт'))
+      return false
+    }),
+    loadHistory()
+  ])
+  const refreshed = reportReloaded !== false && historyReloaded
+  if (refreshed && visible.value) {
     await nextTick()
     entries.value = (props.report?.entries ?? []).map(entry => ({
       taskId: entry.taskId,
@@ -205,6 +214,7 @@ async function reloadData() {
       ...Object.fromEntries(manualFields.map(field => [field.name, entry[field.name] ?? null]))
     }))
   }
+  return refreshed
 }
 
 async function submit() {
@@ -222,7 +232,11 @@ async function submit() {
       shiftTaskId: entry.taskId,
       ...Object.fromEntries(manualFields.map(field => [field.name, entry[field.name] ?? null]))
     })))
-    await reloadData()
+    const refreshed = await reloadData()
+    if (!refreshed) {
+      ElMessage.error('Исправление сохранено, но не удалось обновить рапорт или историю. Обновите данные перед продолжением.')
+      return
+    }
     ElMessage.success('Показатели сменного рапорта исправлены')
     visible.value = false
   } catch (error) {

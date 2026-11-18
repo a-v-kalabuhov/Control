@@ -134,6 +134,7 @@
               ref="closureTable"
               :key="closureItem.id"
               :item-id="closureItem.id"
+              @closed="handleClosureClosed"
             />
           </template>
           <el-alert
@@ -284,6 +285,10 @@ async function loadClosureItem() {
   } finally {
     if (seq === closureLoadSeq) closureLoading.value = false
   }
+}
+
+function handleClosureClosed(closedReport) {
+  closureReport.value = closedReport
 }
 
 async function reloadClosureAfterCorrection() {

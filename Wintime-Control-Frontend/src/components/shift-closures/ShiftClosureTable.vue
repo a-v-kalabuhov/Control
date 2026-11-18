@@ -244,6 +244,7 @@ import { useShiftClosureEditor } from '@/composables/useShiftClosureEditor'
 const props = defineProps({
   itemId: { type: String, required: true }
 })
+const emit = defineEmits(['closed'])
 
 const {
   report, loading, saving, fieldErrors, isDirty,
@@ -268,6 +269,7 @@ async function requestClose(confirmEarlyClose) {
   if (result.earlyCloseConfirmationRequired) earlyCloseDialog.value = true
   if (result.success) {
     earlyCloseDialog.value = false
+    emit('closed', report.value)
     ElMessage.success('Смена закрыта')
   }
 }

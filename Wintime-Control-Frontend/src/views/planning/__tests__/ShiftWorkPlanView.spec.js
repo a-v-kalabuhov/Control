@@ -452,25 +452,28 @@ describe('ShiftWorkPlanView', () => {
     expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/\.pdf$/))
   })
 
-  it('на ПК ShiftLead видит историю собственной смены, но не действие исправления', async () => {
-    useAuthStore().userRole = 'ShiftLead'
-    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
-      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Closed', shiftDate: '2026-11-06', entries: []
-    } })
-    shiftClosuresApi.getCorrections.mockResolvedValue({ data: [{
-      id: 'correction-1', changedByName: 'Менеджер Иванов', changedAt: '2026-11-06T12:00:00Z',
-      reason: 'Уточнение', changes: []
-    }] })
+  it('на ПК после фактического закрытия без refresh заменяет blank на closed PDF и correction action', async () => {
+    const draft = {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Draft', shiftDate: '2026-11-06', entries: []
+    }
+    const closed = { ...draft, state: 'Closed' }
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: draft })
+    shiftClosuresApi.close.mockResolvedValue({ data: closed })
     const wrapper = mountView()
     await flushPromises()
     await openClosureTab(wrapper)
-
+    expect(wrapper.find('[data-test="print-blank"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="open-corrections"]').exists()).toBe(false)
-    await wrapper.get('[data-test="open-correction-history"]').trigger('click')
+
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: closed })
+    await wrapper.get('[data-action="close"]').trigger('click')
     await flushPromises()
 
-    expect(shiftClosuresApi.getCorrections).toHaveBeenCalledWith('closure-1')
-    expect(wrapper.text()).toContain('Менеджер Иванов')
-    expect(shiftClosuresApi.correct).not.toHaveBeenCalled()
+    expect(shiftClosuresApi.close).toHaveBeenCalledWith('item-1', false)
+    expect({
+      blank: wrapper.find('[data-test="print-blank"]').exists(),
+      closed: wrapper.find('[data-test="print-closed"]').exists(),
+      correction: wrapper.find('[data-test="open-corrections"]').exists()
+    }).toEqual({ blank: false, closed: true, correction: true })
   })
 })
