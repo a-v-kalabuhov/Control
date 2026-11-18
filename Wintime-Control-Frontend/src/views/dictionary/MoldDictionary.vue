@@ -59,7 +59,6 @@
         </template>
       </el-table-column>
       <el-table-column prop="cavities" label="Гнёзд" width="80" align="center" />
-      <el-table-column prop="runnerWeightGrams" label="Литник (г)" width="120" />
       <el-table-column prop="storageLocationIndex" label="Место хранения" width="120" />
       <el-table-column label="Особенности" width="140" align="center">
         <template #default="{ row }">
@@ -159,14 +158,6 @@
           <el-col :span="12">
             <el-form-item label="Количество гнёзд" prop="cavities" required>
               <el-input-number v-model="form.cavities" :min="1" class="w-full" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="Вес литника (г)">
-              <el-input-number v-model="form.runnerWeightGrams" :precision="2" :step="0.1" class="w-full" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -383,7 +374,6 @@ const form = reactive({
   formId: '',
   name: '',
   cavities: 1,
-  runnerWeightGrams: 0,
   maxResourceCycles: 0,
   to1Cycles: 0,
   to2Cycles: 0,
@@ -474,7 +464,6 @@ const showCreateModal = () => {
     formId: '',
     name: '',
     cavities: 1,
-    runnerWeightGrams: 0,
     maxResourceCycles: 0,
     to1Cycles: 0,
     to2Cycles: 0,
@@ -499,7 +488,6 @@ const editMold = (mold) => {
     formId: mold.formId,
     name: mold.name,
     cavities: mold.cavities,
-    runnerWeightGrams: mold.runnerWeightGrams,
     maxResourceCycles: mold.maxResourceCycles,
     to1Cycles: mold.to1Cycles,
     to2Cycles: mold.to2Cycles,

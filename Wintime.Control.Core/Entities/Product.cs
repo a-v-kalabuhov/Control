@@ -15,6 +15,7 @@ public class Product : BaseEntity
     public string? Comment { get; set; }                    // технологический комментарий (PZP-20)
     public string FullArticle { get; set; } = string.Empty; // хранимый, пересчитывается при правке артикулов
     public decimal PartWeightGrams { get; set; }            // вес одной детали, граммы (PZP-24)
+    public decimal RunnerWeightGrams { get; set; }          // вес литника на цикл, граммы
     public int? Cavities { get; set; }                       // умолчание гнёзд изделия; null — максимум ПФ (PZP-36)
     public int? PlannedInjectionCycleSeconds { get; set; } // эталон цикла литья, секунды; необязателен
     public bool HasSample { get; set; }                   // есть физический образец изделия (PZP-29)

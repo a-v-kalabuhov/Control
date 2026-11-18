@@ -6,6 +6,7 @@ public class CreateProductRequestDto
     public string Name { get; set; } = string.Empty;
     public string? Comment { get; set; }
     public decimal PartWeightGrams { get; set; }
+    public decimal RunnerWeightGrams { get; set; }
     public int? Cavities { get; set; }
     public int? PlannedInjectionCycleSeconds { get; set; }
     public bool HasSample { get; set; }

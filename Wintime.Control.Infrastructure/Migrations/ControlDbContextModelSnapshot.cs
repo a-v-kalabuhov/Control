@@ -498,9 +498,6 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<bool>("RequiresRobot")
                         .HasColumnType("boolean");
 
-                    b.Property<decimal>("RunnerWeightGrams")
-                        .HasColumnType("numeric");
-
                     b.Property<string>("StorageLocationIndex")
                         .HasColumnType("text");
 
@@ -655,6 +652,9 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.Property<Guid>("ProductTypeId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("RunnerWeightGrams")
+                        .HasColumnType("numeric");
 
                     b.HasKey("Id");
 

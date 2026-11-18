@@ -37,6 +37,8 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
             Cavities = 4, ProductTypeId = _factory.TestProductTypeId
         };
         db.Molds.Add(mold);
+        var product = await db.Products.FindAsync(_factory.TestProductId);
+        product!.RunnerWeightGrams = 1;
         var task = new EntityTask { ImmId = immId, MoldId = mold.Id, ProductId = _factory.TestProductId, PlanQuantity = 50, Cavities = 2, Status = TaskStatus.Setup, IssuedAt = start, PlannedDate = DateOnly.FromDateTime(start), SetupStartedAt = start.AddMinutes(2), PartWeightGrams = 11 };
         db.ShiftTasks.Add(task);
         await db.SaveChangesAsync();
@@ -61,7 +63,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         cycles.Should().OnlyContain(c => c.Cavities == 2); // рабочая гнёздовость задания, а не максимум ПФ (=4)
         var task = await db.ShiftTasks.FindAsync(taskId);
         task!.ActualQuantity.Should().Be(4); // 2 цикла × 2 гнезда
-        task.ActualMaterialWeightGrams.Should().Be(44); // вес задания, не вес ПФ
+        task.ActualMaterialWeightGrams.Should().Be(46); // 2 × (2 гнезда × 11 г + литник изделия 1 г)
         var run = await db.UnplannedRuns.FindAsync(runId);
         run!.AssignedTaskId.Should().Be(taskId);
         run.AssignedByUserId.Should().NotBeNull();
@@ -97,7 +99,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
         var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
         AuthHelper.SetBearerToken(client, token!);
         await client.PostAsJsonAsync($"/api/unplanned-runs/{runId}/assign", new AssignTaskRequestDto { TaskId = taskA });
-        // После привязки менеджер исправил вес: накопленный расход A пересчитан с 44 до 88 г.
+        // После привязки менеджер исправил вес: накопленный расход A пересчитан с 46 до 90 г.
         // Откат эпизода обязан вычесть ту же массу и не увести A в отрицательный расход.
         var reweight = await client.PutAsJsonAsync($"/api/tasks/{taskA}", new UpdateTaskRequestDto { PartWeightGrams = 22 });
         reweight.StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -128,7 +130,7 @@ public class AssignTaskTests : IClassFixture<IntegrationTestFactory>
             taskAReloaded.ActualMaterialWeightGrams.Should().Be(0);
             var taskBReloaded = await db.ShiftTasks.FindAsync(taskB);
             taskBReloaded!.ActualQuantity.Should().Be(6);
-            taskBReloaded.ActualMaterialWeightGrams.Should().Be(78);
+            taskBReloaded.ActualMaterialWeightGrams.Should().Be(80);
 
             // Проверка не только агрегата, но и фактических строк циклов: окно эпизода
             // должно быть полностью перепривязано на taskB, а не только сумма ActualQuantity.

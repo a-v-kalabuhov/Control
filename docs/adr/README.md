@@ -57,3 +57,4 @@
 - [ADR-0026](0026-nomenclature-xlsx-import.md) — Двухэтапный импорт номенклатуры из XLSX
 - [ADR-0027](0027-shift-plan-and-operator-assignments.md) — Позиционный план смен и интервальные назначения литейщиков
 - [ADR-0028](0028-task-cavities-mold-maximum.md) — Рабочая гнёздность задания ограничена максимумом ПФ *(заменяет ADR-0025)*
+- [ADR-0029](0029-product-runner-weight.md) — Вес литника принадлежит изделию *(уточняет ADR-0024)*

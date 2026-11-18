@@ -268,17 +268,17 @@
         </el-form-item>
       </div>
 
-      <!-- Информация о пресс-форме (справочно) -->
+      <!-- Параметры выбранной ПФ и изделия (справочно) -->
       <el-alert
         v-if="selectedMoldInfo"
-        title="Информация о пресс-форме"
+        title="Информация о пресс-форме и изделии"
         type="info"
         :closable="false"
         class="mt-4"
       >
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div><span class="text-gray-500">Гнёздность:</span> {{ selectedMoldInfo.cavities }}</div>
-          <div><span class="text-gray-500">Вес литника:</span> {{ selectedMoldInfo.runnerWeightGrams }} г</div>
+          <div><span class="text-gray-500">Вес литника:</span> {{ selectedProduct?.runnerWeightGrams ?? '—' }} г</div>
           <div><span class="text-gray-500">Ресурс:</span> {{ selectedMoldInfo.remainingResource }} / {{ selectedMoldInfo.maxResourceCycles }}</div>
         </div>
       </el-alert>
@@ -521,6 +521,7 @@ const withFallbackProduct = (list, source, isActive) => {
     isActive,
     cavities: matchingProduct?.cavities,
     partWeightGrams: matchingProduct?.partWeightGrams,
+    runnerWeightGrams: matchingProduct?.runnerWeightGrams,
     plannedInjectionCycleSeconds: matchingProduct?.plannedInjectionCycleSeconds,
     recipe: matchingProduct?.recipe
   }]

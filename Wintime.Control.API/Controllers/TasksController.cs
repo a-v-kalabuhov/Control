@@ -375,6 +375,7 @@ public class TasksController : ControllerBase
             if (task.SetProduct(product.Id))
             {
                 productChanged = true;
+                task.Product = product;
                 task.ApplyRecipe(product.RecipeIngredients);
                 task.SetPartWeight(product.PartWeightGrams);
                 defaultCavities = product.Cavities ?? task.Mold.Cavities;
@@ -436,14 +437,14 @@ public class TasksController : ControllerBase
             task.SetReleaseBuffer(request.ReleaseBufferFixedMinutes ?? task.ReleaseBufferFixedMinutes,
                                   request.ReleaseBufferPercent ?? task.ReleaseBufferPercent);
         }
-        if (task.PartWeightGrams != previousPartWeight)
+        if (productChanged || task.PartWeightGrams != previousPartWeight)
         {
-            // Вес не снапшотится в каждый цикл: исправление задания пересчитывает весь его
+            // Веса не снапшотятся в каждый цикл: смена изделия или веса детали пересчитывает весь
             // накопленный расход, иначе карточка разойдётся с отчётом и последующим откатом циклов.
             task.ActualMaterialWeightGrams = await _context.ImmCycles
                 .Where(c => c.TaskId == task.Id && c.IsSuccessful && c.EndTime != null)
                 .GroupBy(c => c.TaskId)
-                .Select(g => g.Sum(c => c.Cavities * task.PartWeightGrams + task.Mold.RunnerWeightGrams))
+                .Select(g => g.Sum(c => c.Cavities * task.PartWeightGrams + task.Product!.RunnerWeightGrams))
                 .FirstOrDefaultAsync();
         }
         await _context.SaveChangesAsync();

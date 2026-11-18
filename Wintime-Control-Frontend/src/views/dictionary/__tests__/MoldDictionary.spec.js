@@ -39,7 +39,7 @@ import { moldsApi } from '@/api/molds'
 import { immApi } from '@/api/imm'
 
 const moldRow = {
-  id: 'mold-1', formId: 'PF-1', name: 'Форма', cavities: 2, partWeightGrams: 1, runnerWeightGrams: 1,
+  id: 'mold-1', formId: 'PF-1', name: 'Форма', cavities: 2, partWeightGrams: 1,
   maxResourceCycles: 1000, remainingResource: 1000, to1Cycles: 0, to2Cycles: 0, storageLocationIndex: '',
   isActive: true, productTypeId: 'pt-1', productTypeArticle: 'ART', productTypeName: 'Изделие',
   compatibleImms: [
@@ -86,6 +86,16 @@ describe('MoldDictionary — разметка формы', () => {
     const nameField = dialog.findAllComponents({ name: 'ElFormItem' })
       .find(item => item.props('label') === 'Наименование')
     expect(nameField.element.closest('.el-col').classList).toContain('el-col-24')
+  })
+
+  it('не показывает вес литника в таблице и форме пресс-формы', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.showCreateModal()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Литник')
+    expect(wrapper.vm.form).not.toHaveProperty('runnerWeightGrams')
   })
 })
 

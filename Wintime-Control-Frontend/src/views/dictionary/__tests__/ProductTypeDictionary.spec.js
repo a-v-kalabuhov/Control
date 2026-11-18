@@ -406,7 +406,7 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     await flushPromises()
 
     expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
-      article: 'BLK', name: 'Чёрный', comment: null, partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
+      article: 'BLK', name: 'Чёрный', comment: null, partWeightGrams: 0, runnerWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
     })
     expect(productTypesApi.getById).toHaveBeenCalledWith('pt-1')
   })
@@ -511,8 +511,35 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
     await flushPromises()
 
     expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1', {
-      article: 'BLK', name: 'Чёрный', comment: null, partWeightGrams: 12.5, cavities: null, plannedInjectionCycleSeconds: 20, hasSample: false
+      article: 'BLK', name: 'Чёрный', comment: null, partWeightGrams: 12.5, runnerWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: 20, hasSample: false
     })
+  })
+
+  it('при добавлении передаёт вес литника изделия', async () => {
+    productTypesApi.addProduct.mockResolvedValue({ data: {} })
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.showProductModal()
+    Object.assign(wrapper.vm.productForm, {
+      article: 'blk', name: 'Чёрный', runnerWeightGrams: 3.25
+    })
+
+    await wrapper.vm.saveProduct()
+    await flushPromises()
+
+    expect(productTypesApi.addProduct).toHaveBeenCalledWith('pt-1',
+      expect.objectContaining({ runnerWeightGrams: 3.25 }))
+  })
+
+  it('при повторном создании сбрасывает вес литника предыдущего изделия', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.editItem(typeA)
+    wrapper.vm.editProduct({ ...typeA.products[1], runnerWeightGrams: 5 })
+    wrapper.vm.showProductModal()
+
+    expect(wrapper.vm.productForm.runnerWeightGrams).toBe(0)
   })
 
   it('при правке сохраняет вес и явно очищает цикл литья', async () => {
@@ -529,7 +556,7 @@ describe('ProductTypeDictionary — атрибуты изделия (PZP-24)', (
     await flushPromises()
 
     expect(productTypesApi.updateProduct).toHaveBeenCalledWith('pt-1', 'p-1', {
-      article: 'BLK', name: 'Чёрный', comment: null, clearComment: true, partWeightGrams: 14.25, cavities: null, clearCavities: true,
+      article: 'BLK', name: 'Чёрный', comment: null, clearComment: true, partWeightGrams: 14.25, runnerWeightGrams: 0, cavities: null, clearCavities: true,
       plannedInjectionCycleSeconds: null, clearPlannedInjectionCycleSeconds: true, hasSample: false
     })
   })

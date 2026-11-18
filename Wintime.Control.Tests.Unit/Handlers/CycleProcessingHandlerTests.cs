@@ -373,9 +373,17 @@ public class CycleProcessingHandlerTests
         var immId = Guid.NewGuid();
         using var db = CreateDb();
         var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
+        var product = new Core.Entities.Product
+        {
+            ProductTypeId = Guid.NewGuid(), Article = "0", Name = "P", FullArticle = "T.0"
+        };
         var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
-        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.Setup };
-        db.AddRange(mold, imm, task);
+        var task = new EntityTask
+        {
+            ImmId = immId, MoldId = mold.Id, Mold = mold, ProductId = product.Id, Product = product,
+            Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.Setup
+        };
+        db.AddRange(mold, product, imm, task);
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
@@ -393,9 +401,17 @@ public class CycleProcessingHandlerTests
         var immId = Guid.NewGuid();
         using var db = CreateDb();
         var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
+        var product = new Core.Entities.Product
+        {
+            ProductTypeId = Guid.NewGuid(), Article = "0", Name = "P", FullArticle = "T.0"
+        };
         var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
-        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.Setup };
-        db.AddRange(mold, imm, task);
+        var task = new EntityTask
+        {
+            ImmId = immId, MoldId = mold.Id, Mold = mold, ProductId = product.Id, Product = product,
+            Imm = imm, PlanQuantity = 100, Status = EntityTaskStatus.Setup
+        };
+        db.AddRange(mold, product, imm, task);
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
@@ -416,9 +432,17 @@ public class CycleProcessingHandlerTests
         var immId = Guid.NewGuid();
         using var db = CreateDb();
         var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
+        var product = new Core.Entities.Product
+        {
+            ProductTypeId = Guid.NewGuid(), Article = "0", Name = "P", FullArticle = "T.0"
+        };
         var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
-        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Cavities = 2, Status = EntityTaskStatus.InProgress };
-        db.AddRange(mold, imm, task);
+        var task = new EntityTask
+        {
+            ImmId = immId, MoldId = mold.Id, Mold = mold, ProductId = product.Id, Product = product,
+            Imm = imm, PlanQuantity = 100, Cavities = 2, Status = EntityTaskStatus.InProgress
+        };
+        db.AddRange(mold, product, imm, task);
         await db.SaveChangesAsync();
 
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
@@ -439,9 +463,17 @@ public class CycleProcessingHandlerTests
         var immId = Guid.NewGuid();
         using var db = CreateDb();
         var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 4 };
+        var product = new Core.Entities.Product
+        {
+            ProductTypeId = Guid.NewGuid(), Article = "0", Name = "P", FullArticle = "T.0"
+        };
         var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
-        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 100, Cavities = 2, Status = EntityTaskStatus.InProgress };
-        db.AddRange(mold, imm, task);
+        var task = new EntityTask
+        {
+            ImmId = immId, MoldId = mold.Id, Mold = mold, ProductId = product.Id, Product = product,
+            Imm = imm, PlanQuantity = 100, Cavities = 2, Status = EntityTaskStatus.InProgress
+        };
+        db.AddRange(mold, product, imm, task);
         await db.SaveChangesAsync();
         var tracker = new Wintime.Control.Infrastructure.Services.CycleTracker();
         var sut = new CycleProcessingHandler(db, tracker, [], NullLogger<CycleProcessingHandler>.Instance, Downtime);

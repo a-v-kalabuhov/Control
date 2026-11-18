@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Wintime.Control.Core.DTOs.Order;
 using Wintime.Control.Core.DTOs.ProductType;
@@ -83,6 +84,58 @@ public class ProductsApiTests : IClassFixture<IntegrationTestFactory>
         var p = await r.Content.ReadFromJsonAsync<ProductDto>();
         p!.PartWeightGrams.Should().Be(12.5m);
         p.PlannedInjectionCycleSeconds.Should().Be(20);
+    }
+
+    [Fact]
+    public async Task AddProduct_StoresAndReturnsRunnerWeight()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+
+        var r = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products", new
+        {
+            Article = "BLK", Name = "Чёрный", RunnerWeightGrams = 3.25m
+        });
+
+        r.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var json = JsonDocument.Parse(await r.Content.ReadAsStringAsync());
+        json.RootElement.TryGetProperty("runnerWeightGrams", out var runnerWeight).Should().BeTrue();
+        runnerWeight.GetDecimal().Should().Be(3.25m);
+    }
+
+    [Fact]
+    public async Task UpdateProduct_ChangesRunnerWeight()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+        var created = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products", new
+        {
+            Article = "BLK", Name = "Чёрный", RunnerWeightGrams = 3.25m
+        });
+        var p = await created.Content.ReadFromJsonAsync<ProductDto>();
+
+        var updated = await c.PutAsJsonAsync($"/api/producttypes/{t.Id}/products/{p!.Id}", new
+        {
+            RunnerWeightGrams = 4.5m
+        });
+
+        updated.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await GetTypeAsync(c, t.Id)).Products.Single(x => x.Id == p.Id)
+            .RunnerWeightGrams.Should().Be(4.5m);
+    }
+
+    [Fact]
+    public async Task AddProduct_NegativeRunnerWeight_BadRequest()
+    {
+        var c = await ClientAsync();
+        var t = await CreateTypeAsync(c, Uniq("T"));
+
+        var r = await c.PostAsJsonAsync($"/api/producttypes/{t.Id}/products", new
+        {
+            Article = "BLK", Name = "Чёрный", RunnerWeightGrams = -0.01m
+        });
+
+        r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]

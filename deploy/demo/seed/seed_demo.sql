@@ -80,47 +80,47 @@ FROM _cfg c,
              (10,'ШБ08','Шайба 8 мм')) v(n, art, name);
 
 -- У каждого типа есть изделие «0» (по умолчанию); у части — варианты. Полный артикул ТИП.ЧАСТЬ (ADR-0020).
--- Вес детали и эталон цикла литья — атрибуты изделия (PZP-24).
-INSERT INTO "Products" ("Id","ProductTypeId","Article","Name","FullArticle","PartWeightGrams","PlannedInjectionCycleSeconds","IsActive","CreatedAt")
-SELECT gen_random_uuid(), pt."Id", v.part, v.name, pt."Article" || '.' || v.part, v.pw, v.inj, pt."IsActive", pt."CreatedAt"
+-- Вес детали, вес литника и эталон цикла литья — атрибуты изделия (PZP-24).
+INSERT INTO "Products" ("Id","ProductTypeId","Article","Name","FullArticle","PartWeightGrams","RunnerWeightGrams","PlannedInjectionCycleSeconds","IsActive","CreatedAt")
+SELECT gen_random_uuid(), pt."Id", v.part, v.name, pt."Article" || '.' || v.part, v.pw, v.rw, v.inj, pt."IsActive", pt."CreatedAt"
 FROM "ProductTypes" pt
-JOIN (VALUES (1,'0','По умолчанию',3.2,4),(1,'Б','Белая',3.2,4),(1,'Ч','Чёрная',3.2,4),
-             (2,'0','По умолчанию',4.1,4),(2,'К','Красный',4.1,4),
-             (3,'0','По умолчанию',38.0,8),
-             (4,'0','По умолчанию',6.5,5),(4,'С','Серая',6.5,5),
-             (5,'0','По умолчанию',210.0,9),(6,'0','По умолчанию',95.0,7),(7,'0','По умолчанию',820.0,12),
-             (8,'0','По умолчанию',1.9,3),(8,'Н','Натуральная',1.9,3),
-             (9,'0','По умолчанию',1.5,3),(10,'0','По умолчанию',0.4,3)) v(n, part, name, pw, inj)
+JOIN (VALUES (1,'0','По умолчанию',3.2,4.0,4),(1,'Б','Белая',3.2,4.0,4),(1,'Ч','Чёрная',3.2,4.0,4),
+             (2,'0','По умолчанию',4.1,6.0,4),(2,'К','Красный',4.1,6.0,4),
+             (3,'0','По умолчанию',38.0,9.0,8),
+             (4,'0','По умолчанию',6.5,5.0,5),(4,'С','Серая',6.5,5.0,5),
+             (5,'0','По умолчанию',210.0,12.0,9),(6,'0','По умолчанию',95.0,8.0,7),(7,'0','По умолчанию',820.0,25.0,12),
+             (8,'0','По умолчанию',1.9,7.0,3),(8,'Н','Натуральная',1.9,7.0,3),
+             (9,'0','По умолчанию',1.5,5.0,3),(10,'0','По умолчанию',0.4,3.0,3)) v(n, part, name, pw, rw, inj)
   ON pt."Id" = ('e3000000-0000-0000-0000-0000000000' || lpad(v.n::text, 2, '0'))::uuid;
 
 -- PZP-36: изделие с умолчанием меньше максимума ПФ проверяет согласованность плана и циклов.
 UPDATE "Products" SET "Cavities" = 1 WHERE "FullArticle" = 'КФ01.0';
 
--- ct — длительность полного цикла, с; inj — время литья, с; rw — вес литника, г
+-- ct — длительность полного цикла, с; inj — время литья, с
 CREATE TEMP TABLE _mold AS
 SELECT n, ('c3000000-0000-0000-0000-0000000000' || lpad(n::text, 2, '0'))::uuid AS id,
        ('e3000000-0000-0000-0000-0000000000' || lpad(t::text, 2, '0'))::uuid AS type_id,
-       name, cav, ct, inj, rw
+       name, cav, ct, inj
 FROM (VALUES
-  (1, 1, 'Крышка флип-топ 28 мм',         8, 26,  4,  4.0),
-  (2, 1, 'Крышка флип-топ 28 мм (16 гн.)',16, 30,  4,  6.0),
-  (3, 2, 'Колпачок 38 мм',               12, 28,  4,  6.0),
-  (4, 3, 'Корпус фильтра',                2, 48,  8,  9.0),
-  (5, 4, 'Ручка ведра',                   4, 34,  5,  5.0),
-  (6, 5, 'Ведро 5 л',                     1, 55,  9, 12.0),
-  (7, 6, 'Крышка ведра 5 л',              1, 42,  7,  8.0),
-  (8, 7, 'Ящик овощной',                  1, 70, 12, 25.0),
-  (9, 8, 'Втулка d20',                   32, 25,  3,  7.0),
-  (10,9, 'Заглушка 20×20',               24, 24,  3,  5.0),
-  (11,2, 'Колпачок 38 мм (8 гн.)',        8, 27,  4,  5.0),
-  (12,3, 'Корпус фильтра (4 гн.)',        4, 52,  8, 14.0),
-  (13,8, 'Втулка d20 (16 гн.)',          16, 24,  3,  5.0),
-  (14,9, 'Заглушка 20×20 (32 гн.)',      32, 26,  3,  6.0),
-  (15,10,'Шайба 8 мм',                   48, 22,  3,  3.0)) v(n, t, name, cav, ct, inj, rw);
+  (1, 1, 'Крышка флип-топ 28 мм',         8, 26,  4),
+  (2, 1, 'Крышка флип-топ 28 мм (16 гн.)',16, 30,  4),
+  (3, 2, 'Колпачок 38 мм',               12, 28,  4),
+  (4, 3, 'Корпус фильтра',                2, 48,  8),
+  (5, 4, 'Ручка ведра',                   4, 34,  5),
+  (6, 5, 'Ведро 5 л',                     1, 55,  9),
+  (7, 6, 'Крышка ведра 5 л',              1, 42,  7),
+  (8, 7, 'Ящик овощной',                  1, 70, 12),
+  (9, 8, 'Втулка d20',                   32, 25,  3),
+  (10,9, 'Заглушка 20×20',               24, 24,  3),
+  (11,2, 'Колпачок 38 мм (8 гн.)',        8, 27,  4),
+  (12,3, 'Корпус фильтра (4 гн.)',        4, 52,  8),
+  (13,8, 'Втулка d20 (16 гн.)',          16, 24,  3),
+  (14,9, 'Заглушка 20×20 (32 гн.)',      32, 26,  3),
+  (15,10,'Шайба 8 мм',                   48, 22,  3)) v(n, t, name, cav, ct, inj);
 
-INSERT INTO "Molds" ("Id","FormId","Name","Cavities","RunnerWeightGrams","MaxResourceCycles",
+INSERT INTO "Molds" ("Id","FormId","Name","Cavities","MaxResourceCycles",
                      "To1Cycles","To2Cycles","IsActive","MoldStatus","ProductTypeId","CreatedAt")
-SELECT m.id, 'ПФ-' || (200 + m.n), m.name, m.cav, m.rw, 1000000, 300000, 600000, m.n <> 15, 0, m.type_id,
+SELECT m.id, 'ПФ-' || (200 + m.n), m.name, m.cav, 1000000, 300000, 600000, m.n <> 15, 0, m.type_id,
        c.t0 - interval '90 days'
 FROM _mold m, _cfg c;
 
@@ -527,11 +527,11 @@ END $$;
 UPDATE "ShiftTasks" t
 SET "ActualQuantity"            = q.qty,
     "DefectQuantity"            = CASE WHEN t."Status" IN (3, 4) THEN (q.qty * random() * 0.02)::int ELSE 0 END,
-    "ActualMaterialWeightGrams" = round(q.qty * t."PartWeightGrams" + q.n * m."RunnerWeightGrams", 2)
+    "ActualMaterialWeightGrams" = round(q.qty * t."PartWeightGrams" + q.n * p."RunnerWeightGrams", 2)
 FROM (SELECT "TaskId", count(*) FILTER (WHERE "IsSuccessful") AS n, COALESCE(sum("Cavities") FILTER (WHERE "IsSuccessful"), 0) AS qty
       FROM "ImmCycles" WHERE "TaskId" IS NOT NULL GROUP BY "TaskId") q,
-     "Molds" m
-WHERE q."TaskId" = t."Id" AND m."Id" = t."MoldId";
+     "Products" p
+WHERE q."TaskId" = t."Id" AND p."Id" = t."ProductId";
 
 -- ============================================================
 -- Заказы: по изделию — две «волны» (первые 15 суток и остальное), ~¾ заданий с заказом
