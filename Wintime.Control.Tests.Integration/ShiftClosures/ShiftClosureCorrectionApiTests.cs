@@ -248,6 +248,34 @@ public class ShiftClosureCorrectionApiTests : IClassFixture<IntegrationTestFacto
         afterDefect.GetProperty("manualDefectQuantity").GetInt32().Should().Be(3);
     }
 
+    [Fact]
+    public async Task Correction_RejectsDuplicateTaskInputsIncludingNetNoOpAndDifferentValues()
+    {
+        var fixture = await SeedClosedAsync();
+        var task = fixture.Tasks.Single();
+        var manager = await ClientAsync("test_manager", "Manager123!");
+
+        var netNoOp = await PatchAsync(manager, fixture.ClosureId, "Дублирующаяся строка",
+            Manual(task.Id, manualGoodQuantity: 5),
+            Manual(task.Id, manualGoodQuantity: 4));
+
+        netNoOp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await JsonAsync(netNoOp)).GetProperty("message").GetString().Should().Be("duplicateTask");
+        (await ManualSnapshotAsync(task.Id)).ManualGoodQuantity.Should().Be(4);
+
+        var differentValues = await PatchAsync(manager, fixture.ClosureId, "Дублирующаяся строка",
+            Manual(task.Id, manualGoodQuantity: 5),
+            Manual(task.Id, manualGoodQuantity: 6));
+
+        differentValues.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await JsonAsync(differentValues)).GetProperty("message").GetString().Should().Be("duplicateTask");
+        (await ManualSnapshotAsync(task.Id)).ManualGoodQuantity.Should().Be(4);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        (await db.ShiftClosureCorrections.CountAsync(c => c.ShiftClosureId == fixture.ClosureId))
+            .Should().Be(0);
+    }
+
     private async Task<ClosedFixture> SeedClosedAsync(
         int taskCount = 1, bool staffed = true, bool fallback = true)
     {

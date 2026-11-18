@@ -312,8 +312,11 @@ public sealed class ShiftClosureService : IShiftClosureService
                     ShiftClosureManualEntryInput Input,
                     List<ShiftClosureCorrectionChangeDto> Changes)>();
                 var errors = new List<ShiftClosureFieldError>();
+                var taskIds = new HashSet<Guid>();
                 foreach (var input in request.Entries)
                 {
+                    if (!taskIds.Add(input.ShiftTaskId))
+                        throw new DomainException("duplicateTask");
                     var entry = closure.Entries.SingleOrDefault(e => e.ShiftTaskId == input.ShiftTaskId)
                         ?? throw new ShiftNotFoundException("Задание не найдено в этом рапорте");
                     errors.AddRange(ShiftClosureValidator.Validate(new ShiftClosureValidationEntry
