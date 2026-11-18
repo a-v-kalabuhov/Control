@@ -90,8 +90,8 @@ describe('OperatorIntervalDialog', () => {
 
   it('create для сироты предзаполняет границы в browser timezone и отправляет ISO UTC', async () => {
     const initialInterval = {
-      assignedAt: '2026-11-18T06:15:27Z',
-      unassignedAt: '2026-11-18T08:45:41Z'
+      assignedAt: '2026-11-18T06:15:27.123Z',
+      unassignedAt: '2026-11-18T08:45:41.456Z'
     }
     wrapper = await mountDialog({ initialInterval })
 
@@ -143,6 +143,21 @@ describe('OperatorIntervalDialog', () => {
     })
     expect(wrapper.emitted('saved')).toHaveLength(1)
     expect(wrapper.emitted('reload')).toHaveLength(1)
+  })
+
+  it('edit без пользовательских правок отправляет исходные ISO с fractional seconds', async () => {
+    const preciseAssignment = {
+      ...assignment,
+      assignedAt: '2026-11-18T06:00:17.123Z',
+      unassignedAt: '2026-11-18T09:00:43.456Z'
+    }
+    wrapper = await mountDialog({ mode: 'edit', assignment: preciseAssignment })
+    await submit(wrapper)
+
+    expect(shiftStaffingApi.updateOperatorInterval).toHaveBeenCalledWith('assignment-1', {
+      assignedAt: preciseAssignment.assignedAt,
+      unassignedAt: preciseAssignment.unassignedAt
+    })
   })
 
   it('409 показывает сообщение и запрашивает перезагрузку item/report', async () => {

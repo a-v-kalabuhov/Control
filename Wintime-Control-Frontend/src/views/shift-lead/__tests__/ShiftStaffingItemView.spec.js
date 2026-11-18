@@ -423,7 +423,7 @@ describe('ShiftStaffingItemView', () => {
 
   it('показывает server timeline и Назначить на сироте открывает форму с immId и границами', async () => {
     const orphan = {
-      startAtUtc: '2026-11-08T10:00:17Z', endAtUtc: '2026-11-08T11:30:43Z',
+      startAtUtc: '2026-11-08T10:00:17.123Z', endAtUtc: '2026-11-08T11:30:43.456Z',
       operators: [], automaticOutputQuantity: 4, hasOrphanOutput: true, taskOutputs: []
     }
     shiftClosuresApi.getByItem.mockResolvedValue({ data: closureReport({
@@ -475,7 +475,7 @@ describe('ShiftStaffingItemView', () => {
     await flushPromises()
 
     expect(shiftStaffingApi.updateOperatorInterval).toHaveBeenCalledWith('a2', {
-      assignedAt: dayjs(ended.assignedAt).toISOString(),
+      assignedAt: ended.assignedAt,
       unassignedAt: dayjs(localEnd).toISOString()
     })
     expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(2)

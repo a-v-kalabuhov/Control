@@ -39,6 +39,7 @@
           step="1"
           class="w-full rounded border border-gray-300 px-3 py-2"
           :disabled="controlsDisabled"
+          @input="assignedAtDirty = true"
         >
         <p v-if="mode === 'create'" class="mt-1 text-xs text-gray-500">
           Если пусто, сервер использует начало смены
@@ -53,6 +54,7 @@
           step="1"
           class="w-full rounded border border-gray-300 px-3 py-2"
           :disabled="controlsDisabled"
+          @input="unassignedAtDirty = true"
         >
         <p class="mt-1 text-xs text-gray-500">
           {{ endHint }}
@@ -103,6 +105,10 @@ const store = useShiftStaffingStore()
 const selectedOperatorId = ref(null)
 const assignedAt = ref('')
 const unassignedAt = ref('')
+const originalAssignedAt = ref(null)
+const originalUnassignedAt = ref(null)
+const assignedAtDirty = ref(false)
+const unassignedAtDirty = ref(false)
 
 const visible = computed({
   get: () => props.modelValue,
@@ -147,6 +153,10 @@ function resetForm() {
   const end = props.mode === 'create'
     ? props.initialInterval?.unassignedAt
     : props.mode === 'edit' ? props.assignment?.unassignedAt : null
+  originalAssignedAt.value = start ?? null
+  originalUnassignedAt.value = end ?? null
+  assignedAtDirty.value = false
+  unassignedAtDirty.value = false
   assignedAt.value = toInput(start)
   unassignedAt.value = toInput(end)
 }
@@ -155,8 +165,12 @@ function toInput(value) {
   return value ? dayjs(value).format('YYYY-MM-DDTHH:mm:ss') : ''
 }
 
-function toUtc(value) {
-  return value ? dayjs(value).toISOString() : null
+function toUtc(value, original, dirty) {
+  if (!value) return null
+  // datetime-local показывает секунды, но не должен обнулять fractional seconds
+  // у неизменённой серверной границы. После input используется видимое значение.
+  if (!dirty && original) return original
+  return dayjs(value).toISOString()
 }
 
 function operatorLabel(operator) {
@@ -170,16 +184,16 @@ async function submit() {
     result = await store.assignOperator(props.itemId, {
       immId: props.immId,
       operatorId: selectedOperatorId.value,
-      assignedAt: toUtc(assignedAt.value),
-      unassignedAt: toUtc(unassignedAt.value)
+      assignedAt: toUtc(assignedAt.value, originalAssignedAt.value, assignedAtDirty.value),
+      unassignedAt: toUtc(unassignedAt.value, originalUnassignedAt.value, unassignedAtDirty.value)
     })
   } else if (props.mode === 'unassign') {
-    const end = toUtc(unassignedAt.value)
+    const end = toUtc(unassignedAt.value, originalUnassignedAt.value, unassignedAtDirty.value)
     result = await store.unassignOperator(props.assignment.id, end ? { unassignedAt: end } : {})
   } else {
     result = await store.updateOperatorInterval(props.assignment.id, {
-      assignedAt: toUtc(assignedAt.value),
-      unassignedAt: toUtc(unassignedAt.value)
+      assignedAt: toUtc(assignedAt.value, originalAssignedAt.value, assignedAtDirty.value),
+      unassignedAt: toUtc(unassignedAt.value, originalUnassignedAt.value, unassignedAtDirty.value)
     })
   }
 
