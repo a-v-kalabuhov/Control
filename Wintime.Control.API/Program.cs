@@ -177,6 +177,7 @@ builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<IShiftPlanService, ShiftPlanService>();
 builder.Services.AddScoped<IShiftStaffingService, ShiftStaffingService>();
 builder.Services.AddScoped<ShiftClosureReadModelLoader>();
+builder.Services.AddScoped<IShiftClosureIndicatorService, ShiftClosureIndicatorService>();
 builder.Services.AddScoped<IShiftClosureService, ShiftClosureService>();
 builder.Services.AddScoped<IFactoryClock, FactoryClock>();
 builder.Services.AddScoped<IPlanningDefaultsService, PlanningDefaultsService>();

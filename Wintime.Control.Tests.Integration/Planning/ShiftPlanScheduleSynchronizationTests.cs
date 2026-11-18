@@ -417,6 +417,65 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
     }
 
     [Fact]
+    public async Task FutureDay_RemovingDraftPosition_RejectsAndRollsBackScheduleAndPlan()
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var @operator = await SeedUserAsync(UserRole.Operator);
+        var date = NewFutureDate();
+        var client = await ManagerClientAsync();
+        var originalSchedule = Schedule(0, 480);
+
+        await WithScheduleAsync(client, originalSchedule, async () =>
+        {
+            var seeded = await SeedDayAsync(date, lead.Id, @operator.Id, 2, withAssignments: false);
+            var protectedItem = seeded.Items.Single(i => i.Position == 2);
+            Guid closureId;
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                var closure = new ShiftClosure
+                {
+                    ShiftPlanItemId = protectedItem.Id,
+                    State = ShiftClosureState.Draft,
+                    CreatedById = lead.Id
+                };
+                db.ShiftClosures.Add(closure);
+                await db.SaveChangesAsync();
+                closureId = closure.Id;
+            }
+            var beforeDay = await LoadDayAsync(date);
+            List<ShiftSnapshot> beforeSchedule;
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                beforeSchedule = await db.Shifts.AsNoTracking().OrderBy(s => s.StartMinutes)
+                    .Select(s => new ShiftSnapshot(
+                        s.Id, s.StartMinutes, s.DurationMinutes, s.BreakStartMinutes,
+                        s.BreakDurationMinutes, s.TimeZoneId, s.CreatedAt)).ToListAsync();
+            }
+
+            var response = await SaveScheduleAsync(client, Schedule(120));
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+                await response.Content.ReadAsStringAsync());
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                var afterSchedule = await db.Shifts.AsNoTracking().OrderBy(s => s.StartMinutes)
+                    .Select(s => new ShiftSnapshot(
+                        s.Id, s.StartMinutes, s.DurationMinutes, s.BreakStartMinutes,
+                        s.BreakDurationMinutes, s.TimeZoneId, s.CreatedAt)).ToListAsync();
+                afterSchedule.Should().BeEquivalentTo(beforeSchedule,
+                    "справочник смен и план откатываются одной транзакцией");
+                (await db.ShiftClosures.SingleAsync(c => c.Id == closureId)).ShiftPlanItemId
+                    .Should().Be(protectedItem.Id);
+            }
+            (await LoadDayAsync(date)).Should().BeEquivalentTo(beforeDay);
+            await DeleteDayAsync(date);
+        });
+    }
+
+    [Fact]
     public async Task FactoryTodayAndPastSavedDays_AreUntouchedEvenWhenTodayShiftHasNotStarted()
     {
         var lead = await SeedUserAsync(UserRole.ShiftLead);
@@ -428,8 +487,24 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
 
         await WithScheduleAsync(client, Schedule(480, 960), async () =>
         {
-            await SeedDayAsync(today, lead.Id, @operator.Id, 2);
-            await SeedDayAsync(yesterday, lead.Id, @operator.Id, 2);
+            var todayDay = await SeedDayAsync(today, lead.Id, @operator.Id, 2);
+            var yesterdayDay = await SeedDayAsync(yesterday, lead.Id, @operator.Id, 2);
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                foreach (var item in todayDay.Items.Concat(yesterdayDay.Items))
+                {
+                    db.ShiftClosures.Add(new ShiftClosure
+                    {
+                        ShiftPlanItemId = item.Id,
+                        State = ShiftClosureState.Closed,
+                        CreatedById = lead.Id,
+                        ClosedById = lead.Id,
+                        ClosedAt = DateTime.UtcNow
+                    });
+                }
+                await db.SaveChangesAsync();
+            }
             var todayBefore = await LoadDayAsync(today);
             var yesterdayBefore = await LoadDayAsync(yesterday);
             todayBefore.Items.Should().OnlyContain(i => i.StartAtUtc > DateTime.UtcNow);
@@ -439,6 +514,13 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
 
             (await LoadDayAsync(today)).Should().BeEquivalentTo(todayBefore);
             (await LoadDayAsync(yesterday)).Should().BeEquivalentTo(yesterdayBefore);
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                var itemIds = todayDay.Items.Concat(yesterdayDay.Items).Select(i => i.Id).ToList();
+                (await db.ShiftClosures.CountAsync(c => itemIds.Contains(c.ShiftPlanItemId)
+                    && c.State == ShiftClosureState.Closed)).Should().Be(4);
+            }
         });
     }
 

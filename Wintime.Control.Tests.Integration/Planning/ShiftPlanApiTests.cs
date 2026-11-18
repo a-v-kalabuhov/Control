@@ -108,6 +108,13 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
         return day;
     }
 
+    private async Task DeleteDayAsync(DateOnly date)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        await db.ShiftPlanDays.Where(d => d.ShiftDate == date).ExecuteDeleteAsync();
+    }
+
     private static ShiftPlanItem FutureItem(int position, string? leadId = null, int hoursFromNow = 2) => new()
     {
         Position = position,
@@ -445,8 +452,10 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
         Item(before, 1).GetProperty("state").GetString().Should().Be("Historical");
         Item(before, 1).GetProperty("canEditLead").GetBoolean().Should().BeFalse();
         Item(before, 2).GetProperty("state").GetString().Should().Be("Current");
-        Item(before, 2).GetProperty("canEditLead").GetBoolean().Should().BeFalse();
-        Item(before, 3).GetProperty("canEditLead").GetBoolean().Should().BeFalse();
+        Item(before, 2).GetProperty("canEditLead").GetBoolean().Should().BeTrue(
+            "руководитель может самоназначиться в текущую позицию без старшего");
+        Item(before, 3).GetProperty("canEditLead").GetBoolean().Should().BeTrue(
+            "на момент начала текущей позиции руководитель может назначить только себя");
         Item(before, 4).GetProperty("state").GetString().Should().Be("Future");
         Item(before, 4).GetProperty("canEditLead").GetBoolean().Should().BeTrue();
 
@@ -460,6 +469,152 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
             .Be(HttpStatusCode.BadRequest);
         (await GetDayAsync(client, historicalDate)).GetProperty("isSaved").GetBoolean().Should().BeFalse();
         day.Items.Should().HaveCount(4);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CurrentLeadless_ManagerCanAssignOnlySelfAndReadDraft(bool materialized)
+    {
+        var managerId = await TestManagerIdAsync();
+        var otherManager = await SeedUserAsync(UserRole.Manager);
+        var otherLead = await SeedUserAsync(UserRole.ShiftLead);
+        var admin = await SeedUserAsync(UserRole.Admin);
+        var manager = await ManagerClientAsync();
+        var adminClient = await ClientAsync(admin.Login, admin.Password);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow"));
+        var schedule = new List<ShiftScheduleItemDto>
+        {
+            new()
+            {
+                StartMinutes = ((localNow.Hour * 60 + localNow.Minute - 60) % 1440 + 1440) % 1440,
+                DurationMinutes = 180,
+                TimeZoneId = "Europe/Moscow"
+            },
+            new()
+            {
+                StartMinutes = (localNow.Hour * 60 + localNow.Minute + 180) % 1440,
+                DurationMinutes = 60,
+                TimeZoneId = "Europe/Moscow"
+            }
+        };
+        var today = DateOnly.FromDateTime(localNow);
+        await DeleteDayAsync(today);
+
+        try
+        {
+            await WithScheduleAsync(manager, schedule, async () =>
+            {
+                if (materialized)
+                {
+                    var now = DateTime.UtcNow;
+                    await SeedDayAsync(today,
+                        new ShiftPlanItem
+                        {
+                            Position = 1,
+                            StartAtUtc = now.AddHours(-1),
+                            EndAtUtc = now.AddHours(1),
+                            TimeZoneId = "Europe/Moscow"
+                        },
+                        FutureItem(2));
+                }
+
+                var position = 1;
+                if (!materialized)
+                {
+                    var before = await GetDayAsync(manager, today);
+                    position = before.GetProperty("items").EnumerateArray()
+                        .Single(i => i.GetProperty("state").GetString() == "Current")
+                        .GetProperty("position").GetInt32();
+                }
+                var managerItem = Item(await GetDayAsync(manager, today), position);
+                managerItem.GetProperty("canEditLead").GetBoolean().Should().BeTrue(managerItem.GetRawText());
+                Item(await GetDayAsync(adminClient, today), position)
+                    .GetProperty("canEditLead").GetBoolean().Should().BeFalse();
+                (await PutLeadAsync(manager, today, position, otherLead.Id)).StatusCode.Should()
+                    .Be(HttpStatusCode.BadRequest);
+                (await PutLeadAsync(manager, today, position, otherManager.Id)).StatusCode.Should()
+                    .Be(HttpStatusCode.BadRequest);
+                (await PutLeadAsync(adminClient, today, position, admin.Id)).StatusCode.Should()
+                    .Be(HttpStatusCode.BadRequest);
+                if (!materialized)
+                    (await GetDayAsync(manager, today)).GetProperty("isSaved").GetBoolean().Should().BeFalse(
+                        "отклонённые назначения не материализуют виртуальный день");
+
+                var assigned = await RequiredJsonAsync(await PutLeadAsync(manager, today, position, managerId));
+                assigned.GetProperty("isSaved").GetBoolean().Should().BeTrue();
+                assigned.GetProperty("items").EnumerateArray().Should().HaveCount(2,
+                    "самоназначение материализует полный день");
+                assigned.GetProperty("items").EnumerateArray().Should()
+                    .OnlyContain(i => i.GetProperty("id").ValueKind == JsonValueKind.String);
+                var item = Item(assigned, position);
+                item.GetProperty("shiftLeadId").GetString().Should().Be(managerId);
+                item.GetProperty("closureStatus").GetString().Should().Be("Draft");
+                item.GetProperty("canEditLead").GetBoolean().Should().BeFalse();
+                var itemId = item.GetProperty("id").GetGuid();
+
+                var closure = await RequiredJsonAsync(
+                    await manager.GetAsync($"/api/shift-closures/items/{itemId}"));
+                closure.GetProperty("shiftPlanItemId").GetGuid().Should().Be(itemId);
+                closure.GetProperty("state").GetString().Should().Be("Draft");
+            });
+        }
+        finally
+        {
+            await DeleteDayAsync(today);
+        }
+
+        var endedDate = NewDate();
+        var nowEnded = DateTime.UtcNow;
+        await SeedDayAsync(endedDate, new ShiftPlanItem
+        {
+            Position = 1,
+            StartAtUtc = nowEnded.AddHours(-2),
+            EndAtUtc = nowEnded.AddHours(-1),
+            TimeZoneId = "Europe/Moscow"
+        });
+        (await PutLeadAsync(manager, endedDate, 1, managerId)).StatusCode.Should()
+            .Be(HttpStatusCode.BadRequest, "завершена — самоназначаться поздно");
+    }
+
+    [Theory]
+    [InlineData(ShiftClosureState.Draft)]
+    [InlineData(ShiftClosureState.Closed)]
+    public async Task ClearLead_WithExistingClosure_IsRejectedAndLastEmptyDaySurvives(ShiftClosureState state)
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = NewDate();
+        var day = await SeedDayAsync(date, FutureItem(1, lead.Id));
+        var item = day.Items.Single();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            db.ShiftClosures.Add(new ShiftClosure
+            {
+                ShiftPlanItemId = item.Id,
+                State = state,
+                CreatedById = lead.Id,
+                ClosedById = state == ShiftClosureState.Closed ? lead.Id : null,
+                ClosedAt = state == ShiftClosureState.Closed ? DateTime.UtcNow : null
+            });
+            await db.SaveChangesAsync();
+        }
+        var client = await ManagerClientAsync();
+
+        var response = await PutLeadAsync(client, date, 1, null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var persisted = await db.ShiftPlanItems.AsNoTracking()
+                .Include(i => i.Closure)
+                .SingleAsync(i => i.Id == item.Id);
+            persisted.ShiftLeadId.Should().Be(lead.Id);
+            persisted.Closure.Should().NotBeNull();
+            (await db.ShiftPlanDays.CountAsync(d => d.Id == day.Id)).Should().Be(1);
+        }
     }
 
     [Fact]
