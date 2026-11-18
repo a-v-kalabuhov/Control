@@ -771,6 +771,10 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CreatedById")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid>("ImmId")
                         .HasColumnType("uuid");
 
@@ -787,21 +791,23 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Property<DateTime?>("UnassignedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedById")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
 
                     b.HasIndex("ImmId");
 
                     b.HasIndex("OperatorId");
 
-                    b.HasIndex("ShiftPlanItemId", "ImmId", "OperatorId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_ShiftImmOperatorAssignments_ActiveOperator")
-                        .HasFilter("\"UnassignedAt\" IS NULL");
+                    b.HasIndex("ShiftPlanItemId");
 
-                    b.HasIndex("ShiftPlanItemId", "ImmId", "Slot")
-                        .IsUnique()
-                        .HasDatabaseName("IX_ShiftImmOperatorAssignments_ActiveSlot")
-                        .HasFilter("\"UnassignedAt\" IS NULL");
+                    b.HasIndex("UpdatedById");
 
                     b.ToTable("ShiftImmOperatorAssignments", null, t =>
                         {
@@ -1438,6 +1444,12 @@ namespace Wintime.Control.Infrastructure.Migrations
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftImmOperatorAssignment", b =>
                 {
+                    b.HasOne("Wintime.Control.Core.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Wintime.Control.Core.Entities.Imm", "Imm")
                         .WithMany()
                         .HasForeignKey("ImmId")
@@ -1456,11 +1468,20 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Wintime.Control.Core.Entities.User", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CreatedBy");
+
                     b.Navigation("Imm");
 
                     b.Navigation("Operator");
 
                     b.Navigation("ShiftPlanItem");
+
+                    b.Navigation("UpdatedBy");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftPlanItem", b =>

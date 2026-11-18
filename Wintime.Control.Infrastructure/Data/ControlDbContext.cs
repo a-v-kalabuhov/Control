@@ -346,18 +346,17 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.AssignedAt).HasColumnType("timestamp with time zone");
             entity.Property(e => e.UnassignedAt).HasColumnType("timestamp with time zone");
+            entity.Property(e => e.UpdatedAt).HasColumnType("timestamp with time zone");
             entity.HasOne(e => e.ShiftPlanItem).WithMany(i => i.OperatorAssignments)
                   .HasForeignKey(e => e.ShiftPlanItemId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Imm).WithMany()
                   .HasForeignKey(e => e.ImmId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Operator).WithMany()
                   .HasForeignKey(e => e.OperatorId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasIndex(e => new { e.ShiftPlanItemId, e.ImmId, e.Slot })
-                  .IsUnique().HasFilter("\"UnassignedAt\" IS NULL")
-                  .HasDatabaseName("IX_ShiftImmOperatorAssignments_ActiveSlot");
-            entity.HasIndex(e => new { e.ShiftPlanItemId, e.ImmId, e.OperatorId })
-                  .IsUnique().HasFilter("\"UnassignedAt\" IS NULL")
-                  .HasDatabaseName("IX_ShiftImmOperatorAssignments_ActiveOperator");
+            entity.HasOne(e => e.CreatedBy).WithMany()
+                  .HasForeignKey(e => e.CreatedById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.UpdatedBy).WithMany()
+                  .HasForeignKey(e => e.UpdatedById).OnDelete(DeleteBehavior.Restrict);
             entity.ToTable("ShiftImmOperatorAssignments", t =>
             {
                 t.HasCheckConstraint("CK_ShiftImmOperatorAssignments_Slot", "\"Slot\" IN (1, 2)");
