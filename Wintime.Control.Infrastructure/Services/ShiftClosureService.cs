@@ -134,6 +134,154 @@ public sealed class ShiftClosureService : IShiftClosureService
         });
     }
 
+    public async Task<ShiftClosureDto> CloseAsync(
+        Guid itemId, CloseShiftClosureRequest request, StaffingCaller caller, CancellationToken ct)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            try
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+
+                // Общий порядок со staffing: schedule advisory -> ShiftPlanItem FOR UPDATE.
+                // Все проверки и весь расчёт выполняются повторно после блокировок.
+                await ShiftScheduleLock.AcquireAsync(_context, ct);
+                var item = await _context.ShiftPlanItems
+                    .FromSqlInterpolated(
+                        $"SELECT * FROM \"ShiftPlanItems\" WHERE \"Id\" = {itemId} FOR UPDATE")
+                    .Include(i => i.Closure).ThenInclude(c => c!.Entries).ThenInclude(e => e.OutputShares)
+                    .SingleOrDefaultAsync(ct)
+                    ?? throw new ShiftNotFoundException("Смена не найдена");
+                EnsureAccess(item, caller);
+                if (item.Closure?.State == ShiftClosureState.Closed)
+                    throw new ShiftConcurrencyException(ConcurrencyMessage);
+
+                var now = Now;
+                ShiftClosureValidator.ValidateCloseTiming(
+                    now, item.StartAtUtc, item.EndAtUtc, request.ConfirmEarlyClose);
+
+                // Loader повторно читает задания, циклы, назначения и сырые статусы
+                // в этом же DbContext и после lock; pre-lock DTO здесь не существует.
+                var readModel = await _loader.LoadAsync(itemId, caller, now, ct);
+                var errors = new List<ShiftClosureFieldError>();
+                foreach (var current in readModel.Entries)
+                {
+                    errors.AddRange(ShiftClosureValidator.Validate(new ShiftClosureValidationEntry
+                    {
+                        TaskId = current.TaskId,
+                        HasOperators = current.HasOperators,
+                        IsManualFallbackRequired = current.IsManualFallbackRequired,
+                        AutomaticOutputQuantity = current.AutomaticOutputQuantity,
+                        TaskPackagingUnit = current.TaskPackagingUnit,
+                        ActualPartWeightGrams = current.ActualPartWeightGrams,
+                        ManualFullCycleSeconds = current.ManualFullCycleSeconds,
+                        ActualPackagingUnit = current.ActualPackagingUnit,
+                        PackagingPlaces = current.PackagingPlaces,
+                        ManualGoodQuantity = current.HasOperators ? current.ManualGoodQuantity : 0,
+                        ManualDefectQuantity = current.HasOperators ? current.ManualDefectQuantity : 0
+                    }, requireCompleteness: true));
+                }
+                if (errors.Count > 0)
+                {
+                    throw new ShiftClosureValidationException(
+                        "closeValidationFailed", "Проверьте поля закрытия сменного рапорта", errors);
+                }
+                if (readModel.Timelines.SelectMany(t => t.Intervals).Any(i => i.HasOrphanOutput))
+                    throw new DomainException("orphanOutput");
+
+                var closure = item.Closure;
+                if (closure == null)
+                {
+                    closure = new ShiftClosure
+                    {
+                        ShiftPlanItemId = item.Id,
+                        State = ShiftClosureState.Draft,
+                        CreatedById = caller.UserId,
+                        CreatedAt = now
+                    };
+                    _context.ShiftClosures.Add(closure);
+                    item.Closure = closure;
+                }
+
+                var currentTaskIds = readModel.Entries.Select(e => e.TaskId).ToHashSet();
+                foreach (var stale in closure.Entries.Where(e => !currentTaskIds.Contains(e.ShiftTaskId)).ToList())
+                {
+                    _context.ShiftClosureEntries.Remove(stale);
+                    closure.Entries.Remove(stale);
+                }
+
+                foreach (var current in readModel.Entries)
+                {
+                    var entry = closure.Entries.SingleOrDefault(e => e.ShiftTaskId == current.TaskId);
+                    if (entry == null)
+                    {
+                        entry = new ShiftClosureEntry
+                        {
+                            ShiftClosureId = closure.Id,
+                            ShiftTaskId = current.TaskId,
+                            ImmId = current.ImmId
+                        };
+                        closure.Entries.Add(entry);
+                    }
+
+                    entry.ImmId = current.ImmId;
+                    entry.ImmNameSnapshot = current.ImmName;
+                    entry.ProductNameSnapshot = current.ProductName;
+                    entry.PlasticIngredientsSnapshot = current.PlasticIngredients;
+                    entry.ColorantIngredientsSnapshot = current.ColorantIngredients;
+                    entry.RemainingAtStart = current.RemainingAtStart;
+                    entry.NormPartWeightGrams = current.NormPartWeightGrams;
+                    entry.PlannedFullCycleSeconds = current.PlannedFullCycleSeconds;
+                    entry.TaskPackagingUnit = current.TaskPackagingUnit;
+                    entry.Cavities = current.Cavities;
+                    entry.ShiftPlanQuantity = current.ShiftPlanQuantity;
+                    entry.PlannedMaterialWeightGrams = current.PlannedMaterialWeightGrams;
+                    entry.AutomaticOutputQuantity = current.AutomaticOutputQuantity;
+                    entry.AutomaticAverageFullCycleSeconds = current.AutomaticAverageFullCycleSeconds;
+                    entry.IsManualFallbackRequired = current.IsManualFallbackRequired;
+                    entry.ActualPartWeightGrams = current.ActualPartWeightGrams;
+                    entry.ManualFullCycleSeconds = current.ManualFullCycleSeconds;
+                    entry.ActualPackagingUnit = current.ActualPackagingUnit;
+                    entry.PackagingPlaces = current.PackagingPlaces;
+                    entry.ManualGoodQuantity = current.HasOperators ? current.ManualGoodQuantity : 0;
+                    entry.ManualDefectQuantity = current.HasOperators ? current.ManualDefectQuantity : 0;
+
+                    if (entry.OutputShares.Count > 0)
+                    {
+                        _context.ShiftClosureOutputShares.RemoveRange(entry.OutputShares);
+                        entry.OutputShares.Clear();
+                    }
+                    foreach (var share in current.OutputShares)
+                    {
+                        entry.OutputShares.Add(new ShiftClosureOutputShare
+                        {
+                            ShiftClosureEntryId = entry.Id,
+                            IntervalStartUtc = DateTime.SpecifyKind(share.IntervalStartUtc, DateTimeKind.Utc),
+                            IntervalEndUtc = DateTime.SpecifyKind(share.IntervalEndUtc, DateTimeKind.Utc),
+                            OperatorId = share.OperatorId,
+                            OperatorFullNameSnapshot = share.OperatorFullName,
+                            OperatorEmployeeIdSnapshot = share.OperatorEmployeeId,
+                            SlotAtIntervalStart = share.SlotAtIntervalStart,
+                            Quantity = share.Quantity
+                        });
+                    }
+                }
+
+                closure.State = ShiftClosureState.Closed;
+                closure.ClosedAt = now;
+                closure.ClosedById = caller.UserId;
+                await _context.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return await GetAsync(itemId, caller, ct);
+            }
+            catch (Exception exception) when (IsConcurrencyFailure(exception))
+            {
+                throw new ShiftConcurrencyException(ConcurrencyMessage);
+            }
+        });
+    }
+
     public async Task<IReadOnlyList<ShiftClosurePendingDto>> GetPendingAsync(
         StaffingCaller caller, CancellationToken ct)
     {

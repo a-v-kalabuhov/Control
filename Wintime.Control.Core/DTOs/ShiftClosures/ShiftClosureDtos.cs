@@ -6,6 +6,8 @@ public sealed record ShiftClosureFieldError(Guid TaskId, string Field, string Co
 
 public sealed record SaveShiftClosureDraftRequest(IReadOnlyList<ShiftClosureManualEntryInput> Entries);
 
+public sealed record CloseShiftClosureRequest(bool ConfirmEarlyClose);
+
 public sealed record ShiftClosureManualEntryInput(
     Guid ShiftTaskId,
     decimal? ActualPartWeightGrams,
