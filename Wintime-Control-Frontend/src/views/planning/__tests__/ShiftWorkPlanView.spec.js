@@ -10,6 +10,8 @@ import { shiftsApi } from '@/api/shifts'
 import { archivedTaskRefs } from '@/utils/taskIssueCheck'
 import { shiftPlansApi } from '@/api/shiftPlans'
 import * as shiftClosuresApi from '@/api/shiftClosures'
+import { useAuthStore } from '@/stores/auth'
+import { downloadBlob } from '@/utils/downloadBlob'
 
 vi.mock('@/api/tasks', () => ({
   tasksApi: {
@@ -30,8 +32,13 @@ vi.mock('@/api/shiftPlans', () => ({
 vi.mock('@/api/shiftClosures', () => ({
   getByItem: vi.fn(),
   saveDraft: vi.fn(),
-  close: vi.fn()
+  close: vi.fn(),
+  correct: vi.fn(),
+  getCorrections: vi.fn(),
+  getBlankPdf: vi.fn(),
+  getClosedPdf: vi.fn()
 }))
+vi.mock('@/utils/downloadBlob', () => ({ downloadBlob: vi.fn() }))
 vi.mock('@/utils/taskIssueCheck', () => ({
   archivedTaskRefs: vi.fn(() => Promise.resolve([]))
 }))
@@ -101,6 +108,9 @@ async function changePersonnel(wrapper, taskId, personnelId) {
 describe('ShiftWorkPlanView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.isAuthenticated = true
+    auth.userRole = 'Manager'
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 10, 6, 10, 0))
     vi.clearAllMocks()
@@ -118,6 +128,9 @@ describe('ShiftWorkPlanView', () => {
       id: null, shiftPlanItemId: 'item-1', state: 'Draft', entries: [],
       startAtUtc: '2026-11-06T05:00:00Z', endAtUtc: '2026-11-06T17:00:00Z'
     } })
+    shiftClosuresApi.getCorrections.mockResolvedValue({ data: [] })
+    shiftClosuresApi.getBlankPdf.mockResolvedValue({ data: new Blob(['blank'], { type: 'application/pdf' }) })
+    shiftClosuresApi.getClosedPdf.mockResolvedValue({ data: new Blob(['closed'], { type: 'application/pdf' }) })
     archivedTaskRefs.mockResolvedValue([])
     vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
     vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
@@ -332,7 +345,8 @@ describe('ShiftWorkPlanView', () => {
     const wrapper = mountView()
     await flushPromises()
     await openClosureTab(wrapper)
-    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(1)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(2)
+    const callsBeforeRefresh = shiftClosuresApi.getByItem.mock.calls.length
     shiftPlansApi.getRange.mockResolvedValueOnce({
       data: [planDay(planItem({ shiftLeadId: null, shiftLeadName: null }))]
     })
@@ -342,7 +356,7 @@ describe('ShiftWorkPlanView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Назначьте старшего смены')
-    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(1)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(callsBeforeRefresh)
   })
 
   it('после материализации повторное разрешение включает рапорт', async () => {
@@ -388,7 +402,7 @@ describe('ShiftWorkPlanView', () => {
     const refreshedInput = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
     expect(refreshedInput.element).toBe(inputElement)
     expect(refreshedInput.props('modelValue')).toBe(9)
-    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(1)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(3)
   })
 
   it('повторно разрешает Position после переключения номера смены на вкладке рапорта', async () => {
@@ -404,6 +418,59 @@ describe('ShiftWorkPlanView', () => {
     await flushPromises()
 
     expect(shiftClosuresApi.getByItem).toHaveBeenCalledWith('item-2')
-    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(1)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(2)
+  })
+
+  it('на ПК до закрытия печатает только бланк через общий PDF component', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+
+    expect(wrapper.find('[data-test="print-closed"]').exists()).toBe(false)
+    await wrapper.get('[data-test="print-blank"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftClosuresApi.getBlankPdf).toHaveBeenCalledWith('item-1')
+    expect(shiftClosuresApi.getClosedPdf).not.toHaveBeenCalled()
+    expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/\.pdf$/))
+  })
+
+  it('на ПК после закрытия печатает только рапорт через общий PDF component', async () => {
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Closed', shiftDate: '2026-11-06', entries: []
+    } })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+
+    expect(wrapper.find('[data-test="print-blank"]').exists()).toBe(false)
+    await wrapper.get('[data-test="print-closed"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftClosuresApi.getClosedPdf).toHaveBeenCalledWith('closure-1')
+    expect(shiftClosuresApi.getBlankPdf).not.toHaveBeenCalled()
+    expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/\.pdf$/))
+  })
+
+  it('на ПК ShiftLead видит историю собственной смены, но не действие исправления', async () => {
+    useAuthStore().userRole = 'ShiftLead'
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Closed', shiftDate: '2026-11-06', entries: []
+    } })
+    shiftClosuresApi.getCorrections.mockResolvedValue({ data: [{
+      id: 'correction-1', changedByName: 'Менеджер Иванов', changedAt: '2026-11-06T12:00:00Z',
+      reason: 'Уточнение', changes: []
+    }] })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+
+    expect(wrapper.find('[data-test="open-corrections"]').exists()).toBe(false)
+    await wrapper.get('[data-test="open-correction-history"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftClosuresApi.getCorrections).toHaveBeenCalledWith('closure-1')
+    expect(wrapper.text()).toContain('Менеджер Иванов')
+    expect(shiftClosuresApi.correct).not.toHaveBeenCalled()
   })
 })

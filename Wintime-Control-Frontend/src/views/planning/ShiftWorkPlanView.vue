@@ -117,12 +117,25 @@
       </el-tab-pane>
       <el-tab-pane label="Сменный рапорт" name="closure">
         <div v-loading="closureLoading">
-          <ShiftClosureTable
-            v-if="activeTab === 'closure' && closureItem?.id && closureItem?.shiftLeadId"
-            ref="closureTable"
-            :key="closureItem.id"
-            :item-id="closureItem.id"
-          />
+          <template v-if="activeTab === 'closure' && closureItem?.id && closureItem?.shiftLeadId">
+            <div v-if="closureReport" class="mb-3 flex flex-wrap items-center justify-end gap-2">
+              <ShiftClosurePdfActions
+                :item-id="closureReport.shiftPlanItemId"
+                :closure-id="closureReport.id"
+                :state="closureReport.state"
+                :shift-date="closureReport.shiftDate"
+              />
+              <ShiftClosureCorrectionsDialog
+                :report="closureReport"
+                :reload-report="reloadClosureAfterCorrection"
+              />
+            </div>
+            <ShiftClosureTable
+              ref="closureTable"
+              :key="closureItem.id"
+              :item-id="closureItem.id"
+            />
+          </template>
           <el-alert
             v-else-if="activeTab === 'closure' && !closureLoading"
             type="info"
@@ -141,9 +154,12 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
 import ShiftClosureTable from '@/components/shift-closures/ShiftClosureTable.vue'
+import ShiftClosurePdfActions from '@/components/shift-closures/ShiftClosurePdfActions.vue'
+import ShiftClosureCorrectionsDialog from '@/components/shift-closures/ShiftClosureCorrectionsDialog.vue'
 import { tasksApi } from '@/api/tasks'
 import { personnelApi } from '@/api/personnel'
 import { shiftPlansApi } from '@/api/shiftPlans'
+import * as shiftClosuresApi from '@/api/shiftClosures'
 import { useDashboardStore } from '@/stores/dashboard'
 import { apiErrorMessage } from '@/utils/apiError'
 import { archivedTaskRefs } from '@/utils/taskIssueCheck'
@@ -156,6 +172,7 @@ const tasks = ref([])
 const personnel = ref([])
 const activeTab = ref('assignments')
 const closureItem = ref(null)
+const closureReport = ref(null)
 const closureTable = ref(null)
 const closureLoading = ref(false)
 const loading = ref(false)
@@ -238,6 +255,7 @@ async function load() {
 async function loadClosureItem() {
   if (!selectedDate.value || !selectedShiftNumber.value) {
     closureItem.value = null
+    closureReport.value = null
     return
   }
   const seq = ++closureLoadSeq
@@ -251,6 +269,12 @@ async function loadClosureItem() {
       ? closureTable.value
       : null
     closureItem.value = resolvedItem
+    closureReport.value = null
+    if (resolvedItem?.id && resolvedItem.shiftLeadId) {
+      const reportResponse = await shiftClosuresApi.getByItem(resolvedItem.id)
+      if (seq !== closureLoadSeq) return
+      closureReport.value = reportResponse.data
+    }
     // Refresh той же позиции не перемонтирует редактор: composable сам защищает dirty input.
     if (mountedSameItem) await mountedSameItem.load()
   } catch (error) {
@@ -259,6 +283,19 @@ async function loadClosureItem() {
     }
   } finally {
     if (seq === closureLoadSeq) closureLoading.value = false
+  }
+}
+
+async function reloadClosureAfterCorrection() {
+  if (!closureItem.value?.id) return false
+  try {
+    const response = await shiftClosuresApi.getByItem(closureItem.value.id)
+    closureReport.value = response.data
+    if (closureTable.value) await closureTable.value.load()
+    return true
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, 'Не удалось обновить сменный рапорт'))
+    return false
   }
 }
 

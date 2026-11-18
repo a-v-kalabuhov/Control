@@ -2,8 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
+import { createPinia, setActivePinia } from 'pinia'
 import ShiftClosureView from '../ShiftClosureView.vue'
 import * as api from '@/api/shiftClosures'
+import { useAuthStore } from '@/stores/auth'
+import { downloadBlob } from '@/utils/downloadBlob'
 import { tasksApi } from '@/api/tasks'
 import { personnelApi } from '@/api/personnel'
 import { shiftStaffingApi } from '@/api/shiftStaffing'
@@ -20,8 +23,10 @@ vi.mock('vue-router', async importOriginal => ({
 }))
 
 vi.mock('@/api/shiftClosures', () => ({
-  getByItem: vi.fn(), saveDraft: vi.fn(), close: vi.fn()
+  getByItem: vi.fn(), saveDraft: vi.fn(), close: vi.fn(), correct: vi.fn(),
+  getCorrections: vi.fn(), getBlankPdf: vi.fn(), getClosedPdf: vi.fn()
 }))
+vi.mock('@/utils/downloadBlob', () => ({ downloadBlob: vi.fn() }))
 vi.mock('@/api/tasks', () => ({ tasksApi: { getResults: vi.fn(), getTasks: vi.fn() } }))
 vi.mock('@/api/personnel', () => ({ personnelApi: { getAll: vi.fn(), getPersonnel: vi.fn() } }))
 vi.mock('@/api/shiftStaffing', () => ({
@@ -66,6 +71,10 @@ describe('ShiftClosureView', () => {
   let wrapper
 
   beforeEach(() => {
+    setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.isAuthenticated = true
+    auth.userRole = 'ShiftLead'
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-11-18T12:00:00Z'))
     vi.clearAllMocks()
@@ -75,6 +84,13 @@ describe('ShiftClosureView', () => {
       entries: [entry({ ...entries[0] })]
     })))
     api.close.mockResolvedValue(response(report({ state: 'Closed' })))
+    api.getCorrections.mockResolvedValue(response([{
+      id: 'correction-1', changedByName: 'Менеджер Иванов', changedAt: '2026-11-18T12:30:00Z',
+      reason: 'Уточнение по акту',
+      changes: [{ taskId: 'task-1', field: 'manualGoodQuantity', oldValue: 7, newValue: 8 }]
+    }]))
+    api.getBlankPdf.mockResolvedValue(response(new Blob(['blank'], { type: 'application/pdf' })))
+    api.getClosedPdf.mockResolvedValue(response(new Blob(['closed'], { type: 'application/pdf' })))
     vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
     vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
   })
@@ -184,5 +200,59 @@ describe('ShiftClosureView', () => {
     for (const control of wrapper.findAllComponents({ name: 'ElInputNumber' })) {
       expect(control.props('disabled')).toBe(true)
     }
+  })
+
+  it('на мобильном до закрытия печатает только бланк через общий PDF component', async () => {
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="print-closed"]').exists()).toBe(false)
+    await wrapper.get('[data-test="print-blank"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getBlankPdf).toHaveBeenCalledWith('item-1')
+    expect(api.getClosedPdf).not.toHaveBeenCalled()
+    expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/\.pdf$/))
+  })
+
+  it('на мобильном после закрытия печатает только рапорт через общий PDF component', async () => {
+    api.getByItem.mockResolvedValue(response(report({ state: 'Closed' })))
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="print-blank"]').exists()).toBe(false)
+    await wrapper.get('[data-test="print-closed"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getClosedPdf).toHaveBeenCalledWith('closure-1')
+    expect(api.getBlankPdf).not.toHaveBeenCalled()
+    expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/\.pdf$/))
+  })
+
+  it('на мобильном ShiftLead видит историю собственной смены, но не действие исправления', async () => {
+    api.getByItem.mockResolvedValue(response(report({ state: 'Closed' })))
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="open-corrections"]').exists()).toBe(false)
+    await wrapper.get('[data-test="open-correction-history"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getCorrections).toHaveBeenCalledWith('closure-1')
+    expect(wrapper.text()).toContain('Менеджер Иванов')
+    expect(api.correct).not.toHaveBeenCalled()
+  })
+
+  it('на мобильном Manager получает действие исправления закрытого рапорта', async () => {
+    useAuthStore().userRole = 'Manager'
+    api.getByItem.mockResolvedValue(response(report({ state: 'Closed' })))
+    wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-corrections"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getCorrections).toHaveBeenCalledWith('closure-1')
+    expect(wrapper.find('[data-test="submit-correction"]').exists()).toBe(true)
   })
 })

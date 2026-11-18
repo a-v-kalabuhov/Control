@@ -14,14 +14,28 @@
           Старший: {{ report.shiftLeadName }}
         </p>
       </div>
-      <el-button
-        data-test="refresh-report"
-        :loading="loading"
-        :disabled="saving"
-        @click="refresh"
-      >
-        Обновить
-      </el-button>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <ShiftClosurePdfActions
+          v-if="report"
+          :item-id="report.shiftPlanItemId"
+          :closure-id="report.id"
+          :state="report.state"
+          :shift-date="report.shiftDate"
+        />
+        <ShiftClosureCorrectionsDialog
+          v-if="report"
+          :report="report"
+          :reload-report="reloadAfterCorrection"
+        />
+        <el-button
+          data-test="refresh-report"
+          :loading="loading"
+          :disabled="saving"
+          @click="refresh"
+        >
+          Обновить
+        </el-button>
+      </div>
     </div>
 
     <ShiftClosureCards
@@ -58,6 +72,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import ShiftClosureCards from '@/components/shift-closures/ShiftClosureCards.vue'
+import ShiftClosurePdfActions from '@/components/shift-closures/ShiftClosurePdfActions.vue'
+import ShiftClosureCorrectionsDialog from '@/components/shift-closures/ShiftClosureCorrectionsDialog.vue'
 import { useShiftClosureEditor } from '@/composables/useShiftClosureEditor'
 import { useShiftStaffingRefresh } from '@/composables/useShiftStaffingRefresh'
 
@@ -92,6 +108,10 @@ function backToItem() {
 
 async function saveDraft() {
   if (await save()) ElMessage.success('Сменный рапорт сохранён')
+}
+
+function reloadAfterCorrection() {
+  return load()
 }
 
 async function requestClose(confirmEarlyClose) {
