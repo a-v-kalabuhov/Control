@@ -73,6 +73,14 @@ public class ShiftTaskWindowTests
     }
 
     [Fact]
+    public void Belongs_ActivityStartingExactlyAtShiftEnd_IsExcluded()
+    {
+        var task = Task(TaskStatus.Setup, setupStartedAt: ShiftEnd);
+
+        Belongs(task, ShiftStart.AddDays(-1)).Should().BeFalse();
+    }
+
+    [Fact]
     public void Belongs_MultiShiftTask_IsIncludedInEveryIntersectedShift()
     {
         var task = Task(TaskStatus.Completed,
