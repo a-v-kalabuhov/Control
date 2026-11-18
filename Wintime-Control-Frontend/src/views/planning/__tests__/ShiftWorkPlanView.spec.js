@@ -328,6 +328,23 @@ describe('ShiftWorkPlanView', () => {
     expect(shiftClosuresApi.getByItem).not.toHaveBeenCalled()
   })
 
+  it('при снятии старшего на Refresh скрывает рапорт без повторного closure API', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(1)
+    shiftPlansApi.getRange.mockResolvedValueOnce({
+      data: [planDay(planItem({ shiftLeadId: null, shiftLeadName: null }))]
+    })
+
+    const refresh = wrapper.findAll('button').find(button => button.text() === 'Обновить')
+    await refresh.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Назначьте старшего смены')
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(1)
+  })
+
   it('после материализации повторное разрешение включает рапорт', async () => {
     shiftPlansApi.getRange.mockResolvedValueOnce({ data: [planDay(planItem({ id: null, shiftLeadId: null }))] })
     const wrapper = mountView()
@@ -342,6 +359,36 @@ describe('ShiftWorkPlanView', () => {
 
     expect(shiftPlansApi.getRange).toHaveBeenCalledTimes(2)
     expect(shiftClosuresApi.getByItem).toHaveBeenCalledWith('item-1')
+  })
+
+  it('Refresh сохраняет несохранённый ввод и не перемонтирует редактор той же смены', async () => {
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Draft',
+      startAtUtc: '2026-11-06T05:00:00Z', endAtUtc: '2026-11-06T17:00:00Z',
+      entries: [{
+        taskId: 'task-1', immName: 'ТПА-1', productName: 'Корпус', operatorTotals: [],
+        actualPartWeightGrams: 4, manualFullCycleSeconds: 50, actualPackagingUnit: 20,
+        packagingPlaces: 1, manualGoodQuantity: 8, manualDefectQuantity: 1,
+        automaticOutputQuantity: 2, isManualFallbackRequired: false
+      }]
+    } })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    const input = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
+    const inputElement = input.element
+    input.vm.$emit('update:modelValue', 9)
+    await wrapper.vm.$nextTick()
+    expect(input.props('modelValue')).toBe(9)
+
+    const refresh = wrapper.findAll('button').find(button => button.text() === 'Обновить')
+    await refresh.trigger('click')
+    await flushPromises()
+
+    const refreshedInput = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
+    expect(refreshedInput.element).toBe(inputElement)
+    expect(refreshedInput.props('modelValue')).toBe(9)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(1)
   })
 
   it('повторно разрешает Position после переключения номера смены на вкладке рапорта', async () => {

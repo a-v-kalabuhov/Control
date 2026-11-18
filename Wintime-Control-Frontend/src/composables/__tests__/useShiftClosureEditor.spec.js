@@ -35,6 +35,12 @@ function response(value) {
   return { data: value }
 }
 
+function deferred() {
+  let resolve
+  const promise = new Promise(res => { resolve = res })
+  return { promise, resolve }
+}
+
 function createEditor() {
   return useShiftClosureEditor('item-1')
 }
@@ -229,5 +235,32 @@ describe('useShiftClosureEditor', () => {
     for (const field of manualFields) {
       expect(api.saveDraft.mock.calls[0][1][0]).toHaveProperty(field)
     }
+  })
+
+  it('сохраняет правки, сделанные во время in-flight load без preserveDirty', async () => {
+    const editor = createEditor()
+    await editor.load()
+    const request = deferred()
+    api.getByItem.mockReturnValueOnce(request.promise)
+
+    const loading = editor.load()
+    editor.updateManual('task-1', 'manualGoodQuantity', 12)
+    request.resolve(response(report({ entries: [entry({ automaticOutputQuantity: 6 })] })))
+    await loading
+
+    expect(editor.report.value.entries[0].automaticOutputQuantity).toBe(6)
+    expect(editor.report.value.entries[0].manualGoodQuantity).toBe(12)
+    expect(editor.isDirty.value).toBe(true)
+  })
+
+  it('при ошибке close показывает сообщение о закрытии, а не о сохранении', async () => {
+    const editor = createEditor()
+    await editor.load()
+    api.close.mockRejectedValueOnce({ response: { status: 500 } })
+
+    const result = await editor.close({ confirmEarlyClose: true })
+
+    expect(result).toEqual({ success: false })
+    expect(ElMessage.error).toHaveBeenCalledWith('Не удалось закрыть сменный рапорт')
   })
 })

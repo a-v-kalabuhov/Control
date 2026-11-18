@@ -70,7 +70,7 @@ export function useShiftClosureEditor(itemId) {
     try {
       const response = await shiftClosuresApi.getByItem(itemId)
       if (sequence !== loadSequence) return false
-      applyServerReport(response.data, preserveDirty)
+      applyServerReport(response.data, preserveDirty || isDirty.value)
       fieldErrors.value = {}
       return true
     } catch (error) {
@@ -101,7 +101,7 @@ export function useShiftClosureEditor(itemId) {
     }
   }
 
-  async function handleError(error) {
+  async function handleError(error, fallback = 'Не удалось сохранить сменный рапорт') {
     if (error?.response?.status === 409) {
       ElMessage.error(apiErrorMessage(error, 'Сменный рапорт изменён другим пользователем'))
       await load({ preserveDirty: true })
@@ -115,7 +115,7 @@ export function useShiftClosureEditor(itemId) {
       ]))
       return
     }
-    ElMessage.error(apiErrorMessage(error, 'Не удалось сохранить сменный рапорт'))
+    ElMessage.error(apiErrorMessage(error, fallback))
   }
 
   async function save() {
@@ -156,7 +156,7 @@ export function useShiftClosureEditor(itemId) {
       if (error?.response?.data?.code === 'earlyCloseConfirmationRequired') {
         return { earlyCloseConfirmationRequired: true }
       }
-      await handleError(error)
+      await handleError(error, 'Не удалось закрыть сменный рапорт')
       return { success: false }
     } finally {
       saving.value = false

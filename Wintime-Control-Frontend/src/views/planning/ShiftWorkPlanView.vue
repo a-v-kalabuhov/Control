@@ -119,6 +119,7 @@
         <div v-loading="closureLoading">
           <ShiftClosureTable
             v-if="activeTab === 'closure' && closureItem?.id && closureItem?.shiftLeadId"
+            ref="closureTable"
             :key="closureItem.id"
             :item-id="closureItem.id"
           />
@@ -155,6 +156,7 @@ const tasks = ref([])
 const personnel = ref([])
 const activeTab = ref('assignments')
 const closureItem = ref(null)
+const closureTable = ref(null)
 const closureLoading = ref(false)
 const loading = ref(false)
 const issuing = ref(false)
@@ -234,15 +236,23 @@ async function load() {
 }
 
 async function loadClosureItem() {
-  closureItem.value = null
-  if (!selectedDate.value || !selectedShiftNumber.value) return
+  if (!selectedDate.value || !selectedShiftNumber.value) {
+    closureItem.value = null
+    return
+  }
   const seq = ++closureLoadSeq
   closureLoading.value = true
   try {
     const response = await shiftPlansApi.getRange(selectedDate.value, selectedDate.value)
     if (seq !== closureLoadSeq) return
     const day = (response.data ?? []).find(item => item.shiftDate === selectedDate.value)
-    closureItem.value = day?.items?.find(item => item.position === selectedShiftNumber.value) ?? null
+    const resolvedItem = day?.items?.find(item => item.position === selectedShiftNumber.value) ?? null
+    const mountedSameItem = resolvedItem?.id && resolvedItem.shiftLeadId && closureItem.value?.id === resolvedItem.id
+      ? closureTable.value
+      : null
+    closureItem.value = resolvedItem
+    // Refresh той же позиции не перемонтирует редактор: composable сам защищает dirty input.
+    if (mountedSameItem) await mountedSameItem.load()
   } catch (error) {
     if (seq === closureLoadSeq) {
       ElMessage.error(apiErrorMessage(error, 'Не удалось определить позицию сменного рапорта'))
