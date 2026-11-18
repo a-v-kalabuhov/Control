@@ -8,6 +8,7 @@ public class UpdateProductRequestDto
     /// <summary>Явно очистить комментарий; null у Comment означает «не менять».</summary>
     public bool ClearComment { get; set; }
     public decimal? PartWeightGrams { get; set; }
+    public decimal? RunnerWeightGrams { get; set; }
     public int? Cavities { get; set; }
     /// <summary>Явно очистить умолчание гнёзд; null у Cavities означает «не менять».</summary>
     public bool ClearCavities { get; set; }

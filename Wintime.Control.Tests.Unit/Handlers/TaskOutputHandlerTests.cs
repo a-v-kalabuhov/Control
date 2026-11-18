@@ -27,10 +27,18 @@ public class TaskOutputHandlerTests
     {
         var immId = Guid.NewGuid();
         using var db = CreateDb();
-        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 2, RunnerWeightGrams = 5m };
+        var mold = new Mold { Name = "M", FormId = Guid.NewGuid().ToString(), Cavities = 2 };
+        var product = new Core.Entities.Product
+        {
+            ProductTypeId = Guid.NewGuid(), Article = "0", Name = "P", FullArticle = "T.0", RunnerWeightGrams = 5m
+        };
         var imm = new Imm { Id = immId, Name = "IMM", IsActive = true };
-        var task = new EntityTask { ImmId = immId, MoldId = mold.Id, Mold = mold, Imm = imm, PlanQuantity = 1000, Status = EntityTaskStatus.InProgress, PartWeightGrams = 10m };
-        db.AddRange(mold, imm, task);
+        var task = new EntityTask
+        {
+            ImmId = immId, MoldId = mold.Id, Mold = mold, ProductId = product.Id, Product = product,
+            Imm = imm, PlanQuantity = 1000, Status = EntityTaskStatus.InProgress, PartWeightGrams = 10m
+        };
+        db.AddRange(mold, product, imm, task);
         await db.SaveChangesAsync();
 
         var cycle = new ImmCycle { ImmId = immId, TaskId = task.Id, MoldId = mold.Id, IsSuccessful = true, Cavities = 2, StartTime = DateTime.UtcNow.AddSeconds(-10), EndTime = DateTime.UtcNow };

@@ -116,7 +116,6 @@ public class MoldsController : ControllerBase
             FormId = formId,
             Name = request.Name,
             Cavities = request.Cavities,
-            RunnerWeightGrams = request.RunnerWeightGrams,
             MaxResourceCycles = request.MaxResourceCycles,
             To1Cycles = request.To1Cycles,
             To2Cycles = request.To2Cycles,
@@ -197,8 +196,6 @@ public class MoldsController : ControllerBase
             mold.Name = request.Name;
         if (request.Cavities.HasValue)
             mold.Cavities = request.Cavities.Value;
-        if (request.RunnerWeightGrams.HasValue)
-            mold.RunnerWeightGrams = request.RunnerWeightGrams.Value;
         if (request.MaxResourceCycles.HasValue)
             mold.MaxResourceCycles = request.MaxResourceCycles.Value;
         if (request.To1Cycles.HasValue)
@@ -299,7 +296,6 @@ public class MoldsController : ControllerBase
         FormId = m.FormId,
         Name = m.Name,
         Cavities = m.Cavities,
-        RunnerWeightGrams = m.RunnerWeightGrams,
         ProductWeights = (m.ProductType?.Products ?? Enumerable.Empty<Product>())
             .OrderBy(p => p.FullArticle)
             .Select(p => new MoldProductWeightDto

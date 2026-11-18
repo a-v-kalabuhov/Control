@@ -6,7 +6,6 @@ public class MoldDto
     public string FormId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Cavities { get; set; }
-    public decimal RunnerWeightGrams { get; set; }
     /// <summary>Веса изделий типа ПФ и расчётный вес за смыкание (PZP-24).</summary>
     public List<MoldProductWeightDto> ProductWeights { get; set; } = new();
     public int MaxResourceCycles { get; set; }

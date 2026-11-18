@@ -77,6 +77,18 @@ public class MoldProductTypeTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task CreateMold_DtoDoesNotContainRunnerWeight()
+    {
+        var client = await ManagerClientAsync();
+        var typeId = await SeedTypeAsync();
+        var resp = await client.PostAsJsonAsync("/api/molds", NewMold(typeId));
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        using var dto = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync());
+        dto.RootElement.TryGetProperty("runnerWeightGrams", out _).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task CreateMold_CavitiesBelowProductDefault_Returns400()
     {
         var client = await ManagerClientAsync();

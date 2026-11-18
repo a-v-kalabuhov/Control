@@ -111,13 +111,10 @@ public class ReportService : IReportService
             .OrderBy(t => t.SetupStartedAt)
             .ToListAsync(ct);
 
-        // ПФ циклов периода — для расхода сырья по ПФ каждого цикла
-        var cycleMoldIds = cycles.Where(c => c.MoldId != null).Select(c => c.MoldId!.Value).Distinct().ToList();
-        var cycleMolds = await _context.Molds
-            .Where(m => cycleMoldIds.Contains(m.Id))
-            .ToDictionaryAsync(m => m.Id, ct);
+        // Задания циклов и их изделия — для расхода сырья.
         var cycleTaskIds = cycles.Where(c => c.TaskId != null).Select(c => c.TaskId!.Value).Distinct().ToList();
         var cycleTasks = await _context.ShiftTasks
+            .Include(t => t.Product)
             .Where(t => cycleTaskIds.Contains(t.Id))
             .ToDictionaryAsync(t => t.Id, ct);
 
@@ -167,13 +164,12 @@ public class ReportService : IReportService
             }
         }
 
-        // Расход сырья — только по циклам с заданием (PZP-24): вес детали из задания,
-        // литник — из ПФ каждого цикла. Сирота-цикл не знает изделия и расхода не даёт.
+        // Расход сырья — только по циклам с заданием: вес детали — рабочая копия задания,
+        // литник — параметр изделия задания. Сирота-цикл не знает изделия и расхода не даёт.
         decimal rawGrams = 0;
         foreach (var c in cycles)
-            if (c.TaskId is Guid taskId && cycleTasks.TryGetValue(taskId, out var cycleTask)
-                && c.MoldId is Guid moldId && cycleMolds.TryGetValue(moldId, out var cm))
-                rawGrams += cycleTask.PartWeightGrams * c.Cavities + cm.RunnerWeightGrams;
+            if (c.TaskId is Guid taskId && cycleTasks.TryGetValue(taskId, out var cycleTask))
+                rawGrams += cycleTask.PartWeightGrams * c.Cavities + cycleTask.Product!.RunnerWeightGrams;
         var rawMaterialKg = rawGrams / 1000m;
 
         var moldNames = tasks.Select(t => t.Mold?.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct().ToList();

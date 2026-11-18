@@ -39,7 +39,7 @@ vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
     getList: vi.fn(() => Promise.resolve({ data: [
       { id: 'pt-X', article: 'ART-X', name: 'Тип X', isActive: true, packagingUnit: 24, products: [
-        { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true, partWeightGrams: 10, plannedInjectionCycleSeconds: 20 }
+        { id: 'p-X0', article: '0', fullArticle: 'ART-X.0', name: 'По умолчанию', isActive: true, partWeightGrams: 10, runnerWeightGrams: 3.25, plannedInjectionCycleSeconds: 20 }
       ] },
       { id: 'pt-Y', article: 'ART-Y', name: 'Тип Y', isActive: true, packagingUnit: 12, products: [
         { id: 'p-Y0', article: '0', fullArticle: 'ART-Y.0', name: 'По умолчанию', isActive: true, partWeightGrams: 11, plannedInjectionCycleSeconds: 21 },
@@ -114,6 +114,16 @@ describe('TaskFormModal — разметка', () => {
     expect(text).not.toContain('Необязательно — нужен для анализа стабильности')
     expect(text).not.toContain('Необязательно. Пусто — задание начинается с начала смены')
     expect(text).toContain('Пусто - наладка с начала смены')
+  })
+
+  it('показывает вес литника выбранного изделия', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.vm.loadMolds()
+    wrapper.vm.form.moldId = 'mold-1'
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Вес литника: 3.25 г')
   })
 })
 

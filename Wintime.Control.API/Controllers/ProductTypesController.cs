@@ -21,7 +21,8 @@ public class ProductTypesController : ControllerBase
     private static ProductDto ToDto(Product p, ISet<Guid> usedIds) => new()
     {
         Id = p.Id, Article = p.Article, FullArticle = p.FullArticle, Name = p.Name, Comment = p.Comment,
-        PartWeightGrams = p.PartWeightGrams, Cavities = p.Cavities, PlannedInjectionCycleSeconds = p.PlannedInjectionCycleSeconds,
+        PartWeightGrams = p.PartWeightGrams, RunnerWeightGrams = p.RunnerWeightGrams,
+        Cavities = p.Cavities, PlannedInjectionCycleSeconds = p.PlannedInjectionCycleSeconds,
         HasSample = p.HasSample, IsActive = p.IsActive, IsUsed = usedIds.Contains(p.Id),
         Recipe = p.RecipeIngredients
             .OrderBy(i => i.SortOrder)
@@ -54,10 +55,28 @@ public class ProductTypesController : ControllerBase
         return inOrders.Concat(inTasks).ToHashSet();
     }
 
-    private static string? ProductAttributeError(decimal? weight, int? injectionCycle)
+    private async Task RecalculateMaterialForProductAsync(Guid productId, decimal runnerWeight)
+    {
+        var totals = await _context.ImmCycles
+            .Where(c => c.Task!.ProductId == productId && c.IsSuccessful && c.EndTime != null)
+            .GroupBy(c => new { c.TaskId, c.Task!.PartWeightGrams })
+            .Select(g => new
+            {
+                TaskId = g.Key.TaskId!.Value,
+                Weight = g.Sum(c => c.Cavities * g.Key.PartWeightGrams + runnerWeight)
+            })
+            .ToDictionaryAsync(x => x.TaskId, x => x.Weight);
+        var tasks = await _context.ShiftTasks.Where(t => t.ProductId == productId).ToListAsync();
+        foreach (var task in tasks)
+            task.ActualMaterialWeightGrams = totals.GetValueOrDefault(task.Id);
+    }
+
+    private static string? ProductAttributeError(decimal? weight, decimal? runnerWeight, int? injectionCycle)
     {
         if (weight is < 0)
             return "Вес детали должен быть неотрицательным.";
+        if (runnerWeight is < 0)
+            return "Вес литника должен быть неотрицательным.";
         if (injectionCycle is <= 0)
             return "Эталон цикла литья должен быть больше нуля.";
         return null;
@@ -282,7 +301,7 @@ public class ProductTypesController : ControllerBase
             return BadRequest("Артикул изделия обязателен.");
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest("Наименование обязательно.");
-        var attributeError = ProductAttributeError(request.PartWeightGrams, request.PlannedInjectionCycleSeconds);
+        var attributeError = ProductAttributeError(request.PartWeightGrams, request.RunnerWeightGrams, request.PlannedInjectionCycleSeconds);
         if (attributeError != null)
             return BadRequest(attributeError);
         var cavitiesError = ProductCavitiesError(pt, request.Cavities);
@@ -297,7 +316,8 @@ public class ProductTypesController : ControllerBase
         var product = new Product
         {
             ProductTypeId = id, Article = part, Name = request.Name.Trim(), FullArticle = full, IsActive = true,
-            Comment = MaterialRules.Clean(request.Comment), PartWeightGrams = request.PartWeightGrams, Cavities = request.Cavities,
+            Comment = MaterialRules.Clean(request.Comment), PartWeightGrams = request.PartWeightGrams,
+            RunnerWeightGrams = request.RunnerWeightGrams, Cavities = request.Cavities,
             PlannedInjectionCycleSeconds = request.PlannedInjectionCycleSeconds,
             HasSample = request.HasSample
         };
@@ -317,9 +337,10 @@ public class ProductTypesController : ControllerBase
         var product = pt?.Products.FirstOrDefault(p => p.Id == productId);
         if (pt == null || product == null)
             return NotFound();
-        var attributeError = ProductAttributeError(request.PartWeightGrams, request.PlannedInjectionCycleSeconds);
+        var attributeError = ProductAttributeError(request.PartWeightGrams, request.RunnerWeightGrams, request.PlannedInjectionCycleSeconds);
         if (attributeError != null)
             return BadRequest(attributeError);
+        var previousRunnerWeight = product.RunnerWeightGrams;
 
         if (request.Article != null)
         {
@@ -348,6 +369,10 @@ public class ProductTypesController : ControllerBase
             product.Comment = MaterialRules.Clean(request.Comment);
         if (request.PartWeightGrams.HasValue)
             product.PartWeightGrams = request.PartWeightGrams.Value;
+        if (request.RunnerWeightGrams.HasValue)
+            product.RunnerWeightGrams = request.RunnerWeightGrams.Value;
+        if (product.RunnerWeightGrams != previousRunnerWeight)
+            await RecalculateMaterialForProductAsync(product.Id, product.RunnerWeightGrams);
         if (request.ClearCavities)
             product.Cavities = null;
         else if (request.Cavities.HasValue && request.Cavities.Value != product.Cavities)

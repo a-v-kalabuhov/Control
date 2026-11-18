@@ -55,6 +55,7 @@
               </template>
             </el-table-column>
             <el-table-column prop="partWeightGrams" label="Вес, г" width="100" align="right" />
+            <el-table-column prop="runnerWeightGrams" label="Литник, г" width="100" align="right" />
             <el-table-column label="Гнёзда" width="100" align="right">
               <template #default="{ row: p }">{{ p.cavities ?? '—' }}</template>
             </el-table-column>
@@ -224,6 +225,12 @@
             :value-on-clear="0" class="w-full" controls-position="right"
           />
         </el-form-item>
+        <el-form-item label="Вес литника, г">
+          <el-input-number
+            v-model="productForm.runnerWeightGrams" :min="0" :precision="2" :step="0.1"
+            :value-on-clear="0" data-test="product-runner-weight" class="w-full" controls-position="right"
+          />
+        </el-form-item>
         <el-form-item label="Гнёзда">
           <el-input-number
             v-model="productForm.cavities" :min="1" :precision="0"
@@ -326,7 +333,7 @@ const productDialogVisible = ref(false)
 const savingProduct = ref(false)
 const editingProduct = ref(null)
 const productForm = reactive({
-  article: '', name: '', comment: '', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
+  article: '', name: '', comment: '', partWeightGrams: 0, runnerWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
 })
 
 const filters = reactive({ search: '', isActive: null, customer: null, customerEmpty: false })
@@ -432,7 +439,7 @@ function showProductModal() {
   editingProduct.value = null
   Object.assign(productForm, {
     article: nextProductArticle(editing.value.products),
-    name: '', comment: '', partWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
+    name: '', comment: '', partWeightGrams: 0, runnerWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
   })
   productDialogVisible.value = true
 }
@@ -442,6 +449,7 @@ function editProduct(p) {
   Object.assign(productForm, {
     article: p.article, name: p.name, comment: p.comment ?? '',
     partWeightGrams: p.partWeightGrams ?? 0,
+    runnerWeightGrams: p.runnerWeightGrams ?? 0,
     cavities: p.cavities ?? null,
     plannedInjectionCycleSeconds: p.plannedInjectionCycleSeconds ?? null,
     hasSample: p.hasSample ?? false
@@ -481,6 +489,7 @@ async function saveProduct() {
     const payload = {
       article, name, comment: productForm.comment?.trim() || null,
       partWeightGrams: productForm.partWeightGrams ?? 0,
+      runnerWeightGrams: productForm.runnerWeightGrams ?? 0,
       cavities: productForm.cavities ?? null,
       plannedInjectionCycleSeconds: productForm.plannedInjectionCycleSeconds ?? null,
       hasSample: productForm.hasSample ?? false

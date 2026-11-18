@@ -161,7 +161,7 @@ public class UnplannedRunController : ControllerBase
         var run = await _context.UnplannedRuns.FirstOrDefaultAsync(r => r.Id == id);
         if (run == null) return NotFound("Эпизод не найден");
 
-        var task = await _context.ShiftTasks.Include(t => t.Mold).FirstOrDefaultAsync(t => t.Id == request.TaskId);
+        var task = await _context.ShiftTasks.Include(t => t.Mold).Include(t => t.Product).FirstOrDefaultAsync(t => t.Id == request.TaskId);
         if (task == null) return NotFound("Задание не найдено");
 
         if (task.ImmId != run.ImmId)
@@ -198,7 +198,7 @@ public class UnplannedRunController : ControllerBase
             if (c.IsSuccessful)
             {
                 addedQty += c.Cavities;
-                addedWeight += c.Cavities * task.PartWeightGrams + task.Mold.RunnerWeightGrams;
+                addedWeight += c.Cavities * task.PartWeightGrams + task.Product!.RunnerWeightGrams;
             }
         }
         task.ActualQuantity += (int)addedQty;
@@ -256,7 +256,7 @@ public class UnplannedRunController : ControllerBase
 
     private async Task<List<Core.Entities.ImmCycle>> RollbackBindingAsync(Core.Entities.UnplannedRun run, Guid previousTaskId)
     {
-        var prevTask = await _context.ShiftTasks.Include(t => t.Mold).FirstOrDefaultAsync(t => t.Id == previousTaskId);
+        var prevTask = await _context.ShiftTasks.Include(t => t.Mold).Include(t => t.Product).FirstOrDefaultAsync(t => t.Id == previousTaskId);
         // ПРИМЕЧАНИЕ: открытый цикл (EndTime=null) на момент бэкфилла не попадёт в это
         // окно — известное ограничение контракта v2, не устраняется в этой задаче.
         var windowQuery = _context.ImmCycles.Where(c => c.ImmId == run.ImmId && c.TaskId == previousTaskId && c.EndTime >= run.StartTime);
@@ -270,7 +270,7 @@ public class UnplannedRunController : ControllerBase
             if (c.IsSuccessful && prevTask != null)
             {
                 qty += c.Cavities;
-                weight += c.Cavities * prevTask.PartWeightGrams + prevTask.Mold.RunnerWeightGrams;
+                weight += c.Cavities * prevTask.PartWeightGrams + prevTask.Product!.RunnerWeightGrams;
             }
             c.TaskId = null;
             c.MoldId = null;

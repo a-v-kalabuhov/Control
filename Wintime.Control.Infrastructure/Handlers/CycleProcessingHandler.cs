@@ -53,6 +53,7 @@ public class CycleProcessingHandler : ICycleProcessingHandler
 
         var activeTask = await _db.ShiftTasks
             .Include(t => t.Mold)
+            .Include(t => t.Product)
             .FirstOrDefaultAsync(
                 t => t.ImmId == immId
                   && (t.Status == EntityTaskStatus.Setup || t.Status == EntityTaskStatus.InProgress),

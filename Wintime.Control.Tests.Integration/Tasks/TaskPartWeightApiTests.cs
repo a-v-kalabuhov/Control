@@ -4,6 +4,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.DTOs.Tasks;
+using Wintime.Control.Core.DTOs.ProductType;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Tests.Integration.Infrastructure;
@@ -41,12 +42,11 @@ public class TaskPartWeightApiTests : IClassFixture<IntegrationTestFactory>
         var product = new Product
         {
             ProductTypeId = type.Id, Article = "0", Name = "Деталь", FullArticle = type.Article + ".0",
-            PartWeightGrams = weight
+            PartWeightGrams = weight, RunnerWeightGrams = 3
         };
         var mold = new Mold
         {
-            ProductType = type, Name = "Весовая ПФ", FormId = $"WF-{suffix}", Cavities = 2,
-            RunnerWeightGrams = 3
+            ProductType = type, Name = "Весовая ПФ", FormId = $"WF-{suffix}", Cavities = 2
         };
         type.Products.Add(product);
         db.ProductTypes.Add(type);
@@ -60,6 +60,34 @@ public class TaskPartWeightApiTests : IClassFixture<IntegrationTestFactory>
         ImmId = immId, MoldId = moldId, ProductId = productId, PlanQuantity = 100,
         PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1), PlannedFullCycleSeconds = 60
     };
+
+    private async Task SeedSuccessfulCycleAsync(Guid immId, Guid moldId, Guid taskId, decimal storedWeight)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        db.ImmCycles.Add(new ImmCycle
+        {
+            ImmId = immId, MoldId = moldId, TaskId = taskId, Cavities = 2, IsSuccessful = true,
+            StartTime = DateTime.UtcNow.AddMinutes(-2), EndTime = DateTime.UtcNow.AddMinutes(-1), DurationSeconds = 60
+        });
+        var task = await db.ShiftTasks.FindAsync(taskId);
+        task!.ActualMaterialWeightGrams = storedWeight;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<Guid> AddProductAsync(Guid typeId, decimal partWeight, decimal runnerWeight)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var product = new Product
+        {
+            ProductTypeId = typeId, Article = "BLK", Name = "Чёрная деталь",
+            FullArticle = $"SECOND-{Guid.NewGuid():N}", PartWeightGrams = partWeight, RunnerWeightGrams = runnerWeight
+        };
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+        return product.Id;
+    }
 
     [Fact]
     public async Task CreateTask_CopiesProductPartWeight()
@@ -116,6 +144,61 @@ public class TaskPartWeightApiTests : IClassFixture<IntegrationTestFactory>
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         var updated = await client.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", JsonOptions);
         updated!.PartWeightGrams.Should().Be(30m);
+    }
+
+    [Fact]
+    public async Task ChangeProduct_RecalculatesMaterialWithNewProductRunner()
+    {
+        var (immId, moldId, productId, typeId) = await SeedAsync(10m);
+        var client = await ClientAsync();
+        var created = await client.PostAsJsonAsync("/api/tasks", CreateRequest(immId, moldId, productId));
+        var task = await created.Content.ReadFromJsonAsync<TaskDto>(JsonOptions);
+        await SeedSuccessfulCycleAsync(immId, moldId, task!.Id, storedWeight: 23m);
+        var secondProductId = await AddProductAsync(typeId, partWeight: 30m, runnerWeight: 5m);
+
+        var response = await client.PutAsJsonAsync($"/api/tasks/{task.Id}",
+            new UpdateTaskRequestDto { ProductId = secondProductId });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var updated = await client.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", JsonOptions);
+        updated!.PartWeightGrams.Should().Be(30m);
+        updated.ActualMaterialWeightGrams.Should().Be(65m); // 2 детали × 30 г + литник нового изделия 5 г
+    }
+
+    [Fact]
+    public async Task ChangeProductWithSamePartWeight_RecalculatesMaterialWithNewRunner()
+    {
+        var (immId, moldId, productId, typeId) = await SeedAsync(10m);
+        var client = await ClientAsync();
+        var created = await client.PostAsJsonAsync("/api/tasks", CreateRequest(immId, moldId, productId));
+        var task = await created.Content.ReadFromJsonAsync<TaskDto>(JsonOptions);
+        await SeedSuccessfulCycleAsync(immId, moldId, task!.Id, storedWeight: 23m);
+        var secondProductId = await AddProductAsync(typeId, partWeight: 10m, runnerWeight: 5m);
+
+        var response = await client.PutAsJsonAsync($"/api/tasks/{task.Id}",
+            new UpdateTaskRequestDto { ProductId = secondProductId });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var updated = await client.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", JsonOptions);
+        updated!.PartWeightGrams.Should().Be(10m);
+        updated.ActualMaterialWeightGrams.Should().Be(25m);
+    }
+
+    [Fact]
+    public async Task UpdateProductRunner_RecalculatesAccumulatedMaterialForTasks()
+    {
+        var (immId, moldId, productId, typeId) = await SeedAsync(10m);
+        var client = await ClientAsync();
+        var created = await client.PostAsJsonAsync("/api/tasks", CreateRequest(immId, moldId, productId));
+        var task = await created.Content.ReadFromJsonAsync<TaskDto>(JsonOptions);
+        await SeedSuccessfulCycleAsync(immId, moldId, task!.Id, storedWeight: 23m);
+
+        var response = await client.PutAsJsonAsync($"/api/producttypes/{typeId}/products/{productId}",
+            new UpdateProductRequestDto { RunnerWeightGrams = 5m });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var updated = await client.GetFromJsonAsync<TaskDto>($"/api/tasks/{task.Id}", JsonOptions);
+        updated!.ActualMaterialWeightGrams.Should().Be(25m);
     }
 
     [Fact]

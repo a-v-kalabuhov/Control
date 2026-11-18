@@ -33,11 +33,10 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
         return report!.ImmData.Should().ContainSingle().Subject;
     }
 
-    private Mold NewMold(string name, int cavities, decimal runner) => new()
+    private Mold NewMold(string name, int cavities) => new()
     {
         Name = name, FormId = $"F-{Guid.NewGuid():N}", Cavities = cavities,
-        RunnerWeightGrams = runner, IsActive = true,
-        ProductTypeId = _factory.TestProductTypeId
+        IsActive = true, ProductTypeId = _factory.TestProductTypeId
     };
 
     [Fact]
@@ -48,7 +47,7 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var mold = NewMold($"ПФ-3сут-{Guid.NewGuid():N}", 4, 4);
+            var mold = NewMold($"ПФ-3сут-{Guid.NewGuid():N}", 4);
             db.Molds.Add(mold);
             await db.SaveChangesAsync();
             // Выпуск: d1 11:00Z → d3 11:00Z (48 ч), норма 60 с × 2 гнезда = 120 шт/ч
@@ -71,7 +70,7 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
     }
 
     [Fact]
-    public async Task TwoTasksOneDay_MoldsListed_PlansSummed_RawMaterialPerCycleMold()
+    public async Task TwoTasksOneDay_MoldsListed_PlansSummed_RawMaterialPerTaskProduct()
     {
         var d = new DateTime(2025, 4, 15, 0, 0, 0, DateTimeKind.Utc);
         var immId = await _factory.CreateFreshImmAsync();
@@ -79,9 +78,11 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            var mold1 = NewMold($"ПФ-A-{Guid.NewGuid():N}", 2, 4);
-            var mold2 = NewMold($"ПФ-B-{Guid.NewGuid():N}", 1, 1);
+            var mold1 = NewMold($"ПФ-A-{Guid.NewGuid():N}", 2);
+            var mold2 = NewMold($"ПФ-B-{Guid.NewGuid():N}", 1);
             db.Molds.AddRange(mold1, mold2);
+            var product = await db.Products.FindAsync(_factory.TestProductId);
+            product!.RunnerWeightGrams = 4;
             await db.SaveChangesAsync();
             mold1Name = mold1.Name; mold2Name = mold2.Name;
 
@@ -124,8 +125,8 @@ public class DailyReportMultiDayTaskTests : IClassFixture<IntegrationTestFactory
         item.MoldName.Should().Be($"{mold1Name}, {mold2Name}");
         item.PlanQuantity.Should().Be(100 + 120);
         item.ActualQuantity.Should().Be(12);
-        // ПФ-A: 2 цикла × (10 г × 2 гнезда + 4 г литник) = 48 г; ПФ-B: 1 × (5 × 1 + 1) = 6 г.
+        // Изделие: 2 цикла × (10 г × 2 гнезда + 4 г литник) + 1 × (5 × 1 + 4) = 57 г.
         // Сирота-цикл с MoldId, но без задания добавляет выпуск, а расход сырья — нет.
-        item.RawMaterialKg.Should().Be(0.054m);
+        item.RawMaterialKg.Should().Be(0.057m);
     }
 }

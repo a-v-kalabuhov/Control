@@ -48,30 +48,30 @@ FROM (VALUES (1,'Крышка флип-топ 28 мм'),(2,'Колпачок 38 
              (9,'Заглушка 20×20'),(10,'Шайба 8 мм')) AS v(n, name);
 
 -- Изделие по умолчанию каждого типа (PZP-19): часть артикула 0, полный артикул ART-1xx.0
--- Вес детали и эталон цикла литья — атрибуты изделия (PZP-24).
-INSERT INTO "Products" ("Id","ProductTypeId","Article","Name","FullArticle","PartWeightGrams","PlannedInjectionCycleSeconds","IsActive","CreatedAt")
-SELECT gen_random_uuid(), pt."Id", '0', 'По умолчанию', pt."Article" || '.0', v.pw, v.inj, true, '2026-01-01 00:00+00'
+-- Вес детали, вес литника и эталон цикла литья — атрибуты изделия (PZP-24).
+INSERT INTO "Products" ("Id","ProductTypeId","Article","Name","FullArticle","PartWeightGrams","RunnerWeightGrams","PlannedInjectionCycleSeconds","IsActive","CreatedAt")
+SELECT gen_random_uuid(), pt."Id", '0', 'По умолчанию', pt."Article" || '.0', v.pw, v.rw, v.inj, true, '2026-01-01 00:00+00'
 FROM "ProductTypes" pt
-JOIN (VALUES (1,3.2,6),(2,4.1,7),(3,38.0,15),(4,6.5,10),(5,210.0,12),
-             (6,95.0,10),(7,820.0,18),(8,1.9,6),(9,1.5,5),(10,0.4,5)) AS v(n, pw, inj)
+JOIN (VALUES (1,3.2,4.0,6),(2,4.1,6.0,7),(3,38.0,9.0,15),(4,6.5,5.0,10),(5,210.0,12.0,12),
+             (6,95.0,8.0,10),(7,820.0,25.0,18),(8,1.9,7.0,6),(9,1.5,5.0,5),(10,0.4,3.0,5)) AS v(n, pw, rw, inj)
   ON pt."Id" = ('e2000000-0000-0000-0000-0000000001' || lpad(v.n::text, 2, '0'))::uuid;
 
 -- Пулы ПФ: ТПА-1 → ПФ 1–4, ТПА-2 → ПФ 5–7, ТПА-3 → ПФ 8–10
-INSERT INTO "Molds" ("Id","FormId","Name","Cavities","RunnerWeightGrams","MaxResourceCycles",
+INSERT INTO "Molds" ("Id","FormId","Name","Cavities","MaxResourceCycles",
                      "To1Cycles","To2Cycles","IsActive","MoldStatus","ProductTypeId","CreatedAt")
-SELECT ('c2000000-0000-0000-0000-0000000001' || lpad(n::text, 2, '0'))::uuid, 'PF-' || (100 + n), name, cav, rw,
+SELECT ('c2000000-0000-0000-0000-0000000001' || lpad(n::text, 2, '0'))::uuid, 'PF-' || (100 + n), name, cav,
        1000000, 400000, 800000, true, 0,
        ('e2000000-0000-0000-0000-0000000001' || lpad(n::text, 2, '0'))::uuid, '2026-01-01 00:00+00'
-FROM (VALUES (1,'Крышка флип-топ 28 мм', 8,  4.0),
-             (2,'Колпачок 38 мм',       12,  6.0),
-             (3,'Корпус фильтра',        2,  9.0),
-             (4,'Ручка ведра',           4,  5.0),
-             (5,'Ведро 5 л',             1, 12.0),
-             (6,'Крышка ведра 5 л',      1,  8.0),
-             (7,'Ящик овощной',          1, 25.0),
-             (8,'Втулка d20',           32,  7.0),
-             (9,'Заглушка 20×20',       24,  5.0),
-             (10,'Шайба 8 мм',          48,  3.0)) AS v(n, name, cav, rw);
+FROM (VALUES (1,'Крышка флип-топ 28 мм', 8),
+             (2,'Колпачок 38 мм',       12),
+             (3,'Корпус фильтра',        2),
+             (4,'Ручка ведра',           4),
+             (5,'Ведро 5 л',             1),
+             (6,'Крышка ведра 5 л',      1),
+             (7,'Ящик овощной',          1),
+             (8,'Втулка d20',           32),
+             (9,'Заглушка 20×20',       24),
+             (10,'Шайба 8 мм',          48)) AS v(n, name, cav);
 
 INSERT INTO "DowntimeReasons" ("Id","Name","Type","IsActive","CreatedAt")
 VALUES
@@ -292,11 +292,11 @@ UPDATE "ShiftTasks" t
 SET "ActualQuantity"            = q.qty,
     "DefectQuantity"            = (q.qty * random() * 0.02)::int,
     "PlanQuantity"              = GREATEST(ceil(q.qty * (0.95 + random() * 0.15) / 100) * 100, 100)::int,
-    "ActualMaterialWeightGrams" = round(q.qty * t."PartWeightGrams" + q.n * m."RunnerWeightGrams", 2)
+    "ActualMaterialWeightGrams" = round(q.qty * t."PartWeightGrams" + q.n * p."RunnerWeightGrams", 2)
 FROM (SELECT "TaskId", count(*) FILTER (WHERE "IsSuccessful") AS n, sum("Cavities") FILTER (WHERE "IsSuccessful") AS qty
       FROM "ImmCycles" WHERE "TaskId" IS NOT NULL GROUP BY "TaskId") q,
-     "Molds" m
-WHERE q."TaskId" = t."Id" AND m."Id" = t."MoldId";
+     "Products" p
+WHERE q."TaskId" = t."Id" AND p."Id" = t."ProductId";
 
 ANALYZE;
 
