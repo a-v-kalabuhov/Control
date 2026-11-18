@@ -4,6 +4,17 @@ namespace Wintime.Control.Core.DTOs.ShiftClosures;
 
 public sealed record ShiftClosureFieldError(Guid TaskId, string Field, string Code);
 
+public sealed record SaveShiftClosureDraftRequest(IReadOnlyList<ShiftClosureManualEntryInput> Entries);
+
+public sealed record ShiftClosureManualEntryInput(
+    Guid ShiftTaskId,
+    decimal? ActualPartWeightGrams,
+    int? ManualFullCycleSeconds,
+    int? ActualPackagingUnit,
+    decimal? PackagingPlaces,
+    int? ManualGoodQuantity,
+    int? ManualDefectQuantity);
+
 public sealed record ShiftClosureValidationEntry
 {
     public Guid TaskId { get; init; }

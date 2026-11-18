@@ -22,6 +22,11 @@ public sealed class ShiftClosuresController : ControllerBase
     public Task<ShiftClosureDto> Item(Guid itemId, CancellationToken ct) =>
         _service.GetAsync(itemId, Caller, ct);
 
+    [HttpPut("items/{itemId:guid}/draft")]
+    public Task<ShiftClosureDto> SaveDraft(
+        Guid itemId, [FromBody] SaveShiftClosureDraftRequest request, CancellationToken ct) =>
+        _service.SaveDraftAsync(itemId, request, Caller, ct);
+
     [HttpGet("pending")]
     public Task<IReadOnlyList<ShiftClosurePendingDto>> Pending(CancellationToken ct) =>
         _service.GetPendingAsync(Caller, ct);
