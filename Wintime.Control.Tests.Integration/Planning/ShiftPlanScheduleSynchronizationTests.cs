@@ -162,7 +162,9 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
                 BreakDurationMinutes = s.BreakDurationMinutes,
                 TimeZoneId = s.TimeZoneId
             }).ToList();
-            (await SaveScheduleAsync(client, restore)).StatusCode.Should().Be(HttpStatusCode.OK);
+            var restoreResponse = await SaveScheduleAsync(client, restore);
+            restoreResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+                await restoreResponse.Content.ReadAsStringAsync());
         }
     }
 
@@ -174,7 +176,8 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
     }
 
     private async Task<ShiftPlanDay> SeedDayAsync(
-        DateOnly date, string leadId, string operatorId, int positionCount)
+        DateOnly date, string leadId, string operatorId, int positionCount,
+        bool withAssignments = true)
     {
         await DeleteDayAsync(date);
         using var scope = _factory.Services.CreateScope();
@@ -190,15 +193,18 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
                 TimeZoneId = "Europe/Moscow",
                 ShiftLeadId = leadId
             };
-            item.OperatorAssignments.Add(new ShiftImmOperatorAssignment
+            if (withAssignments)
             {
-                ShiftPlanItem = item,
-                ImmId = _factory.TestImmId,
-                OperatorId = operatorId,
-                Slot = 1,
-                AssignedAt = DateTime.UtcNow.AddHours(-1),
-                CreatedById = leadId
-            });
+                item.OperatorAssignments.Add(new ShiftImmOperatorAssignment
+                {
+                    ShiftPlanItem = item,
+                    ImmId = _factory.TestImmId,
+                    OperatorId = operatorId,
+                    Slot = 1,
+                    AssignedAt = DateTime.UtcNow.AddHours(-1),
+                    CreatedById = leadId
+                });
+            }
             day.Items.Add(item);
         }
 
@@ -259,6 +265,17 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
         await WithScheduleAsync(client, Schedule(0, 480, 960), async () =>
         {
             var seeded = await SeedDayAsync(date, lead.Id, @operator.Id, 3);
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                var retainedAssignment = await db.ShiftImmOperatorAssignments
+                    .SingleAsync(a => a.ShiftPlanItem.Position == 1 && a.ShiftPlanItem.Day.ShiftDate == date);
+                retainedAssignment.AssignedAt = date.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.FromHours(3)),
+                    DateTimeKind.Utc);
+                retainedAssignment.UnassignedAt = date.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.FromHours(5)),
+                    DateTimeKind.Utc);
+                await db.SaveChangesAsync();
+            }
             var originalItems = seeded.Items.OrderBy(i => i.Position).ToList();
             var originalIds = originalItems.Select(i => i.Id).ToList();
             var firstId = originalItems[0].Id;
@@ -304,6 +321,98 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
             extended.Items.Select(i => i.StartAtUtc).Should().Equal(extendedWindows.Select(w => w.StartAtUtc));
             extended.Items.Select(i => i.EndAtUtc).Should().Equal(extendedWindows.Select(w => w.EndAtUtc));
             extended.Items.Select(i => i.TimeZoneId).Should().Equal(extendedWindows.Select(w => w.TimeZoneId));
+            await DeleteDayAsync(date);
+        });
+    }
+
+    [Fact]
+    public async Task FutureDay_IncompatibleRetainedAssignment_RejectsAndRollsBackScheduleAndPlan()
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var @operator = await SeedUserAsync(UserRole.Operator);
+        var date = NewFutureDate();
+        var client = await ManagerClientAsync();
+        var originalSchedule = new List<ShiftScheduleItemDto>
+        {
+            new()
+            {
+                StartMinutes = 480,
+                DurationMinutes = 720,
+                TimeZoneId = "Europe/Moscow"
+            }
+        };
+
+        await WithScheduleAsync(client, originalSchedule, async () =>
+        {
+            await DeleteDayAsync(date);
+            var oldWindow = (await SavedWindowsAsync(date)).Should().ContainSingle().Subject;
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                var item = new ShiftPlanItem
+                {
+                    Position = oldWindow.Position,
+                    StartAtUtc = oldWindow.StartAtUtc,
+                    EndAtUtc = oldWindow.EndAtUtc,
+                    TimeZoneId = oldWindow.TimeZoneId,
+                    ShiftLeadId = lead.Id
+                };
+                item.OperatorAssignments.Add(new ShiftImmOperatorAssignment
+                {
+                    ShiftPlanItem = item,
+                    ImmId = _factory.TestImmId,
+                    OperatorId = @operator.Id,
+                    Slot = 1,
+                    AssignedAt = oldWindow.StartAtUtc,
+                    UnassignedAt = oldWindow.EndAtUtc,
+                    CreatedById = lead.Id
+                });
+                db.ShiftPlanDays.Add(new ShiftPlanDay
+                {
+                    ShiftDate = date,
+                    Items = [item]
+                });
+                await db.SaveChangesAsync();
+            }
+
+            var beforeDay = await LoadDayAsync(date);
+            List<ShiftSnapshot> beforeSchedule;
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                beforeSchedule = await db.Shifts.AsNoTracking().OrderBy(s => s.StartMinutes)
+                    .Select(s => new ShiftSnapshot(
+                        s.Id, s.StartMinutes, s.DurationMinutes, s.BreakStartMinutes,
+                        s.BreakDurationMinutes, s.TimeZoneId, s.CreatedAt)).ToListAsync();
+            }
+
+            var proposedSchedule = new List<ShiftScheduleItemDto>
+            {
+                new()
+                {
+                    StartMinutes = 600,
+                    DurationMinutes = 600,
+                    TimeZoneId = "Europe/Moscow"
+                }
+            };
+            var response = await SaveScheduleAsync(client, proposedSchedule);
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+                await response.Content.ReadAsStringAsync());
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+            body.GetProperty("message").GetString().Should().Contain("литейщика");
+
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                var afterSchedule = await db.Shifts.AsNoTracking().OrderBy(s => s.StartMinutes)
+                    .Select(s => new ShiftSnapshot(
+                        s.Id, s.StartMinutes, s.DurationMinutes, s.BreakStartMinutes,
+                        s.BreakDurationMinutes, s.TimeZoneId, s.CreatedAt)).ToListAsync();
+                afterSchedule.Should().BeEquivalentTo(beforeSchedule);
+            }
+            (await LoadDayAsync(date)).Should().BeEquivalentTo(beforeDay);
+            await DeleteDayAsync(date);
         });
     }
 
@@ -434,7 +543,7 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
 
         await WithScheduleAsync(client, Schedule(0, 480), async () =>
         {
-            var seeded = await SeedDayAsync(date, lead.Id, @operator.Id, 2);
+            var seeded = await SeedDayAsync(date, lead.Id, @operator.Id, 2, withAssignments: false);
             var beforeDay = await LoadDayAsync(date);
             List<ShiftSnapshot> beforeSchedule;
             string connectionString;

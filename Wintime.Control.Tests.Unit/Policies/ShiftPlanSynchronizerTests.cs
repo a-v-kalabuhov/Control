@@ -13,6 +13,8 @@ public class ShiftPlanSynchronizerTests
         var firstId = day.Items[0].Id;
         var firstLead = day.Items[0].ShiftLeadId;
         var firstAssignment = day.Items[0].OperatorAssignments.Single();
+        firstAssignment.AssignedAt = Utc("2026-11-10T06:00:00Z");
+        firstAssignment.UnassignedAt = Utc("2026-11-10T09:00:00Z");
         var windows = new[]
         {
             Window(1, "2026-11-10T06:00:00Z", "2026-11-10T14:00:00Z"),
@@ -41,6 +43,9 @@ public class ShiftPlanSynchronizerTests
         var secondAssignment = second.OperatorAssignments.Single();
         var thirdAssignment = third.OperatorAssignments.Single();
         var firstId = day.Items.Single(i => i.Position == 1).Id;
+        var retainedAssignment = day.Items.Single(i => i.Position == 1).OperatorAssignments.Single();
+        retainedAssignment.AssignedAt = Utc("2026-11-10T06:00:00Z");
+        retainedAssignment.UnassignedAt = Utc("2026-11-10T09:00:00Z");
 
         var removed = ShiftPlanSynchronizer.Apply(day,
         [
@@ -58,6 +63,9 @@ public class ShiftPlanSynchronizerTests
     public void Apply_with_same_position_count_updates_only_windows()
     {
         var day = DayWithTwoItems();
+        var retainedAssignment = day.Items[0].OperatorAssignments.Single();
+        retainedAssignment.AssignedAt = Utc("2026-12-01T04:00:00Z");
+        retainedAssignment.UnassignedAt = Utc("2026-12-01T10:00:00Z");
         var before = day.Items.Select(i => new
         {
             Item = i,
