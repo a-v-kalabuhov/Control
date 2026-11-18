@@ -25,8 +25,9 @@ vi.mock('@/api/shiftStaffing', () => ({
     item: vi.fn(),
     task: vi.fn(),
     operators: vi.fn(),
-    assign: vi.fn(),
-    unassign: vi.fn()
+    assignOperator: vi.fn(),
+    unassignOperator: vi.fn(),
+    updateOperatorInterval: vi.fn()
   }
 }))
 
@@ -183,35 +184,53 @@ describe('shiftStaffing store', () => {
     expect(store.operators).toEqual(operators)
   })
 
-  it('assign отправляет только item, ТПА и Operator и перезагружает item', async () => {
+  it('assignOperator передаёт фактические границы и перезагружает item', async () => {
     const store = useShiftStaffingStore()
     store.currentItem = detail()
-    shiftStaffingApi.assign.mockResolvedValue({ data: { id: 'assignment-1' } })
+    shiftStaffingApi.assignOperator.mockResolvedValue({ data: { id: 'assignment-1' } })
     shiftStaffingApi.item.mockResolvedValue({ data: detail() })
+    const payload = {
+      immId: 'imm-1', operatorId: 'operator-1',
+      assignedAt: '2026-11-08T09:00:00.000Z', unassignedAt: '2026-11-08T10:00:00.000Z'
+    }
 
-    const result = await store.assign('item-1', 'imm-1', 'operator-1')
+    const result = await store.assignOperator('item-1', payload)
 
     expect(result.success).toBe(true)
-    expect(shiftStaffingApi.assign).toHaveBeenCalledWith('item-1', 'imm-1', 'operator-1')
-    expect(shiftStaffingApi.assign.mock.calls[0]).toHaveLength(3)
+    expect(shiftStaffingApi.assignOperator).toHaveBeenCalledWith('item-1', payload)
     expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-1')
   })
 
-  it('unassign отправляет только assignmentId и перезагружает текущий item', async () => {
+  it('unassignOperator по умолчанию отправляет {} и перезагружает текущий item', async () => {
     const store = useShiftStaffingStore()
     store.currentItem = detail()
-    shiftStaffingApi.unassign.mockResolvedValue({ data: { id: 'assignment-1' } })
+    shiftStaffingApi.unassignOperator.mockResolvedValue({ data: { id: 'assignment-1' } })
     shiftStaffingApi.item.mockResolvedValue({ data: detail() })
 
-    const result = await store.unassign('assignment-1')
+    const result = await store.unassignOperator('assignment-1')
 
     expect(result.success).toBe(true)
-    expect(shiftStaffingApi.unassign).toHaveBeenCalledWith('assignment-1')
-    expect(shiftStaffingApi.unassign.mock.calls[0]).toHaveLength(1)
+    expect(shiftStaffingApi.unassignOperator).toHaveBeenCalledWith('assignment-1', {})
     expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-1')
   })
 
-  it.each(['assign', 'unassign'])('%s: ошибка перезагрузки после успешного POST блокирует редактирование до восстановления', async action => {
+  it('updateOperatorInterval передаёт обе границы и перезагружает item', async () => {
+    const store = useShiftStaffingStore()
+    store.currentItem = detail()
+    shiftStaffingApi.updateOperatorInterval.mockResolvedValue({ data: { id: 'assignment-1' } })
+    shiftStaffingApi.item.mockResolvedValue({ data: detail() })
+    const payload = {
+      assignedAt: '2026-11-08T09:00:00.000Z', unassignedAt: '2026-11-08T10:00:00.000Z'
+    }
+
+    const result = await store.updateOperatorInterval('assignment-1', payload)
+
+    expect(result.success).toBe(true)
+    expect(shiftStaffingApi.updateOperatorInterval).toHaveBeenCalledWith('assignment-1', payload)
+    expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-1')
+  })
+
+  it.each(['assignOperator', 'unassignOperator'])('%s: ошибка перезагрузки после успешного POST блокирует редактирование до восстановления', async action => {
     const store = useShiftStaffingStore()
     store.currentItem = detail()
     shiftStaffingApi[action].mockResolvedValue({ data: { id: 'assignment-1' } })
@@ -219,9 +238,9 @@ describe('shiftStaffing store', () => {
       .mockRejectedValueOnce({ response: { status: 500, data: { message: 'Не удалось обновить смену' } } })
       .mockResolvedValueOnce({ data: detail() })
 
-    const result = action === 'assign'
-      ? await store.assign('item-1', 'imm-1', 'operator-1')
-      : await store.unassign('assignment-1')
+    const result = action === 'assignOperator'
+      ? await store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
+      : await store.unassignOperator('assignment-1')
 
     expect(result).toEqual({
       success: false,
@@ -240,27 +259,45 @@ describe('shiftStaffing store', () => {
   it('400 показывает доменное сообщение и не перезагружает item', async () => {
     const store = useShiftStaffingStore()
     store.currentItem = detail()
-    shiftStaffingApi.assign.mockRejectedValue({
+    shiftStaffingApi.assignOperator.mockRejectedValue({
       response: { status: 400, data: { message: 'На ТПА уже назначены два литейщика' } }
     })
 
-    const result = await store.assign('item-1', 'imm-1', 'operator-1')
+    const result = await store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
 
     expect(result).toEqual({ success: false, committed: false, message: 'На ТПА уже назначены два литейщика' })
     expect(errorMessage).toHaveBeenCalledWith('На ТПА уже назначены два литейщика')
     expect(shiftStaffingApi.item).not.toHaveBeenCalled()
   })
 
+  it('400 shiftClosed блокирует форму и перезагружает item', async () => {
+    const store = useShiftStaffingStore()
+    store.currentItem = detail()
+    shiftStaffingApi.assignOperator.mockRejectedValue({
+      response: { status: 400, data: { code: 'shiftClosed', message: 'Сменный рапорт уже закрыт' } }
+    })
+    shiftStaffingApi.item.mockResolvedValue({
+      data: detail('item-1', { shift: summary('item-1', { canEditOperators: false }) })
+    })
+
+    const result = await store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
+
+    expect(result.success).toBe(false)
+    expect(errorMessage).toHaveBeenCalledWith('Сменный рапорт уже закрыт')
+    expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-1')
+    expect(store.canEditOperators).toBe(false)
+  })
+
   it('403 сразу запрещает редактирование и перезагружает item', async () => {
     const reload = deferred()
     const store = useShiftStaffingStore()
     store.currentItem = detail()
-    shiftStaffingApi.assign.mockRejectedValue({
+    shiftStaffingApi.assignOperator.mockRejectedValue({
       response: { status: 403, data: { message: 'Эта смена больше не доступна для редактирования' } }
     })
     shiftStaffingApi.item.mockReturnValue(reload.promise)
 
-    const mutation = store.assign('item-1', 'imm-1', 'operator-1')
+    const mutation = store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
     await vi.waitFor(() => expect(store.canEditOperators).toBe(false))
     expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-1')
 
@@ -272,7 +309,7 @@ describe('shiftStaffing store', () => {
     expect(store.canEditOperators).toBe(false)
   })
 
-  it.each(['assign', 'unassign'])('409 при %s показывает сообщение и обязательно перезагружает item', async action => {
+  it.each(['assignOperator', 'unassignOperator'])('409 при %s показывает сообщение и обязательно перезагружает item', async action => {
     const store = useShiftStaffingStore()
     store.currentItem = detail()
     shiftStaffingApi[action].mockRejectedValue({
@@ -280,9 +317,9 @@ describe('shiftStaffing store', () => {
     })
     shiftStaffingApi.item.mockResolvedValue({ data: detail() })
 
-    const result = action === 'assign'
-      ? await store.assign('item-1', 'imm-1', 'operator-1')
-      : await store.unassign('assignment-1')
+    const result = action === 'assignOperator'
+      ? await store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
+      : await store.unassignOperator('assignment-1')
 
     expect(result.success).toBe(false)
     expect(errorMessage).toHaveBeenCalledWith('Состав литейщиков уже изменился')
@@ -293,14 +330,14 @@ describe('shiftStaffing store', () => {
     const request = deferred()
     const store = useShiftStaffingStore()
     store.currentItem = detail()
-    shiftStaffingApi.assign.mockReturnValue(request.promise)
+    shiftStaffingApi.assignOperator.mockReturnValue(request.promise)
     shiftStaffingApi.item.mockResolvedValue({ data: detail() })
 
-    const first = store.assign('item-1', 'imm-1', 'operator-1')
-    const second = await store.assign('item-1', 'imm-1', 'operator-1')
+    const first = store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
+    const second = await store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
 
     expect(second).toEqual({ success: false, pending: true })
-    expect(shiftStaffingApi.assign).toHaveBeenCalledTimes(1)
+    expect(shiftStaffingApi.assignOperator).toHaveBeenCalledTimes(1)
     expect(store.saving).toBe(true)
     request.resolve({ data: { id: 'assignment-1' } })
     await first
@@ -388,10 +425,10 @@ describe('shiftStaffing store', () => {
     const mutationRequest = deferred()
     const store = useShiftStaffingStore()
     store.currentItem = detail('item-a')
-    shiftStaffingApi.assign.mockReturnValue(mutationRequest.promise)
+    shiftStaffingApi.assignOperator.mockReturnValue(mutationRequest.promise)
     shiftStaffingApi.item.mockResolvedValue({ data: detail('item-b') })
 
-    const mutation = store.assign('item-a', 'imm-a', 'operator-1')
+    const mutation = store.assignOperator('item-a', { immId: 'imm-a', operatorId: 'operator-1' })
     await store.loadItem('item-b')
     expect(store.saving).toBe(false)
 
@@ -408,12 +445,12 @@ describe('shiftStaffing store', () => {
     const reloadA = deferred()
     const store = useShiftStaffingStore()
     store.currentItem = detail('item-a')
-    shiftStaffingApi.assign.mockResolvedValue({ data: { id: 'assignment-a' } })
+    shiftStaffingApi.assignOperator.mockResolvedValue({ data: { id: 'assignment-a' } })
     shiftStaffingApi.item
       .mockReturnValueOnce(reloadA.promise)
       .mockResolvedValueOnce({ data: detail('item-b') })
 
-    const mutation = store.assign('item-a', 'imm-a', 'operator-1')
+    const mutation = store.assignOperator('item-a', { immId: 'imm-a', operatorId: 'operator-1' })
     await vi.waitFor(() => expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-a'))
     await store.loadItem('item-b')
     reloadA.resolve({ data: detail('item-a') })
@@ -429,12 +466,12 @@ describe('shiftStaffing store', () => {
     const lateReload = deferred()
     const store = useShiftStaffingStore()
     store.currentItem = detail('item-a')
-    shiftStaffingApi.assign.mockReturnValue(mutationRequest.promise)
+    shiftStaffingApi.assignOperator.mockReturnValue(mutationRequest.promise)
     shiftStaffingApi.item
       .mockResolvedValueOnce({ data: detail('item-b') })
       .mockReturnValueOnce(lateReload.promise)
 
-    const mutation = store.assign('item-a', 'imm-a', 'operator-1')
+    const mutation = store.assignOperator('item-a', { immId: 'imm-a', operatorId: 'operator-1' })
     await store.loadItem('item-b')
     mutationRequest.reject({
       response: { status: 403, data: { message: 'Доступ к A запрещён' } }
@@ -500,16 +537,16 @@ describe('shiftStaffing store', () => {
     expect(shiftStaffingApi.item).not.toHaveBeenCalledWith('item-b')
   })
 
-  it.each(['assign', 'unassign'])('%s не отправляется при рассинхроне activeItemId/currentItem', async action => {
+  it.each(['assignOperator', 'unassignOperator'])('%s не отправляется при рассинхроне activeItemId/currentItem', async action => {
     const store = useShiftStaffingStore()
     store.activateItem('item-a')
     store.currentItem = detail('item-b')
-    shiftStaffingApi.assign.mockResolvedValue({ data: {} })
-    shiftStaffingApi.unassign.mockResolvedValue({ data: {} })
+    shiftStaffingApi.assignOperator.mockResolvedValue({ data: {} })
+    shiftStaffingApi.unassignOperator.mockResolvedValue({ data: {} })
 
-    const result = action === 'assign'
-      ? await store.assign('item-a', 'imm-a', 'operator-1')
-      : await store.unassign('assignment-b')
+    const result = action === 'assignOperator'
+      ? await store.assignOperator('item-a', { immId: 'imm-a', operatorId: 'operator-1' })
+      : await store.unassignOperator('assignment-b')
 
     expect(result.stale).toBe(true)
     expect(shiftStaffingApi[action]).not.toHaveBeenCalled()
@@ -541,12 +578,12 @@ describe('shiftStaffing store', () => {
     store.nearestContextItemId = 'item-1'
     store.currentItem = detail('item-1')
     store.activateItem('item-1')
-    shiftStaffingApi.assign.mockReturnValue(mutationRequest.promise)
+    shiftStaffingApi.assignOperator.mockReturnValue(mutationRequest.promise)
     shiftStaffingApi.item.mockRejectedValue({
       response: { status, data: { message: 'Смена больше недоступна' } }
     })
-    const mutation = store.assign('item-1', 'imm-1', 'operator-1')
-    await vi.waitFor(() => expect(shiftStaffingApi.assign).toHaveBeenCalledTimes(1))
+    const mutation = store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
+    await vi.waitFor(() => expect(shiftStaffingApi.assignOperator).toHaveBeenCalledTimes(1))
     const mutationGeneration = store.mutationSeq
 
     const result = await store.loadItem('item-1')

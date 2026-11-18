@@ -73,13 +73,22 @@
             <p v-else class="text-sm text-gray-500">Задание отсутствует</p>
           </div>
 
+          <ShiftClosureTimeline
+            v-if="timelineFor(imm.immId)"
+            class="mt-4"
+            :timeline="timelineFor(imm.immId)"
+            :can-edit="canEditOperators"
+            :disabled="controlsDisabled"
+            @assign="openAssign(imm, $event)"
+          />
+
           <div class="mt-4">
             <div class="mb-2 flex items-center justify-between gap-2">
               <h4 class="text-sm font-semibold text-gray-700">
                 Литейщики: {{ imm.activeOperatorCount }}/2
               </h4>
               <el-button
-                v-if="canAssign(imm)"
+                v-if="canEditOperators"
                 type="primary"
                 size="small"
                 :data-test="`assign-${imm.immId}`"
@@ -115,79 +124,67 @@
                       class="mt-1"
                       :class="isActiveAssignment(assignment) ? 'text-primary-700' : 'text-gray-500'"
                     >
-                      {{ isActiveAssignment(assignment) ? 'Активен' : 'До конца смены' }} · место {{ assignment.slot }}
+                      {{ isActiveAssignment(assignment) ? 'Активен' : 'До конца смены' }}
                     </div>
                   </div>
-                  <el-button
-                    v-if="!assignment.unassignedAt && canEditOperators"
-                    type="danger"
-                    plain
-                    size="small"
-                    :data-test="`unassign-${assignment.id}`"
-                    :disabled="controlsDisabled"
-                    @click="unassign(assignment)"
-                  >
-                    Снять
-                  </el-button>
+                  <div v-if="canEditOperators" class="flex gap-2">
+                    <el-button
+                      size="small"
+                      :data-test="`edit-${assignment.id}`"
+                      :disabled="controlsDisabled"
+                      @click="openEdit(assignment)"
+                    >
+                      Изменить
+                    </el-button>
+                    <el-button
+                      v-if="!assignment.unassignedAt"
+                      type="danger"
+                      plain
+                      size="small"
+                      :data-test="`unassign-${assignment.id}`"
+                      :disabled="controlsDisabled"
+                      @click="openUnassign(assignment)"
+                    >
+                      Снять
+                    </el-button>
+                  </div>
                 </div>
               </div>
             </div>
             <p v-else class="text-sm text-gray-500">Литейщики не назначены</p>
-
-            <div
-              v-if="assigningImmId === imm.immId && canEditOperators"
-              class="mt-3 rounded border border-primary-200 bg-primary-50 p-3"
-            >
-              <el-select
-                v-model="selectedOperatorId"
-                data-test="operator-select"
-                class="w-full"
-                filterable
-                placeholder="Выберите литейщика"
-                :loading="operatorsLoading"
-                :disabled="controlsDisabled || operatorsLoading"
-              >
-                <el-option
-                  v-for="operator in candidatesFor(imm)"
-                  :key="operator.id"
-                  :value="operator.id"
-                  :label="operatorLabel(operator)"
-                />
-              </el-select>
-              <p v-if="!canAssign(imm)" class="mt-2 text-sm text-amber-700">
-                Оба места на этом ТПА уже заняты
-              </p>
-              <div class="mt-3 flex justify-end gap-2">
-                <el-button size="small" :disabled="store.saving" @click="closeAssign">Отмена</el-button>
-                <el-button
-                  type="primary"
-                  size="small"
-                  data-test="confirm-assign"
-                  :disabled="!selectedOperatorId || !canAssign(imm) || controlsDisabled"
-                  :loading="store.saving"
-                  @click="assign(imm)"
-                >
-                  Назначить
-                </el-button>
-              </div>
-            </div>
           </div>
         </section>
       </div>
     </template>
 
     <el-empty v-else-if="!store.loading" description="Смена не найдена" />
+
+    <OperatorIntervalDialog
+      v-model="dialogVisible"
+      :mode="dialogMode"
+      :item-id="itemId"
+      :imm-id="dialogImmId"
+      :assignment="dialogAssignment"
+      :initial-interval="dialogInitialInterval"
+      :operators="store.operators"
+      :operators-loading="operatorsLoading"
+      :can-edit="canEditOperators"
+      @reload="reloadClosureReport"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed, effectScope, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, effectScope, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { useShiftStaffingStore } from '@/stores/shiftStaffing'
 import { getEffectiveStatusMeta } from '@/constants/effectiveStatus'
 import { TASK_STATUS_LABELS } from '@/constants/taskStatus'
 import { useShiftStaffingRefresh } from '@/composables/useShiftStaffingRefresh'
+import { useShiftClosureEditor } from '@/composables/useShiftClosureEditor'
+import ShiftClosureTimeline from '@/components/shift-closures/ShiftClosureTimeline.vue'
+import OperatorIntervalDialog from '@/components/shift-staffing/OperatorIntervalDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -199,8 +196,13 @@ const currentItem = computed(() => {
 })
 const canEditOperators = computed(() => currentItem.value?.shift?.canEditOperators === true)
 const isHistorical = computed(() => currentItem.value?.shift?.state === 'Historical')
-const assigningImmId = ref(null)
-const selectedOperatorId = ref(null)
+const closureEditor = shallowRef(useShiftClosureEditor(itemId.value))
+const closureReport = computed(() => closureEditor.value.report.value)
+const dialogVisible = ref(false)
+const dialogMode = ref('create')
+const dialogImmId = ref(null)
+const dialogAssignment = ref(null)
+const dialogInitialInterval = ref(null)
 const operatorsLoading = ref(false)
 let operatorsSeq = 0
 let pollingScope = null
@@ -232,9 +234,18 @@ function startPolling(id) {
   })
 }
 
+function loadClosureReport(options) {
+  return closureEditor.value.load(options)
+}
+
+function reloadClosureReport() {
+  return loadClosureReport({ preserveDirty: true })
+}
+
 onMounted(() => {
   mounted = true
   startPolling(itemId.value)
+  loadClosureReport()
 })
 
 onUnmounted(() => {
@@ -245,10 +256,14 @@ onUnmounted(() => {
 
 watch(itemId, (id, previousId) => {
   if (id === previousId) return
-  closeAssign()
+  closeDialog()
   operatorsLoading.value = false
   store.activateItem(id)
-  if (mounted) startPolling(id)
+  closureEditor.value = useShiftClosureEditor(id)
+  if (mounted) {
+    startPolling(id)
+    loadClosureReport()
+  }
 })
 
 function statusMeta(status) {
@@ -271,48 +286,48 @@ function isActiveAssignment(assignment) {
   return !assignment.unassignedAt && !isHistorical.value
 }
 
-function canAssign(imm) {
-  return canEditOperators.value && imm.activeOperatorCount < 2
+function timelineFor(immId) {
+  return closureReport.value?.timelines?.find(timeline => timeline.immId === immId) ?? null
 }
 
-function candidatesFor(imm) {
-  const activeHere = new Set(imm.assignments
-    .filter(assignment => !assignment.unassignedAt)
-    .map(assignment => assignment.operatorId))
-  return store.operators.filter(operator => !activeHere.has(operator.id))
+function openDialog(mode, immId, assignment = null, initialInterval = null) {
+  dialogMode.value = mode
+  dialogImmId.value = immId
+  dialogAssignment.value = assignment
+  dialogInitialInterval.value = initialInterval
+  dialogVisible.value = true
 }
 
-function operatorLabel(operator) {
-  return operator.employeeId ? `${operator.fullName} (${operator.employeeId})` : operator.fullName
-}
-
-async function openAssign(imm) {
-  if (!canAssign(imm) || controlsDisabled.value) return
+async function openAssign(imm, initialInterval = null) {
+  if (!canEditOperators.value || controlsDisabled.value) return
   const seq = ++operatorsSeq
-  assigningImmId.value = String(imm.immId)
-  selectedOperatorId.value = null
+  openDialog('create', imm.immId, null, initialInterval)
   operatorsLoading.value = true
   const result = await store.loadOperators()
   if (seq !== operatorsSeq) return
   operatorsLoading.value = false
-  if (!result.success) closeAssign()
+  if (!result.success) closeDialog()
 }
 
-function closeAssign() {
+function openEdit(assignment) {
+  if (!canEditOperators.value || controlsDisabled.value) return
   operatorsSeq += 1
-  assigningImmId.value = null
-  selectedOperatorId.value = null
+  operatorsLoading.value = false
+  openDialog('edit', assignment.immId, assignment)
 }
 
-async function assign(imm) {
-  if (!selectedOperatorId.value || !canAssign(imm) || controlsDisabled.value) return
-  const result = await store.assign(itemId.value, imm.immId, selectedOperatorId.value)
-  if (result.success) closeAssign()
-}
-
-async function unassign(assignment) {
+function openUnassign(assignment) {
   if (assignment.unassignedAt || !canEditOperators.value || controlsDisabled.value) return
-  await store.unassign(assignment.id)
+  operatorsSeq += 1
+  operatorsLoading.value = false
+  openDialog('unassign', assignment.immId, assignment)
+}
+
+function closeDialog() {
+  operatorsSeq += 1
+  dialogVisible.value = false
+  dialogAssignment.value = null
+  dialogInitialInterval.value = null
 }
 
 async function refreshItem() {

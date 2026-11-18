@@ -65,7 +65,12 @@ async function runMutation(store, itemId, request, fallback) {
     if (error?.response?.status === 403 && store.currentItem?.shift) {
       store.currentItem.shift.canEditOperators = false
     }
-    if ([403, 409].includes(error?.response?.status)) {
+    if (error?.response?.status === 400 && error?.response?.data?.code === 'shiftClosed' &&
+      store.currentItem?.shift) {
+      store.currentItem.shift.canEditOperators = false
+    }
+    if ([403, 409].includes(error?.response?.status) ||
+      (error?.response?.status === 400 && error?.response?.data?.code === 'shiftClosed')) {
       await store.loadItem(itemId)
     }
 
@@ -282,22 +287,32 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
       }
     },
 
-    async assign(itemId, immId, operatorId) {
+    async assignOperator(itemId, payload) {
       return runMutation(
         this,
         itemId,
-        () => shiftStaffingApi.assign(itemId, immId, operatorId),
+        () => shiftStaffingApi.assignOperator(itemId, payload),
         'Не удалось назначить литейщика'
       )
     },
 
-    async unassign(assignmentId) {
+    async unassignOperator(assignmentId, payload = {}) {
       const itemId = this.currentItem?.shift?.itemId
       return runMutation(
         this,
         itemId,
-        () => shiftStaffingApi.unassign(assignmentId),
+        () => shiftStaffingApi.unassignOperator(assignmentId, payload),
         'Не удалось снять литейщика'
+      )
+    },
+
+    async updateOperatorInterval(assignmentId, payload) {
+      const itemId = this.currentItem?.shift?.itemId
+      return runMutation(
+        this,
+        itemId,
+        () => shiftStaffingApi.updateOperatorInterval(assignmentId, payload),
+        'Не удалось изменить интервал литейщика'
       )
     }
   }

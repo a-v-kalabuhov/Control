@@ -12,6 +12,7 @@ import timezone from 'dayjs/plugin/timezone'
 import ShiftStaffingItemView from '../ShiftStaffingItemView.vue'
 import { shiftStaffingApi } from '@/api/shiftStaffing'
 import { personnelApi } from '@/api/personnel'
+import * as shiftClosuresApi from '@/api/shiftClosures'
 
 const { route, push } = vi.hoisted(() => ({
   route: { params: { itemId: 'item-1' } },
@@ -28,10 +29,13 @@ vi.mock('vue-router', async () => {
 vi.mock('@/api/shiftStaffing', () => ({
   shiftStaffingApi: {
     nearest: vi.fn(), history: vi.fn(), item: vi.fn(), task: vi.fn(),
-    operators: vi.fn(), assign: vi.fn(), unassign: vi.fn()
+    operators: vi.fn(), assignOperator: vi.fn(), unassignOperator: vi.fn(), updateOperatorInterval: vi.fn()
   }
 }))
 vi.mock('@/api/personnel', () => ({ personnelApi: { getAll: vi.fn(), getPersonnel: vi.fn() } }))
+vi.mock('@/api/shiftClosures', () => ({
+  getByItem: vi.fn(), saveDraft: vi.fn(), close: vi.fn()
+}))
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -87,6 +91,14 @@ function detail({
   return { shift, shiftLeadId: 'lead-1', shiftLeadName: 'Старший Смены', imms }
 }
 
+function closureReport(overrides = {}) {
+  return {
+    id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Draft',
+    shiftDate: '2026-11-08', startAtUtc: '2026-11-08T08:00:00Z', endAtUtc: '2026-11-08T20:00:00Z',
+    entries: [], timelines: [], ...overrides
+  }
+}
+
 function deferred() {
   let resolve
   let reject
@@ -103,7 +115,13 @@ async function chooseOperator(wrapper, operatorId) {
   await flushPromises()
   const select = wrapper.findComponent('[data-test="operator-select"]')
   await select.vm.$emit('update:modelValue', operatorId)
-  await wrapper.find('[data-test="confirm-assign"]').trigger('click')
+  await wrapper.find('[data-test="submit-interval"]').trigger('click')
+  await flushPromises()
+}
+
+async function confirmUnassign(wrapper, assignmentId) {
+  await wrapper.find(`[data-test="unassign-${assignmentId}"]`).trigger('click')
+  await wrapper.find('[data-test="submit-interval"]').trigger('click')
   await flushPromises()
 }
 
@@ -118,6 +136,7 @@ describe('ShiftStaffingItemView', () => {
     vi.clearAllMocks()
     useRoute().params.itemId = 'item-1'
     shiftStaffingApi.item.mockResolvedValue({ data: detail() })
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: closureReport() })
     shiftStaffingApi.operators.mockResolvedValue({
       data: [
         { id: 'op1', fullName: 'Иванов', employeeId: '1' },
@@ -154,49 +173,52 @@ describe('ShiftStaffingItemView', () => {
     expect(wrapper.text()).not.toContain(dayjs('2026-11-08T09:00:00Z').tz('Asia/Kamchatka').format('DD.MM.YYYY HH:mm'))
   })
 
-  it('два активных скрывают назначение; снятие освобождает место и повторное назначение вызывает новый assign', async () => {
+  it('два активных не блокируют произвольный интервал; снятие и повторное назначение создают новые mutations', async () => {
     const first = assignment('a1', 'op1', 'Иванов')
     const second = assignment('a2', 'op2', 'Петров', { slot: 2 })
     shiftStaffingApi.item.mockResolvedValue({ data: detail({ assignments: [first, second] }) })
     wrapper = mountView()
     await flushPromises()
-    expect(wrapper.find('[data-test="assign-imm-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="assign-imm-1"]').exists()).toBe(true)
 
-    shiftStaffingApi.unassign.mockResolvedValue({ data: {} })
+    shiftStaffingApi.unassignOperator.mockResolvedValue({ data: {} })
     shiftStaffingApi.item.mockResolvedValueOnce({ data: detail({ assignments: [first, { ...second, unassignedAt: '2026-11-08T12:10:00Z' }] }) })
-    await wrapper.find('[data-test="unassign-a2"]').trigger('click')
-    await flushPromises()
+    await confirmUnassign(wrapper, 'a2')
+    expect(shiftStaffingApi.unassignOperator).toHaveBeenCalledWith('a2', {})
     expect(wrapper.find('[data-test="assign-imm-1"]').exists()).toBe(true)
 
     const assigned = assignment('a3', 'op3', 'Без Логина', { slot: 2 })
-    shiftStaffingApi.assign.mockResolvedValue({ data: assigned })
+    shiftStaffingApi.assignOperator.mockResolvedValue({ data: assigned })
     shiftStaffingApi.item.mockResolvedValueOnce({ data: detail({ assignments: [first, assigned] }) })
     await chooseOperator(wrapper, 'op3')
-    expect(shiftStaffingApi.assign).toHaveBeenCalledWith('item-1', 'imm-1', 'op3')
+    expect(shiftStaffingApi.assignOperator).toHaveBeenCalledWith('item-1', {
+      immId: 'imm-1', operatorId: 'op3', assignedAt: null, unassignedAt: null
+    })
 
     shiftStaffingApi.item.mockResolvedValueOnce({ data: detail({ assignments: [first, { ...assigned, unassignedAt: '2026-11-08T12:20:00Z' }] }) })
-    await wrapper.find('[data-test="unassign-a3"]').trigger('click')
-    await flushPromises()
+    await confirmUnassign(wrapper, 'a3')
     const reassigned = assignment('a4', 'op3', 'Без Логина', { slot: 2 })
     shiftStaffingApi.item.mockResolvedValueOnce({ data: detail({ assignments: [first, reassigned] }) })
     await chooseOperator(wrapper, 'op3')
-    expect(shiftStaffingApi.assign).toHaveBeenCalledTimes(2)
+    expect(shiftStaffingApi.assignOperator).toHaveBeenCalledTimes(2)
   })
 
   it('ТПА без задания разрешает назначение через shiftStaffingApi', async () => {
     shiftStaffingApi.item.mockResolvedValue({ data: detail({ tasks: [], assignments: [] }) })
-    shiftStaffingApi.assign.mockResolvedValue({ data: {} })
+    shiftStaffingApi.assignOperator.mockResolvedValue({ data: {} })
     wrapper = mountView()
     await flushPromises()
 
     expect(wrapper.text()).toContain('Задание отсутствует')
     await chooseOperator(wrapper, 'op3')
-    expect(shiftStaffingApi.assign).toHaveBeenCalledWith('item-1', 'imm-1', 'op3')
+    expect(shiftStaffingApi.assignOperator).toHaveBeenCalledWith('item-1', {
+      immId: 'imm-1', operatorId: 'op3', assignedAt: null, unassignedAt: null
+    })
     expect(personnelApi.getAll).not.toHaveBeenCalled()
     expect(personnelApi.getPersonnel).not.toHaveBeenCalled()
   })
 
-  it('кандидаты включают безлогинового и занятого на другом ТПА, но исключают активного на этом', async () => {
+  it('кандидаты включают всех активных литейщиков: непересекающиеся интервалы проверяет сервер', async () => {
     shiftStaffingApi.item.mockResolvedValue({ data: detail({ secondImm: true }) })
     wrapper = mountView()
     await flushPromises()
@@ -205,7 +227,7 @@ describe('ShiftStaffingItemView', () => {
     await flushPromises()
     const values = wrapper.findAllComponents({ name: 'ElOption' }).map(option => option.props('value'))
 
-    expect(values).not.toContain('op1')
+    expect(values).toContain('op1')
     expect(values).toContain('op2')
     expect(values).toContain('op3')
     expect(values).toContain('op4')
@@ -224,6 +246,7 @@ describe('ShiftStaffingItemView', () => {
 
     expect(wrapper.find('[data-test^="unassign-"]').exists()).toBe(false)
     expect(wrapper.find('[data-test^="assign-"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test^="edit-"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Иванов')
     expect(wrapper.text()).toContain('Петров')
   })
@@ -237,14 +260,15 @@ describe('ShiftStaffingItemView', () => {
 
     const row = wrapper.get('[data-test="assignment-a1"]')
     expect(wrapper.text()).toContain('Литейщики: 0/2')
-    expect(row.text()).toContain('До конца смены · место 1')
+    expect(row.text()).toContain('До конца смены')
+    expect(row.text()).not.toContain('место')
     expect(row.text()).not.toContain('Активен')
     expect(row.classes()).toContain('bg-gray-50')
     expect(row.classes()).not.toContain('bg-primary-50')
   })
 
   it('после 409 показывает сообщение, перезагружает item и применяет server read-only', async () => {
-    shiftStaffingApi.unassign.mockRejectedValue({
+    shiftStaffingApi.unassignOperator.mockRejectedValue({
       response: { status: 409, data: { message: 'Состав литейщиков уже изменился' } }
     })
     shiftStaffingApi.item
@@ -255,8 +279,7 @@ describe('ShiftStaffingItemView', () => {
     wrapper = mountView()
     await flushPromises()
 
-    await wrapper.find('[data-test="unassign-a1"]').trigger('click')
-    await flushPromises()
+    await confirmUnassign(wrapper, 'a1')
 
     expect(errorMessage).toHaveBeenCalledWith('Состав литейщиков уже изменился')
     expect(shiftStaffingApi.item).toHaveBeenCalledTimes(2)
@@ -269,13 +292,14 @@ describe('ShiftStaffingItemView', () => {
     const first = assignment('a1', 'op1', 'Иванов')
     const second = assignment('a2', 'op2', 'Петров', { slot: 2 })
     shiftStaffingApi.item.mockResolvedValue({ data: detail({ assignments: [first, second] }) })
-    shiftStaffingApi.unassign.mockReturnValue(request.promise)
+    shiftStaffingApi.unassignOperator.mockReturnValue(request.promise)
     wrapper = mountView()
     await flushPromises()
 
     await wrapper.find('[data-test="unassign-a1"]').trigger('click')
-    await wrapper.find('[data-test="unassign-a2"]').trigger('click')
-    expect(shiftStaffingApi.unassign).toHaveBeenCalledTimes(1)
+    await wrapper.find('[data-test="submit-interval"]').trigger('click')
+    await wrapper.find('[data-test="submit-interval"]').trigger('click')
+    expect(shiftStaffingApi.unassignOperator).toHaveBeenCalledTimes(1)
 
     request.resolve({ data: {} })
     await flushPromises()
@@ -318,7 +342,7 @@ describe('ShiftStaffingItemView', () => {
     expect(shiftStaffingApi.item).not.toHaveBeenCalledWith('item-b')
   })
 
-  it('Confirm недоступен, если второе место занято после открытия формы', async () => {
+  it('ActiveOperatorCount=2 не является client gate: submit отправляется, занятость проверяет сервер', async () => {
     wrapper = mountView()
     await flushPromises()
     await wrapper.find('[data-test="assign-imm-1"]').trigger('click')
@@ -334,11 +358,15 @@ describe('ShiftStaffingItemView', () => {
       ]
     })
     await nextTick()
+    shiftStaffingApi.assignOperator.mockResolvedValue({ data: {} })
 
-    const confirm = wrapper.find('[data-test="confirm-assign"]')
-    expect(confirm.attributes('disabled')).toBeDefined()
+    const confirm = wrapper.find('[data-test="submit-interval"]')
+    expect(confirm.attributes('disabled')).toBeUndefined()
     await confirm.trigger('click')
-    expect(shiftStaffingApi.assign).not.toHaveBeenCalled()
+    await flushPromises()
+    expect(shiftStaffingApi.assignOperator).toHaveBeenCalledWith('item-1', {
+      immId: 'imm-1', operatorId: 'op3', assignedAt: null, unassignedAt: null
+    })
   })
 
   it('same-component itemId navigation сбрасывает форму, запросы и timers', async () => {
@@ -391,6 +419,90 @@ describe('ShiftStaffingItemView', () => {
     request.resolve({ data: detail() })
     await manualRefresh
     await flushPromises()
+  })
+
+  it('показывает server timeline и Назначить на сироте открывает форму с immId и границами', async () => {
+    const orphan = {
+      startAtUtc: '2026-11-08T10:00:00Z', endAtUtc: '2026-11-08T11:30:00Z',
+      operators: [], automaticOutputQuantity: 4, hasOrphanOutput: true, taskOutputs: []
+    }
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: closureReport({
+      timelines: [{ immId: 'imm-1', immName: 'ТПА-1', intervals: [orphan] }]
+    }) })
+    shiftStaffingApi.assignOperator.mockResolvedValue({ data: {} })
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="timeline-interval-0"]').attributes('data-orphan')).toBe('true')
+    await wrapper.get('[data-test="assign-orphan-0"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="assigned-at"]').element.value)
+      .toBe(dayjs(orphan.startAtUtc).format('YYYY-MM-DDTHH:mm'))
+    expect(wrapper.get('[data-test="unassigned-at"]').element.value)
+      .toBe(dayjs(orphan.endAtUtc).format('YYYY-MM-DDTHH:mm'))
+    await wrapper.findComponent('[data-test="operator-select"]').vm.$emit('update:modelValue', 'op3')
+    await wrapper.get('[data-test="submit-interval"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftStaffingApi.assignOperator).toHaveBeenCalledWith('item-1', {
+      immId: 'imm-1', operatorId: 'op3',
+      assignedAt: dayjs(orphan.startAtUtc).toISOString(),
+      unassignedAt: dayjs(orphan.endAtUtc).toISOString()
+    })
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(2)
+  })
+
+  it('ended unclosed показывает mutations для открытого и завершённого интервалов, edit отправляет PUT', async () => {
+    const ended = assignment('a2', 'op2', 'Петров', {
+      assignedAt: '2026-11-08T08:30:00Z', unassignedAt: '2026-11-08T10:15:00Z'
+    })
+    shiftStaffingApi.item.mockResolvedValue({ data: detail({
+      assignments: [assignment('a1', 'op1', 'Иванов'), ended],
+      shift: summary({ state: 'Historical', canEditOperators: true })
+    }) })
+    shiftStaffingApi.updateOperatorInterval.mockResolvedValue({ data: ended })
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="assign-imm-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="unassign-a1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="edit-a1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="edit-a2"]').exists()).toBe(true)
+    await wrapper.get('[data-test="edit-a2"]').trigger('click')
+    const localEnd = dayjs('2026-11-08T11:00:00Z').format('YYYY-MM-DDTHH:mm')
+    await wrapper.get('[data-test="unassigned-at"]').setValue(localEnd)
+    await wrapper.get('[data-test="submit-interval"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftStaffingApi.updateOperatorInterval).toHaveBeenCalledWith('a2', {
+      assignedAt: dayjs(ended.assignedAt).toISOString(),
+      unassignedAt: dayjs(localEnd).toISOString()
+    })
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(2)
+  })
+
+  it('400 shiftClosed перезагружает item/report и скрывает mutations', async () => {
+    shiftStaffingApi.unassignOperator.mockRejectedValue({
+      response: { status: 400, data: { code: 'shiftClosed', message: 'Сменный рапорт уже закрыт' } }
+    })
+    shiftStaffingApi.item
+      .mockResolvedValueOnce({ data: detail() })
+      .mockResolvedValueOnce({
+        data: detail({ shift: summary({ state: 'Historical', canEditOperators: false }) })
+      })
+    shiftClosuresApi.getByItem
+      .mockResolvedValueOnce({ data: closureReport() })
+      .mockResolvedValueOnce({ data: closureReport({ state: 'Closed' }) })
+    wrapper = mountView()
+    await flushPromises()
+
+    await confirmUnassign(wrapper, 'a1')
+
+    expect(shiftStaffingApi.item).toHaveBeenCalledTimes(2)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-test^="assign-"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test^="edit-"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test^="unassign-"]').exists()).toBe(false)
   })
 
   it('click задания ведёт в read-only task маршрут', async () => {
