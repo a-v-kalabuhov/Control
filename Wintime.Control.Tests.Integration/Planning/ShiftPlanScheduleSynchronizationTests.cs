@@ -196,7 +196,8 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
                 ImmId = _factory.TestImmId,
                 OperatorId = operatorId,
                 Slot = 1,
-                AssignedAt = DateTime.UtcNow.AddHours(-1)
+                AssignedAt = DateTime.UtcNow.AddHours(-1),
+                CreatedById = leadId
             });
             day.Items.Add(item);
         }

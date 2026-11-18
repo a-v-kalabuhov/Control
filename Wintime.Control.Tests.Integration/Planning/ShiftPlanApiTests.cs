@@ -382,7 +382,8 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
             ImmId = _factory.TestImmId,
             OperatorId = @operator.Id,
             Slot = 1,
-            AssignedAt = DateTime.UtcNow
+            AssignedAt = DateTime.UtcNow,
+            CreatedById = oldLead.Id
         };
         using (var scope = _factory.Services.CreateScope())
         {
@@ -477,7 +478,8 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
             OperatorId = @operator.Id,
             Slot = 1,
             AssignedAt = DateTime.UtcNow.AddHours(-2),
-            UnassignedAt = DateTime.UtcNow.AddHours(-1)
+            UnassignedAt = DateTime.UtcNow.AddHours(-1),
+            CreatedById = lead1.Id
         };
         using (var scope = _factory.Services.CreateScope())
         {

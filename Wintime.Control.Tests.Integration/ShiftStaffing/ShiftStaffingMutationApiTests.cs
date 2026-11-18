@@ -39,19 +39,17 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         var secondImm = await SeedImmAsync(isActive: true);
         var item = (await SeedDayAsync(Item(1, lead.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
         var client = await ClientAsync(lead);
-        var before = DateTime.UtcNow;
 
         var firstAssignment = await RequiredAssignmentAsync(await AssignAsync(client, item.Id, firstImm, first.Id));
         var secondAssignment = await RequiredAssignmentAsync(await AssignAsync(client, item.Id, firstImm, second.Id));
         var otherImmAssignment = await RequiredAssignmentAsync(await AssignAsync(client, item.Id, secondImm, first.Id));
-        var after = DateTime.UtcNow;
 
         firstAssignment.Slot.Should().Be(1);
         secondAssignment.Slot.Should().Be(2);
         otherImmAssignment.Slot.Should().Be(1);
         firstAssignment.UnassignedAt.Should().BeNull();
-        firstAssignment.AssignedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
-        secondAssignment.AssignedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
+        firstAssignment.AssignedAt.Should().BeCloseTo(item.StartAtUtc, TimeSpan.FromSeconds(1));
+        secondAssignment.AssignedAt.Should().BeCloseTo(item.StartAtUtc, TimeSpan.FromSeconds(1));
         firstAssignment.OperatorId.Should().Be(first.Id);
         otherImmAssignment.OperatorId.Should().Be(first.Id);
 
@@ -63,7 +61,7 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
     }
 
     [Fact]
-    public async Task Assign_ThirdOperatorAndDuplicateActiveOperator_ReturnRussian400()
+    public async Task Assign_ThirdOperatorAndOverlappingOperator_ReturnRussian409()
     {
         var now = DateTime.UtcNow;
         var lead = await SeedUserAsync(UserRole.ShiftLead);
@@ -80,9 +78,9 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         await RequiredAssignmentAsync(await AssignAsync(client, item.Id, immId, operators[1].Id));
 
         await RussianErrorAsync(
-            await AssignAsync(client, item.Id, immId, operators[2].Id), HttpStatusCode.BadRequest);
+            await AssignAsync(client, item.Id, immId, operators[2].Id), HttpStatusCode.Conflict);
         await RussianErrorAsync(
-            await AssignAsync(client, item.Id, immId, operators[0].Id), HttpStatusCode.BadRequest);
+            await AssignAsync(client, item.Id, immId, operators[0].Id), HttpStatusCode.Conflict);
 
         var assignments = await AssignmentsAsync(item.Id);
         assignments.Should().HaveCount(2);
@@ -121,7 +119,7 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
     }
 
     [Fact]
-    public async Task Assign_RequiresLead_RejectsHistoryAndStaleAccessWithRussianErrors()
+    public async Task Assign_RequiresLeadAndRejectsStaleAccessWithRussianErrors()
     {
         var now = DateTime.UtcNow;
         var lead = await SeedUserAsync(UserRole.ShiftLead);
@@ -131,8 +129,6 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         var position = NextPosition();
         var noLead = (await SeedDayAsync(
             Item(position, null, now.AddHours(-1), now.AddHours(1)))).Items.Single();
-        var historical = (await SeedDayAsync(
-            Item(position, lead.Id, now.AddHours(-5), now.AddHours(-4)))).Items.Single();
         var nearest = (await SeedDayAsync(
             Item(position, lead.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
         var later = (await SeedDayAsync(
@@ -147,8 +143,6 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         {
             await RussianErrorAsync(await AssignAsync(client, noLead.Id, immId, @operator.Id),
                 HttpStatusCode.BadRequest);
-            await RussianErrorAsync(await AssignAsync(client, historical.Id, immId, @operator.Id),
-                HttpStatusCode.BadRequest);
         }
         await RussianErrorAsync(await AssignAsync(leadClient, foreign.Id, immId, @operator.Id),
             HttpStatusCode.Forbidden);
@@ -160,7 +154,6 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
             HttpStatusCode.NotFound);
 
         (await AssignmentsAsync(noLead.Id)).Should().BeEmpty();
-        (await AssignmentsAsync(historical.Id)).Should().BeEmpty();
         (await AssignmentsAsync(nearest.Id)).Should().BeEmpty();
     }
 
@@ -216,16 +209,14 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
             Item(1, lead.Id, now.AddHours(2), now.AddHours(3)))).Items.Single();
         var client = await ClientAsync(lead);
         var assigned = await RequiredAssignmentAsync(await AssignAsync(client, item.Id, immId, @operator.Id));
-        var before = DateTime.UtcNow;
 
         var unassigned = await RequiredAssignmentAsync(await UnassignAsync(client, assigned.Id));
-        var after = DateTime.UtcNow;
 
         unassigned.UnassignedAt.Should().NotBeNull();
-        unassigned.UnassignedAt!.Value.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
+        unassigned.UnassignedAt!.Value.Should().BeCloseTo(item.StartAtUtc, TimeSpan.FromSeconds(1));
         unassigned.IsWorkIntervalEmpty.Should().BeTrue();
         unassigned.WorkStart.Should().BeCloseTo(item.StartAtUtc, TimeSpan.FromSeconds(1));
-        unassigned.WorkEnd.Should().BeCloseTo(unassigned.UnassignedAt.Value, TimeSpan.FromSeconds(1));
+        unassigned.WorkEnd.Should().BeCloseTo(item.StartAtUtc, TimeSpan.FromSeconds(1));
         await RussianErrorAsync(await UnassignAsync(client, assigned.Id), HttpStatusCode.BadRequest);
 
         var stored = (await AssignmentsAsync(item.Id)).Should().ContainSingle().Subject;
@@ -237,7 +228,7 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
     }
 
     [Fact]
-    public async Task UnassignDuringShift_UsesServerTime_HistoricalActiveRowStaysOpenAndEndsAtShiftEnd()
+    public async Task UnassignDuringShift_UsesServerTime_HistoricalOpenRowEndsAtShiftEnd()
     {
         var now = DateTime.UtcNow;
         var currentLead = await SeedUserAsync(UserRole.ShiftLead);
@@ -265,15 +256,17 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         unassigned.IsWorkIntervalEmpty.Should().BeFalse();
         unassigned.WorkEnd.Should().BeCloseTo(unassigned.UnassignedAt.Value, TimeSpan.FromSeconds(1));
 
-        await RussianErrorAsync(await UnassignAsync(historicalClient, historicalAssignment.Id),
-            HttpStatusCode.BadRequest);
+        var historicalClosed = await RequiredAssignmentAsync(
+            await UnassignAsync(historicalClient, historicalAssignment.Id));
+        historicalClosed.UnassignedAt.Should().BeCloseTo(historical.EndAtUtc, TimeSpan.FromSeconds(1));
         var storedHistorical = (await AssignmentsAsync(historical.Id)).Should().ContainSingle().Subject;
-        storedHistorical.UnassignedAt.Should().BeNull();
+        storedHistorical.UnassignedAt.Should().BeCloseTo(historical.EndAtUtc, TimeSpan.FromSeconds(1));
         var body = await RequiredJsonAsync(
             await historicalClient.GetAsync($"/api/shift-staffing/items/{historical.Id}"));
         var read = Imm(body, historicalImm).GetProperty("assignments").EnumerateArray()
             .Should().ContainSingle().Subject;
-        read.GetProperty("unassignedAt").ValueKind.Should().Be(JsonValueKind.Null);
+        read.GetProperty("unassignedAt").GetDateTime().Should()
+            .BeCloseTo(historical.EndAtUtc, TimeSpan.FromSeconds(1));
         read.GetProperty("workEnd").GetDateTime().Should().BeCloseTo(historical.EndAtUtc, TimeSpan.FromSeconds(1));
     }
 
@@ -294,7 +287,7 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
 
         var replacementOperatorId = sameOperator ? first.Id : second.Id;
         var replacement = await RequiredAssignmentAsync(
-            await AssignAsync(client, item.Id, immId, replacementOperatorId));
+            await AssignAsync(client, item.Id, immId, replacementOperatorId, closed.UnassignedAt));
 
         replacement.Id.Should().NotBe(old.Id);
         replacement.OperatorId.Should().Be(replacementOperatorId);
@@ -366,9 +359,7 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
             () => AssignAsync(firstClient, item.Id, immId, operators[2].Id),
             () => AssignAsync(secondClient, item.Id, immId, operators[3].Id));
 
-        secondPair.Should().OnlyContain(r =>
-            r.StatusCode == HttpStatusCode.BadRequest || r.StatusCode == HttpStatusCode.Conflict);
-        secondPair.Count(r => r.StatusCode == HttpStatusCode.Conflict).Should().BeLessOrEqualTo(1);
+        secondPair.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Conflict);
         foreach (var response in secondPair)
             await RussianErrorAsync(response, response.StatusCode);
         var rows = await AssignmentsAsync(item.Id);
@@ -625,12 +616,13 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
     }
 
     private static Task<HttpResponseMessage> AssignAsync(
-        HttpClient client, Guid itemId, Guid immId, string operatorId) =>
+        HttpClient client, Guid itemId, Guid immId, string operatorId,
+        DateTime? assignedAt = null, DateTime? unassignedAt = null) =>
         client.PostAsJsonAsync($"/api/shift-staffing/items/{itemId}/operators",
-            new { ImmId = immId, OperatorId = operatorId });
+            new { ImmId = immId, OperatorId = operatorId, AssignedAt = assignedAt, UnassignedAt = unassignedAt });
 
     private static Task<HttpResponseMessage> UnassignAsync(HttpClient client, Guid assignmentId) =>
-        client.PostAsync($"/api/shift-staffing/assignments/{assignmentId}/unassign", null);
+        client.PostAsJsonAsync($"/api/shift-staffing/assignments/{assignmentId}/unassign", new { });
 
     private async Task<HttpClient> ClientAsync(TestUser user)
     {
@@ -743,7 +735,8 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
             AssignedAt = DateTime.SpecifyKind(assignedAt, DateTimeKind.Utc),
             UnassignedAt = unassignedAt.HasValue
                 ? DateTime.SpecifyKind(unassignedAt.Value, DateTimeKind.Utc)
-                : null
+                : null,
+            CreatedById = item.ShiftLeadId!
         };
         db.ShiftImmOperatorAssignments.Add(assignment);
         await db.SaveChangesAsync();

@@ -94,7 +94,7 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
         items.Select(i => i.GetProperty("itemId").GetGuid()).Should().Equal(newer.Id, older.Id);
         items.Select(i => i.GetProperty("startAtUtc").GetDateTime()).Should().BeInDescendingOrder();
         items.Should().OnlyContain(i => i.GetProperty("state").GetString() == "Historical");
-        items.Should().OnlyContain(i => !i.GetProperty("canEditOperators").GetBoolean());
+        items.Should().OnlyContain(i => i.GetProperty("canEditOperators").GetBoolean());
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
 
         var historicalBody = await RequiredJsonAsync(
             await leadClient.GetAsync($"/api/shift-staffing/items/{historical.Id}"));
-        historicalBody.GetProperty("shift").GetProperty("canEditOperators").GetBoolean().Should().BeFalse();
+        historicalBody.GetProperty("shift").GetProperty("canEditOperators").GetBoolean().Should().BeTrue();
 
         (await leadClient.GetAsync($"/api/shift-staffing/items/{later.Id}")).StatusCode.Should()
             .Be(HttpStatusCode.Forbidden);
@@ -203,7 +203,8 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
             OperatorId = activeOperator.Id,
             Slot = 1,
             AssignedAt = start.AddHours(-1),
-            UnassignedAt = start.AddHours(1)
+            UnassignedAt = start.AddHours(1),
+            CreatedById = lead.Id
         };
         var secondAssignment = new ShiftImmOperatorAssignment
         {
@@ -211,7 +212,8 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
             ImmId = archivedWithAssignment,
             OperatorId = archivedOperator.Id,
             Slot = 2,
-            AssignedAt = end.AddHours(1)
+            AssignedAt = end.AddHours(1),
+            CreatedById = lead.Id
         };
         using (var scope = _factory.Services.CreateScope())
         {
