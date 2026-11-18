@@ -179,6 +179,19 @@ describe('ShiftLeadHomeView', () => {
     expect(wrapper.find('[data-test="pending-closures"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="home-imm-imm-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="nearest-report"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="nearest-empty"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Назначенная смена не найдена')
+  })
+
+  it('без nearest сохраняет empty state одновременно с непустым pending', async () => {
+    shiftStaffingApi.nearest.mockResolvedValue({ data: { item: null } })
+    getPending.mockResolvedValue({ data: [pending('pending-1')] })
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="nearest-empty"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Назначенная смена не найдена')
+    expect(wrapper.find('[data-test="pending-item-pending-1"]').exists()).toBe(true)
   })
 
   it('после EndAtUtc обновляет nearest по существующему таймеру, а pending остаётся доступным', async () => {

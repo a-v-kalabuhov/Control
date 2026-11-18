@@ -116,7 +116,7 @@
     </section>
 
     <el-empty
-      v-else-if="!store.loading"
+      v-if="!store.currentItem && !store.loading"
       data-test="nearest-empty"
       description="Назначенная смена не найдена"
     />

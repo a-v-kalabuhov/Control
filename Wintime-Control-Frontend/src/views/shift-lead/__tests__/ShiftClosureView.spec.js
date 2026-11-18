@@ -157,4 +157,32 @@ describe('ShiftClosureView', () => {
     expect(input(wrapper, 'actualPartWeightGrams').props('modelValue')).toBeNull()
     expect(wrapper.text()).toContain('Есть несохранённые изменения')
   })
+
+  it('earlyCloseConfirmationRequired ведёт через подтверждение к close(true) и Closed read-only', async () => {
+    api.close
+      .mockRejectedValueOnce({ response: { status: 400, data: {
+        code: 'earlyCloseConfirmationRequired', message: 'Нужно подтверждение'
+      } } })
+      .mockResolvedValueOnce(response(report({ state: 'Closed' })))
+    wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-action="close"]').trigger('click')
+    await flushPromises()
+
+    expect(api.close).toHaveBeenCalledWith('item-1', false)
+    expect(api.close).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('Закрыть смену досрочно?')
+
+    await wrapper.get('[data-action="confirm-early-close"]').trigger('click')
+    await flushPromises()
+
+    expect(api.close).toHaveBeenNthCalledWith(2, 'item-1', true)
+    expect(wrapper.text()).toContain('Рапорт закрыт')
+    expect(wrapper.find('[data-action="save"]').exists()).toBe(false)
+    expect(wrapper.find('[data-action="close"]').exists()).toBe(false)
+    for (const control of wrapper.findAllComponents({ name: 'ElInputNumber' })) {
+      expect(control.props('disabled')).toBe(true)
+    }
+  })
 })
