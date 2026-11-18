@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using System.Text.Json;
 using Wintime.Control.Core.DTOs.ShiftClosures;
 using Wintime.Control.Core.DTOs.ShiftStaffing;
 using Wintime.Control.Core.Entities;
@@ -13,6 +14,7 @@ namespace Wintime.Control.Infrastructure.Services;
 public sealed class ShiftClosureService : IShiftClosureService
 {
     private const string ConcurrencyMessage = "Черновик сменного рапорта уже изменён другим пользователем";
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
     private readonly ShiftClosureReadModelLoader _loader;
@@ -280,6 +282,143 @@ public sealed class ShiftClosureService : IShiftClosureService
                 throw new ShiftConcurrencyException(ConcurrencyMessage);
             }
         });
+    }
+
+    public async Task CorrectAsync(
+        Guid closureId, CorrectShiftClosureRequest request, StaffingCaller caller, CancellationToken ct)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            try
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+                var closure = await _context.ShiftClosures
+                    .FromSqlInterpolated(
+                        $"SELECT * FROM \"ShiftClosures\" WHERE \"Id\" = {closureId} FOR UPDATE")
+                    .Include(c => c.ShiftPlanItem)
+                    .Include(c => c.Entries).ThenInclude(e => e.OutputShares)
+                    .SingleOrDefaultAsync(ct)
+                    ?? throw new ShiftNotFoundException("Рапорт не найден");
+                EnsureAccess(closure.ShiftPlanItem, caller);
+                if (closure.State != ShiftClosureState.Closed)
+                    throw new DomainException("shiftNotClosed");
+                if (string.IsNullOrWhiteSpace(request.Reason))
+                    throw new DomainException("reasonRequired");
+                var reason = request.Reason.Trim();
+
+                var pending = new List<(
+                    ShiftClosureEntry Entry,
+                    ShiftClosureManualEntryInput Input,
+                    List<ShiftClosureCorrectionChangeDto> Changes)>();
+                var errors = new List<ShiftClosureFieldError>();
+                foreach (var input in request.Entries)
+                {
+                    var entry = closure.Entries.SingleOrDefault(e => e.ShiftTaskId == input.ShiftTaskId)
+                        ?? throw new ShiftNotFoundException("Задание не найдено в этом рапорте");
+                    errors.AddRange(ShiftClosureValidator.Validate(new ShiftClosureValidationEntry
+                    {
+                        TaskId = input.ShiftTaskId,
+                        HasOperators = entry.OutputShares.Count > 0,
+                        IsManualFallbackRequired = entry.IsManualFallbackRequired,
+                        AutomaticOutputQuantity = entry.AutomaticOutputQuantity,
+                        TaskPackagingUnit = entry.TaskPackagingUnit,
+                        ActualPartWeightGrams = input.ActualPartWeightGrams,
+                        ManualFullCycleSeconds = input.ManualFullCycleSeconds,
+                        ActualPackagingUnit = input.ActualPackagingUnit,
+                        PackagingPlaces = input.PackagingPlaces,
+                        ManualGoodQuantity = input.ManualGoodQuantity,
+                        ManualDefectQuantity = input.ManualDefectQuantity
+                    }, requireCompleteness: true));
+                    pending.Add((entry, input, ManualChanges(entry, input)));
+                }
+                if (errors.Count > 0)
+                {
+                    throw new ShiftClosureValidationException(
+                        "correctionValidationFailed", "Проверьте поля исправления сменного рапорта", errors);
+                }
+
+                var changes = pending.SelectMany(p => p.Changes).ToList();
+                if (changes.Count == 0)
+                    throw new DomainException("noChanges");
+
+                foreach (var (entry, input, _) in pending)
+                {
+                    entry.ActualPartWeightGrams = input.ActualPartWeightGrams;
+                    entry.ManualFullCycleSeconds = input.ManualFullCycleSeconds;
+                    entry.ActualPackagingUnit = input.ActualPackagingUnit;
+                    entry.PackagingPlaces = input.PackagingPlaces;
+                    entry.ManualGoodQuantity = input.ManualGoodQuantity;
+                    entry.ManualDefectQuantity = input.ManualDefectQuantity;
+                }
+                _context.ShiftClosureCorrections.Add(new ShiftClosureCorrection
+                {
+                    ShiftClosureId = closure.Id,
+                    ChangedById = caller.UserId,
+                    ChangedAt = Now,
+                    Reason = reason,
+                    ChangesJson = JsonSerializer.Serialize(changes, JsonOptions)
+                });
+                await _context.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+            }
+            catch (Exception exception) when (IsConcurrencyFailure(exception))
+            {
+                throw new ShiftConcurrencyException(ConcurrencyMessage);
+            }
+        });
+    }
+
+    public async Task<IReadOnlyList<ShiftClosureCorrectionDto>> GetCorrectionsAsync(
+        Guid closureId, StaffingCaller caller, CancellationToken ct)
+    {
+        var closure = await _context.ShiftClosures.AsNoTracking()
+            .Include(c => c.ShiftPlanItem)
+            .SingleOrDefaultAsync(c => c.Id == closureId, ct)
+            ?? throw new ShiftNotFoundException("Рапорт не найден");
+        EnsureAccess(closure.ShiftPlanItem, caller);
+        if (closure.State != ShiftClosureState.Closed)
+            throw new ShiftNotFoundException("Закрытый рапорт не найден");
+        var corrections = await _context.ShiftClosureCorrections.AsNoTracking()
+            .Include(c => c.ChangedBy)
+            .Where(c => c.ShiftClosureId == closureId)
+            .OrderBy(c => c.ChangedAt).ThenBy(c => c.Id)
+            .ToListAsync(ct);
+        return corrections.Select(c => new ShiftClosureCorrectionDto
+        {
+            Id = c.Id,
+            ChangedById = c.ChangedById,
+            ChangedByName = c.ChangedBy.FullName,
+            ChangedAt = DateTime.SpecifyKind(c.ChangedAt, DateTimeKind.Utc),
+            Reason = c.Reason,
+            Changes = JsonSerializer.Deserialize<List<ShiftClosureCorrectionChangeDto>>(
+                c.ChangesJson, JsonOptions) ?? new List<ShiftClosureCorrectionChangeDto>()
+        }).ToList();
+    }
+
+    private static List<ShiftClosureCorrectionChangeDto> ManualChanges(
+        ShiftClosureEntry entry, ShiftClosureManualEntryInput input)
+    {
+        var changes = new List<ShiftClosureCorrectionChangeDto>();
+        void Add(string field, object? oldValue, object? newValue, bool changed)
+        {
+            if (changed)
+                changes.Add(new ShiftClosureCorrectionChangeDto(
+                    input.ShiftTaskId, field, oldValue, newValue));
+        }
+        Add("actualPartWeightGrams", entry.ActualPartWeightGrams, input.ActualPartWeightGrams,
+            entry.ActualPartWeightGrams != input.ActualPartWeightGrams);
+        Add("manualFullCycleSeconds", entry.ManualFullCycleSeconds, input.ManualFullCycleSeconds,
+            entry.ManualFullCycleSeconds != input.ManualFullCycleSeconds);
+        Add("actualPackagingUnit", entry.ActualPackagingUnit, input.ActualPackagingUnit,
+            entry.ActualPackagingUnit != input.ActualPackagingUnit);
+        Add("packagingPlaces", entry.PackagingPlaces, input.PackagingPlaces,
+            entry.PackagingPlaces != input.PackagingPlaces);
+        Add("manualGoodQuantity", entry.ManualGoodQuantity, input.ManualGoodQuantity,
+            entry.ManualGoodQuantity != input.ManualGoodQuantity);
+        Add("manualDefectQuantity", entry.ManualDefectQuantity, input.ManualDefectQuantity,
+            entry.ManualDefectQuantity != input.ManualDefectQuantity);
+        return changes;
     }
 
     public async Task<IReadOnlyList<ShiftClosurePendingDto>> GetPendingAsync(

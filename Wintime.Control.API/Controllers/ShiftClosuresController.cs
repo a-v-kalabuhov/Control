@@ -36,6 +36,20 @@ public sealed class ShiftClosuresController : ControllerBase
     public Task<IReadOnlyList<ShiftClosurePendingDto>> Pending(CancellationToken ct) =>
         _service.GetPendingAsync(Caller, ct);
 
+    [HttpPatch("{closureId:guid}/corrections")]
+    [Authorize(Policy = "ManagerOrAdmin")]
+    public async Task<IActionResult> Correct(
+        Guid closureId, [FromBody] CorrectShiftClosureRequest request, CancellationToken ct)
+    {
+        await _service.CorrectAsync(closureId, request, Caller, ct);
+        return NoContent();
+    }
+
+    [HttpGet("{closureId:guid}/corrections")]
+    public Task<IReadOnlyList<ShiftClosureCorrectionDto>> Corrections(
+        Guid closureId, CancellationToken ct) =>
+        _service.GetCorrectionsAsync(closureId, Caller, ct);
+
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? throw new ShiftAccessException("Пользователь не идентифицирован");
 

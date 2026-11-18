@@ -13,4 +13,8 @@ public interface IShiftClosureService
     Task<IReadOnlyList<ShiftClosurePendingDto>> GetPendingAsync(
         StaffingCaller caller, CancellationToken ct);
     Task<ShiftClosureDto> GetClosedAsync(Guid closureId, StaffingCaller caller, CancellationToken ct);
+    Task CorrectAsync(
+        Guid closureId, CorrectShiftClosureRequest request, StaffingCaller caller, CancellationToken ct);
+    Task<IReadOnlyList<ShiftClosureCorrectionDto>> GetCorrectionsAsync(
+        Guid closureId, StaffingCaller caller, CancellationToken ct);
 }

@@ -8,6 +8,23 @@ public sealed record SaveShiftClosureDraftRequest(IReadOnlyList<ShiftClosureManu
 
 public sealed record CloseShiftClosureRequest(bool ConfirmEarlyClose);
 
+public sealed record CorrectShiftClosureRequest(
+    string Reason, IReadOnlyList<ShiftClosureManualEntryInput> Entries);
+
+public sealed record ShiftClosureCorrectionChangeDto(
+    Guid TaskId, string Field, object? OldValue, object? NewValue);
+
+public sealed class ShiftClosureCorrectionDto
+{
+    public Guid Id { get; init; }
+    public string ChangedById { get; init; } = string.Empty;
+    public string ChangedByName { get; init; } = string.Empty;
+    public DateTime ChangedAt { get; init; }
+    public string Reason { get; init; } = string.Empty;
+    public IReadOnlyList<ShiftClosureCorrectionChangeDto> Changes { get; init; } =
+        Array.Empty<ShiftClosureCorrectionChangeDto>();
+}
+
 public sealed record ShiftClosureManualEntryInput(
     Guid ShiftTaskId,
     decimal? ActualPartWeightGrams,
