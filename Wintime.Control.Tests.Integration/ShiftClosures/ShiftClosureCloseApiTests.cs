@@ -476,7 +476,7 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
             openCycle.EndTime.Should().BeNull();
         }
 
-        await MutateSourcesAndCyclesAfterCloseAsync(task, openCycleId, start.AddMinutes(70));
+        await MutateSourcesAndCyclesAfterCloseAsync(task, openCycleId, start.AddMinutes(70), operatorUser.Id);
         var reread = await client.GetAsync($"/api/shift-closures/items/{item.Id}");
         reread.StatusCode.Should().Be(HttpStatusCode.OK);
         var current = await reread.Content.ReadAsStringAsync();
@@ -787,7 +787,7 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     private async Task MutateSourcesAndCyclesAfterCloseAsync(
-        ShiftTask task, Guid openCycleId, DateTime lateCycleEnd)
+        ShiftTask task, Guid openCycleId, DateTime lateCycleEnd, string operatorId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
@@ -800,6 +800,9 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         current.PartWeightGrams = 99;
         current.PackagingUnit = 99;
         current.Cavities = 3;
+        var currentOperator = await db.Users.SingleAsync(u => u.Id == operatorId);
+        currentOperator.FullName = "CURRENT OPERATOR AFTER CLOSE";
+        currentOperator.EmployeeId = "CURRENT-EMPLOYEE";
         foreach (var ingredient in current.RecipeIngredients)
         {
             ingredient.Percent = 77;

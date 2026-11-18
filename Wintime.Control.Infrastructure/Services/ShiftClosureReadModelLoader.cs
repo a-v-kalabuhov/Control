@@ -399,9 +399,12 @@ public sealed class ShiftClosureReadModelLoader
         var timelines = closure.Entries.GroupBy(e => e.ImmId).Select(group =>
         {
             var immEntries = group.ToList();
+            var operatorSnapshots = immEntries.SelectMany(e => e.OutputShares)
+                .GroupBy(s => s.OperatorId)
+                .ToDictionary(g => g.Key, g => g.First());
             var slices = assignments.Where(a => a.ImmId == group.Key)
                 .Select(a => new ShiftOperatorSlice(
-                    a.Id, a.OperatorId, a.Operator.FullName, a.Operator.EmployeeId, a.Slot,
+                    a.Id, a.OperatorId, string.Empty, null, a.Slot,
                     Utc(a.AssignedAt), Utc(a.UnassignedAt ?? shiftEnd)))
                 .ToList();
             var merged = ShiftOutputDistributor.Distribute(
@@ -413,12 +416,16 @@ public sealed class ShiftClosureReadModelLoader
                 ImmName = group.First().ImmNameSnapshot,
                 Intervals = merged.Select(interval =>
                 {
-                    var operators = interval.Operators.Select(o => new ShiftClosureTimelineOperatorDto
+                    var operators = interval.Operators.Select(o =>
                     {
-                        OperatorId = o.OperatorId,
-                        FullName = o.FullName,
-                        EmployeeId = o.EmployeeId,
-                        Slot = o.Slot
+                        var snapshot = operatorSnapshots.GetValueOrDefault(o.OperatorId);
+                        return new ShiftClosureTimelineOperatorDto
+                        {
+                            OperatorId = o.OperatorId,
+                            FullName = snapshot?.OperatorFullNameSnapshot ?? string.Empty,
+                            EmployeeId = snapshot?.OperatorEmployeeIdSnapshot,
+                            Slot = o.Slot
+                        };
                     }).ToList();
                     var outputs = immEntries.Select(e => new ShiftClosureTaskOutputDto(e.ShiftTaskId,
                         e.OutputShares.Where(s => Overlaps(
