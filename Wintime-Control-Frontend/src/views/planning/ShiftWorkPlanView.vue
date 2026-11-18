@@ -296,8 +296,8 @@ async function reloadClosureAfterCorrection() {
   try {
     const response = await shiftClosuresApi.getByItem(closureItem.value.id)
     closureReport.value = response.data
-    if (closureTable.value) await closureTable.value.load()
-    return true
+    const tableReloaded = closureTable.value ? await closureTable.value.load() : true
+    return tableReloaded !== false
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, 'Не удалось обновить сменный рапорт'))
     return false

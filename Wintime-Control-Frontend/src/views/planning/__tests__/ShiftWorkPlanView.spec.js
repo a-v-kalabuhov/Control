@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus, { ElMessage } from 'element-plus'
 import ShiftWorkPlanView from '../ShiftWorkPlanView.vue'
+import ShiftClosureTable from '@/components/shift-closures/ShiftClosureTable.vue'
 import { tasksApi } from '@/api/tasks'
 import { personnelApi } from '@/api/personnel'
 import { shiftsApi } from '@/api/shifts'
@@ -475,5 +476,28 @@ describe('ShiftWorkPlanView', () => {
       closed: wrapper.find('[data-test="print-closed"]').exists(),
       correction: wrapper.find('[data-test="open-corrections"]').exists()
     }).toEqual({ blank: false, closed: true, correction: true })
+  })
+
+  it('на ПК failed table reload после PATCH оставляет dialog открытым без success', async () => {
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Closed', shiftDate: '2026-11-06', entries: []
+    } })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    const table = wrapper.findComponent(ShiftClosureTable)
+    const tableLoad = vi.spyOn(table.vm.$.exposed, 'load').mockResolvedValue(false)
+
+    await wrapper.get('[data-test="open-corrections"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="correction-reason"]').setValue('Правка')
+    await wrapper.get('[data-test="submit-correction"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftClosuresApi.correct).toHaveBeenCalledTimes(1)
+    expect(tableLoad).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-test="submit-correction"]').exists()).toBe(true)
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('Исправление сохранено'))
   })
 })
