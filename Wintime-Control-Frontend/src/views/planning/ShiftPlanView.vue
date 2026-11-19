@@ -50,6 +50,26 @@
                   <span class="shift-plan-lead">
                     {{ item.shiftLeadName || 'Не назначен' }}
                   </span>
+                  <span
+                    v-if="item.closureStatus === 'Closed'"
+                    data-test="closure-status"
+                    class="shift-plan-badge bg-emerald-100 text-emerald-800"
+                  >Закрыта</span>
+                  <span
+                    v-else-if="item.closureStatus === 'NotClosed'"
+                    data-test="closure-status"
+                    class="shift-plan-badge bg-amber-100 text-amber-800"
+                  >Не закрыта</span>
+                  <span
+                    v-if="item.hasOrphanOutput === true"
+                    data-test="orphan-output"
+                    class="shift-plan-badge bg-amber-100 text-amber-800"
+                  >Есть выпуск без литейщика</span>
+                  <span
+                    v-if="item.hasMissingLeadWarning === true"
+                    data-test="missing-lead"
+                    class="shift-plan-badge bg-red-100 text-red-800"
+                  >Не назначен старший</span>
                 </span>
               </el-button>
             </div>
@@ -205,6 +225,15 @@ function onSaved(savedDay, context) {
   align-items: flex-start;
   gap: 2px;
   white-space: normal;
+}
+
+.shift-plan-badge {
+  display: inline-flex;
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
 }
 
 :deep(.shift-past) {

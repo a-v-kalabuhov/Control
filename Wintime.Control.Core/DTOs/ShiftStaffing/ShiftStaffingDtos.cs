@@ -6,7 +6,10 @@ namespace Wintime.Control.Core.DTOs.ShiftStaffing;
 
 public sealed record NearestShiftDto(ShiftStaffingSummaryDto? Item);
 public sealed record StaffingCaller(string UserId, bool IsShiftLead, bool IsManagerOrAdmin);
-public sealed record AssignOperatorRequest(Guid ImmId, string OperatorId);
+public sealed record AssignOperatorRequest(
+    Guid ImmId, string OperatorId, DateTime? AssignedAt, DateTime? UnassignedAt);
+public sealed record UnassignOperatorRequest(DateTime? UnassignedAt);
+public sealed record UpdateOperatorIntervalRequest(DateTime AssignedAt, DateTime? UnassignedAt);
 
 public class ShiftStaffingSummaryDto
 {
@@ -56,6 +59,10 @@ public class ShiftOperatorAssignmentDto
     public int Slot { get; set; }
     public DateTime AssignedAt { get; set; }
     public DateTime? UnassignedAt { get; set; }
+    public string CreatedById { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public string? UpdatedById { get; set; }
+    public DateTime? UpdatedAt { get; set; }
     public DateTime WorkStart { get; set; }
     public DateTime WorkEnd { get; set; }
     public bool IsWorkIntervalEmpty { get; set; }

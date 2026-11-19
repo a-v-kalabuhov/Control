@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Wintime.Control.Core.DTOs.ShiftPlans;
@@ -17,7 +18,7 @@ public class ShiftPlanController : ControllerBase
     [HttpGet]
     public Task<IReadOnlyList<ShiftPlanDayDto>> Get(
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct) =>
-        _service.GetAsync(from, to, ct);
+        _service.GetAsync(from, to, CallerUserId, ct);
 
     [HttpGet("lead-candidates")]
     public Task<IReadOnlyList<StaffPersonDto>> Candidates(CancellationToken ct) =>
@@ -26,5 +27,7 @@ public class ShiftPlanController : ControllerBase
     [HttpPut("days/{date}/items/{position:int}/lead")]
     public Task<ShiftPlanDayDto> SetLead(
         DateOnly date, int position, [FromBody] SetShiftLeadRequest request, CancellationToken ct) =>
-        _service.SetLeadAsync(date, position, request.ShiftLeadId, ct);
+        _service.SetLeadAsync(date, position, request.ShiftLeadId, CallerUserId, ct);
+
+    private string CallerUserId => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 }

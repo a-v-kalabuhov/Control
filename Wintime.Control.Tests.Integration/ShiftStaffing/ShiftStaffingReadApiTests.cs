@@ -94,7 +94,7 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
         items.Select(i => i.GetProperty("itemId").GetGuid()).Should().Equal(newer.Id, older.Id);
         items.Select(i => i.GetProperty("startAtUtc").GetDateTime()).Should().BeInDescendingOrder();
         items.Should().OnlyContain(i => i.GetProperty("state").GetString() == "Historical");
-        items.Should().OnlyContain(i => !i.GetProperty("canEditOperators").GetBoolean());
+        items.Should().OnlyContain(i => i.GetProperty("canEditOperators").GetBoolean());
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
 
         var historicalBody = await RequiredJsonAsync(
             await leadClient.GetAsync($"/api/shift-staffing/items/{historical.Id}"));
-        historicalBody.GetProperty("shift").GetProperty("canEditOperators").GetBoolean().Should().BeFalse();
+        historicalBody.GetProperty("shift").GetProperty("canEditOperators").GetBoolean().Should().BeTrue();
 
         (await leadClient.GetAsync($"/api/shift-staffing/items/{later.Id}")).StatusCode.Should()
             .Be(HttpStatusCode.Forbidden);
@@ -203,7 +203,8 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
             OperatorId = activeOperator.Id,
             Slot = 1,
             AssignedAt = start.AddHours(-1),
-            UnassignedAt = start.AddHours(1)
+            UnassignedAt = start.AddHours(1),
+            CreatedById = lead.Id
         };
         var secondAssignment = new ShiftImmOperatorAssignment
         {
@@ -211,7 +212,8 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
             ImmId = archivedWithAssignment,
             OperatorId = archivedOperator.Id,
             Slot = 2,
-            AssignedAt = end.AddHours(1)
+            AssignedAt = end.AddHours(1),
+            CreatedById = lead.Id
         };
         using (var scope = _factory.Services.CreateScope())
         {
@@ -254,6 +256,66 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
         assignments[1].GetProperty("workEnd").GetDateTime().Should().BeCloseTo(end, TimeSpan.FromSeconds(1));
         assignments[1].GetProperty("isWorkIntervalEmpty").GetBoolean().Should().BeTrue();
         withAssignments.GetProperty("activeOperatorCount").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CurrentItem_FuturePreassignmentIsNotCountedAsActiveAtNow()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var operatorUser = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync(isActive: true);
+        var item = (await SeedDayAsync(Item(90, lead.Id, now.AddHours(-1), now.AddHours(2)))).Items.Single();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            db.ShiftImmOperatorAssignments.Add(new ShiftImmOperatorAssignment
+            {
+                ShiftPlanItemId = item.Id,
+                ImmId = immId,
+                OperatorId = operatorUser.Id,
+                Slot = 1,
+                AssignedAt = Utc(now.AddMinutes(20))!.Value,
+                UnassignedAt = null,
+                CreatedById = lead.Id
+            });
+            await db.SaveChangesAsync();
+        }
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync($"/api/shift-staffing/items/{item.Id}"));
+
+        Imm(body, immId).GetProperty("activeOperatorCount").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CurrentItem_AssignmentWithExplicitFutureEndIsCountedAtNow()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var operatorUser = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync(isActive: true);
+        var item = (await SeedDayAsync(Item(90, lead.Id, now.AddHours(-1), now.AddHours(2)))).Items.Single();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            db.ShiftImmOperatorAssignments.Add(new ShiftImmOperatorAssignment
+            {
+                ShiftPlanItemId = item.Id,
+                ImmId = immId,
+                OperatorId = operatorUser.Id,
+                Slot = 1,
+                AssignedAt = Utc(now.AddMinutes(-20))!.Value,
+                UnassignedAt = Utc(now.AddMinutes(20)),
+                CreatedById = lead.Id
+            });
+            await db.SaveChangesAsync();
+        }
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync($"/api/shift-staffing/items/{item.Id}"));
+
+        Imm(body, immId).GetProperty("activeOperatorCount").GetInt32().Should().Be(1);
     }
 
     [Fact]

@@ -6,8 +6,17 @@ export const shiftStaffingApi = {
   item: itemId => apiClient.get(`/shift-staffing/items/${itemId}`),
   task: (itemId, taskId) => apiClient.get(`/shift-staffing/items/${itemId}/tasks/${taskId}`),
   operators: () => apiClient.get('/shift-staffing/operators'),
-  assign: (itemId, immId, operatorId) =>
-    apiClient.post(`/shift-staffing/items/${itemId}/operators`, { immId, operatorId }),
-  unassign: assignmentId =>
-    apiClient.post(`/shift-staffing/assignments/${assignmentId}/unassign`)
+  assignOperator: (itemId, { immId, operatorId, assignedAt = null, unassignedAt = null }) =>
+    apiClient.post(`/shift-staffing/items/${itemId}/operators`, {
+      immId, operatorId, assignedAt, unassignedAt
+    }),
+  unassignOperator: (assignmentId, { unassignedAt } = {}) =>
+    apiClient.post(
+      `/shift-staffing/assignments/${assignmentId}/unassign`,
+      unassignedAt ? { unassignedAt } : {}
+    ),
+  updateOperatorInterval: (assignmentId, { assignedAt, unassignedAt = null }) =>
+    apiClient.put(`/shift-staffing/assignments/${assignmentId}/interval`, {
+      assignedAt, unassignedAt
+    })
 }

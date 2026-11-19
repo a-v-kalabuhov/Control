@@ -4,10 +4,15 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus, { ElMessage } from 'element-plus'
 import ShiftWorkPlanView from '../ShiftWorkPlanView.vue'
+import ShiftClosureTable from '@/components/shift-closures/ShiftClosureTable.vue'
 import { tasksApi } from '@/api/tasks'
 import { personnelApi } from '@/api/personnel'
 import { shiftsApi } from '@/api/shifts'
 import { archivedTaskRefs } from '@/utils/taskIssueCheck'
+import { shiftPlansApi } from '@/api/shiftPlans'
+import * as shiftClosuresApi from '@/api/shiftClosures'
+import { useAuthStore } from '@/stores/auth'
+import { downloadBlob } from '@/utils/downloadBlob'
 
 vi.mock('@/api/tasks', () => ({
   tasksApi: {
@@ -22,6 +27,19 @@ vi.mock('@/api/personnel', () => ({
 vi.mock('@/api/shifts', () => ({
   shiftsApi: { getShifts: vi.fn() }
 }))
+vi.mock('@/api/shiftPlans', () => ({
+  shiftPlansApi: { getRange: vi.fn() }
+}))
+vi.mock('@/api/shiftClosures', () => ({
+  getByItem: vi.fn(),
+  saveDraft: vi.fn(),
+  close: vi.fn(),
+  correct: vi.fn(),
+  getCorrections: vi.fn(),
+  getBlankPdf: vi.fn(),
+  getClosedPdf: vi.fn()
+}))
+vi.mock('@/utils/downloadBlob', () => ({ downloadBlob: vi.fn() }))
 vi.mock('@/utils/taskIssueCheck', () => ({
   archivedTaskRefs: vi.fn(() => Promise.resolve([]))
 }))
@@ -62,6 +80,25 @@ function mountView() {
   })
 }
 
+function planItem(overrides = {}) {
+  return {
+    id: 'item-1', position: 1, shiftLeadId: 'lead-1', shiftLeadName: 'Старший Смены',
+    startAtUtc: '2026-11-06T05:00:00Z', endAtUtc: '2026-11-06T17:00:00Z',
+    timeZoneId: 'Europe/Moscow', state: 'Current', ...overrides
+  }
+}
+
+function planDay(item = planItem()) {
+  return { shiftDate: '2026-11-06', isSaved: !!item.id, items: [item] }
+}
+
+async function openClosureTab(wrapper) {
+  const tab = wrapper.findAll('.el-tabs__item').find(node => node.text() === 'Сменный рапорт')
+  expect(tab).toBeDefined()
+  await tab.trigger('click')
+  await flushPromises()
+}
+
 async function changePersonnel(wrapper, taskId, personnelId) {
   const select = wrapper.findComponent(`[data-test="personnel-${taskId}"]`)
   await select.vm.$emit('update:modelValue', personnelId)
@@ -72,6 +109,9 @@ async function changePersonnel(wrapper, taskId, personnelId) {
 describe('ShiftWorkPlanView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.isAuthenticated = true
+    auth.userRole = 'Manager'
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 10, 6, 10, 0))
     vi.clearAllMocks()
@@ -84,6 +124,14 @@ describe('ShiftWorkPlanView', () => {
       { id: 'adjuster-2', fullName: 'Петров' }
     ] })
     arrangeTasks()
+    shiftPlansApi.getRange.mockResolvedValue({ data: [planDay()] })
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: null, shiftPlanItemId: 'item-1', state: 'Draft', entries: [],
+      startAtUtc: '2026-11-06T05:00:00Z', endAtUtc: '2026-11-06T17:00:00Z'
+    } })
+    shiftClosuresApi.getCorrections.mockResolvedValue({ data: [] })
+    shiftClosuresApi.getBlankPdf.mockResolvedValue({ data: new Blob(['blank'], { type: 'application/pdf' }) })
+    shiftClosuresApi.getClosedPdf.mockResolvedValue({ data: new Blob(['closed'], { type: 'application/pdf' }) })
     archivedTaskRefs.mockResolvedValue([])
     vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
     vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
@@ -264,5 +312,239 @@ describe('ShiftWorkPlanView', () => {
     expect(tasksApi.issue).toHaveBeenNthCalledWith(2, second.id, 'adjuster-2')
     expect(wrapper.text()).toContain('Наладчик недоступен')
     expect(ElMessage.warning).toHaveBeenCalled()
+  })
+
+  it('разрешает выбранные date+shift.number в Position и загружает closure только по item.id', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(shiftPlansApi.getRange).not.toHaveBeenCalled()
+    expect(shiftClosuresApi.getByItem).not.toHaveBeenCalled()
+    tasksApi.getList.mockClear()
+
+    await openClosureTab(wrapper)
+
+    expect(shiftPlansApi.getRange).toHaveBeenCalledWith('2026-11-06', '2026-11-06')
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledWith('item-1')
+    expect(tasksApi.getList).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['virtual item', planItem({ id: null })],
+    ['без старшего', planItem({ shiftLeadId: null, shiftLeadName: null })]
+  ])('показывает объяснение для %s без вызова closure API', async (_name, item) => {
+    shiftPlansApi.getRange.mockResolvedValue({ data: [planDay(item)] })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await openClosureTab(wrapper)
+
+    expect(wrapper.text()).toContain('Назначьте старшего смены')
+    expect(shiftClosuresApi.getByItem).not.toHaveBeenCalled()
+  })
+
+  it('при снятии старшего на Refresh скрывает рапорт без повторного closure API', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(2)
+    const callsBeforeRefresh = shiftClosuresApi.getByItem.mock.calls.length
+    shiftPlansApi.getRange.mockResolvedValueOnce({
+      data: [planDay(planItem({ shiftLeadId: null, shiftLeadName: null }))]
+    })
+
+    const refresh = wrapper.findAll('button').find(button => button.text() === 'Обновить')
+    await refresh.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Назначьте старшего смены')
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(callsBeforeRefresh)
+  })
+
+  it('после материализации повторное разрешение включает рапорт', async () => {
+    shiftPlansApi.getRange.mockResolvedValueOnce({ data: [planDay(planItem({ id: null, shiftLeadId: null }))] })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    expect(shiftClosuresApi.getByItem).not.toHaveBeenCalled()
+    shiftPlansApi.getRange.mockResolvedValueOnce({ data: [planDay()] })
+
+    const refresh = wrapper.findAll('button').find(button => button.text() === 'Обновить')
+    await refresh.trigger('click')
+    await flushPromises()
+
+    expect(shiftPlansApi.getRange).toHaveBeenCalledTimes(2)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledWith('item-1')
+  })
+
+  it('Refresh сохраняет несохранённый ввод и не перемонтирует редактор той же смены', async () => {
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Draft',
+      startAtUtc: '2026-11-06T05:00:00Z', endAtUtc: '2026-11-06T17:00:00Z',
+      entries: [{
+        taskId: 'task-1', immName: 'ТПА-1', productName: 'Корпус', operatorTotals: [],
+        actualPartWeightGrams: 4, manualFullCycleSeconds: 50, actualPackagingUnit: 20,
+        packagingPlaces: 1, manualGoodQuantity: 8, manualDefectQuantity: 1,
+        automaticOutputQuantity: 2, isManualFallbackRequired: false
+      }]
+    } })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    const input = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
+    const inputElement = input.element
+    input.vm.$emit('update:modelValue', 9)
+    await wrapper.vm.$nextTick()
+    expect(input.props('modelValue')).toBe(9)
+
+    const refresh = wrapper.findAll('button').find(button => button.text() === 'Обновить')
+    await refresh.trigger('click')
+    await flushPromises()
+
+    const refreshedInput = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
+    expect(refreshedInput.element).toBe(inputElement)
+    expect(refreshedInput.props('modelValue')).toBe(9)
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(3)
+  })
+
+  it('failed same-item Refresh сохраняет mounted dirty editor и не очищает рапорт', async () => {
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Draft',
+      startAtUtc: '2026-11-06T05:00:00Z', endAtUtc: '2026-11-06T17:00:00Z',
+      entries: [{
+        taskId: 'task-1', immName: 'ТПА-1', productName: 'Корпус', operatorTotals: [],
+        actualPartWeightGrams: 4, manualFullCycleSeconds: 50, actualPackagingUnit: 20,
+        packagingPlaces: 1, manualGoodQuantity: 8, manualDefectQuantity: 1,
+        automaticOutputQuantity: 2, isManualFallbackRequired: false
+      }]
+    } })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    const input = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
+    const inputElement = input.element
+    input.vm.$emit('update:modelValue', 9)
+    await wrapper.vm.$nextTick()
+    shiftPlansApi.getRange.mockRejectedValueOnce({ response: { data: { message: 'Сеть недоступна' } } })
+
+    const refresh = wrapper.findAll('button').find(button => button.text() === 'Обновить')
+    await refresh.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(ShiftClosureTable).exists()).toBe(true)
+    const preservedInput = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
+    expect(preservedInput.element).toBe(inputElement)
+    expect(preservedInput.props('modelValue')).toBe(9)
+    expect(wrapper.text()).toContain('Есть несохранённые изменения')
+  })
+
+  it('при ошибке разрешения новой смены скрывает прежний рапорт и не даёт сохранить его под новым выбором', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    expect(wrapper.findComponent(ShiftClosureTable).exists()).toBe(true)
+    shiftPlansApi.getRange.mockRejectedValueOnce({ response: { data: { message: 'Смена недоступна' } } })
+
+    const shiftSelect = wrapper.findAllComponents({ name: 'ElSelect' })[0]
+    await shiftSelect.vm.$emit('update:modelValue', 2)
+    await flushPromises()
+
+    expect(wrapper.findComponent(ShiftClosureTable).exists()).toBe(false)
+    expect(wrapper.find('[data-action="save"]').exists()).toBe(false)
+    expect(shiftClosuresApi.saveDraft).not.toHaveBeenCalled()
+  })
+
+  it('повторно разрешает Position после переключения номера смены на вкладке рапорта', async () => {
+    const second = planItem({ id: 'item-2', position: 2 })
+    shiftPlansApi.getRange.mockResolvedValue({ data: [planDay(second)] })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    expect(shiftClosuresApi.getByItem).not.toHaveBeenCalled()
+
+    const shiftSelect = wrapper.findAllComponents({ name: 'ElSelect' })[0]
+    await shiftSelect.vm.$emit('update:modelValue', 2)
+    await flushPromises()
+
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledWith('item-2')
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(2)
+  })
+
+  it('на ПК до закрытия печатает только бланк через общий PDF component', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+
+    expect(wrapper.find('[data-test="print-closed"]').exists()).toBe(false)
+    await wrapper.get('[data-test="print-blank"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftClosuresApi.getBlankPdf).toHaveBeenCalledWith('item-1')
+    expect(shiftClosuresApi.getClosedPdf).not.toHaveBeenCalled()
+    expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/\.pdf$/))
+  })
+
+  it('на ПК после закрытия печатает только рапорт через общий PDF component', async () => {
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Closed', shiftDate: '2026-11-06', entries: []
+    } })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+
+    expect(wrapper.find('[data-test="print-blank"]').exists()).toBe(false)
+    await wrapper.get('[data-test="print-closed"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftClosuresApi.getClosedPdf).toHaveBeenCalledWith('closure-1')
+    expect(shiftClosuresApi.getBlankPdf).not.toHaveBeenCalled()
+    expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/\.pdf$/))
+  })
+
+  it('на ПК после фактического закрытия без refresh заменяет blank на closed PDF и correction action', async () => {
+    const draft = {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Draft', shiftDate: '2026-11-06', entries: []
+    }
+    const closed = { ...draft, state: 'Closed' }
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: draft })
+    shiftClosuresApi.close.mockResolvedValue({ data: closed })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    expect(wrapper.find('[data-test="print-blank"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="open-corrections"]').exists()).toBe(false)
+
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: closed })
+    await wrapper.get('[data-action="close"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftClosuresApi.close).toHaveBeenCalledWith('item-1', false)
+    expect({
+      blank: wrapper.find('[data-test="print-blank"]').exists(),
+      closed: wrapper.find('[data-test="print-closed"]').exists(),
+      correction: wrapper.find('[data-test="open-corrections"]').exists()
+    }).toEqual({ blank: false, closed: true, correction: true })
+  })
+
+  it('на ПК failed table reload после PATCH оставляет dialog открытым без success', async () => {
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Closed', shiftDate: '2026-11-06', entries: []
+    } })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    const table = wrapper.findComponent(ShiftClosureTable)
+    const tableLoad = vi.spyOn(table.vm.$.exposed, 'load').mockResolvedValue(false)
+
+    await wrapper.get('[data-test="open-corrections"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="correction-reason"]').setValue('Правка')
+    await wrapper.get('[data-test="submit-correction"]').trigger('click')
+    await flushPromises()
+
+    expect(shiftClosuresApi.correct).toHaveBeenCalledTimes(1)
+    expect(tableLoad).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-test="submit-correction"]').exists()).toBe(true)
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('Исправление сохранено'))
   })
 })

@@ -29,6 +29,12 @@ function isAccessRevoked(error) {
   return [403, 404].includes(error?.response?.status)
 }
 
+function isShiftClosed(error) {
+  const data = error?.response?.data
+  return error?.response?.status === 400 &&
+    (data?.code === 'shiftClosed' || data?.message === 'shiftClosed')
+}
+
 async function runMutation(store, itemId, request, fallback) {
   if (store.saving) return { success: false, pending: true }
   if ((store.activeItemId && store.activeItemId !== itemId) ||
@@ -65,11 +71,19 @@ async function runMutation(store, itemId, request, fallback) {
     if (error?.response?.status === 403 && store.currentItem?.shift) {
       store.currentItem.shift.canEditOperators = false
     }
-    if ([403, 409].includes(error?.response?.status)) {
+    if (isShiftClosed(error) && store.currentItem?.shift) {
+      store.currentItem.shift.canEditOperators = false
+    }
+    if ([403, 409].includes(error?.response?.status) || isShiftClosed(error)) {
       await store.loadItem(itemId)
     }
 
-    return { success: false, committed: false, message }
+    return {
+      success: false,
+      committed: false,
+      message,
+      status: error?.response?.status
+    }
   } finally {
     if (store.mutationSeq === generation) store.saving = false
   }
@@ -282,22 +296,32 @@ export const useShiftStaffingStore = defineStore('shiftStaffing', {
       }
     },
 
-    async assign(itemId, immId, operatorId) {
+    async assignOperator(itemId, payload) {
       return runMutation(
         this,
         itemId,
-        () => shiftStaffingApi.assign(itemId, immId, operatorId),
+        () => shiftStaffingApi.assignOperator(itemId, payload),
         'Не удалось назначить литейщика'
       )
     },
 
-    async unassign(assignmentId) {
+    async unassignOperator(assignmentId, payload = {}) {
       const itemId = this.currentItem?.shift?.itemId
       return runMutation(
         this,
         itemId,
-        () => shiftStaffingApi.unassign(assignmentId),
+        () => shiftStaffingApi.unassignOperator(assignmentId, payload),
         'Не удалось снять литейщика'
+      )
+    },
+
+    async updateOperatorInterval(assignmentId, payload) {
+      const itemId = this.currentItem?.shift?.itemId
+      return runMutation(
+        this,
+        itemId,
+        () => shiftStaffingApi.updateOperatorInterval(assignmentId, payload),
+        'Не удалось изменить интервал литейщика'
       )
     }
   }

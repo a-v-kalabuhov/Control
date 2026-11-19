@@ -10,6 +10,13 @@ public static class OperatorWorkIntervalPolicy
         var start = assignedAt > shiftStartAtUtc ? assignedAt : shiftStartAtUtc;
         var assignmentEnd = unassignedAt ?? shiftEndAtUtc;
         var end = assignmentEnd < shiftEndAtUtc ? assignmentEnd : shiftEndAtUtc;
-        return new OperatorWorkInterval(start, end, end < start);
+        return new OperatorWorkInterval(start, end, end <= start);
+    }
+
+    public static DateTime DefaultUnassignedAt(
+        DateTime nowUtc, DateTime workStartUtc, DateTime shiftEndUtc)
+    {
+        var afterStart = nowUtc >= workStartUtc ? nowUtc : workStartUtc;
+        return afterStart <= shiftEndUtc ? afterStart : shiftEndUtc;
     }
 }

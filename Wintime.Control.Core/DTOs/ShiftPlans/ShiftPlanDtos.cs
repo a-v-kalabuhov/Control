@@ -10,6 +10,8 @@ public sealed class ShiftPlanDayDto
     public List<ShiftPlanItemDto> Items { get; set; } = new();
 }
 
+public enum ShiftClosureStatus { Draft, Closed, NotClosed }
+
 public sealed class ShiftPlanItemDto
 {
     public Guid? Id { get; set; }
@@ -23,6 +25,9 @@ public sealed class ShiftPlanItemDto
     public bool CanEditLead { get; set; }
     public bool CanEditOperators { get; set; }
     public int OperatorAssignmentCount { get; set; }
+    public ShiftClosureStatus? ClosureStatus { get; set; }
+    public bool HasOrphanOutput { get; set; }
+    public bool HasMissingLeadWarning { get; set; }
 }
 
 public sealed record SetShiftLeadRequest(string? ShiftLeadId);

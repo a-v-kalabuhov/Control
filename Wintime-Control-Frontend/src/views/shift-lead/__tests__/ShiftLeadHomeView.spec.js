@@ -7,6 +7,7 @@ import ShiftLeadHomeView from '../ShiftLeadHomeView.vue'
 import { shiftStaffingApi } from '@/api/shiftStaffing'
 import { tasksApi } from '@/api/tasks'
 import { personnelApi } from '@/api/personnel'
+import { getPending } from '@/api/shiftClosures'
 import router from '@/router'
 import { useShiftStaffingStore } from '@/stores/shiftStaffing'
 
@@ -24,6 +25,16 @@ vi.mock('@/api/shiftStaffing', () => ({
 }))
 vi.mock('@/api/tasks', () => ({ tasksApi: { getResults: vi.fn(), getTasks: vi.fn() } }))
 vi.mock('@/api/personnel', () => ({ personnelApi: { getAll: vi.fn(), getPersonnel: vi.fn() } }))
+vi.mock('@/api/shiftClosures', () => ({ getPending: vi.fn() }))
+
+function pending(itemId, overrides = {}) {
+  return {
+    shiftPlanItemId: itemId, shiftDate: '2026-11-07', position: 2,
+    startAtUtc: '2026-11-07T08:00:00Z', endAtUtc: '2026-11-07T20:00:00Z',
+    timeZoneId: 'Asia/Kamchatka', shiftLeadId: 'lead-1', shiftLeadName: 'Старший Смены',
+    hasOrphanOutput: false, ...overrides
+  }
+}
 
 function summary(overrides = {}) {
   return {
@@ -78,6 +89,7 @@ describe('ShiftLeadHomeView', () => {
     vi.clearAllMocks()
     shiftStaffingApi.nearest.mockResolvedValue({ data: { item: summary() } })
     shiftStaffingApi.item.mockResolvedValue({ data: detail() })
+    getPending.mockResolvedValue({ data: [] })
   })
 
   afterEach(() => {
@@ -137,6 +149,77 @@ describe('ShiftLeadHomeView', () => {
     expect(wrapper.text()).not.toContain('Смена 1 · 08.11.2026')
     expect(store.currentItem).toBeNull()
     expect(shiftStaffingApi.item).not.toHaveBeenCalled()
+  })
+
+  it('показывает nearest и отдельный pending блок одновременно, каждая ссылка открывает собственный рапорт', async () => {
+    getPending.mockResolvedValue({ data: [
+      pending('pending-2', { position: 2 }),
+      pending('pending-1', { position: 1, hasOrphanOutput: true })
+    ] })
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(getPending).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('Смена 1 · 08.11.2026')
+    expect(wrapper.get('[data-test="pending-closures"]').text()).toContain('Требует закрытия')
+    expect(wrapper.get('[data-test="pending-closures"]').text()).toContain('Выпуск без литейщика')
+
+    await wrapper.get('[data-test="nearest-report"]').trigger('click')
+    expect(push).toHaveBeenLastCalledWith('/shift-lead/items/item-1/report')
+    await wrapper.get('[data-test="pending-item-pending-2"]').trigger('click')
+    expect(push).toHaveBeenLastCalledWith('/shift-lead/items/pending-2/report')
+    await wrapper.get('[data-test="pending-item-pending-1"]').trigger('click')
+    expect(push).toHaveBeenLastCalledWith('/shift-lead/items/pending-1/report')
+  })
+
+  it('скрывает пустой pending и не заменяет им nearest', async () => {
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="pending-closures"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="home-imm-imm-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="nearest-report"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="nearest-empty"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Назначенная смена не найдена')
+  })
+
+  it('без nearest сохраняет empty state одновременно с непустым pending', async () => {
+    shiftStaffingApi.nearest.mockResolvedValue({ data: { item: null } })
+    getPending.mockResolvedValue({ data: [pending('pending-1')] })
+    wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="nearest-empty"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Назначенная смена не найдена')
+    expect(wrapper.find('[data-test="pending-item-pending-1"]').exists()).toBe(true)
+  })
+
+  it('после EndAtUtc обновляет nearest по существующему таймеру, а pending остаётся доступным', async () => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-08T12:00:00Z'))
+    shiftStaffingApi.nearest
+      .mockResolvedValueOnce({ data: { item: summary({ endAtUtc: '2026-11-08T12:00:01Z' }) } })
+      .mockResolvedValueOnce({ data: { item: summary({
+        itemId: 'item-2', position: 2,
+        startAtUtc: '2026-11-08T20:00:00Z', endAtUtc: '2026-11-09T08:00:00Z'
+      }) } })
+    shiftStaffingApi.item.mockImplementation(async itemId => ({
+      data: detail({ shift: summary({ itemId, position: itemId === 'item-2' ? 2 : 1 }) })
+    }))
+    getPending
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [pending('pending-1')] })
+    wrapper = mountView()
+    await flushPromises()
+
+    await vi.advanceTimersByTimeAsync(1_050)
+    await flushPromises()
+
+    expect(shiftStaffingApi.nearest).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('Смена 2 · 08.11.2026')
+    expect(wrapper.find('[data-test="pending-item-pending-1"]').exists()).toBe(true)
+    expect(getPending).toHaveBeenCalledTimes(2)
   })
 
   it('маршрут Manager из плана ведёт в ShiftStaffingItemView, а не в мобильный контур наладчика', async () => {

@@ -21,8 +21,9 @@
             :label="shiftLabel(shift)"
           />
         </el-select>
-        <el-button :icon="'Refresh'" :loading="loading" @click="load">Обновить</el-button>
+        <el-button :icon="'Refresh'" :loading="loading || closureLoading" @click="refreshActive">Обновить</el-button>
         <el-button
+          v-if="activeTab === 'assignments'"
           type="warning"
           data-test="issue-all"
           :disabled="readyTasks.length === 0 || issuing || loading || hasPendingAssignments"
@@ -42,6 +43,8 @@
       class="mb-4"
     />
 
+    <el-tabs v-model="activeTab">
+      <el-tab-pane label="Назначение наладчиков" name="assignments">
     <el-card v-loading="loading">
       <el-table :data="tasks" row-key="id" stripe style="width: 100%">
         <el-table-column label="Начало" width="90">
@@ -111,6 +114,38 @@
         </template>
       </el-table>
     </el-card>
+      </el-tab-pane>
+      <el-tab-pane label="Сменный рапорт" name="closure">
+        <div v-loading="closureLoading">
+          <template v-if="activeTab === 'closure' && closureItem?.id && closureItem?.shiftLeadId">
+            <div v-if="closureReport" class="mb-3 flex flex-wrap items-center justify-end gap-2">
+              <ShiftClosurePdfActions
+                :item-id="closureReport.shiftPlanItemId"
+                :closure-id="closureReport.id"
+                :state="closureReport.state"
+                :shift-date="closureReport.shiftDate"
+              />
+              <ShiftClosureCorrectionsDialog
+                :report="closureReport"
+                :reload-report="reloadClosureAfterCorrection"
+              />
+            </div>
+            <ShiftClosureTable
+              ref="closureTable"
+              :key="closureItem.id"
+              :item-id="closureItem.id"
+              @closed="handleClosureClosed"
+            />
+          </template>
+          <el-alert
+            v-else-if="activeTab === 'closure' && !closureLoading"
+            type="info"
+            title="Назначьте старшего смены, чтобы работать со сменным рапортом"
+            :closable="false"
+          />
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -119,8 +154,13 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge.vue'
+import ShiftClosureTable from '@/components/shift-closures/ShiftClosureTable.vue'
+import ShiftClosurePdfActions from '@/components/shift-closures/ShiftClosurePdfActions.vue'
+import ShiftClosureCorrectionsDialog from '@/components/shift-closures/ShiftClosureCorrectionsDialog.vue'
 import { tasksApi } from '@/api/tasks'
 import { personnelApi } from '@/api/personnel'
+import { shiftPlansApi } from '@/api/shiftPlans'
+import * as shiftClosuresApi from '@/api/shiftClosures'
 import { useDashboardStore } from '@/stores/dashboard'
 import { apiErrorMessage } from '@/utils/apiError'
 import { archivedTaskRefs } from '@/utils/taskIssueCheck'
@@ -131,11 +171,17 @@ const selectedDate = ref(dayjs().format('YYYY-MM-DD'))
 const selectedShiftNumber = ref(null)
 const tasks = ref([])
 const personnel = ref([])
+const activeTab = ref('assignments')
+const closureItem = ref(null)
+const closureReport = ref(null)
+const closureTable = ref(null)
+const closureLoading = ref(false)
 const loading = ref(false)
 const issuing = ref(false)
 const assigning = reactive({})
 const issueErrors = reactive({})
 let loadSeq = 0
+let closureLoadSeq = 0
 
 const selectedShift = computed(() =>
   dashboardStore.shifts.find(s => s.number === selectedShiftNumber.value) ?? null)
@@ -205,6 +251,61 @@ async function load() {
   } finally {
     if (seq === loadSeq) loading.value = false
   }
+}
+
+async function loadClosureItem() {
+  if (!selectedDate.value || !selectedShiftNumber.value) {
+    closureItem.value = null
+    closureReport.value = null
+    return
+  }
+  const seq = ++closureLoadSeq
+  closureLoading.value = true
+  try {
+    const response = await shiftPlansApi.getRange(selectedDate.value, selectedDate.value)
+    if (seq !== closureLoadSeq) return
+    const day = (response.data ?? []).find(item => item.shiftDate === selectedDate.value)
+    const resolvedItem = day?.items?.find(item => item.position === selectedShiftNumber.value) ?? null
+    const mountedSameItem = resolvedItem?.id && resolvedItem.shiftLeadId && closureItem.value?.id === resolvedItem.id
+      ? closureTable.value
+      : null
+    closureItem.value = resolvedItem
+    closureReport.value = null
+    if (resolvedItem?.id && resolvedItem.shiftLeadId) {
+      const reportResponse = await shiftClosuresApi.getByItem(resolvedItem.id)
+      if (seq !== closureLoadSeq) return
+      closureReport.value = reportResponse.data
+    }
+    // Refresh той же позиции не перемонтирует редактор: composable сам защищает dirty input.
+    if (mountedSameItem) await mountedSameItem.load()
+  } catch (error) {
+    if (seq === closureLoadSeq) {
+      ElMessage.error(apiErrorMessage(error, 'Не удалось определить позицию сменного рапорта'))
+    }
+  } finally {
+    if (seq === closureLoadSeq) closureLoading.value = false
+  }
+}
+
+function handleClosureClosed(closedReport) {
+  closureReport.value = closedReport
+}
+
+async function reloadClosureAfterCorrection() {
+  if (!closureItem.value?.id) return false
+  try {
+    const response = await shiftClosuresApi.getByItem(closureItem.value.id)
+    closureReport.value = response.data
+    const tableReloaded = closureTable.value ? await closureTable.value.load() : true
+    return tableReloaded !== false
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, 'Не удалось обновить сменный рапорт'))
+    return false
+  }
+}
+
+function refreshActive() {
+  return activeTab.value === 'closure' ? loadClosureItem() : load()
 }
 
 async function assignPersonnel(task, personnelId) {
@@ -280,7 +381,16 @@ watch(() => [selectedDate.value, selectedShiftNumber.value], (_, previous) => {
   // Первичную загрузку выполняет onMounted после получения расписания.
   if (previous[1] === null) return
   Object.keys(issueErrors).forEach(key => delete issueErrors[key])
-  load()
+  closureLoadSeq += 1
+  closureItem.value = null
+  closureReport.value = null
+  closureLoading.value = false
+  refreshActive()
+})
+
+watch(activeTab, tab => {
+  if (tab === 'closure') loadClosureItem()
+  else if (selectedShiftNumber.value !== null) load()
 })
 
 onMounted(async () => {

@@ -49,8 +49,15 @@ public class ShiftStaffingController : ControllerBase
 
     [HttpPost("assignments/{assignmentId:guid}/unassign")]
     [Authorize(Policy = "ShiftLeadOrManagerOrAdmin")]
-    public Task<ShiftOperatorAssignmentDto> Unassign(Guid assignmentId, CancellationToken ct) =>
-        _service.UnassignAsync(assignmentId, Caller, ct);
+    public Task<ShiftOperatorAssignmentDto> Unassign(
+        Guid assignmentId, [FromBody] UnassignOperatorRequest request, CancellationToken ct) =>
+        _service.UnassignAsync(assignmentId, request, Caller, ct);
+
+    [HttpPut("assignments/{assignmentId:guid}/interval")]
+    [Authorize(Policy = "ShiftLeadOrManagerOrAdmin")]
+    public Task<ShiftOperatorAssignmentDto> UpdateInterval(
+        Guid assignmentId, [FromBody] UpdateOperatorIntervalRequest request, CancellationToken ct) =>
+        _service.UpdateIntervalAsync(assignmentId, request, Caller, ct);
 
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? throw new ShiftAccessException("Пользователь не идентифицирован");

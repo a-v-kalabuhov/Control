@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import ElementPlus, { ElMessage } from 'element-plus'
+import { createPinia, setActivePinia } from 'pinia'
 import ShiftPlanItemDialog from '../ShiftPlanItemDialog.vue'
 import { shiftPlansApi } from '@/api/shiftPlans'
+import { useAuthStore } from '@/stores/auth'
 
 vi.mock('@/api/shiftPlans', () => ({
   shiftPlansApi: { setLead: vi.fn() }
@@ -69,6 +71,10 @@ function button(testId) {
 
 describe('ShiftPlanItemDialog', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.user = { id: 'manager-current', role: 'Manager', fullName: 'Менеджер Текущий' }
+    auth.userRole = 'Manager'
     vi.clearAllMocks()
     shiftPlansApi.setLead.mockResolvedValue({ data: { ...day, items: [makeItem()] } })
     vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
@@ -224,6 +230,98 @@ describe('ShiftPlanItemDialog', () => {
     expect((wrapper.emitted('saved') ?? []).map(args => args[0])).toEqual([savedDayB])
     expect(wrapper.props('day').shiftDate).toBe('2026-11-11')
     expect(wrapper.props('item').id).toBe('item-b')
+  })
+
+  it('показывает индикаторы закрытия, сирот и отсутствия старшего только по серверным флагам', async () => {
+    const wrapper = mountDialog(makeItem({
+      closureStatus: 'Closed', hasOrphanOutput: true, hasMissingLeadWarning: false
+    }))
+    await nextTick()
+
+    expect(document.body.querySelector('[data-test="closure-status"]').textContent).toBe('Закрыта')
+    expect(document.body.querySelector('[data-test="orphan-output"]').textContent)
+      .toBe('Есть выпуск без литейщика')
+
+    await wrapper.setProps({ item: makeItem({ closureStatus: 'NotClosed', hasOrphanOutput: false }) })
+    expect(document.body.querySelector('[data-test="closure-status"]').textContent).toBe('Не закрыта')
+    expect(document.body.querySelector('[data-test="orphan-output"]')).toBeNull()
+
+    await wrapper.setProps({ item: makeItem({ closureStatus: 'Draft' }) })
+    expect(document.body.querySelector('[data-test="closure-status"]')).toBeNull()
+
+    await wrapper.setProps({
+      item: makeItem({
+        id: null, shiftLeadId: null, shiftLeadName: null, state: 'Current',
+        closureStatus: null, hasMissingLeadWarning: true
+      })
+    })
+    expect(document.body.querySelector('[data-test="closure-status"]')).toBeNull()
+    expect(document.body.querySelector('[data-test="missing-lead"]').textContent)
+      .toBe('Не назначен старший')
+  })
+
+  it('показывает ссылку на сменный рапорт только для materialized позиции со старшим', async () => {
+    const wrapper = mountDialog()
+    await nextTick()
+
+    const link = document.body.querySelector('[data-test="open-closure"]')
+    expect(link).not.toBeNull()
+    expect(link.getAttribute('href')).toBe('/shift-lead/items/item-1/report')
+    expect(link.textContent).toContain('Сменный рапорт')
+
+    await wrapper.setProps({ item: makeItem({ id: null }) })
+    expect(document.body.querySelector('[data-test="open-closure"]')).toBeNull()
+    await wrapper.setProps({ item: makeItem({ shiftLeadId: null, shiftLeadName: null }) })
+    expect(document.body.querySelector('[data-test="open-closure"]')).toBeNull()
+  })
+
+  it('Manager назначает себя старшим текущей virtual позиции и открывает рапорт после saved', async () => {
+    const virtualItem = makeItem({
+      id: null, shiftLeadId: null, shiftLeadName: null, state: 'Current',
+      canEditLead: true, closureStatus: null, hasMissingLeadWarning: true
+    })
+    const savedItem = makeItem({
+      id: 'materialized-item', shiftLeadId: 'manager-current', shiftLeadName: 'Менеджер Текущий',
+      state: 'Current', canEditLead: false, closureStatus: 'Draft', hasMissingLeadWarning: false
+    })
+    const savedDay = { ...day, isSaved: true, items: [savedItem] }
+    shiftPlansApi.setLead.mockResolvedValue({ data: savedDay })
+    const wrapper = mountDialog(virtualItem)
+    await nextTick()
+
+    const selfAssign = button('self-assign-lead')
+    expect(selfAssign).not.toBeNull()
+    expect(selfAssign.textContent).toContain('Назначить себя старшим')
+    selfAssign.click()
+    await flushPromises()
+
+    expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, 'manager-current')
+    expect(wrapper.emitted('saved')).toEqual([[savedDay, {
+      date: '2026-11-10', position: 2, request: expect.any(Number)
+    }]])
+
+    await wrapper.setProps({ day: savedDay, item: savedItem })
+    expect(document.body.querySelector('[data-test="open-closure"]')).not.toBeNull()
+  })
+
+  it('не показывает self-action Admin, при существующем старшем и при canEditLead=false', async () => {
+    const virtualItem = makeItem({
+      id: null, shiftLeadId: null, shiftLeadName: null, state: 'Current', canEditLead: true
+    })
+    const wrapper = mountDialog(virtualItem)
+    useAuthStore().user = { id: 'admin-1', role: 'Admin', fullName: 'Администратор' }
+    useAuthStore().userRole = 'Admin'
+    await nextTick()
+    expect(button('self-assign-lead')).toBeNull()
+
+    useAuthStore().user = { id: 'manager-current', role: 'Manager', fullName: 'Менеджер Текущий' }
+    useAuthStore().userRole = 'Manager'
+    await wrapper.setProps({ item: makeItem() })
+    expect(button('self-assign-lead')).toBeNull()
+
+    await wrapper.setProps({ item: { ...virtualItem, canEditLead: false } })
+    expect(button('self-assign-lead')).toBeNull()
+    expect(shiftPlansApi.setLead).not.toHaveBeenCalled()
   })
 
   it('открывает ТПА и литейщиков только для сохранённой смены со старшим', async () => {
