@@ -406,6 +406,37 @@ describe('ShiftWorkPlanView', () => {
     expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(3)
   })
 
+  it('failed same-item Refresh сохраняет mounted dirty editor и не очищает рапорт', async () => {
+    shiftClosuresApi.getByItem.mockResolvedValue({ data: {
+      id: 'closure-1', shiftPlanItemId: 'item-1', state: 'Draft',
+      startAtUtc: '2026-11-06T05:00:00Z', endAtUtc: '2026-11-06T17:00:00Z',
+      entries: [{
+        taskId: 'task-1', immName: 'ТПА-1', productName: 'Корпус', operatorTotals: [],
+        actualPartWeightGrams: 4, manualFullCycleSeconds: 50, actualPackagingUnit: 20,
+        packagingPlaces: 1, manualGoodQuantity: 8, manualDefectQuantity: 1,
+        automaticOutputQuantity: 2, isManualFallbackRequired: false
+      }]
+    } })
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    const input = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
+    const inputElement = input.element
+    input.vm.$emit('update:modelValue', 9)
+    await wrapper.vm.$nextTick()
+    shiftPlansApi.getRange.mockRejectedValueOnce({ response: { data: { message: 'Сеть недоступна' } } })
+
+    const refresh = wrapper.findAll('button').find(button => button.text() === 'Обновить')
+    await refresh.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(ShiftClosureTable).exists()).toBe(true)
+    const preservedInput = wrapper.findComponent('[data-manual="task-1:manualGoodQuantity"]')
+    expect(preservedInput.element).toBe(inputElement)
+    expect(preservedInput.props('modelValue')).toBe(9)
+    expect(wrapper.text()).toContain('Есть несохранённые изменения')
+  })
+
   it('при ошибке разрешения новой смены скрывает прежний рапорт и не даёт сохранить его под новым выбором', async () => {
     const wrapper = mountView()
     await flushPromises()

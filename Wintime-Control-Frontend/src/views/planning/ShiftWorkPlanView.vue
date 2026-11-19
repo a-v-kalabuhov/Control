@@ -280,8 +280,6 @@ async function loadClosureItem() {
     if (mountedSameItem) await mountedSameItem.load()
   } catch (error) {
     if (seq === closureLoadSeq) {
-      closureItem.value = null
-      closureReport.value = null
       ElMessage.error(apiErrorMessage(error, 'Не удалось определить позицию сменного рапорта'))
     }
   } finally {
