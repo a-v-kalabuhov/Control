@@ -131,6 +131,51 @@ describe('ShiftPlanView', () => {
     expect(cells[4].text()).toContain('05:00–17:00')
   })
 
+  it('показывает закрытие только по серверному closureStatus без pending badge для Draft', async () => {
+    const indicatorDay = day('2026-11-08', [
+      item(1, { id: 'closed', state: 'Historical', closureStatus: 'Closed' }),
+      item(2, { id: 'not-closed', state: 'Historical', closureStatus: 'NotClosed' }),
+      item(3, { id: 'current-draft', state: 'Current', closureStatus: 'Draft' }),
+      item(4, { id: 'future-draft', state: 'Future', closureStatus: 'Draft' }),
+      item(5, {
+        id: null, state: 'Current', closureStatus: null, hasMissingLeadWarning: true
+      })
+    ])
+    shiftPlansApi.getRange.mockResolvedValue({ data: [indicatorDay] })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const cells = wrapper.findAll('.shift-plan-item')
+    expect(cells[0].find('[data-test="closure-status"]').text()).toBe('Закрыта')
+    expect(cells[1].find('[data-test="closure-status"]').text()).toBe('Не закрыта')
+    expect(cells[2].find('[data-test="closure-status"]').exists()).toBe(false)
+    expect(cells[3].find('[data-test="closure-status"]').exists()).toBe(false)
+    expect(cells[4].find('[data-test="closure-status"]').exists()).toBe(false)
+    expect(cells[4].find('[data-test="missing-lead"]').text()).toBe('Не назначен старший')
+  })
+
+  it('показывает выпуск без литейщика независимо от статуса закрытия', async () => {
+    const orphanDay = day('2026-11-08', [
+      item(1, {
+        id: 'closed-orphan', state: 'Historical', closureStatus: 'Closed', hasOrphanOutput: true
+      }),
+      item(2, {
+        id: 'draft-orphan', state: 'Current', closureStatus: 'Draft', hasOrphanOutput: true
+      }),
+      item(3, {
+        id: 'not-closed', state: 'Historical', closureStatus: 'NotClosed', hasOrphanOutput: false
+      })
+    ])
+    shiftPlansApi.getRange.mockResolvedValue({ data: [orphanDay] })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const cells = wrapper.findAll('.shift-plan-item')
+    expect(cells[0].find('[data-test="orphan-output"]').text()).toBe('Есть выпуск без литейщика')
+    expect(cells[1].find('[data-test="orphan-output"]').text()).toBe('Есть выпуск без литейщика')
+    expect(cells[2].find('[data-test="orphan-output"]').exists()).toBe(false)
+  })
+
   it('различает прошлую, текущую и будущую строки серверными и календарными признаками', async () => {
     const wrapper = mountView()
     await flushPromises()

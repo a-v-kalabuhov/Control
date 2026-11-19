@@ -9,6 +9,28 @@
     <div v-if="item" class="mb-4 text-sm text-gray-600">
       <div>{{ formatDate(day?.shiftDate) }}</div>
       <div>{{ formatShiftWindow(item) }} ({{ item.timeZoneId }})</div>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <span
+          v-if="item.closureStatus === 'Closed'"
+          data-test="closure-status"
+          class="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
+        >Закрыта</span>
+        <span
+          v-else-if="item.closureStatus === 'NotClosed'"
+          data-test="closure-status"
+          class="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+        >Не закрыта</span>
+        <span
+          v-if="item.hasOrphanOutput === true"
+          data-test="orphan-output"
+          class="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+        >Есть выпуск без литейщика</span>
+        <span
+          v-if="item.hasMissingLeadWarning === true"
+          data-test="missing-lead"
+          class="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800"
+        >Не назначен старший</span>
+      </div>
     </div>
 
     <el-form label-position="top">
@@ -32,17 +54,38 @@
       </el-form-item>
     </el-form>
 
-    <router-link
-      v-if="item?.id && item?.shiftLeadId"
-      :to="`/shift-lead/items/${item.id}`"
-      class="text-sm text-primary-600 hover:text-primary-800"
-      data-test="open-staffing"
-    >
-      Открыть ТПА и литейщиков
-    </router-link>
+    <div class="flex flex-wrap gap-x-4 gap-y-2">
+      <router-link
+        v-if="item?.id && item?.shiftLeadId"
+        :to="`/shift-lead/items/${item.id}`"
+        class="text-sm text-primary-600 hover:text-primary-800"
+        data-test="open-staffing"
+      >
+        Открыть ТПА и литейщиков
+      </router-link>
+      <router-link
+        v-if="item?.id && item?.shiftLeadId"
+        :to="`/shift-lead/items/${item.id}/report`"
+        class="text-sm text-primary-600 hover:text-primary-800"
+        data-test="open-closure"
+      >
+        Сменный рапорт
+      </router-link>
+    </div>
 
     <template #footer>
       <el-button @click="visible = false">Закрыть</el-button>
+      <el-button
+        v-if="canSelfAssign"
+        data-test="self-assign-lead"
+        type="primary"
+        plain
+        :disabled="isSaving"
+        :loading="requestSaving"
+        @click="selfAssignLead"
+      >
+        Назначить себя старшим
+      </el-button>
       <el-button
         data-test="clear-lead"
         type="danger"
@@ -73,6 +116,7 @@ import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
 import { shiftPlansApi } from '@/api/shiftPlans'
+import { useAuthStore } from '@/stores/auth'
 import { apiErrorMessage } from '@/utils/apiError'
 
 dayjs.extend(utc)
@@ -87,6 +131,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'saved', 'reload'])
+const authStore = useAuthStore()
 const selectedLeadId = ref(null)
 const requestSaving = ref(false)
 let contextVersion = 0
@@ -98,6 +143,8 @@ const visible = computed({
 })
 const isSaving = computed(() => props.saving || requestSaving.value)
 const canEdit = computed(() => props.item?.canEditLead === true && !isSaving.value)
+const canSelfAssign = computed(() => props.item?.canEditLead === true &&
+  !props.item?.shiftLeadId && authStore.isManager && !!authStore.user?.id)
 const canSave = computed(() => canEdit.value && !!selectedLeadId.value)
 const canClear = computed(() => canEdit.value && !!props.item?.shiftLeadId &&
   (props.item?.operatorAssignmentCount ?? 0) === 0)
@@ -145,6 +192,11 @@ function formatShiftWindow(item) {
   const start = dayjs(item.startAtUtc).tz(item.timeZoneId).format('HH:mm')
   const end = dayjs(item.endAtUtc).tz(item.timeZoneId).format('HH:mm')
   return `${start}–${end}`
+}
+
+async function selfAssignLead() {
+  if (!canSelfAssign.value || isSaving.value) return
+  await persist(authStore.user.id)
 }
 
 async function saveLead() {
