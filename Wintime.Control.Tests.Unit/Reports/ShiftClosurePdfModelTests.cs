@@ -46,6 +46,7 @@ public class ShiftClosurePdfModelTests
         entry.Cavities.Should().Be(2);
         entry.ShiftPlanQuantity.Should().Be(10);
         entry.PlannedMaterialWeightGrams.Should().Be(60);
+        entry.PlannedMaterialWeightKg.Should().Be(0.06m);
         entry.AutomaticOutputQuantity.Should().Be(6);
         entry.ActualPartWeightGrams.Should().BeNull();
         entry.ManualFullCycleSeconds.Should().BeNull();

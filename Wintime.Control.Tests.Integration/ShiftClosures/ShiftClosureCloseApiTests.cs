@@ -225,6 +225,68 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         Shares(Entry(body, zeroTask.Id)).Single().GetProperty("quantity").GetInt32().Should().Be(0);
     }
 
+    [Theory]
+    [InlineData(false, "before")]
+    [InlineData(false, "after")]
+    [InlineData(true, "before")]
+    [InlineData(true, "after")]
+    public async Task Close_RetroCyclesOutsideTaskActivityAreConservedAsSharesOrOrphans(
+        bool withOperator, string location)
+    {
+        var now = PastAnchor();
+        var start = Utc(now.AddHours(-4));
+        var end = Utc(now.AddHours(-2));
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var operatorUser = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync();
+        var item = (await SeedDayAsync(Item(lead.Id, start, end))).Items.Single();
+        var task = await SeedTaskAsync(immId, start, end, packagingUnit: 20);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var tracked = await db.ShiftTasks.SingleAsync(t => t.Id == task.Id);
+            tracked.SetupStartedAt = start.AddHours(1);
+            tracked.StartedAt = start.AddHours(1);
+            tracked.CompletedAt = end.AddHours(-1);
+            await db.SaveChangesAsync();
+        }
+        if (withOperator)
+            await SeedAssignmentAsync(item.Id, immId, operatorUser.Id, 1, start, null);
+        var retroEnd = location == "before" ? start.AddMinutes(15) : end.AddMinutes(-15);
+        await SeedCycleAsync(task, retroEnd, cavities: 7, durationSeconds: 60);
+        var client = await ClientAsync(lead);
+        await RequiredJsonAsync(await PutDraftAsync(client, item.Id,
+            Manual(task.Id, actualPartWeightGrams: 5, actualPackagingUnit: 20)));
+
+        var draft = await RequiredJsonAsync(await client.GetAsync($"/api/shift-closures/items/{item.Id}"));
+        var draftEntry = Entry(draft, task.Id);
+        draftEntry.GetProperty("automaticOutputQuantity").GetInt32().Should().Be(7);
+        var distributed = Shares(draftEntry).Sum(s => s.GetProperty("quantity").GetInt32());
+        var timelineOutput = draft.GetProperty("timelines").EnumerateArray()
+            .SelectMany(t => t.GetProperty("intervals").EnumerateArray())
+            .SelectMany(i => i.GetProperty("taskOutputs").EnumerateArray())
+            .Where(o => o.GetProperty("taskId").GetGuid() == task.Id)
+            .Sum(o => o.GetProperty("quantity").GetInt32());
+        (distributed + (withOperator ? 0 : timelineOutput)).Should().Be(7);
+        timelineOutput.Should().Be(7);
+        draft.GetProperty("timelines").EnumerateArray()
+            .SelectMany(t => t.GetProperty("intervals").EnumerateArray())
+            .Any(i => i.GetProperty("hasOrphanOutput").GetBoolean()).Should().Be(!withOperator);
+
+        var close = await CloseAsync(client, item.Id);
+        if (!withOperator)
+        {
+            close.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (await JsonAsync(close)).GetProperty("message").GetString().Should().Be("orphanOutput");
+            return;
+        }
+
+        var closed = await RequiredJsonAsync(close);
+        var closedEntry = Entry(closed, task.Id);
+        closedEntry.GetProperty("automaticOutputQuantity").GetInt32().Should().Be(7);
+        Shares(closedEntry).Sum(s => s.GetProperty("quantity").GetInt32()).Should().Be(7);
+    }
+
     [Fact]
     public async Task Close_FallbackAndOutputFieldsReturnTaskFieldErrorsUntilComplete()
     {
@@ -443,7 +505,7 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task ClosedSnapshot_IsValueImmutableAndCloseDoesNotMutateShiftTaskOrCycles()
+    public async Task ClosedSnapshot_KeepsFrozenValuesButTimelineUsesCurrentOperatorIdentity()
     {
         var now = PastAnchor();
         var start = Utc(now.AddHours(-4));
@@ -481,8 +543,24 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         reread.StatusCode.Should().Be(HttpStatusCode.OK);
         var current = await reread.Content.ReadAsStringAsync();
 
-        current.Should().Be(original,
-            "closed DTO and shares must be isolated from dictionaries, task, recipe, late cycles and retro-binding");
+        using var originalBody = JsonDocument.Parse(original);
+        using var currentBody = JsonDocument.Parse(current);
+        var originalEntry = Entry(originalBody.RootElement, task.Id);
+        var currentEntry = Entry(currentBody.RootElement, task.Id);
+        currentEntry.GetProperty("automaticOutputQuantity").GetInt32().Should().Be(
+            originalEntry.GetProperty("automaticOutputQuantity").GetInt32());
+        currentEntry.GetProperty("actualPartWeightGrams").GetDecimal().Should().Be(
+            originalEntry.GetProperty("actualPartWeightGrams").GetDecimal());
+        Shares(currentEntry).Single().GetProperty("operatorFullName").GetString().Should().Be(
+            Shares(originalEntry).Single().GetProperty("operatorFullName").GetString());
+        var timelineOperator = currentBody.RootElement.GetProperty("timelines").EnumerateArray().Single()
+            .GetProperty("intervals").EnumerateArray().Single()
+            .GetProperty("operators").EnumerateArray().Single();
+        timelineOperator.GetProperty("operatorId").GetString().Should().Be(operatorUser.Id);
+        timelineOperator.GetProperty("fullName").GetString().Should().Be("CURRENT OPERATOR AFTER CLOSE");
+        timelineOperator.GetProperty("employeeId").GetString().Should().Be("CURRENT-EMPLOYEE");
+        current.Should().NotBe(original,
+            "только отображаемая идентичность литейщика timeline читается из текущего User");
     }
 
     private static object Manual(

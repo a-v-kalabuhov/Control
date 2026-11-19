@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import dayjs from 'dayjs'
 import ShiftClosureCards from '../ShiftClosureCards.vue'
 
 const manualFields = [
@@ -77,6 +78,25 @@ describe('ShiftClosureCards', () => {
     expect(wrapper.get('[data-share="task-1:op-1"]').text()).toBe('6')
     expect(wrapper.get('[data-cell="task-1:warehouse"]').text()).toBe('')
     expect(wrapper.get('[data-cell="task-1:signature"]').text()).toBe('')
+  })
+
+  it('показывает досрочное закрытие с фактическим и плановым временем в поясе браузера', () => {
+    const closedAt = '2026-11-18T15:30:00Z'
+    const endAtUtc = '2026-11-18T17:00:00Z'
+    wrapper = mountCards({ report: report({
+      state: 'Closed', closedEarly: true, closedAt, endAtUtc
+    }) })
+
+    expect(wrapper.get('[data-test="early-close-notice"]').text()).toBe(
+      `Смена закрыта досрочно: фактическое время закрытия ${dayjs(closedAt).format('DD.MM.YYYY HH:mm')}, ` +
+      `плановое окончание ${dayjs(endAtUtc).format('DD.MM.YYYY HH:mm')}`)
+  })
+
+  it('показывает плановый расход в кг без изменения исходных грамм', () => {
+    wrapper = mountCards({ report: report({ entries: [entry({ plannedMaterialWeightGrams: 450 })] }) })
+
+    expect(wrapper.get('[data-material-weight="task-1"]').text()).toBe('0,45')
+    expect(wrapper.text()).toContain('Расход, кг')
   })
 
   it('передаёт ручной ввод в общий editor без собственной валидации', async () => {

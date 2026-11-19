@@ -406,6 +406,22 @@ describe('ShiftWorkPlanView', () => {
     expect(shiftClosuresApi.getByItem).toHaveBeenCalledTimes(3)
   })
 
+  it('при ошибке разрешения новой смены скрывает прежний рапорт и не даёт сохранить его под новым выбором', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    expect(wrapper.findComponent(ShiftClosureTable).exists()).toBe(true)
+    shiftPlansApi.getRange.mockRejectedValueOnce({ response: { data: { message: 'Смена недоступна' } } })
+
+    const shiftSelect = wrapper.findAllComponents({ name: 'ElSelect' })[0]
+    await shiftSelect.vm.$emit('update:modelValue', 2)
+    await flushPromises()
+
+    expect(wrapper.findComponent(ShiftClosureTable).exists()).toBe(false)
+    expect(wrapper.find('[data-action="save"]').exists()).toBe(false)
+    expect(shiftClosuresApi.saveDraft).not.toHaveBeenCalled()
+  })
+
   it('повторно разрешает Position после переключения номера смены на вкладке рапорта', async () => {
     const second = planItem({ id: 'item-2', position: 2 })
     shiftPlansApi.getRange.mockResolvedValue({ data: [planDay(second)] })

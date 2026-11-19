@@ -59,3 +59,4 @@
 - [ADR-0028](0028-task-cavities-mold-maximum.md) — Рабочая гнёздность задания ограничена максимумом ПФ *(заменяет ADR-0025)*
 - [ADR-0029](0029-product-runner-weight.md) — Вес литника принадлежит изделию *(уточняет ADR-0024)*
 - [ADR-0030](0030-shift-closure-report.md) — Сменный рапорт: фактические интервалы, закрытие и неизменяемый снимок *(уточняет ADR-0027)*
+- [ADR-0031](0031-shift-closure-identity-and-output-conservation.md) — Closed timeline: текущий `User` по `OperatorId`; сохранение всего автоматического выпуска *(уточняет ADR-0030)*

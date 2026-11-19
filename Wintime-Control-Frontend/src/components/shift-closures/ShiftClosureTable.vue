@@ -27,6 +27,15 @@
       </div>
     </div>
 
+    <el-alert
+      v-if="earlyCloseMessage"
+      data-test="early-close-notice"
+      class="mb-3"
+      type="warning"
+      :closable="false"
+      :title="earlyCloseMessage"
+    />
+
     <el-table :data="entries" row-key="taskId" border stripe style="width: 100%">
       <el-table-column prop="immName" label="ТПА" min-width="110" fixed />
       <el-table-column prop="productName" label="Наименование" min-width="170" />
@@ -213,8 +222,10 @@
       <el-table-column label="Подпись" min-width="120">
         <template #default="{ row }"><span :data-cell="`${row.taskId}:signature`"></span></template>
       </el-table-column>
-      <el-table-column label="Расход" min-width="110" align="right">
-        <template #default="{ row }">{{ formatDecimal(row.plannedMaterialWeightGrams) }}</template>
+      <el-table-column label="Расход, кг" min-width="110" align="right">
+        <template #default="{ row }">
+          <span :data-material-weight="row.taskId">{{ formatDecimal(row.plannedMaterialWeightGrams / 1000) }}</span>
+        </template>
       </el-table-column>
       <template #empty><span>Заданий в сменном рапорте нет</span></template>
     </el-table>
@@ -239,6 +250,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import dayjs from 'dayjs'
 import { useShiftClosureEditor } from '@/composables/useShiftClosureEditor'
 
 const props = defineProps({
@@ -254,6 +266,11 @@ const {
 const earlyCloseDialog = ref(false)
 const entries = computed(() => report.value?.entries ?? [])
 const closed = computed(() => report.value?.state === 'Closed')
+const earlyCloseMessage = computed(() => {
+  if (!report.value?.closedEarly || !report.value.closedAt) return null
+  return `Смена закрыта досрочно: фактическое время закрытия ${dayjs(report.value.closedAt).format('DD.MM.YYYY HH:mm')}, ` +
+    `плановое окончание ${dayjs(report.value.endAtUtc).format('DD.MM.YYYY HH:mm')}`
+})
 
 function formatDecimal(value) {
   if (value === null || value === undefined) return '—'

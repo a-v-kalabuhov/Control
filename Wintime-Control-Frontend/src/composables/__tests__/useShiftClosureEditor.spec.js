@@ -253,6 +253,69 @@ describe('useShiftClosureEditor', () => {
     expect(editor.isDirty.value).toBe(true)
   })
 
+  it('старый deferred GET не перезаписывает успешно Closed рапорт', async () => {
+    const editor = createEditor()
+    await editor.load()
+    const staleGet = deferred()
+    api.getByItem.mockReturnValueOnce(staleGet.promise)
+    const loading = editor.load({ preserveDirty: true })
+    api.close.mockResolvedValueOnce(response(report({ state: 'Closed' })))
+
+    const closeResult = await editor.close({ confirmEarlyClose: true })
+    staleGet.resolve(response(report({ state: 'Draft' })))
+    await loading
+
+    expect(closeResult).toEqual({ success: true })
+    expect(editor.report.value.state).toBe('Closed')
+    expect(editor.loading.value).toBe(false)
+  })
+
+  it('revert к A во время in-flight save A→B сохраняет новейший intent и не даёт close заморозить B', async () => {
+    const editor = createEditor()
+    await editor.load()
+    editor.updateManual('task-1', 'manualGoodQuantity', 9)
+    const put = deferred()
+    api.saveDraft.mockReturnValueOnce(put.promise)
+
+    const saving = editor.save()
+    editor.updateManual('task-1', 'manualGoodQuantity', 8)
+    put.resolve(response(report({ entries: [entry({ manualGoodQuantity: 9 })] })))
+    api.getByItem.mockResolvedValueOnce(response(report({ entries: [entry({ manualGoodQuantity: 9 })] })))
+    await saving
+
+    expect(editor.report.value.entries[0].manualGoodQuantity).toBe(8)
+    expect(editor.isDirty.value).toBe(true)
+
+    api.saveDraft.mockImplementationOnce(async (_itemId, entries) => response(report({
+      entries: [entry({ ...entries[0] })]
+    })))
+    api.getByItem.mockResolvedValueOnce(response(report({ entries: [entry({ manualGoodQuantity: 8 })] })))
+    api.close.mockResolvedValueOnce(response(report({
+      state: 'Closed', entries: [entry({ manualGoodQuantity: 8 })]
+    })))
+    const closeResult = await editor.close({ confirmEarlyClose: true })
+
+    expect(closeResult).toEqual({ success: true })
+    expect(api.saveDraft).toHaveBeenCalledTimes(2)
+    expect(api.saveDraft.mock.calls[1][1][0].manualGoodQuantity).toBe(8)
+    expect(editor.report.value.entries[0].manualGoodQuantity).toBe(8)
+  })
+
+  it('400 message=shiftClosed при cross-tab close перезагружает Closed и отзывает редактирование', async () => {
+    const editor = createEditor()
+    await editor.load()
+    editor.updateManual('task-1', 'manualGoodQuantity', 11)
+    api.saveDraft.mockRejectedValueOnce({ response: { status: 400, data: { message: 'shiftClosed' } } })
+    api.getByItem.mockResolvedValueOnce(response(report({ state: 'Closed' })))
+
+    const result = await editor.save()
+
+    expect(result).toBe(false)
+    expect(api.getByItem).toHaveBeenCalledTimes(2)
+    expect(editor.report.value.state).toBe('Closed')
+    expect(editor.isDirty.value).toBe(false)
+  })
+
   it('при ошибке close показывает сообщение о закрытии, а не о сохранении', async () => {
     const editor = createEditor()
     await editor.load()

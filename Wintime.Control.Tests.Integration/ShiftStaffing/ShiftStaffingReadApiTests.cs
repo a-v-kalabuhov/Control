@@ -259,6 +259,66 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task CurrentItem_FuturePreassignmentIsNotCountedAsActiveAtNow()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var operatorUser = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync(isActive: true);
+        var item = (await SeedDayAsync(Item(90, lead.Id, now.AddHours(-1), now.AddHours(2)))).Items.Single();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            db.ShiftImmOperatorAssignments.Add(new ShiftImmOperatorAssignment
+            {
+                ShiftPlanItemId = item.Id,
+                ImmId = immId,
+                OperatorId = operatorUser.Id,
+                Slot = 1,
+                AssignedAt = Utc(now.AddMinutes(20))!.Value,
+                UnassignedAt = null,
+                CreatedById = lead.Id
+            });
+            await db.SaveChangesAsync();
+        }
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync($"/api/shift-staffing/items/{item.Id}"));
+
+        Imm(body, immId).GetProperty("activeOperatorCount").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CurrentItem_AssignmentWithExplicitFutureEndIsCountedAtNow()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var operatorUser = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync(isActive: true);
+        var item = (await SeedDayAsync(Item(90, lead.Id, now.AddHours(-1), now.AddHours(2)))).Items.Single();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            db.ShiftImmOperatorAssignments.Add(new ShiftImmOperatorAssignment
+            {
+                ShiftPlanItemId = item.Id,
+                ImmId = immId,
+                OperatorId = operatorUser.Id,
+                Slot = 1,
+                AssignedAt = Utc(now.AddMinutes(-20))!.Value,
+                UnassignedAt = Utc(now.AddMinutes(20)),
+                CreatedById = lead.Id
+            });
+            await db.SaveChangesAsync();
+        }
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync($"/api/shift-staffing/items/{item.Id}"));
+
+        Imm(body, immId).GetProperty("activeOperatorCount").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
     public async Task ItemTasks_ApplyPlannedAndActivityRulesWithoutDuplicates_AndUseFullTaskDtoMapping()
     {
         var now = DateTime.UtcNow;

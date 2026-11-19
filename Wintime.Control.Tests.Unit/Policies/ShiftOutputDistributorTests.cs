@@ -311,6 +311,37 @@ public class ShiftOutputDistributorTests
         }
     }
 
+    [Theory]
+    [InlineData("08:15", "before")]
+    [InlineData("09:45", "after")]
+    public void Retro_cycle_outside_task_activity_is_distributed_to_present_operator(
+        string cycleEnd, string location)
+    {
+        var result = ShiftOutputDistributor.Distribute(
+            new[] { Operator("A", 1, "08:00", "10:00") },
+            new[] { Cycle(cycleEnd, 5) }, OneTaskWindow(start: "08:30", end: "09:30"),
+            ShiftStart, FactEnd);
+
+        result.Shares.Where(s => s.TaskId == TaskId).Sum(s => s.Quantity).Should().Be(5,
+            $"retro cycle {location} activity must not vanish");
+        result.Orphans.Where(o => o.TaskId == TaskId).Sum(o => o.Quantity).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("08:15", "before")]
+    [InlineData("09:45", "after")]
+    public void Retro_cycle_outside_task_activity_without_operator_is_orphan(
+        string cycleEnd, string location)
+    {
+        var result = ShiftOutputDistributor.Distribute(
+            Array.Empty<ShiftOperatorSlice>(), new[] { Cycle(cycleEnd, 5) },
+            OneTaskWindow(start: "08:30", end: "09:30"), ShiftStart, FactEnd);
+
+        result.Shares.Where(s => s.TaskId == TaskId).Sum(s => s.Quantity).Should().Be(0);
+        result.Orphans.Where(o => o.TaskId == TaskId).Sum(o => o.Quantity).Should().Be(5,
+            $"retro cycle {location} activity must block close as orphan");
+    }
+
     private static ShiftOperatorSlice Operator(string operatorId, int slot, string start, string end) =>
         new(Guid.NewGuid(), operatorId, $"Operator {operatorId}", $"EMP-{operatorId}", slot, T(start), T(end));
 

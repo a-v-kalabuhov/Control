@@ -114,7 +114,7 @@ public sealed class ShiftClosurePdfService : IShiftClosurePdfService
             header.Cell().RowSpan(2).Element(HeaderCell).Text("Литейщик");
             header.Cell().RowSpan(2).Element(HeaderCell).Text("Автовыпуск литейщика");
             header.Cell().RowSpan(2).Element(HeaderCell).Text("Подпись");
-            header.Cell().RowSpan(2).Element(HeaderCell).Text("Расход, г");
+            header.Cell().RowSpan(2).Element(HeaderCell).Text("Расход, кг");
 
             header.Cell().Element(HeaderCell).Text("Норма");
             header.Cell().Element(HeaderCell).Text("Изделие");
@@ -159,7 +159,7 @@ public sealed class ShiftClosurePdfService : IShiftClosurePdfService
                     ? string.Empty : operatorRow.Quantity.ToString(CultureInfo.InvariantCulture));
                 table.Cell().Element(DataCell).Text(operatorRow?.Signature ?? string.Empty);
                 if (index == 0)
-                    table.Cell().RowSpan(span).Element(DataCell).Text(Number(entry.PlannedMaterialWeightGrams));
+                    table.Cell().RowSpan(span).Element(DataCell).Text(Number(entry.PlannedMaterialWeightKg));
             }
         }
     }
@@ -221,6 +221,7 @@ internal sealed class ShiftClosurePdfEntryModel
     public int Cavities { get; init; }
     public int ShiftPlanQuantity { get; init; }
     public decimal PlannedMaterialWeightGrams { get; init; }
+    public decimal PlannedMaterialWeightKg => PlannedMaterialWeightGrams / 1000m;
     public int AutomaticOutputQuantity { get; init; }
     public int? ManualGoodQuantity { get; init; }
     public int? ManualDefectQuantity { get; init; }

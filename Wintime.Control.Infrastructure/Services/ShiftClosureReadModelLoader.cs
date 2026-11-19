@@ -282,7 +282,6 @@ public sealed class ShiftClosureReadModelLoader
                 Intervals = distribution.MergedIntervals.Select(interval =>
                 {
                     var outputs = immTasks
-                        .Where(t => Overlaps(t.Activity, interval.StartUtc, interval.EndUtc))
                         .Select(t => new ShiftClosureTaskOutputDto(t.Entity.Id,
                             distribution.Shares.Where(s => s.TaskId == t.Entity.Id
                                 && Overlaps(s.StartUtc, s.EndUtc, interval.StartUtc, interval.EndUtc))
@@ -399,12 +398,9 @@ public sealed class ShiftClosureReadModelLoader
         var timelines = closure.Entries.GroupBy(e => e.ImmId).Select(group =>
         {
             var immEntries = group.ToList();
-            var operatorSnapshots = immEntries.SelectMany(e => e.OutputShares)
-                .GroupBy(s => s.OperatorId)
-                .ToDictionary(g => g.Key, g => g.First());
             var slices = assignments.Where(a => a.ImmId == group.Key)
                 .Select(a => new ShiftOperatorSlice(
-                    a.Id, a.OperatorId, string.Empty, null, a.Slot,
+                    a.Id, a.OperatorId, a.Operator.FullName, a.Operator.EmployeeId, a.Slot,
                     Utc(a.AssignedAt), Utc(a.UnassignedAt ?? shiftEnd)))
                 .ToList();
             var merged = ShiftOutputDistributor.Distribute(
@@ -416,16 +412,12 @@ public sealed class ShiftClosureReadModelLoader
                 ImmName = group.First().ImmNameSnapshot,
                 Intervals = merged.Select(interval =>
                 {
-                    var operators = interval.Operators.Select(o =>
+                    var operators = interval.Operators.Select(o => new ShiftClosureTimelineOperatorDto
                     {
-                        var snapshot = operatorSnapshots.GetValueOrDefault(o.OperatorId);
-                        return new ShiftClosureTimelineOperatorDto
-                        {
-                            OperatorId = o.OperatorId,
-                            FullName = snapshot?.OperatorFullNameSnapshot ?? string.Empty,
-                            EmployeeId = snapshot?.OperatorEmployeeIdSnapshot,
-                            Slot = o.Slot
-                        };
+                        OperatorId = o.OperatorId,
+                        FullName = o.FullName,
+                        EmployeeId = o.EmployeeId,
+                        Slot = o.Slot
                     }).ToList();
                     var outputs = immEntries.Select(e => new ShiftClosureTaskOutputDto(e.ShiftTaskId,
                         e.OutputShares.Where(s => Overlaps(

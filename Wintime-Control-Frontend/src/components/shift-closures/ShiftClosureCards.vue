@@ -27,6 +27,15 @@
       </div>
     </div>
 
+    <el-alert
+      v-if="earlyCloseMessage"
+      data-test="early-close-notice"
+      class="mb-3"
+      type="warning"
+      :closable="false"
+      :title="earlyCloseMessage"
+    />
+
     <div v-if="entries.length" class="space-y-4">
       <section
         v-for="entry in entries"
@@ -65,8 +74,10 @@
             <dd class="font-medium text-gray-800">{{ entry.shiftPlanQuantity }}</dd>
           </div>
           <div>
-            <dt class="text-gray-500">Расход</dt>
-            <dd class="font-medium text-gray-800">{{ formatDecimal(entry.plannedMaterialWeightGrams) }}</dd>
+            <dt class="text-gray-500">Расход, кг</dt>
+            <dd :data-material-weight="entry.taskId" class="font-medium text-gray-800">
+              {{ formatDecimal(entry.plannedMaterialWeightGrams / 1000) }}
+            </dd>
           </div>
         </dl>
 
@@ -279,6 +290,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import dayjs from 'dayjs'
 
 defineOptions({ name: 'ShiftClosureCards' })
 
@@ -293,6 +305,11 @@ const props = defineProps({
 const emit = defineEmits(['update-manual', 'save', 'close'])
 const entries = computed(() => props.report?.entries ?? [])
 const closed = computed(() => props.report?.state === 'Closed')
+const earlyCloseMessage = computed(() => {
+  if (!props.report?.closedEarly || !props.report.closedAt) return null
+  return `Смена закрыта досрочно: фактическое время закрытия ${dayjs(props.report.closedAt).format('DD.MM.YYYY HH:mm')}, ` +
+    `плановое окончание ${dayjs(props.report.endAtUtc).format('DD.MM.YYYY HH:mm')}`
+})
 
 function formatDecimal(value) {
   if (value === null || value === undefined) return '—'

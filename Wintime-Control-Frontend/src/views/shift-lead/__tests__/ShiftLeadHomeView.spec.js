@@ -207,7 +207,9 @@ describe('ShiftLeadHomeView', () => {
     shiftStaffingApi.item.mockImplementation(async itemId => ({
       data: detail({ shift: summary({ itemId, position: itemId === 'item-2' ? 2 : 1 }) })
     }))
-    getPending.mockResolvedValue({ data: [pending('pending-1')] })
+    getPending
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [pending('pending-1')] })
     wrapper = mountView()
     await flushPromises()
 
@@ -217,7 +219,7 @@ describe('ShiftLeadHomeView', () => {
     expect(shiftStaffingApi.nearest).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('Смена 2 · 08.11.2026')
     expect(wrapper.find('[data-test="pending-item-pending-1"]').exists()).toBe(true)
-    expect(getPending).toHaveBeenCalledTimes(1)
+    expect(getPending).toHaveBeenCalledTimes(2)
   })
 
   it('маршрут Manager из плана ведёт в ShiftStaffingItemView, а не в мобильный контур наладчика', async () => {

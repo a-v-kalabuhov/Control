@@ -30,6 +30,9 @@ export function useShiftClosureEditor(itemId) {
   const loading = ref(false)
   const saving = ref(false)
   let loadSequence = 0
+  let editSequence = 0
+  const editRevisions = new Map()
+  let saveRevisionCapture = null
 
   const report = computed(() => {
     if (!serverReport.value) return null
@@ -45,7 +48,7 @@ export function useShiftClosureEditor(itemId) {
 
   function applyServerReport(nextReport, preserveDirty) {
     serverReport.value = nextReport
-    if (!preserveDirty) {
+    if (!preserveDirty || nextReport?.state === 'Closed') {
       Object.keys(localManualByTask).forEach(taskId => delete localManualByTask[taskId])
       return
     }
@@ -89,8 +92,13 @@ export function useShiftClosureEditor(itemId) {
     const original = serverReport.value?.entries?.find(entry => entry.taskId === taskId)
     if (!current || !original) return
     const normalized = value ?? null
+    const revisionKey = `${taskId}:${field}`
+    const revision = ++editSequence
+    editRevisions.set(revisionKey, revision)
+    const editedAfterCapture = saveRevisionCapture !== null &&
+      revision > (saveRevisionCapture.get(revisionKey) ?? 0)
     const next = { ...(localManualByTask[taskId] ?? {}) }
-    if (normalized === (original[field] ?? null)) delete next[field]
+    if (normalized === (original[field] ?? null) && !editedAfterCapture) delete next[field]
     else next[field] = normalized
     if (Object.keys(next).length === 0) delete localManualByTask[taskId]
     else localManualByTask[taskId] = next
@@ -102,8 +110,13 @@ export function useShiftClosureEditor(itemId) {
   }
 
   async function handleError(error, fallback = 'Не удалось сохранить сменный рапорт') {
-    if (error?.response?.status === 409) {
-      ElMessage.error(apiErrorMessage(error, 'Сменный рапорт изменён другим пользователем'))
+    const data = error?.response?.data
+    const shiftClosed = error?.response?.status === 400 &&
+      (data?.code === 'shiftClosed' || data?.message === 'shiftClosed')
+    if (error?.response?.status === 409 || shiftClosed) {
+      ElMessage.error(apiErrorMessage(error, shiftClosed
+        ? 'Смена уже закрыта другим пользователем'
+        : 'Сменный рапорт изменён другим пользователем'))
       await load({ preserveDirty: true })
       return
     }
@@ -121,6 +134,7 @@ export function useShiftClosureEditor(itemId) {
   async function save() {
     if (saving.value || report.value?.state === 'Closed' || !report.value) return false
     saving.value = true
+    saveRevisionCapture = new Map(editRevisions)
     fieldErrors.value = {}
     try {
       const entries = report.value.entries.map(entry => ({
@@ -136,6 +150,7 @@ export function useShiftClosureEditor(itemId) {
       await handleError(error)
       return false
     } finally {
+      saveRevisionCapture = null
       saving.value = false
     }
   }
@@ -149,6 +164,8 @@ export function useShiftClosureEditor(itemId) {
     saving.value = true
     try {
       const response = await shiftClosuresApi.close(itemId, confirmEarlyClose)
+      loadSequence += 1
+      loading.value = false
       applyServerReport(response.data, false)
       fieldErrors.value = {}
       return { success: true }

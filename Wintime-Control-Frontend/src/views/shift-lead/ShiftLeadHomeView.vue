@@ -143,12 +143,11 @@ store.activateNearest()
 
 const { refresh } = useShiftStaffingRefresh({
   getEndAtUtc: () => store.nearest?.endAtUtc,
-  refresh: () => store.loadNearest()
+  refresh: () => Promise.all([store.loadNearest(), loadPending()])
 })
 
 onMounted(() => {
   refresh()
-  loadPending()
 })
 
 async function loadPending() {

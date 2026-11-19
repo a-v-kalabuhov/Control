@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
+import dayjs from 'dayjs'
 import ShiftClosureTable from '../ShiftClosureTable.vue'
 import * as api from '@/api/shiftClosures'
 
@@ -39,8 +40,8 @@ function response(value) {
   return { data: value }
 }
 
-function mountTable({ entries = [entry()], state = 'Draft' } = {}) {
-  api.getByItem.mockResolvedValue(response(report({ entries, state })))
+function mountTable({ entries = [entry()], state = 'Draft', reportOverrides = {} } = {}) {
+  api.getByItem.mockResolvedValue(response(report({ entries, state, ...reportOverrides })))
   return mount(ShiftClosureTable, {
     props: { itemId: 'item-1' },
     global: { plugins: [ElementPlus] }
@@ -104,6 +105,27 @@ describe('ShiftClosureTable', () => {
     expect(wrapper.get('[data-share="task-1:op-1"]').text()).toBe('6')
     expect(wrapper.get('[data-cell="task-1:warehouse"]').text()).toBe('')
     expect(wrapper.get('[data-cell="task-1:signature"]').text()).toBe('')
+  })
+
+  it('показывает досрочное закрытие с фактическим и плановым временем в поясе браузера', async () => {
+    const closedAt = '2026-11-18T15:30:00Z'
+    const endAtUtc = '2026-11-18T17:00:00Z'
+    const wrapper = mountTable({ state: 'Closed', reportOverrides: {
+      closedEarly: true, closedAt, endAtUtc
+    } })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="early-close-notice"]').text()).toBe(
+      `Смена закрыта досрочно: фактическое время закрытия ${dayjs(closedAt).format('DD.MM.YYYY HH:mm')}, ` +
+      `плановое окончание ${dayjs(endAtUtc).format('DD.MM.YYYY HH:mm')}`)
+  })
+
+  it('показывает плановый расход в кг без изменения исходных грамм', async () => {
+    const wrapper = mountTable({ entries: [entry({ plannedMaterialWeightGrams: 450 })] })
+    await flushPromises()
+
+    expect(wrapper.get('[data-material-weight="task-1"]').text()).toBe('0,45')
+    expect(wrapper.text()).toContain('Расход, кг')
   })
 
   it('save отправляет только manual fields', async () => {

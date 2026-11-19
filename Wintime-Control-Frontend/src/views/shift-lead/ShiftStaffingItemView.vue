@@ -283,7 +283,9 @@ function formatDateTime(value) {
 }
 
 function isActiveAssignment(assignment) {
-  return !assignment.unassignedAt && !isHistorical.value
+  if (isHistorical.value) return false
+  const now = Date.now()
+  return Date.parse(assignment.workStart) <= now && now < Date.parse(assignment.workEnd)
 }
 
 function timelineFor(immId) {

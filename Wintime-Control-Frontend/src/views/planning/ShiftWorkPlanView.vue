@@ -280,6 +280,8 @@ async function loadClosureItem() {
     if (mountedSameItem) await mountedSameItem.load()
   } catch (error) {
     if (seq === closureLoadSeq) {
+      closureItem.value = null
+      closureReport.value = null
       ElMessage.error(apiErrorMessage(error, 'Не удалось определить позицию сменного рапорта'))
     }
   } finally {
@@ -381,6 +383,10 @@ watch(() => [selectedDate.value, selectedShiftNumber.value], (_, previous) => {
   // Первичную загрузку выполняет onMounted после получения расписания.
   if (previous[1] === null) return
   Object.keys(issueErrors).forEach(key => delete issueErrors[key])
+  closureLoadSeq += 1
+  closureItem.value = null
+  closureReport.value = null
+  closureLoading.value = false
   refreshActive()
 })
 

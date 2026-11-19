@@ -525,7 +525,7 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task Draft_TimelineTaskOutputsClipCyclesToTaskActivityWithinMergedInterval()
+    public async Task Draft_TimelineTaskOutputsConserveCyclesOutsideTaskActivity()
     {
         var now = DateTime.UtcNow;
         var start = Utc(now.AddHours(-4));
@@ -547,12 +547,12 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
         var interval = body.GetProperty("timelines").EnumerateArray()
             .Single(t => t.GetProperty("immId").GetGuid() == immId)
             .GetProperty("intervals").EnumerateArray().Single();
-        interval.GetProperty("automaticOutputQuantity").GetInt32().Should().Be(3,
-            "цикл до начала активности задания не входит в выпуск объединённого интервала");
+        interval.GetProperty("automaticOutputQuantity").GetInt32().Should().Be(8,
+            "ретро-цикл до активности остаётся в выпуске и распределении строки");
         interval.GetProperty("taskOutputs").EnumerateArray().Single()
-            .GetProperty("quantity").GetInt32().Should().Be(3);
+            .GetProperty("quantity").GetInt32().Should().Be(8);
         Entry(body, task.Id).GetProperty("outputShares").EnumerateArray()
-            .Sum(s => s.GetProperty("quantity").GetInt32()).Should().Be(3);
+            .Sum(s => s.GetProperty("quantity").GetInt32()).Should().Be(8);
     }
 
     [Fact]
@@ -638,6 +638,58 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
         intervals[2].GetProperty("automaticOutputQuantity").GetInt32().Should().Be(0);
         intervals[2].GetProperty("taskOutputs").EnumerateArray().Single()
             .GetProperty("quantity").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ClosedRead_TimelineResolvesCurrentUserForJournalOperatorWithoutShares()
+    {
+        var now = DateTime.UtcNow;
+        var start = Utc(now.AddHours(-4));
+        var end = Utc(now.AddHours(-2));
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var operatorUser = await SeedUserAsync(UserRole.Operator);
+        var immId = await SeedImmAsync();
+        var item = (await SeedDayAsync(Item(1, lead.Id, start, end))).Items.Single();
+        var task = await SeedTaskAsync(immId, TaskStatus.Completed, end.AddDays(1),
+            setupStartedAt: start, startedAt: start, completedAt: end);
+        await SeedAssignmentAsync(item.Id, immId, operatorUser, 1, start, null);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            db.ShiftClosures.Add(new ShiftClosure
+            {
+                ShiftPlanItemId = item.Id,
+                State = ShiftClosureState.Closed,
+                CreatedById = lead.Id,
+                ClosedById = lead.Id,
+                ClosedAt = end,
+                Entries =
+                {
+                    new ShiftClosureEntry
+                    {
+                        ShiftTaskId = task.Id,
+                        ImmId = immId,
+                        ImmNameSnapshot = "SNAPSHOT IMM",
+                        AutomaticOutputQuantity = 0
+                    }
+                }
+            });
+            await db.SaveChangesAsync();
+            var current = await db.Users.SingleAsync(u => u.Id == operatorUser.Id);
+            current.FullName = "ПЕРЕИМЕНОВАННЫЙ ЛИТЕЙЩИК";
+            current.EmployeeId = "CURRENT-77";
+            await db.SaveChangesAsync();
+        }
+        var client = await ClientAsync(lead);
+
+        var body = await RequiredJsonAsync(await client.GetAsync($"/api/shift-closures/items/{item.Id}"));
+
+        var timelineOperator = body.GetProperty("timelines").EnumerateArray().Single()
+            .GetProperty("intervals").EnumerateArray().Single()
+            .GetProperty("operators").EnumerateArray().Single();
+        timelineOperator.GetProperty("operatorId").GetString().Should().Be(operatorUser.Id);
+        timelineOperator.GetProperty("fullName").GetString().Should().Be("ПЕРЕИМЕНОВАННЫЙ ЛИТЕЙЩИК");
+        timelineOperator.GetProperty("employeeId").GetString().Should().Be("CURRENT-77");
     }
 
     private async Task<HttpClient> ClientAsync(TestUser user)

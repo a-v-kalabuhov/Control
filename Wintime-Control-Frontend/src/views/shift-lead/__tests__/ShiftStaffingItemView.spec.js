@@ -173,6 +173,25 @@ describe('ShiftStaffingItemView', () => {
     expect(wrapper.text()).not.toContain(dayjs('2026-11-08T09:00:00Z').tz('Asia/Kamchatka').format('DD.MM.YYYY HH:mm'))
   })
 
+  it('active styling использует current-at-now: будущее назначение не активно, явный будущий конец активен', async () => {
+    const future = assignment('a-future', 'op1', 'Будущий', {
+      assignedAt: '2026-11-08T13:00:00Z', workStart: '2026-11-08T13:00:00Z'
+    })
+    const current = assignment('a-current', 'op2', 'Текущий', {
+      assignedAt: '2026-11-08T11:00:00Z', unassignedAt: '2026-11-08T13:00:00Z',
+      workStart: '2026-11-08T11:00:00Z', workEnd: '2026-11-08T13:00:00Z'
+    })
+    shiftStaffingApi.item.mockResolvedValue({ data: detail({ assignments: [future, current] }) })
+    wrapper = mountView()
+    await flushPromises()
+
+    const futureRow = wrapper.get('[data-test="assignment-a-future"]')
+    const currentRow = wrapper.get('[data-test="assignment-a-current"]')
+    expect(futureRow.classes()).toContain('bg-gray-50')
+    expect(futureRow.text()).not.toContain('Активен')
+    expect(currentRow.classes()).toContain('bg-primary-50')
+  })
+
   it('два активных не блокируют произвольный интервал; снятие и повторное назначение создают новые mutations', async () => {
     const first = assignment('a1', 'op1', 'Иванов')
     const second = assignment('a2', 'op2', 'Петров', { slot: 2 })

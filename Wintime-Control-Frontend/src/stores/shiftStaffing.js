@@ -29,6 +29,12 @@ function isAccessRevoked(error) {
   return [403, 404].includes(error?.response?.status)
 }
 
+function isShiftClosed(error) {
+  const data = error?.response?.data
+  return error?.response?.status === 400 &&
+    (data?.code === 'shiftClosed' || data?.message === 'shiftClosed')
+}
+
 async function runMutation(store, itemId, request, fallback) {
   if (store.saving) return { success: false, pending: true }
   if ((store.activeItemId && store.activeItemId !== itemId) ||
@@ -65,12 +71,10 @@ async function runMutation(store, itemId, request, fallback) {
     if (error?.response?.status === 403 && store.currentItem?.shift) {
       store.currentItem.shift.canEditOperators = false
     }
-    if (error?.response?.status === 400 && error?.response?.data?.code === 'shiftClosed' &&
-      store.currentItem?.shift) {
+    if (isShiftClosed(error) && store.currentItem?.shift) {
       store.currentItem.shift.canEditOperators = false
     }
-    if ([403, 409].includes(error?.response?.status) ||
-      (error?.response?.status === 400 && error?.response?.data?.code === 'shiftClosed')) {
+    if ([403, 409].includes(error?.response?.status) || isShiftClosed(error)) {
       await store.loadItem(itemId)
     }
 

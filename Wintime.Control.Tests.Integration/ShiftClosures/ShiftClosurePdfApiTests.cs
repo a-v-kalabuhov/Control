@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -129,7 +130,7 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task ClosedPdf_IgnoresCurrentSourceChangesAndChangesOnlyAfterAuditedManualCorrection()
+    public async Task ClosedPdf_RemainsFrozenWhileTimelineUsesCurrentOperatorAndCorrectionsChangeManual()
     {
         var fixture = await SeedClosedAsync();
         var client = await ClientAsync(fixture.Lead);
@@ -142,9 +143,17 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
 
         var frozenDto = await (await RequiredResponseAsync(client.GetAsync(
             $"/api/shift-closures/items/{fixture.Item.Id}"))).Content.ReadAsStringAsync();
-        frozenDto.Should().Be(originalDto);
-        (await AssertPdfAsync(await client.GetAsync($"/api/shift-closures/{fixture.ClosureId}/pdf")))
-            .Should().Equal(originalPdf, "закрытый PDF строится только из замороженного DTO");
+        using var frozenDocument = JsonDocument.Parse(frozenDto);
+        using var originalDocument = JsonDocument.Parse(originalDto);
+        var original = originalDocument.RootElement;
+        Entry(frozenDocument.RootElement, fixture.Task.Id).GetRawText().Should().Be(
+            Entry(original, fixture.Task.Id).GetRawText());
+        AssertCurrentTimelineIdentity(frozenDocument.RootElement, fixture, "ПОСЛЕ ЗАКРЫТИЯ");
+        frozenDto.Should().NotBe(originalDto,
+            "timeline намеренно показывает текущую идентичность по OperatorId");
+        PdfContent(await AssertPdfAsync(await client.GetAsync($"/api/shift-closures/{fixture.ClosureId}/pdf")))
+            .Should().Be(PdfContent(originalPdf),
+                "содержимое закрытого PDF строится только из замороженных Entries/Shares");
 
         var manager = await ManagerClientAsync();
         var correction = await manager.PatchAsJsonAsync(
@@ -158,7 +167,6 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
         var correctedDtoText = await (await RequiredResponseAsync(client.GetAsync(
             $"/api/shift-closures/items/{fixture.Item.Id}"))).Content.ReadAsStringAsync();
         var correctedDto = JsonDocument.Parse(correctedDtoText).RootElement;
-        var original = JsonDocument.Parse(originalDto).RootElement;
         var correctedEntry = Entry(correctedDto, fixture.Task.Id);
         correctedEntry.GetProperty("actualPartWeightGrams").GetDecimal().Should().Be(5.5m);
         correctedEntry.GetProperty("shiftPlanQuantity").GetRawText().Should()
@@ -169,14 +177,17 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
             .Be(Entry(original, fixture.Task.Id).GetProperty("outputShares").GetRawText());
         var correctedPdf = await AssertPdfAsync(await client.GetAsync(
             $"/api/shift-closures/{fixture.ClosureId}/pdf"));
-        correctedPdf.Should().NotEqual(originalPdf);
+        PdfContent(correctedPdf).Should().NotBe(PdfContent(originalPdf));
 
         await MutateCurrentSourcesAsync(fixture, "ПОСЛЕ ИСПРАВЛЕНИЯ");
         var reread = await (await RequiredResponseAsync(client.GetAsync(
             $"/api/shift-closures/items/{fixture.Item.Id}"))).Content.ReadAsStringAsync();
-        reread.Should().Be(correctedDtoText);
-        (await AssertPdfAsync(await client.GetAsync($"/api/shift-closures/{fixture.ClosureId}/pdf")))
-            .Should().Equal(correctedPdf);
+        using var rereadDocument = JsonDocument.Parse(reread);
+        Entry(rereadDocument.RootElement, fixture.Task.Id).GetRawText().Should().Be(
+            Entry(correctedDto, fixture.Task.Id).GetRawText());
+        AssertCurrentTimelineIdentity(rereadDocument.RootElement, fixture, "ПОСЛЕ ИСПРАВЛЕНИЯ");
+        PdfContent(await AssertPdfAsync(await client.GetAsync($"/api/shift-closures/{fixture.ClosureId}/pdf")))
+            .Should().Be(PdfContent(correctedPdf));
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         (await db.ShiftClosureCorrections.CountAsync(c => c.ShiftClosureId == fixture.ClosureId))
@@ -251,6 +262,18 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
         await db.SaveChangesAsync();
     }
 
+    private static void AssertCurrentTimelineIdentity(
+        JsonElement dto, ClosedFixture fixture, string suffix)
+    {
+        var timelineOperator = dto.GetProperty("timelines").EnumerateArray().Single()
+            .GetProperty("intervals").EnumerateArray().Single()
+            .GetProperty("operators").EnumerateArray().Single();
+        timelineOperator.GetProperty("operatorId").GetString().Should().Be(fixture.Operator.Id);
+        timelineOperator.GetProperty("fullName").GetString().Should()
+            .Be($"ТЕКУЩИЙ ЛИТЕЙЩИК {suffix}");
+        timelineOperator.GetProperty("employeeId").GetString().Should().Be($"CURRENT-{suffix}");
+    }
+
     private static object Manual(
         Guid taskId,
         decimal? actualPartWeightGrams = null,
@@ -272,6 +295,11 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
     private static Task<HttpResponseMessage> PutDraftAsync(
         HttpClient client, Guid itemId, params object[] entries) =>
         client.PutAsJsonAsync($"/api/shift-closures/items/{itemId}/draft", new { entries });
+
+    private static string PdfContent(byte[] bytes) => Regex.Replace(
+        Encoding.Latin1.GetString(bytes),
+        @"/(CreationDate|ModDate) \(D:[^)]*\)",
+        "/$1 (D:volatile)");
 
     private static async Task<byte[]> AssertPdfAsync(HttpResponseMessage response)
     {

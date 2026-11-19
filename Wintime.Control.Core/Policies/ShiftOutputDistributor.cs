@@ -105,21 +105,28 @@ public static class ShiftOutputDistributor
 
         foreach (var (taskId, window) in taskWindows)
         {
-            if (window == null)
-                continue;
-
             cyclesByTask.TryGetValue(taskId, out var taskCycles);
             foreach (var interval in merged)
             {
+                // Activity limits the permitted zero-share composition, but a positive
+                // retro-bound cycle is accounted even outside the task activity window.
+                var quantity = taskCycles?
+                    .Where(c => c.EndUtc >= interval.StartUtc && c.EndUtc < interval.EndUtc)
+                    .Sum(c => c.Quantity) ?? 0;
+                if (quantity > 0)
+                {
+                    AddDistribution(taskId, interval.StartUtc, interval.EndUtc,
+                        interval.Operators, quantity, shares, orphans);
+                    continue;
+                }
+
+                if (window == null)
+                    continue;
                 var start = interval.StartUtc > window.Start ? interval.StartUtc : window.Start;
                 var end = interval.EndUtc < window.End ? interval.EndUtc : window.End;
                 if (end <= start)
                     continue;
-
-                var quantity = taskCycles?
-                    .Where(c => c.EndUtc >= start && c.EndUtc < end)
-                    .Sum(c => c.Quantity) ?? 0;
-                AddDistribution(taskId, start, end, interval.Operators, quantity, shares, orphans);
+                AddDistribution(taskId, start, end, interval.Operators, 0, shares, orphans);
             }
         }
 

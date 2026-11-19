@@ -290,6 +290,23 @@ describe('shiftStaffing store', () => {
     expect(store.canEditOperators).toBe(false)
   })
 
+  it('400 message=shiftClosed при cross-tab close блокирует форму и перезагружает item', async () => {
+    const store = useShiftStaffingStore()
+    store.currentItem = detail()
+    shiftStaffingApi.assignOperator.mockRejectedValue({
+      response: { status: 400, data: { message: 'shiftClosed' } }
+    })
+    shiftStaffingApi.item.mockResolvedValue({
+      data: detail('item-1', { shift: summary('item-1', { canEditOperators: false }) })
+    })
+
+    const result = await store.assignOperator('item-1', { immId: 'imm-1', operatorId: 'operator-1' })
+
+    expect(result.success).toBe(false)
+    expect(shiftStaffingApi.item).toHaveBeenCalledWith('item-1')
+    expect(store.canEditOperators).toBe(false)
+  })
+
   it('403 сразу запрещает редактирование и перезагружает item', async () => {
     const reload = deferred()
     const store = useShiftStaffingStore()
