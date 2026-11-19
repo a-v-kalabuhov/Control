@@ -485,43 +485,51 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
         var yesterday = today.AddDays(-1);
         var client = await ManagerClientAsync();
 
-        await WithScheduleAsync(client, Schedule(480, 960), async () =>
+        try
         {
-            var todayDay = await SeedDayAsync(today, lead.Id, @operator.Id, 2);
-            var yesterdayDay = await SeedDayAsync(yesterday, lead.Id, @operator.Id, 2);
-            using (var scope = _factory.Services.CreateScope())
+            await WithScheduleAsync(client, Schedule(480, 960), async () =>
             {
-                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-                foreach (var item in todayDay.Items.Concat(yesterdayDay.Items))
+                var todayDay = await SeedDayAsync(today, lead.Id, @operator.Id, 2);
+                var yesterdayDay = await SeedDayAsync(yesterday, lead.Id, @operator.Id, 2);
+                using (var scope = _factory.Services.CreateScope())
                 {
-                    db.ShiftClosures.Add(new ShiftClosure
+                    var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                    foreach (var item in todayDay.Items.Concat(yesterdayDay.Items))
                     {
-                        ShiftPlanItemId = item.Id,
-                        State = ShiftClosureState.Closed,
-                        CreatedById = lead.Id,
-                        ClosedById = lead.Id,
-                        ClosedAt = DateTime.UtcNow
-                    });
+                        db.ShiftClosures.Add(new ShiftClosure
+                        {
+                            ShiftPlanItemId = item.Id,
+                            State = ShiftClosureState.Closed,
+                            CreatedById = lead.Id,
+                            ClosedById = lead.Id,
+                            ClosedAt = DateTime.UtcNow
+                        });
+                    }
+                    await db.SaveChangesAsync();
                 }
-                await db.SaveChangesAsync();
-            }
-            var todayBefore = await LoadDayAsync(today);
-            var yesterdayBefore = await LoadDayAsync(yesterday);
-            todayBefore.Items.Should().OnlyContain(i => i.StartAtUtc > DateTime.UtcNow);
+                var todayBefore = await LoadDayAsync(today);
+                var yesterdayBefore = await LoadDayAsync(yesterday);
+                todayBefore.Items.Should().OnlyContain(i => i.StartAtUtc > DateTime.UtcNow);
 
-            var response = await SaveScheduleAsync(client, Schedule(60, 600));
-            response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+                var response = await SaveScheduleAsync(client, Schedule(60, 600));
+                response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
 
-            (await LoadDayAsync(today)).Should().BeEquivalentTo(todayBefore);
-            (await LoadDayAsync(yesterday)).Should().BeEquivalentTo(yesterdayBefore);
-            using (var scope = _factory.Services.CreateScope())
-            {
-                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-                var itemIds = todayDay.Items.Concat(yesterdayDay.Items).Select(i => i.Id).ToList();
-                (await db.ShiftClosures.CountAsync(c => itemIds.Contains(c.ShiftPlanItemId)
-                    && c.State == ShiftClosureState.Closed)).Should().Be(4);
-            }
-        });
+                (await LoadDayAsync(today)).Should().BeEquivalentTo(todayBefore);
+                (await LoadDayAsync(yesterday)).Should().BeEquivalentTo(yesterdayBefore);
+                using (var scope = _factory.Services.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                    var itemIds = todayDay.Items.Concat(yesterdayDay.Items).Select(i => i.Id).ToList();
+                    (await db.ShiftClosures.CountAsync(c => itemIds.Contains(c.ShiftPlanItemId)
+                        && c.State == ShiftClosureState.Closed)).Should().Be(4);
+                }
+            });
+        }
+        finally
+        {
+            await DeleteDayAsync(today);
+            await DeleteDayAsync(yesterday);
+        }
     }
 
     [Fact]
