@@ -10,7 +10,11 @@ vi.mock('@/api/settings', () => ({
     getPlanningDefaults: vi.fn(() => Promise.resolve({ data: {
       setupMinutes: 90, releaseBufferFixedMinutes: 30, releaseBufferPercent: 10, conflictThresholdMinutes: 25, updatedAt: null
     } })),
-    updatePlanningDefaults: vi.fn(() => Promise.resolve({ data: {} }))
+    updatePlanningDefaults: vi.fn(() => Promise.resolve({ data: {} })),
+    getSecuritySettings: vi.fn(() => Promise.resolve({ data: {
+      allowWeakPasswords: true, updatedAt: null
+    } })),
+    updateSecuritySettings: vi.fn(() => Promise.resolve({ data: {} }))
   }
 }))
 
@@ -64,6 +68,20 @@ describe('SettingsView — умолчания планирования', () => {
     await flushPromises()
 
     expect(planningApi.getConflicts).toHaveBeenCalledTimes(1)
+  })
+
+  it('показывает и сохраняет разрешение слабых паролей', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(settingsApi.getSecuritySettings).toHaveBeenCalled()
+    expect(wrapper.find('[data-test="allow-weak-passwords"] input').element.checked).toBe(true)
+
+    wrapper.vm.security.allowWeakPasswords = false
+    await wrapper.find('[data-test="save"]').trigger('click')
+    await flushPromises()
+
+    expect(settingsApi.updateSecuritySettings).toHaveBeenCalledWith({ allowWeakPasswords: false })
   })
 
   it('поясняет, что уже созданные задания не меняются', async () => {

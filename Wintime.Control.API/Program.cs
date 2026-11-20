@@ -49,6 +49,7 @@ builder.Services.AddDbContext<ControlDbContext>(options =>
 // Identity. Валидатор регистрируется до AddIdentity, чтобы заменить стандартный
 // UserValidator: сотрудник без логина существует только в справочнике (PZP-30).
 builder.Services.AddScoped<IUserValidator<User>, OptionalLoginUserValidator>();
+builder.Services.AddScoped<IPasswordValidator<User>, ConfigurablePasswordValidator>();
 builder.Services.AddIdentity<User, IdentityRole>(options =>
 {
     // Политика паролей для производственной MES-системы. Демо-аккаунты
@@ -63,6 +64,7 @@ builder.Services.AddIdentity<User, IdentityRole>(options =>
 })
 .AddEntityFrameworkStores<ControlDbContext>()
 .AddDefaultTokenProviders()
+.AddErrorDescriber<RussianIdentityErrorDescriber>()
 .AddRoleManager<RoleManager<IdentityRole>>();
 
 // JWT Authentication
@@ -182,6 +184,7 @@ builder.Services.AddScoped<IShiftClosureService, ShiftClosureService>();
 builder.Services.AddScoped<IShiftClosurePdfService, ShiftClosurePdfService>();
 builder.Services.AddScoped<IFactoryClock, FactoryClock>();
 builder.Services.AddScoped<IPlanningDefaultsService, PlanningDefaultsService>();
+builder.Services.AddScoped<ISecuritySettingsService, SecuritySettingsService>();
 builder.Services.AddScoped<IEffectiveStatusHistoryService, EffectiveStatusHistoryService>();
 builder.Services.AddScoped<IReleaseForecastService, ReleaseForecastService>();
 builder.Services.AddScoped<IPlanConflictService, PlanConflictService>();

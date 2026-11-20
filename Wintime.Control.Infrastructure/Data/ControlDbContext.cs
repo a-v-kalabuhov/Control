@@ -29,6 +29,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<UnplannedRun> UnplannedRuns { get; set; }
     public DbSet<Order> Orders { get; set; }
     public DbSet<PlanningDefaults> PlanningDefaults { get; set; }
+    public DbSet<SecuritySettings> SecuritySettings { get; set; }
     public DbSet<Material> Materials { get; set; }
     public DbSet<ProductRecipeIngredient> ProductRecipeIngredients { get; set; }
     public DbSet<ShiftTaskRecipeIngredient> ShiftTaskRecipeIngredients { get; set; }
@@ -273,6 +274,18 @@ public class ControlDbContext : IdentityDbContext<User>
                 t.HasCheckConstraint("CK_PlanningDefaults_ConflictThresholdMinutes", "\"ConflictThresholdMinutes\" BETWEEN 0 AND 1440");
             });
             entity.HasData(new PlanningDefaults { Id = 1, ConflictThresholdMinutes = Core.Entities.PlanningDefaults.DefaultConflictThresholdMinutes });
+        });
+
+        // Настройки безопасности (ADR-0015): по умолчанию действуют строгие правила Identity
+        builder.Entity<SecuritySettings>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.UpdatedAt).HasColumnType("timestamp with time zone");
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UpdatedById).OnDelete(DeleteBehavior.SetNull);
+            entity.ToTable("SecuritySettings", t =>
+                t.HasCheckConstraint("CK_SecuritySettings_Singleton", "\"Id\" = 1"));
+            entity.HasData(new SecuritySettings { Id = 1, AllowWeakPasswords = false });
         });
 
         // Конфигурация UnplannedRun (PZP-04)

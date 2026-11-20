@@ -43,6 +43,22 @@
 
     <el-card class="mb-6">
       <template #header>
+        <span class="font-semibold">Безопасность</span>
+      </template>
+      <p class="text-sm text-gray-600 mb-4">
+        Настройка применяется при создании пользователей и смене паролей. Существующие пароли не меняются.
+      </p>
+      <el-form :model="security" label-position="left">
+        <el-form-item>
+          <el-checkbox v-model="security.allowWeakPasswords" data-test="allow-weak-passwords">
+            Позволять слабые пароли
+          </el-checkbox>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card class="mb-6">
+      <template #header>
         <span class="font-semibold">Конфликты плана</span>
       </template>
       <p class="text-sm text-gray-600 mb-4">
@@ -85,14 +101,22 @@ const defaults = reactive({
   conflictThresholdMinutes: 20
 })
 
+const security = reactive({
+  allowWeakPasswords: false
+})
+
 const load = async () => {
   loading.value = true
   try {
-    const { data } = await settingsApi.getPlanningDefaults()
-    defaults.setupMinutes = data.setupMinutes
-    defaults.releaseBufferFixedMinutes = data.releaseBufferFixedMinutes
-    defaults.releaseBufferPercent = data.releaseBufferPercent
-    defaults.conflictThresholdMinutes = data.conflictThresholdMinutes
+    const [{ data: planningData }, { data: securityData }] = await Promise.all([
+      settingsApi.getPlanningDefaults(),
+      settingsApi.getSecuritySettings()
+    ])
+    defaults.setupMinutes = planningData.setupMinutes
+    defaults.releaseBufferFixedMinutes = planningData.releaseBufferFixedMinutes
+    defaults.releaseBufferPercent = planningData.releaseBufferPercent
+    defaults.conflictThresholdMinutes = planningData.conflictThresholdMinutes
+    security.allowWeakPasswords = securityData.allowWeakPasswords
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, 'Ошибка загрузки настроек'))
   } finally {
@@ -108,6 +132,9 @@ const save = async () => {
       releaseBufferFixedMinutes: defaults.releaseBufferFixedMinutes,
       releaseBufferPercent: defaults.releaseBufferPercent,
       conflictThresholdMinutes: defaults.conflictThresholdMinutes
+    })
+    await settingsApi.updateSecuritySettings({
+      allowWeakPasswords: security.allowWeakPasswords
     })
     usePlanConflictsStore().load() // порог действует сразу на все задания
     ElMessage.success('Настройки сохранены')
