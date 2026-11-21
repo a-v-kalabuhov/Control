@@ -103,6 +103,83 @@ public class PersonnelManagementTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task CreatePersonnel_WithWeakPassword_ReturnsRussianPasswordErrors()
+    {
+        var client = await ManagerClientAsync();
+        var errors = new List<IdentityError>();
+
+        foreach (var password in new[] { "123456", "abcdef" })
+        {
+            var request = NewPerson("Operator");
+            request.Password = password;
+
+            var response = await client.PostAsJsonAsync("/api/personnel", request);
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            errors.AddRange((await response.Content.ReadFromJsonAsync<IdentityError[]>())!);
+        }
+
+        errors.Should().Contain(e => e.Code == "PasswordTooShort"
+            && e.Description == "Пароль должен содержать не менее 8 символов.");
+        errors.Should().Contain(e => e.Code == "PasswordRequiresDigit"
+            && e.Description == "Пароль должен содержать хотя бы одну цифру ('0'-'9').");
+        errors.Should().Contain(e => e.Code == "PasswordRequiresLower"
+            && e.Description == "Пароль должен содержать хотя бы одну строчную букву ('a'-'z').");
+        errors.Should().Contain(e => e.Code == "PasswordRequiresUpper"
+            && e.Description == "Пароль должен содержать хотя бы одну прописную букву ('A'-'Z').");
+        errors.Should().Contain(e => e.Code == "PasswordRequiresNonAlphanumeric"
+            && e.Description == "Пароль должен содержать хотя бы один специальный символ.");
+    }
+
+    [Fact]
+    public async Task WeakPasswordSetting_ControlsPersonnelPasswordValidation()
+    {
+        var client = await ManagerClientAsync();
+        var request = NewPerson("Operator");
+        request.Password = "x";
+
+        var initiallyRejected = await client.PostAsJsonAsync("/api/personnel", request);
+        initiallyRejected.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var enabled = await client.PutAsJsonAsync("/api/settings/security",
+            new { allowWeakPasswords = true });
+        enabled.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        try
+        {
+            var created = await client.PostAsJsonAsync("/api/personnel", request);
+            created.StatusCode.Should().Be(HttpStatusCode.Created);
+            var personnel = await created.Content.ReadFromJsonAsync<PersonnelDto>();
+
+            var changed = await client.PutAsJsonAsync($"/api/personnel/{personnel!.Id}",
+                new UpdatePersonnelRequestDto { Password = "y" });
+            changed.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+            var loginClient = _factory.CreateClient();
+            var token = await AuthHelper.GetTokenAsync(loginClient, request.Login!, "y");
+            token.Should().NotBeNull();
+
+            var emptyRequest = NewPerson("Operator");
+            emptyRequest.Password = "";
+            var emptyRejected = await client.PostAsJsonAsync("/api/personnel", emptyRequest);
+            emptyRejected.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+            var disabled = await client.PutAsJsonAsync("/api/settings/security",
+                new { allowWeakPasswords = false });
+            disabled.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var weakChangeRejected = await client.PutAsJsonAsync($"/api/personnel/{personnel.Id}",
+                new UpdatePersonnelRequestDto { Password = "z" });
+            weakChangeRejected.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        }
+        finally
+        {
+            await client.PutAsJsonAsync("/api/settings/security",
+                new { allowWeakPasswords = false });
+        }
+    }
+
+    [Fact]
     public async Task Manager_CannotCreateAdmin()
     {
         var client = await ManagerClientAsync();

@@ -733,6 +733,37 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.ToTable("ProductTypes", (string)null);
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.SecuritySettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("AllowWeakPasswords")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedById")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedById");
+
+                    b.ToTable("SecuritySettings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_SecuritySettings_Singleton", "\"Id\" = 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            AllowWeakPasswords = false
+                        });
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.Shift", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1676,6 +1707,14 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Material");
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.SecuritySettings", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftClosure", b =>
