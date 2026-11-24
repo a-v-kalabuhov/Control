@@ -22,5 +22,8 @@ export const materialsApi = {
   },
   suggestColors(search) {
     return apiClient.get('/materials/suggestions/colors', { params: { search } })
+  },
+  suggestArticle(type) {
+    return apiClient.get('/materials/article-suggestion', { params: { type } })
   }
 }

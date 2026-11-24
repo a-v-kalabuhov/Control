@@ -113,6 +113,23 @@ public class MaterialsController : ControllerBase
         return Ok(ToDto(m, await UsedMaterialIdsAsync(new[] { id })));
     }
 
+    /// <summary>Следующий свободный артикул по последнему добавленному материалу этого типа.</summary>
+    [HttpGet("article-suggestion")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<MaterialArticleSuggestionDto>> SuggestArticle(
+        [FromQuery] MaterialType type = MaterialType.Plastic)
+    {
+        if (!Enum.IsDefined(type))
+            return BadRequest("Неизвестный тип материала.");
+
+        var materials = await _context.Materials.Where(m => m.Type == type)
+            .Select(m => new { m.Article, m.CreatedAt, m.Id }).ToListAsync();
+        var latestArticle = materials.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+            .FirstOrDefault()?.Article;
+        var article = MaterialArticleSuggester.Suggest(latestArticle, materials.Select(m => m.Article));
+        return Ok(new MaterialArticleSuggestionDto { Article = article });
+    }
+
     [HttpPost]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<MaterialDto>> Create([FromBody] CreateMaterialRequestDto request)

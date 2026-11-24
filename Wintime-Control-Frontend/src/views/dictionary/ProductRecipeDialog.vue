@@ -52,9 +52,14 @@
     </el-table>
 
     <div class="mt-3 flex items-center justify-between">
-      <el-button size="small" class="recipe-add" :disabled="!canAddRow" @click="addRow">
-        Добавить ингредиент
-      </el-button>
+      <div class="flex gap-2">
+        <el-button size="small" class="recipe-add-plastic" :disabled="!canAddRow" @click="addRow('Plastic')">
+          Добавить пластик
+        </el-button>
+        <el-button size="small" class="recipe-add-colorant" :disabled="!canAddRow" @click="addRow('Colorant')">
+          Добавить краситель
+        </el-button>
+      </div>
       <span class="text-sm" :class="sumClass">{{ sumText }}</span>
     </div>
 
@@ -157,7 +162,7 @@ async function loadMaterials() {
 // Активные материалы + материал самой строки (архивный тоже — иначе селект покажет GUID).
 function materialOptions(row) {
   const taken = new Set(rows.value.filter(r => r !== row).map(r => r.materialId))
-  const options = materials.value.filter(m => !taken.has(m.id))
+  const options = materials.value.filter(m => m.type === row.materialType && !taken.has(m.id))
   if (row.materialId && !options.some(m => m.id === row.materialId)) {
     options.push({
       id: row.materialId,
@@ -190,9 +195,9 @@ function onMaterialChange(row) {
   row.materialIsActive = material.isActive
 }
 
-function addRow() {
+function addRow(materialType) {
   if (!canAddRow.value) return
-  rows.value.push({ materialId: null, materialType: null, percent: 10 })
+  rows.value.push({ materialId: null, materialType, percent: 10 })
 }
 
 let saveGeneration = 0

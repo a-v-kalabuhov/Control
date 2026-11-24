@@ -12,7 +12,8 @@ vi.mock('@/api/materials', () => ({
     update: vi.fn(() => Promise.resolve({})),
     remove: vi.fn(() => Promise.resolve({})),
     suggestManufacturers: vi.fn(() => Promise.resolve({ data: [] })),
-    suggestColors: vi.fn(() => Promise.resolve({ data: [] }))
+    suggestColors: vi.fn(() => Promise.resolve({ data: [] })),
+    suggestArticle: vi.fn(() => Promise.resolve({ data: { article: null } }))
   }
 }))
 
@@ -138,6 +139,17 @@ describe('MaterialDictionary (PZP-22)', () => {
     const w = mountView()
     await flushPromises()
     expect(w.findAll('.material-delete')).toHaveLength(1)
+  })
+
+  it('при создании пластика подставляет предложенный артикул', async () => {
+    materialsApi.suggestArticle.mockResolvedValue({ data: { article: 'PP-10' } })
+    const w = mountView('Plastic')
+    await flushPromises()
+
+    await w.vm.showCreateModal()
+
+    expect(materialsApi.suggestArticle).toHaveBeenCalledWith('Plastic')
+    expect(w.vm.form.article).toBe('PP-10')
   })
 
   it('артикул переводится в верхний регистр на лету', async () => {

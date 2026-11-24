@@ -48,12 +48,29 @@ describe('ProductRecipeDialog', () => {
     expect(document.body.textContent).toContain('Пластики: 100 %')
   })
 
-  it('«Добавить ингредиент» добавляет пустую строку', async () => {
+  it.each([
+    ['recipe-add-plastic', 'Plastic'],
+    ['recipe-add-colorant', 'Colorant']
+  ])('кнопка %s добавляет строку с типом %s', async (className, materialType) => {
     const wrapper = mountDialog([])
     await nextTick()
-    document.body.querySelector('.recipe-add').click()
+    const button = document.body.querySelector(`.${className}`)
+    expect(button).not.toBeNull()
+    button.click()
     await nextTick()
     expect(wrapper.vm.rows).toHaveLength(1)
+    expect(wrapper.vm.rows[0].materialType).toBe(materialType)
+  })
+
+  it.each([
+    ['Plastic', ['pp-1', 'pp-2']],
+    ['Colorant', ['cr-1']]
+  ])('строка типа %s предлагает только материалы этого типа', async (materialType, expected) => {
+    const wrapper = mountDialog([])
+    wrapper.vm.rows.push({ materialId: null, materialType, percent: 10 })
+    await wrapper.vm.loadMaterials()
+    await flushPromises()
+    expect(wrapper.vm.materialOptions(wrapper.vm.rows[0]).map(m => m.id)).toEqual(expected)
   })
 
   it('больше 8 строк добавить нельзя', () => {
@@ -69,7 +86,7 @@ describe('ProductRecipeDialog', () => {
     const options = wrapper.vm.materialOptions(wrapper.vm.rows[0]).map(m => m.id)
     expect(options).toContain('pp-1')   // свой материал остаётся
     expect(options).not.toContain('pp-2')
-    expect(options).toContain('cr-1')
+    expect(options).not.toContain('cr-1')
   })
 
   it('пустой рецепт не помечается предупреждением о сумме', () => {
@@ -160,7 +177,7 @@ describe('ProductRecipeDialog', () => {
   it('добавленная, но не выбранная строка не блокирует сохранение пустого рецепта', async () => {
     const wrapper = mountDialog([])
     await nextTick()
-    document.body.querySelector('.recipe-add').click()
+    document.body.querySelector('.recipe-add-plastic').click()
     await nextTick()
 
     expect(wrapper.vm.canSave).toBe(true)
