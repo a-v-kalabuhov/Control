@@ -118,13 +118,19 @@ public class MaterialsControllerTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task Create_SameArticleAsOtherType_IsAllowed()
+    public async Task Create_SameArticleAsOtherType_Returns409()
     {
         var client = await ManagerAsync();
         var article = Uniq("x");
         await CreateAsync(client, Plastic(article: article));
-        await CreateAsync(client, new CreateMaterialRequestDto
-            { Type = MaterialType.Colorant, Article = article, Name = Uniq("Краситель"), ColorName = "Чёрный" });
+
+        var resp = await client.PostAsJsonAsync("/api/materials", new CreateMaterialRequestDto
+        {
+            Type = MaterialType.Colorant, Article = article, Name = Uniq("Краситель"), ColorName = "Чёрный"
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("пластик");
     }
 
     [Fact]
@@ -273,14 +279,14 @@ public class MaterialsControllerTests : IClassFixture<IntegrationTestFactory>
         await CreateAsync(client, Plastic(article: "ARTICLE-SUGGEST-0099"));
         await CreateAsync(client, new CreateMaterialRequestDto
         {
-            Type = MaterialType.Colorant, Article = "ARTICLE-SUGGEST-9999",
+            Type = MaterialType.Colorant, Article = "ARTICLE-SUGGEST-0102",
             Name = Uniq("Краситель"), ColorName = "Чёрный"
         });
 
         var dto = await client.GetFromJsonAsync<MaterialArticleSuggestionDto>(
             "/api/materials/article-suggestion?type=Plastic", JsonOptions);
 
-        dto!.Article.Should().Be("ARTICLE-SUGGEST-0102");
+        dto!.Article.Should().Be("ARTICLE-SUGGEST-0103");
     }
 
     [Fact]

@@ -70,8 +70,8 @@ public sealed class NomenclatureImportService
         }
 
         var materials = await _context.Materials.ToListAsync(cancellationToken);
-        var nextArticleNumbers = NextImportArticleNumbers(materials);
-        Apply(rows, types, molds, materials, nextArticleNumbers, result);
+        var nextArticleNumber = NextImportArticleNumber(materials);
+        Apply(rows, types, molds, materials, ref nextArticleNumber, result);
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -214,7 +214,7 @@ public sealed class NomenclatureImportService
     }
 
     private void Apply(List<NomenclatureImportRow> rows, List<ProductType> types, List<Mold> molds,
-        List<Material> materials, Dictionary<MaterialType, long> nextArticleNumbers, NomenclatureImportResult result)
+        List<Material> materials, ref long nextArticleNumber, NomenclatureImportResult result)
     {
         var moldMaximums = rows.GroupBy(r => r.MoldFormId)
             .ToDictionary(g => g.Key, g => g.Max(r => r.Cavities)!.Value);
@@ -286,28 +286,30 @@ public sealed class NomenclatureImportService
             product.PlannedInjectionCycleSeconds = row.PlannedInjectionCycleSeconds;
             product.IsActive = true;
 
-            var recipe = row.Recipe.Select(i => new ImportRecipeRow(
-                ResolveMaterial(materials, nextArticleNumbers, i, result), i.Percent)).ToList();
+            var recipe = new List<ImportRecipeRow>();
+            foreach (var ingredient in row.Recipe)
+                recipe.Add(new ImportRecipeRow(
+                    ResolveMaterial(materials, ref nextArticleNumber, ingredient, result), ingredient.Percent));
             foreach (var item in recipe.Select(r => r.Material))
                 item.IsActive = true;
             ReplaceRecipe(product, recipe);
         }
     }
 
-    private static Dictionary<MaterialType, long> NextImportArticleNumbers(IEnumerable<Material> materials)
+    private static long NextImportArticleNumber(IEnumerable<Material> materials)
     {
-        var next = Enum.GetValues<MaterialType>().ToDictionary(type => type, _ => 1L);
+        var next = 1L;
         foreach (var material in materials)
         {
             if (material.Article.StartsWith("IMP-", StringComparison.OrdinalIgnoreCase)
                 && long.TryParse(material.Article.AsSpan(4), NumberStyles.None, CultureInfo.InvariantCulture,
                     out var number))
-                next[material.Type] = Math.Max(next[material.Type], number + 1);
+                next = Math.Max(next, number + 1);
         }
         return next;
     }
 
-    private Material ResolveMaterial(List<Material> materials, Dictionary<MaterialType, long> nextArticleNumbers,
+    private Material ResolveMaterial(List<Material> materials, ref long nextArticleNumber,
         NomenclatureRecipeIngredient ingredient, NomenclatureImportResult result)
     {
         var sameName = materials.Where(m => m.Type == ingredient.Type
@@ -317,11 +319,12 @@ public sealed class NomenclatureImportService
         if (material != null)
             return material;
 
-        var articleNumber = nextArticleNumbers[ingredient.Type]++;
+        var article = $"IMP-{nextArticleNumber++:D4}";
+
         material = new Material
         {
             Type = ingredient.Type,
-            Article = $"IMP-{articleNumber:D4}",
+            Article = article,
             Name = ingredient.Name,
             ColorName = ingredient.Type == MaterialType.Colorant ? ingredient.Name : null,
             IsActive = true
