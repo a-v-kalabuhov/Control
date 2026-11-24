@@ -122,7 +122,7 @@ public class ControlDbContext : IdentityDbContext<User>
             entity.Property(e => e.ColorName).HasMaxLength(MaterialRules.ColorNameMaxLength);
             entity.Property(e => e.ColorCode).HasMaxLength(MaterialRules.ColorCodeMaxLength);
             entity.Property(e => e.Comment).HasMaxLength(MaterialRules.CommentMaxLength);
-            entity.HasIndex(e => new { e.Type, e.Article }).IsUnique();
+            entity.HasIndex(e => e.Article).IsUnique();
             entity.HasIndex(e => new { e.Type, e.IsActive });
             entity.ToTable("Materials");
         });

@@ -96,6 +96,33 @@ describe('ProductTypeDictionary — рецепт (BL-36)', () => {
     expect(wrapper.find('[data-test="type-recipe-warning"]').exists()).toBe(false)
   })
 
+  it.each([
+    { case: 'активного изделия с активными материалами', productIsActive: true, materialIsActive: true, expected: false },
+    { case: 'архивного изделия', productIsActive: false, materialIsActive: true, expected: true },
+    { case: 'архивного материала в рецепте изделия', productIsActive: true, materialIsActive: false, expected: true }
+  ])('показывает метку архива у типа для $case', async ({ productIsActive, materialIsActive, expected }) => {
+    productTypesApi.getList.mockResolvedValueOnce({
+      data: [{
+        id: 'type-archive', article: 'ARCH', name: 'Тип с архивом', isActive: true,
+        products: [{
+          id: 'product-archive', article: '0', fullArticle: 'ARCH.0', name: 'Изделие',
+          isActive: productIsActive, isUsed: true,
+          recipe: [{
+            materialId: 'material-1', materialType: 'Plastic', materialArticle: 'PP-1',
+            materialName: 'Полипропилен', materialIsActive, percent: 100
+          }]
+        }]
+      }]
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const warning = wrapper.find('[data-test="type-archive-warning"]')
+    expect(warning.exists()).toBe(expected)
+    if (expected) expect(warning.text()).toBe('Архив')
+    expect(wrapper.find('[data-test="type-recipe-warning"]').exists()).toBe(false)
+  })
+
   it('пустой рецепт показан прочерком', async () => {
     const wrapper = mountView()
     await flushPromises()

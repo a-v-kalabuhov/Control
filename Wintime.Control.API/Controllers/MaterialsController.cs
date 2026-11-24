@@ -52,14 +52,15 @@ public class MaterialsController : ControllerBase
         return inProductRecipes.Concat(currentInTasks).Concat(originalInTasks).ToHashSet();
     }
 
-    // Уникальность внутри типа без учёта регистра (артикул уже в верхнем регистре).
+    // Артикул уникален среди всех материалов; производитель + наименование — внутри типа.
+    // Регистр не учитывается (артикул уже в верхнем регистре).
     private async Task<string?> UniquenessConflictAsync(MaterialType type, MaterialFields f, Guid? exceptId)
     {
         var label = MaterialRules.TypeLabel(type);
         var byArticle = await _context.Materials
-            .FirstOrDefaultAsync(m => m.Type == type && m.Article == f.Article && m.Id != exceptId);
+            .FirstOrDefaultAsync(m => m.Article == f.Article && m.Id != exceptId);
         if (byArticle != null)
-            return $"Артикул {f.Article} уже есть у материала «{byArticle.Name}» ({label}).";
+            return $"Артикул {f.Article} уже есть у материала «{byArticle.Name}» ({MaterialRules.TypeLabel(byArticle.Type)}).";
 
         var manufacturerKey = (f.Manufacturer ?? string.Empty).ToLowerInvariant();
         var nameKey = f.Name.ToLowerInvariant();
@@ -111,6 +112,24 @@ public class MaterialsController : ControllerBase
         if (m == null)
             return NotFound();
         return Ok(ToDto(m, await UsedMaterialIdsAsync(new[] { id })));
+    }
+
+    /// <summary>Следующий свободный артикул по последнему добавленному материалу этого типа.</summary>
+    [HttpGet("article-suggestion")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<MaterialArticleSuggestionDto>> SuggestArticle(
+        [FromQuery] MaterialType type = MaterialType.Plastic)
+    {
+        if (!Enum.IsDefined(type))
+            return BadRequest("Неизвестный тип материала.");
+
+        var materials = await _context.Materials
+            .Select(m => new { m.Article, m.Type, m.CreatedAt, m.Id }).ToListAsync();
+        var latestArticle = materials.Where(m => m.Type == type)
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+            .FirstOrDefault()?.Article;
+        var article = MaterialArticleSuggester.Suggest(latestArticle, materials.Select(m => m.Article));
+        return Ok(new MaterialArticleSuggestionDto { Article = article });
     }
 
     [HttpPost]

@@ -44,14 +44,13 @@
         <template #default="{ row }">
           <el-table :data="row.products" size="small" class="m-2">
             <el-table-column prop="fullArticle" label="Полный артикул" width="220" />
-            <el-table-column label="Наименование">
+            <el-table-column prop="name" label="Наименование" />
+            <el-table-column label="Есть образец" width="130" align="center">
               <template #default="{ row: p }">
-                <div class="flex items-center gap-1">
-                  <span>{{ p.name }}</span>
-                  <el-tooltip v-if="p.hasSample" content="Есть образец">
-                    <el-icon data-test="product-sample" class="text-emerald-600"><Box /></el-icon>
-                  </el-tooltip>
-                </div>
+                <el-tooltip v-if="p.hasSample" content="Есть образец">
+                  <el-icon data-test="product-sample" class="text-emerald-600"><Box /></el-icon>
+                </el-tooltip>
+                <span v-else data-test="product-no-sample">—</span>
               </template>
             </el-table-column>
             <el-table-column prop="partWeightGrams" label="Вес, г" width="100" align="right" />
@@ -93,6 +92,12 @@
               content="В рецепте одного или нескольких изделий сумма пластиков не равна 100 %"
             >
               <el-tag data-test="type-recipe-warning" type="danger" size="small">≠ 100 %</el-tag>
+            </el-tooltip>
+            <el-tooltip
+              v-if="hasRecipeArchiveWarning(row)"
+              content="В типе есть архивные изделия или архивные материалы в рецептах изделий"
+            >
+              <el-tag data-test="type-archive-warning" type="warning" size="small">Архив</el-tag>
             </el-tooltip>
           </div>
         </template>
@@ -309,6 +314,12 @@ function recipeSumOk(product) {
 
 function hasRecipeSumWarning(productType) {
   return (productType?.products ?? []).some(product => product.isActive && !recipeSumOk(product))
+}
+
+function hasRecipeArchiveWarning(productType) {
+  return (productType?.products ?? []).some(product =>
+    !product.isActive || (product.recipe ?? []).some(row => row.materialIsActive === false)
+  )
 }
 
 function recipeSumHint(productRecipe) {

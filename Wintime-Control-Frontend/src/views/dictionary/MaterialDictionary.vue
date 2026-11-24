@@ -191,10 +191,22 @@ function onColorSelect(c) {
   form.colorCode = c.code ?? ''
 }
 
-function showCreateModal() {
+async function showCreateModal() {
+  const materialType = props.materialType
   editing.value = null
   Object.assign(form, emptyForm())
   dialogVisible.value = true
+  if (materialType !== 'Plastic') return
+
+  try {
+    const { data } = await materialsApi.suggestArticle(materialType)
+    // Не перезаписываем ввод пользователя или открытую позже карточку редактирования.
+    if (dialogVisible.value && !editing.value && props.materialType === materialType && !form.article) {
+      form.article = data.article ?? ''
+    }
+  } catch {
+    // Автозаполнение — подсказка: при ошибке поле остаётся пустым для ручного ввода.
+  }
 }
 
 function editItem(row) {

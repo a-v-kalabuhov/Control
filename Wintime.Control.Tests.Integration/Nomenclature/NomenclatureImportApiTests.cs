@@ -63,7 +63,7 @@ public class NomenclatureImportApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task Import_assigns_next_four_digit_articles_independently_for_each_material_type()
+    public async Task Import_assigns_next_four_digit_articles_from_single_sequence()
     {
         var c = await ClientAsync();
         var data = UniqueData();
@@ -114,9 +114,9 @@ public class NomenclatureImportApiTests : IClassFixture<IntegrationTestFactory>
             var materials = await db.Products.Where(p => p.ProductType!.Article == data.Type)
                 .SelectMany(p => p.RecipeIngredients).Select(i => i.Material!).ToListAsync();
             materials.Where(m => m.Type == MaterialType.Plastic).Select(m => m.Article).Should().BeEquivalentTo(
-                ImportArticle(plasticSeed + 1), ImportArticle(plasticSeed + 2));
+                ImportArticle(colorantSeed + 1), ImportArticle(colorantSeed + 3));
             materials.Where(m => m.Type == MaterialType.Colorant).Select(m => m.Article).Should().BeEquivalentTo(
-                ImportArticle(colorantSeed + 1), ImportArticle(colorantSeed + 2));
+                ImportArticle(colorantSeed + 2), ImportArticle(colorantSeed + 4));
         }
 
         var repeated = await Upload(c, data.Type, data.Mold, row =>
@@ -133,9 +133,9 @@ public class NomenclatureImportApiTests : IClassFixture<IntegrationTestFactory>
         var nextMaterials = await verifyDb.Products.Where(p => p.FullArticle == data.Type + ".THREE")
             .SelectMany(p => p.RecipeIngredients).Select(i => i.Material!).ToListAsync();
         nextMaterials.Single(m => m.Type == MaterialType.Plastic).Article
-            .Should().Be(ImportArticle(plasticSeed + 3));
+            .Should().Be(ImportArticle(colorantSeed + 5));
         nextMaterials.Single(m => m.Type == MaterialType.Colorant).Article
-            .Should().Be(ImportArticle(colorantSeed + 3));
+            .Should().Be(ImportArticle(colorantSeed + 6));
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public class NomenclatureImportApiTests : IClassFixture<IntegrationTestFactory>
             seedDb.Materials.AddRange(
                 new Material
                 {
-                    Type = MaterialType.Plastic, Article = "IMP-9999", Name = "Пластик 9999 " + data.Mold
+                    Type = MaterialType.Plastic, Article = "IMP-9998", Name = "Пластик 9998 " + data.Mold
                 },
                 new Material
                 {
@@ -171,7 +171,7 @@ public class NomenclatureImportApiTests : IClassFixture<IntegrationTestFactory>
         var db = verify.ServiceProvider.GetRequiredService<ControlDbContext>();
         var articles = await db.Products.Where(p => p.FullArticle == data.Type + ".0")
             .SelectMany(p => p.RecipeIngredients).Select(i => i.Material!.Article).ToListAsync();
-        articles.Should().HaveCount(2).And.OnlyContain(article => article == "IMP-10000");
+        articles.Should().BeEquivalentTo("IMP-10000", "IMP-10001");
     }
 
     [Fact]

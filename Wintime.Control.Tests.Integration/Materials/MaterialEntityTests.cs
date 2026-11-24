@@ -46,14 +46,16 @@ public class MaterialEntityTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
-    public async Task SameArticle_DifferentType_IsAllowed()
+    public async Task SameArticle_DifferentType_ViolatesUniqueIndex()
     {
         using var scope = _factory.Services.CreateScope();
         var db = NewDb(scope);
         var article = Uniq("X");
         db.Materials.Add(new Material { Type = MaterialType.Plastic, Article = article, Name = Uniq("A") });
-        db.Materials.Add(new Material { Type = MaterialType.Colorant, Article = article, Name = Uniq("B"), ColorName = "Белый" });
         await db.SaveChangesAsync();
+
+        db.Materials.Add(new Material { Type = MaterialType.Colorant, Article = article, Name = Uniq("B"), ColorName = "Белый" });
+        await FluentActions.Awaiting(() => db.SaveChangesAsync()).Should().ThrowAsync<DbUpdateException>();
     }
 
     [Fact]

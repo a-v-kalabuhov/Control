@@ -686,4 +686,29 @@ describe('ProductTypeDictionary — образец и тарная единиц�
 
     expect(document.body.querySelectorAll('[data-test="product-sample"]')).toHaveLength(1)
   })
+
+  it('показывает признак образца отдельной колонкой в раскрытом списке изделий', async () => {
+    productTypesApi.getList.mockResolvedValue({
+      data: [{
+        ...typeA,
+        products: [
+          { ...typeA.products[0], hasSample: true },
+          { ...typeA.products[1], hasSample: false }
+        ]
+      }]
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const table = wrapper.findComponent({ name: 'ElTable' })
+    table.vm.toggleRowExpansion(wrapper.vm.sortedTypes[0], true)
+    await flushPromises()
+
+    const productsTable = wrapper.findAllComponents({ name: 'ElTable' })[1]
+    const labels = productsTable.findAllComponents({ name: 'ElTableColumn' })
+      .map(column => column.props('label'))
+    expect(labels).toContain('Есть образец')
+    expect(productsTable.findAll('[data-test="product-sample"]')).toHaveLength(1)
+    expect(productsTable.findAll('[data-test="product-no-sample"]')).toHaveLength(1)
+  })
 })

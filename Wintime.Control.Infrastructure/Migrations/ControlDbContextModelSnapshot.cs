@@ -446,7 +446,7 @@ namespace Wintime.Control.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Type", "Article")
+                    b.HasIndex("Article")
                         .IsUnique();
 
                     b.HasIndex("Type", "IsActive");
