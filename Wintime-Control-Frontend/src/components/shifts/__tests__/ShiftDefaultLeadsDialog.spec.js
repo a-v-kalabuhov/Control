@@ -136,6 +136,13 @@ describe('ShiftDefaultLeadsDialog', () => {
     expect(selects[1].props('placeholder')).toBe('Не задан')
   })
 
+  it('считает окончание ровно в полночь переходом на следующие сутки', async () => {
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    expect(wrapper.vm.isNightShift({ startMinutes: 480, durationMinutes: 960 })).toBe(true)
+  })
+
   it('не исключает одного кандидата из остальных строк', async () => {
     const wrapper = mountDialog()
     await flushPromises()

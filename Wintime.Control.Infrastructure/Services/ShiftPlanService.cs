@@ -215,6 +215,19 @@ public sealed class ShiftPlanService : IShiftPlanService
         var nearestCandidates = ShiftPlanCandidateBuilder.BuildNearestCandidates(
             savedItems, [], shifts, now, factoryToday, date, ct);
         var nearestByPosition = NearestByPosition(nearestCandidates, now);
+        var selectedItemId = day.Items.Single(i => i.Position == position).Id;
+        var persisted = await _context.ShiftPlanDays
+            .AsNoTracking()
+            .Where(d => d.ShiftDate == date)
+            .Select(d => new
+            {
+                d.Id,
+                SelectedItemId = d.Items.Where(i => i.Position == position)
+                    .Select(i => (Guid?)i.Id).SingleOrDefault()
+            })
+            .SingleOrDefaultAsync(ct);
+        if (persisted?.Id != day.Id || persisted.SelectedItemId != selectedItemId)
+            throw new ShiftConcurrencyException(ConcurrencyMessage);
         return ToDto(day, true, factoryToday, now, nearestByPosition, indicators, fallback);
     }
 

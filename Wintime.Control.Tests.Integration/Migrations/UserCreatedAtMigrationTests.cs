@@ -32,7 +32,9 @@ public class UserCreatedAtMigrationTests : IAsyncLifetime
         await migrator.MigrateAsync(previous);
         await ExecuteSqlAsync(UserInsertSql(FirstUserId) + UserInsertSql(SecondUserId));
 
+        var backfillStarted = await ScalarAsync<DateTime>("SELECT now()");
         await migrator.MigrateAsync(target);
+        var backfillFinished = await ScalarAsync<DateTime>("SELECT now()");
 
         var first = await ScalarAsync<DateTime>($"SELECT \"CreatedAt\" FROM \"Users\" WHERE \"Id\" = '{FirstUserId}'");
         var second = await ScalarAsync<DateTime>($"SELECT \"CreatedAt\" FROM \"Users\" WHERE \"Id\" = '{SecondUserId}'");
@@ -40,6 +42,7 @@ public class UserCreatedAtMigrationTests : IAsyncLifetime
         second.Kind.Should().Be(DateTimeKind.Utc);
         first.Should().NotBe(default);
         second.Should().Be(first, "backfill использует единое время миграции");
+        first.Should().BeOnOrAfter(backfillStarted).And.BeOnOrBefore(backfillFinished);
 
         (await ScalarAsync<string>(ColumnMetadataSql("data_type"))).Should().Be("timestamp with time zone");
         (await ScalarAsync<string>(ColumnMetadataSql("is_nullable"))).Should().Be("NO");
@@ -54,9 +57,13 @@ WHERE i.indrelid = '""Users""'::regclass
   AND i.indexrelid = '""{IndexName}""'::regclass"))
             .Should().Be("IsActive,Role,CreatedAt,Id");
 
+        var insertStarted = await ScalarAsync<DateTime>("SELECT now()");
         await ExecuteSqlAsync(UserInsertSql("created-at-user-after-up"));
-        (await ScalarAsync<DateTime>("SELECT \"CreatedAt\" FROM \"Users\" WHERE \"Id\" = 'created-at-user-after-up'"))
-            .Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+        var insertFinished = await ScalarAsync<DateTime>("SELECT now()");
+        var createdAfterUp = await ScalarAsync<DateTime>(
+            "SELECT \"CreatedAt\" FROM \"Users\" WHERE \"Id\" = 'created-at-user-after-up'");
+        createdAfterUp.Kind.Should().Be(DateTimeKind.Utc);
+        createdAfterUp.Should().BeOnOrAfter(insertStarted).And.BeOnOrBefore(insertFinished);
     }
 
     [Fact]

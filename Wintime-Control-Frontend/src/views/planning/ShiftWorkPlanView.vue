@@ -140,7 +140,9 @@
           <el-alert
             v-else-if="activeTab === 'closure' && !closureLoading"
             type="info"
-            title="Назначьте старшего смены, чтобы работать со сменным рапортом"
+            :title="closureItem && !closureItem.id && closureItem.shiftLeadId
+              ? 'Сначала сохраните смену через План смен'
+              : 'Назначьте старшего смены, чтобы работать со сменным рапортом'"
             :closable="false"
           />
         </div>

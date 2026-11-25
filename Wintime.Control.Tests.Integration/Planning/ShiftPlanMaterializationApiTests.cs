@@ -3,13 +3,16 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Wintime.Control.Core.DTOs.Shifts;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
+using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Infrastructure.Services;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -27,6 +30,40 @@ public class ShiftPlanMaterializationApiTests : IClassFixture<IntegrationTestFac
     public ShiftPlanMaterializationApiTests(IntegrationTestFactory factory) => _factory = factory;
 
     private sealed record TestUser(string Id, string Login, string Password, string FullName);
+
+    private sealed class MaterializationGate
+    {
+        public TaskCompletionSource<ShiftPlanDay> Committed { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingShiftPlanMaterializer : IShiftPlanMaterializer
+    {
+        private readonly IShiftPlanMaterializer _inner;
+        private readonly MaterializationGate _gate;
+
+        public BlockingShiftPlanMaterializer(
+            IShiftPlanMaterializer inner, MaterializationGate gate)
+        {
+            _inner = inner;
+            _gate = gate;
+        }
+
+        public async Task<ShiftPlanDay> MaterializeAsync(
+            DateOnly date, int position, CancellationToken ct)
+        {
+            var day = await _inner.MaterializeAsync(date, position, ct);
+            _gate.Committed.TrySetResult(day);
+            await _gate.Release.Task.WaitAsync(ct);
+            return day;
+        }
+
+        public Task<ShiftPlanDay> LoadTrackedDayForUpdateAsync(
+            DateOnly date, CancellationToken ct) =>
+            _inner.LoadTrackedDayForUpdateAsync(date, ct);
+    }
 
     private static DateOnly NewDate() =>
         DateOnly.FromDateTime(DateTime.UtcNow).AddDays(Interlocked.Increment(ref _dateOffset));
@@ -97,6 +134,11 @@ public class ShiftPlanMaterializationApiTests : IClassFixture<IntegrationTestFac
     private static JsonElement Item(JsonElement day, int position) =>
         day.GetProperty("items").EnumerateArray()
             .Should().ContainSingle(i => i.GetProperty("position").GetInt32() == position).Subject;
+
+    private static List<ShiftScheduleItemDto> OneShift() =>
+    [
+        new() { StartMinutes = 480, DurationMinutes = 480, TimeZoneId = "Europe/Moscow" }
+    ];
 
     private static List<ShiftScheduleItemDto> TwoShifts() =>
     [
@@ -384,7 +426,8 @@ public class ShiftPlanMaterializationApiTests : IClassFixture<IntegrationTestFac
                 TimeZoneId = "Europe/Moscow"
             }
         };
-        var today = DateOnly.FromDateTime(localNow);
+        var today = DateOnly.FromDateTime(localNow)
+            .AddDays(schedule[0].StartMinutes > localNow.Hour * 60 + localNow.Minute ? -1 : 0);
         await DeleteDayAsync(today);
         try
         {
@@ -402,6 +445,67 @@ public class ShiftPlanMaterializationApiTests : IClassFixture<IntegrationTestFac
         finally
         {
             await DeleteDayAsync(today);
+        }
+    }
+
+    [Fact]
+    public async Task Materialize_DefaultClearedAfterCommit_Returns409InsteadOfDeletedIds()
+    {
+        var defaultLead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = NewDate();
+        var admin = await AdminClientAsync();
+        var gate = new MaterializationGate();
+        await using var noFallback = await NoLeadFallbackScope.CreateAsync(_factory);
+        await SetDefaultAsync(1, defaultLead.Id);
+        try
+        {
+            await WithScheduleAsync(admin, OneShift(), async () =>
+            {
+                await using var raceFactory = _factory.WithWebHostBuilder(builder =>
+                    builder.ConfigureServices(services =>
+                    {
+                        services.AddScoped<IShiftPlanMaterializer>(sp =>
+                            new BlockingShiftPlanMaterializer(
+                                new ShiftPlanMaterializer(
+                                    sp.GetRequiredService<ControlDbContext>(),
+                                    sp.GetRequiredService<IShiftLeadFallbackProvider>()),
+                                gate));
+                    }));
+                using var client = raceFactory.CreateClient();
+                var token = await AuthHelper.GetTokenAsync(client, "admin", "Admin123!");
+                AuthHelper.SetBearerToken(client, token!);
+
+                var request = MaterializeAsync(client, date, 1);
+                try
+                {
+                    var committedDay = await gate.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    committedDay.Items.Should().NotBeEmpty();
+
+                    var clear = await admin.PutAsJsonAsync("/api/shifts/default-leads", new
+                    {
+                        items = new[] { new { position = 1, shiftLeadId = (string?)null } }
+                    });
+                    clear.StatusCode.Should().Be(HttpStatusCode.OK,
+                        await clear.Content.ReadAsStringAsync());
+                    using var scope = _factory.Services.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                    (await db.ShiftPlanDays.CountAsync(d => d.ShiftDate == date)).Should().Be(0);
+                }
+                finally
+                {
+                    gate.Release.TrySetResult();
+                }
+
+                var response = await request;
+                response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+                    "после удаления материализованного дня нельзя вернуть его прежние Id: " +
+                    await response.Content.ReadAsStringAsync());
+            });
+        }
+        finally
+        {
+            await DeleteDayAsync(date);
+            await SetDefaultAsync(1, null);
         }
     }
 

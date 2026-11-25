@@ -420,8 +420,13 @@ public class ShiftManagerFallbackTests : IClassFixture<IntegrationTestFactory>
     private static async Task<int> AdvisoryWaitersAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction)
     {
+        var classId = (uint)((ulong)ScheduleLockKey >> 32);
+        var objectId = unchecked((uint)ScheduleLockKey);
         await using var command = new NpgsqlCommand(
-            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted",
+            "SELECT count(*) FROM pg_locks " +
+            "WHERE locktype = 'advisory' AND NOT granted " +
+            $"AND classid = {classId} AND objid = {objectId} " +
+            "AND pid <> pg_backend_pid()",
             connection, transaction);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }

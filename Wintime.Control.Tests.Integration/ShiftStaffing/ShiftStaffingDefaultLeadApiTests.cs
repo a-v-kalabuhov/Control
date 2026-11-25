@@ -111,6 +111,135 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
         }
     }
 
+    [Theory]
+    [InlineData("Default", true)]
+    [InlineData("ExplicitOther", false)]
+    [InlineData("ManagerFallback", false)]
+    public async Task Nearest_AfterMidnight_ConsidersOnlyOwnCurrentOvernightShift(
+        string source, bool shouldSelect)
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var otherLead = await SeedUserAsync(UserRole.ShiftLead);
+        var isolationLead = await SeedUserAsync(UserRole.ShiftLead);
+        const int position = 1;
+        var previousDefault = await SetDefaultAsync(
+            position, source == "Default" ? lead.Id : null);
+        var isolatedItems = await IsolateSavedFallbackItemsAsync(position, isolationLead.Id);
+        var existingDayIds = await DayIdsAsync();
+        var admin = await AdminClientAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow)
+            .AddDays(Interlocked.Increment(ref _dateOffset));
+        var yesterday = today.AddDays(-1);
+        var controlledTime = new ControlledTime
+        {
+            UtcNow = today.ToDateTime(new TimeOnly(2, 0), DateTimeKind.Utc)
+        };
+        if (source == "ExplicitOther")
+        {
+            await SeedDayAtDateAsync(yesterday, Item(
+                position, otherLead.Id,
+                yesterday.ToDateTime(new TimeOnly(20, 0), DateTimeKind.Utc),
+                controlledTime.UtcNow.AddHours(6)));
+        }
+
+        try
+        {
+            await WithScheduleAsync(admin, OvernightShift(), async () =>
+            {
+                await using var controlledFactory = _factory.WithWebHostBuilder(builder =>
+                    builder.ConfigureServices(services =>
+                    {
+                        services.AddSingleton(controlledTime);
+                        services.AddScoped<IFactoryClock>(sp => new ControlledFactoryClock(
+                            sp.GetRequiredService<ControlDbContext>(), controlledTime));
+                    }));
+                using var client = await AuthenticateAsync(
+                    controlledFactory.CreateClient(), lead.Login, lead.Password);
+                var dayIdsBeforeRequest = await DayIdsAsync();
+
+                var response = await client.GetAsync("/api/shift-staffing/nearest");
+
+                var body = await RequiredJsonAsync(response);
+                if (shouldSelect)
+                {
+                    var item = body.GetProperty("item");
+                    item.GetProperty("state").GetString().Should().Be("Current");
+                    item.GetProperty("shiftDate").GetString().Should()
+                        .Be(yesterday.ToString("yyyy-MM-dd"));
+                    (await DayIdsAsync()).Should().HaveCount(dayIdsBeforeRequest.Count + 1);
+                }
+                else
+                {
+                    body.GetProperty("item").ValueKind.Should().Be(JsonValueKind.Null);
+                    (await DayIdsAsync()).Should().BeEquivalentTo(dayIdsBeforeRequest);
+                }
+            });
+        }
+        finally
+        {
+            await DeleteNewDaysAsync(existingDayIds);
+            await SetDefaultAsync(position, previousDefault);
+            await RestoreSavedFallbackItemsAsync(isolatedItems);
+        }
+    }
+
+    [Fact]
+    public async Task Nearest_DefaultOnExpandedFutureDay_MaterializesWithoutNullDay()
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var otherLead = await SeedUserAsync(UserRole.ShiftLead);
+        var isolationLead = await SeedUserAsync(UserRole.ShiftLead);
+        const int position = 1;
+        var previousDefault = await SetDefaultAsync(position, lead.Id);
+        var isolatedItems = await IsolateSavedFallbackItemsAsync(position, isolationLead.Id);
+        var existingDayIds = await DayIdsAsync();
+        var admin = await AdminClientAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow)
+            .AddDays(Interlocked.Increment(ref _dateOffset));
+        var controlledTime = new ControlledTime
+        {
+            UtcNow = today.ToDateTime(new TimeOnly(10, 0), DateTimeKind.Utc)
+        };
+        foreach (var date in new[] { today, today.AddDays(1) })
+        {
+            await SeedDayAtDateAsync(date, Item(
+                position, otherLead.Id,
+                date.ToDateTime(new TimeOnly(8, 0), DateTimeKind.Utc),
+                date.ToDateTime(new TimeOnly(9, 0), DateTimeKind.Utc)));
+        }
+
+        try
+        {
+            await WithScheduleAsync(admin, SingleFixedShift(), async () =>
+            {
+                await using var controlledFactory = _factory.WithWebHostBuilder(builder =>
+                    builder.ConfigureServices(services =>
+                    {
+                        services.AddSingleton(controlledTime);
+                        services.AddScoped<IFactoryClock>(sp => new ControlledFactoryClock(
+                            sp.GetRequiredService<ControlDbContext>(), controlledTime));
+                    }));
+                using var client = await AuthenticateAsync(
+                    controlledFactory.CreateClient(), lead.Login, lead.Password);
+
+                var body = await RequiredJsonAsync(
+                    await client.GetAsync("/api/shift-staffing/nearest"));
+
+                var item = body.GetProperty("item");
+                item.GetProperty("state").GetString().Should().Be("Future");
+                item.GetProperty("shiftDate").GetString().Should()
+                    .Be(today.AddDays(2).ToString("yyyy-MM-dd"));
+                item.GetProperty("itemId").GetGuid().Should().NotBeEmpty();
+            });
+        }
+        finally
+        {
+            await DeleteNewDaysAsync(existingDayIds);
+            await SetDefaultAsync(position, previousDefault);
+            await RestoreSavedFallbackItemsAsync(isolatedItems);
+        }
+    }
+
     [Fact]
     public async Task Nearest_DefaultChangedWhileWaitingForScheduleLock_Returns409()
     {
@@ -365,6 +494,26 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
         }
     }
 
+    private static List<ShiftScheduleItemDto> OvernightShift() =>
+    [
+        new ShiftScheduleItemDto
+        {
+            StartMinutes = 1200,
+            DurationMinutes = 720,
+            TimeZoneId = "UTC"
+        }
+    ];
+
+    private static List<ShiftScheduleItemDto> SingleFixedShift() =>
+    [
+        new ShiftScheduleItemDto
+        {
+            StartMinutes = 480,
+            DurationMinutes = 60,
+            TimeZoneId = "UTC"
+        }
+    ];
+
     private static List<ShiftScheduleItemDto> TwoFixedShifts() =>
     [
         new ShiftScheduleItemDto
@@ -534,18 +683,23 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
         TimeZoneId = "Europe/Moscow"
     };
 
-    private async Task<ShiftPlanDay> SeedDayAsync(params ShiftPlanItem[] items)
+    private async Task<ShiftPlanDay> SeedDayAtDateAsync(
+        DateOnly date, params ShiftPlanItem[] items)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-        var day = new ShiftPlanDay
-        {
-            ShiftDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(Interlocked.Increment(ref _dateOffset))
-        };
+        var day = new ShiftPlanDay { ShiftDate = date };
         foreach (var item in items) day.Items.Add(item);
         db.ShiftPlanDays.Add(day);
         await db.SaveChangesAsync();
         return day;
+    }
+
+    private async Task<ShiftPlanDay> SeedDayAsync(params ShiftPlanItem[] items)
+    {
+        return await SeedDayAtDateAsync(
+            DateOnly.FromDateTime(DateTime.UtcNow).AddDays(Interlocked.Increment(ref _dateOffset)),
+            items);
     }
 
     private async Task<ShiftImmOperatorAssignment> SeedAssignmentAsync(

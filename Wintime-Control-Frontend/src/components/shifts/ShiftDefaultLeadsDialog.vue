@@ -254,6 +254,6 @@ function formatDuration(minutes) {
 }
 
 function isNightShift(item) {
-  return item.startMinutes + item.durationMinutes > 1440
+  return item.startMinutes + item.durationMinutes >= 1440
 }
 </script>

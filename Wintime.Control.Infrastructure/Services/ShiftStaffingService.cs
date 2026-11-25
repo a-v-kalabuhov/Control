@@ -493,13 +493,10 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         var schedule = await _factoryClock.GetScheduleAsync(ct);
         var factoryToday = DateOnly.FromDateTime(schedule.ToLocal(now));
         var savedDates = savedItems.Select(i => i.Day.ShiftDate).ToHashSet();
-        var requestedVirtualDays = new[] { factoryToday, factoryToday.AddDays(1) }
+        var requestedVirtualDays = new[] { factoryToday.AddDays(-1), factoryToday, factoryToday.AddDays(1) }
             .Where(date => !savedDates.Contains(date))
             .Select(date => ShiftPlanCandidateBuilder.BuildVirtualDay(date, shifts))
             .ToList();
-        foreach (var day in requestedVirtualDays)
-        foreach (var item in day.Items)
-            item.Day = day;
         var candidates = ShiftPlanCandidateBuilder.BuildNearestCandidates(
             savedItems, requestedVirtualDays, shifts, now, factoryToday, factoryToday, ct);
         var fallback = await _fallbackProvider.GetAsync(ct);

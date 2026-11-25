@@ -47,6 +47,27 @@ describe('ShiftsDictionary default leads', () => {
     shiftPlansApi.getLeadCandidates.mockResolvedValue({ data: [] })
   })
 
+  it('помечает окончание ровно в полночь в просмотре и редакторе', async () => {
+    shiftsApi.getShifts.mockResolvedValue({ data: [{
+      number: 1,
+      startTime: '08:00',
+      endTime: '00:00',
+      startMinutes: 480,
+      durationMinutes: 960,
+      breakStartTime: '12:00',
+      breakEndTime: '12:00',
+      breakDurationMinutes: 0,
+      timeZoneId: 'Europe/Moscow'
+    }] })
+    const wrapper = mountDictionary('Manager')
+    await flushPromises()
+
+    expect(wrapper.vm.isNightShift(wrapper.vm.shifts[0])).toBe(true)
+    wrapper.vm.openEditDialog()
+    expect(wrapper.vm.isNightShiftEdit(wrapper.vm.editShifts[0])).toBe(true)
+    wrapper.unmount()
+  })
+
   it.each(['Manager', 'Admin'])('показывает %s отдельную настройку и загружает её только по кнопке', async role => {
     const wrapper = mountDictionary(role)
     await flushPromises()

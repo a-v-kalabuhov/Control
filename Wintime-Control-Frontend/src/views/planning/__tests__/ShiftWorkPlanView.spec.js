@@ -328,11 +328,27 @@ describe('ShiftWorkPlanView', () => {
     expect(tasksApi.getList).not.toHaveBeenCalled()
   })
 
-  it.each([
-    ['virtual Default item', planItem({ id: null, shiftLeadSource: 'Default' })],
-    ['без старшего', planItem({ shiftLeadId: null, shiftLeadName: null })]
-  ])('показывает объяснение для %s без вызова closure API', async (_name, item) => {
-    shiftPlansApi.getRange.mockResolvedValue({ data: [planDay(item)] })
+  it.each(['Default', 'ManagerFallback'])(
+    'для виртуальной %s позиции просит сначала сохранить смену без вызова closure API',
+    async source => {
+      shiftPlansApi.getRange.mockResolvedValue({
+        data: [planDay(planItem({ id: null, shiftLeadSource: source }))]
+      })
+      const wrapper = mountView()
+      await flushPromises()
+
+      await openClosureTab(wrapper)
+
+      expect(wrapper.text()).toContain('Сначала сохраните смену через План смен')
+      expect(wrapper.text()).not.toContain('Назначьте старшего смены')
+      expect(shiftClosuresApi.getByItem).not.toHaveBeenCalled()
+    }
+  )
+
+  it('без старшего показывает назначение без вызова closure API', async () => {
+    shiftPlansApi.getRange.mockResolvedValue({
+      data: [planDay(planItem({ shiftLeadId: null, shiftLeadName: null }))]
+    })
     const wrapper = mountView()
     await flushPromises()
 

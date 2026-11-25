@@ -221,7 +221,7 @@ function formatDuration(minutes) {
 }
 
 function isNightShift(row) {
-  return row.startMinutes + row.durationMinutes > 1440
+  return row.startMinutes + row.durationMinutes >= 1440
 }
 
 function minutesToTime(totalMinutes) {
@@ -249,7 +249,7 @@ function computedBreakEnd(shift) {
 
 function isNightShiftEdit(shift) {
   if (!shift.startTime) return false
-  return timeToMinutes(shift.startTime) + Math.round(shift.durationHours * 60) > 1440
+  return timeToMinutes(shift.startTime) + Math.round(shift.durationHours * 60) >= 1440
 }
 
 function openEditDialog() {

@@ -559,7 +559,8 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
                 TimeZoneId = "Europe/Moscow"
             }
         };
-        var today = DateOnly.FromDateTime(localNow);
+        var today = DateOnly.FromDateTime(localNow)
+            .AddDays(schedule[0].StartMinutes > localNow.Hour * 60 + localNow.Minute ? -1 : 0);
         await DeleteDayAsync(today);
 
         try

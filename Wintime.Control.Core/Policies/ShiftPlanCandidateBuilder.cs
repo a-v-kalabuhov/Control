@@ -14,7 +14,8 @@ public static class ShiftPlanCandidateBuilder
                 Position = window.Position,
                 StartAtUtc = window.StartAtUtc,
                 EndAtUtc = window.EndAtUtc,
-                TimeZoneId = window.TimeZoneId
+                TimeZoneId = window.TimeZoneId,
+                Day = day
             });
         }
         return day;
