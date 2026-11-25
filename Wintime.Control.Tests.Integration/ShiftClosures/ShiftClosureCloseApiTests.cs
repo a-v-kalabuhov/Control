@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +26,7 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static int _dateOffset = 9000;
     private static int _windowOffset;
+    private static int _positionOffset = 31000;
     private readonly IntegrationTestFactory _factory;
 
     public ShiftClosureCloseApiTests(IntegrationTestFactory factory) => _factory = factory;
@@ -39,6 +42,8 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         int DefectQuantity,
         decimal ActualMaterialWeightGrams,
         TaskStatus Status);
+
+    private sealed record LeadIdentity(string Id, string FullName, DateTime CreatedAt);
 
     [Fact]
     public async Task Close_CreatesCompleteSnapshotForAllCurrentRowsAndZeroSharesAndRepeatReturns409()
@@ -389,7 +394,8 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         var other = await SeedUserAsync(UserRole.ShiftLead);
         var future = (await SeedDayAsync(Item(lead.Id, now.AddHours(2), now.AddHours(4)))).Items.Single();
         var foreign = (await SeedDayAsync(Item(other.Id, now.AddHours(-2), now.AddHours(-1)))).Items.Single();
-        var withoutLead = (await SeedDayAsync(Item(null, now.AddHours(-3), now.AddHours(-2)))).Items.Single();
+        var withoutLead = (await SeedDayAsync(Item(null, now.AddHours(-3), now.AddHours(-2),
+            Interlocked.Increment(ref _positionOffset)))).Items.Single();
         var client = await ClientAsync(lead);
 
         var beforeStart = await CloseAsync(client, future.Id, confirmEarly: true);
@@ -397,9 +403,18 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         (await JsonAsync(beforeStart)).GetProperty("code").GetString().Should().Be("closeBeforeShiftStart");
         (await CloseAsync(client, foreign.Id)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await CloseAsync(client, Guid.NewGuid())).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        var missingLead = await CloseAsync(await ManagerClientAsync(), withoutLead.Id);
-        missingLead.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await JsonAsync(missingLead)).GetProperty("message").GetString().Should().Be("shiftLeadRequired");
+        var managerClient = await ManagerClientAsync();
+        var deactivatedManagers = await DeactivateActiveManagersAsync();
+        try
+        {
+            var missingLead = await CloseAsync(managerClient, withoutLead.Id);
+            missingLead.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (await JsonAsync(missingLead)).GetProperty("message").GetString().Should().Be("shiftLeadRequired");
+        }
+        finally
+        {
+            await RestoreManagersAsync(deactivatedManagers);
+        }
     }
 
     [Fact]
@@ -563,6 +578,154 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
             "только отображаемая идентичность литейщика timeline читается из текущего User");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Close_FallbackFlowFreezesEffectiveLeadForClosedReadPdfAndHistory(bool useDefault)
+    {
+        var position = Interlocked.Increment(ref _positionOffset);
+        var defaultLead = await SeedUserAsync(UserRole.ShiftLead);
+        var replacementLead = await SeedUserAsync(UserRole.ShiftLead);
+        var previousDefault = await SetDefaultAsync(position, useDefault ? defaultLead.Id : null);
+        TestUser? laterManager = null;
+        try
+        {
+            var fallbackManager = useDefault ? null : await FirstActiveManagerAsync();
+            var expectedLead = useDefault
+                ? new LeadIdentity(defaultLead.Id, defaultLead.FullName, DateTime.MinValue)
+                : fallbackManager!;
+            var now = PastAnchor();
+            var start = Utc(now.AddHours(-4));
+            var end = Utc(now.AddHours(-2));
+            var item = (await SeedDayAsync(Item(null, start, end, position))).Items.Single();
+            var client = useDefault ? await ClientAsync(defaultLead) : await ManagerClientAsync();
+
+            var draft = await RequiredJsonAsync(await PutDraftAsync(client, item.Id));
+            draft.GetProperty("shiftLeadId").GetString().Should().Be(expectedLead.Id);
+            draft.GetProperty("shiftLeadName").GetString().Should().Be(expectedLead.FullName);
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                (await db.ShiftPlanItems.AsNoTracking().SingleAsync(i => i.Id == item.Id))
+                    .ShiftLeadId.Should().BeNull("draft не фиксирует fallback");
+            }
+
+            var pending = await RequiredJsonAsync(await client.GetAsync("/api/shift-closures/pending"));
+            var pendingItem = pending.EnumerateArray().Should().ContainSingle(
+                i => i.GetProperty("shiftPlanItemId").GetGuid() == item.Id).Subject;
+            pendingItem.GetProperty("shiftLeadId").GetString().Should().Be(expectedLead.Id);
+            pendingItem.GetProperty("shiftLeadName").GetString().Should().Be(expectedLead.FullName);
+
+            var closeResponse = await CloseAsync(client, item.Id);
+            closeResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+                await closeResponse.Content.ReadAsStringAsync());
+            var originalClosed = await closeResponse.Content.ReadAsStringAsync();
+            using var closedDocument = JsonDocument.Parse(originalClosed);
+            var closed = closedDocument.RootElement;
+            closed.GetProperty("shiftLeadId").GetString().Should().Be(expectedLead.Id);
+            closed.GetProperty("shiftLeadName").GetString().Should().Be(expectedLead.FullName);
+            var closureId = closed.GetProperty("id").GetGuid();
+            var originalPdf = PdfContent(await PdfBytesAsync(await client.GetAsync(
+                $"/api/shift-closures/{closureId}/pdf")));
+
+            if (useDefault)
+            {
+                await SetDefaultAsync(position, replacementLead.Id);
+            }
+            else
+            {
+                laterManager = await SeedUserAsync(UserRole.Manager);
+                using var scope = _factory.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                var user = await db.Users.SingleAsync(u => u.Id == laterManager.Id);
+                user.CreatedAt = Utc(fallbackManager!.CreatedAt.AddTicks(-1));
+                await db.SaveChangesAsync();
+            }
+
+            var reread = await RequiredJsonAsync(await client.GetAsync(
+                $"/api/shift-closures/items/{item.Id}"));
+            reread.GetProperty("shiftLeadId").GetString().Should().Be(expectedLead.Id);
+            reread.GetProperty("shiftLeadName").GetString().Should().Be(expectedLead.FullName);
+            reread.GetRawText().Should().Be(closed.GetRawText(),
+                "поздняя смена default/Manager не меняет Closed DTO");
+            PdfContent(await PdfBytesAsync(await client.GetAsync(
+                $"/api/shift-closures/{closureId}/pdf"))).Should().Be(originalPdf);
+            var pendingAfterClose = await RequiredJsonAsync(await client.GetAsync(
+                "/api/shift-closures/pending"));
+            pendingAfterClose.EnumerateArray().Should().NotContain(
+                i => i.GetProperty("shiftPlanItemId").GetGuid() == item.Id);
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                (await db.ShiftPlanItems.AsNoTracking().SingleAsync(i => i.Id == item.Id))
+                    .ShiftLeadId.Should().Be(expectedLead.Id);
+            }
+
+            if (useDefault)
+            {
+                var originalHistory = await RequiredJsonAsync(await client.GetAsync(
+                    "/api/shift-staffing/history"));
+                originalHistory.EnumerateArray().Should().Contain(
+                    i => i.GetProperty("itemId").GetGuid() == item.Id);
+                var replacementClient = await ClientAsync(replacementLead);
+                var replacementHistory = await RequiredJsonAsync(await replacementClient.GetAsync(
+                    "/api/shift-staffing/history"));
+                replacementHistory.EnumerateArray().Should().NotContain(
+                    i => i.GetProperty("itemId").GetGuid() == item.Id);
+            }
+        }
+        finally
+        {
+            await SetDefaultAsync(position, previousDefault);
+            if (laterManager != null)
+                await SetUserActiveAsync(laterManager.Id, false);
+        }
+    }
+
+    [Fact]
+    public async Task Close_ValidationFailureDoesNotFreezeDefaultLeadOrChangeDraft()
+    {
+        var position = Interlocked.Increment(ref _positionOffset);
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var previousDefault = await SetDefaultAsync(position, lead.Id);
+        try
+        {
+            var now = PastAnchor();
+            var start = Utc(now.AddHours(-4));
+            var end = Utc(now.AddHours(-2));
+            var operatorUser = await SeedUserAsync(UserRole.Operator);
+            var immId = await SeedImmAsync();
+            var item = (await SeedDayAsync(Item(null, start, end, position))).Items.Single();
+            var task = await SeedTaskAsync(immId, start, end, packagingUnit: null);
+            await SeedAssignmentAsync(item.Id, immId, operatorUser.Id, 1, start, null);
+            await SeedCycleAsync(task, start.AddMinutes(30), cavities: 2, durationSeconds: 60);
+            var client = await ClientAsync(lead);
+            await RequiredJsonAsync(await PutDraftAsync(client, item.Id, Manual(task.Id)));
+
+            var response = await CloseAsync(client, item.Id);
+
+            var errors = await FieldErrorsAsync(response);
+            errors.Should().Contain(new FieldError(task.Id, "actualPartWeightGrams", "required"));
+            errors.Should().Contain(new FieldError(task.Id, "actualPackagingUnit", "required"));
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            (await db.ShiftPlanItems.AsNoTracking().SingleAsync(i => i.Id == item.Id))
+                .ShiftLeadId.Should().BeNull();
+            var closure = await db.ShiftClosures.AsNoTracking().Include(c => c.Entries)
+                .SingleAsync(c => c.ShiftPlanItemId == item.Id);
+            closure.State.Should().Be(ShiftClosureState.Draft);
+            closure.ClosedAt.Should().BeNull();
+            var entry = closure.Entries.Single();
+            entry.AutomaticOutputQuantity.Should().Be(0);
+            entry.ActualPartWeightGrams.Should().BeNull();
+            entry.ActualPackagingUnit.Should().BeNull();
+        }
+        finally
+        {
+            await SetDefaultAsync(position, previousDefault);
+        }
+    }
+
     private static object Manual(
         Guid taskId,
         decimal? actualPartWeightGrams = null,
@@ -651,9 +814,10 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         return imm.Id;
     }
 
-    private static ShiftPlanItem Item(string? leadId, DateTime start, DateTime end) => new()
+    private static ShiftPlanItem Item(
+        string? leadId, DateTime start, DateTime end, int position = 1) => new()
     {
-        Position = 1,
+        Position = position,
         ShiftLeadId = leadId,
         StartAtUtc = Utc(start),
         EndAtUtc = Utc(end),
@@ -916,6 +1080,70 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         retro.TaskId = current.Id;
         await db.SaveChangesAsync();
     }
+
+    private async Task<string?> SetDefaultAsync(int position, string? leadId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var existing = await db.ShiftDefaultLeads.SingleOrDefaultAsync(d => d.Position == position);
+        var previous = existing?.ShiftLeadId;
+        if (existing != null) db.ShiftDefaultLeads.Remove(existing);
+        if (leadId != null)
+            db.ShiftDefaultLeads.Add(new ShiftDefaultLead { Position = position, ShiftLeadId = leadId });
+        await db.SaveChangesAsync();
+        return previous;
+    }
+
+    private async Task<LeadIdentity> FirstActiveManagerAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var manager = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Role == UserRole.Manager)
+            .OrderBy(u => u.CreatedAt).ThenBy(u => u.Id)
+            .FirstAsync();
+        return new LeadIdentity(manager.Id, manager.FullName, manager.CreatedAt);
+    }
+
+    private async Task<List<string>> DeactivateActiveManagersAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var ids = await db.Users.Where(u => u.IsActive && u.Role == UserRole.Manager)
+            .Select(u => u.Id).ToListAsync();
+        await db.Users.Where(u => ids.Contains(u.Id))
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.IsActive, false));
+        return ids;
+    }
+
+    private async Task RestoreManagersAsync(IReadOnlyCollection<string> ids)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        await db.Users.Where(u => ids.Contains(u.Id))
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.IsActive, true));
+    }
+
+    private async Task SetUserActiveAsync(string userId, bool isActive)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var user = await db.Users.SingleAsync(u => u.Id == userId);
+        user.IsActive = isActive;
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<byte[]> PdfBytesAsync(HttpResponseMessage response)
+    {
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/pdf");
+        return await response.Content.ReadAsByteArrayAsync();
+    }
+
+    private static string PdfContent(byte[] bytes) => Regex.Replace(
+        Encoding.Latin1.GetString(bytes),
+        @"/(CreationDate|ModDate) \(D:[^)]*\)",
+        "/$1 (D:volatile)");
 
     private async Task<string> ConnectionStringAsync()
     {

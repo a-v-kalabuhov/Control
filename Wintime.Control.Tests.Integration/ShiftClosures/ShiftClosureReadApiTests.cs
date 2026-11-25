@@ -21,12 +21,15 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static int _dateOffset = 5000;
+    private static int _positionOffset = 32000;
     private readonly IntegrationTestFactory _factory;
 
     public ShiftClosureReadApiTests(IntegrationTestFactory factory) => _factory = factory;
 
     private sealed record TestUser(
         string Id, string Login, string Password, string FullName, string? EmployeeId);
+
+    private sealed record LeadIdentity(string Id, string FullName);
 
     [Fact]
     public async Task Draft_ComputesPlannedIssuedCompletedClosedAndEarlyWindowWithoutPersistedClosure()
@@ -309,6 +312,54 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Pending_UsesEffectiveDefaultAndManagerFallbackForMaterializedEndedNonclosed()
+    {
+        var defaultPosition = Interlocked.Increment(ref _positionOffset);
+        var fallbackPosition = Interlocked.Increment(ref _positionOffset);
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var previousDefault = await SetDefaultAsync(defaultPosition, lead.Id);
+        try
+        {
+            var now = DateTime.UtcNow;
+            var defaultItem = (await SeedDayAsync(Item(defaultPosition, null,
+                now.AddHours(-8), now.AddHours(-7)))).Items.Single();
+            var fallbackItem = (await SeedDayAsync(Item(fallbackPosition, null,
+                now.AddHours(-6), now.AddHours(-5)))).Items.Single();
+            var future = (await SeedDayAsync(Item(fallbackPosition, null,
+                now.AddHours(1), now.AddHours(2)))).Items.Single();
+            var closed = (await SeedDayAsync(Item(fallbackPosition, null,
+                now.AddHours(-4), now.AddHours(-3)))).Items.Single();
+            var fallbackManager = await FirstActiveManagerAsync();
+            await SeedEmptyClosureAsync(closed, fallbackManager.Id, ShiftClosureState.Closed);
+            var leadClient = await ClientAsync(lead);
+
+            var leadBody = await RequiredJsonAsync(await leadClient.GetAsync(
+                "/api/shift-closures/pending"));
+            leadBody.EnumerateArray().Should().ContainSingle(
+                i => i.GetProperty("shiftPlanItemId").GetGuid() == defaultItem.Id);
+            leadBody.EnumerateArray().Should().NotContain(
+                i => i.GetProperty("shiftPlanItemId").GetGuid() == fallbackItem.Id);
+
+            var managerBody = await RequiredJsonAsync(await (await ManagerClientAsync()).GetAsync(
+                "/api/shift-closures/pending"));
+            var defaultDto = managerBody.EnumerateArray().Should().ContainSingle(
+                i => i.GetProperty("shiftPlanItemId").GetGuid() == defaultItem.Id).Subject;
+            defaultDto.GetProperty("shiftLeadId").GetString().Should().Be(lead.Id);
+            defaultDto.GetProperty("shiftLeadName").GetString().Should().Be(lead.FullName);
+            var fallbackDto = managerBody.EnumerateArray().Should().ContainSingle(
+                i => i.GetProperty("shiftPlanItemId").GetGuid() == fallbackItem.Id).Subject;
+            fallbackDto.GetProperty("shiftLeadId").GetString().Should().Be(fallbackManager.Id);
+            fallbackDto.GetProperty("shiftLeadName").GetString().Should().Be(fallbackManager.FullName);
+            managerBody.EnumerateArray().Select(i => i.GetProperty("shiftPlanItemId").GetGuid())
+                .Should().NotContain(new[] { future.Id, closed.Id });
+        }
+        finally
+        {
+            await SetDefaultAsync(defaultPosition, previousDefault);
+        }
+    }
+
+    [Fact]
     public async Task Read_EnforcesOwnershipRolesMissingItemAndRequiredShiftLead()
     {
         var now = DateTime.UtcNow;
@@ -316,7 +367,8 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
         var other = await SeedUserAsync(UserRole.ShiftLead);
         var own = (await SeedDayAsync(Item(1, lead.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
         var foreign = (await SeedDayAsync(Item(1, other.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
-        var withoutLead = (await SeedDayAsync(Item(1, null, now.AddHours(-1), now.AddHours(1)))).Items.Single();
+        var withoutLead = (await SeedDayAsync(Item(Interlocked.Increment(ref _positionOffset), null,
+            now.AddHours(-1), now.AddHours(1)))).Items.Single();
         var leadClient = await ClientAsync(lead);
         (await leadClient.GetAsync($"/api/shift-closures/items/{own.Id}")).StatusCode.Should().Be(HttpStatusCode.OK);
         (await leadClient.GetAsync($"/api/shift-closures/items/{foreign.Id}")).StatusCode.Should()
@@ -334,10 +386,20 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
                 .Be(HttpStatusCode.Forbidden, role.ToString());
         }
 
-        var response = await (await ManagerClientAsync()).GetAsync($"/api/shift-closures/items/{withoutLead.Id}");
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        var error = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-        error.GetProperty("message").GetString().Should().Be("shiftLeadRequired");
+        var managerClient = await ManagerClientAsync();
+        var deactivatedManagers = await DeactivateActiveManagersAsync();
+        try
+        {
+            var response = await managerClient.GetAsync(
+                $"/api/shift-closures/items/{withoutLead.Id}");
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            var error = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+            error.GetProperty("message").GetString().Should().Be("shiftLeadRequired");
+        }
+        finally
+        {
+            await RestoreManagersAsync(deactivatedManagers);
+        }
     }
 
     [Fact]
@@ -890,6 +952,49 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
             ClosedAt = state == ShiftClosureState.Closed ? Utc(item.EndAtUtc) : null
         });
         await db.SaveChangesAsync();
+    }
+
+    private async Task<List<string>> DeactivateActiveManagersAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var ids = await db.Users.Where(u => u.IsActive && u.Role == UserRole.Manager)
+            .Select(u => u.Id).ToListAsync();
+        await db.Users.Where(u => ids.Contains(u.Id))
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.IsActive, false));
+        return ids;
+    }
+
+    private async Task RestoreManagersAsync(IReadOnlyCollection<string> ids)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        await db.Users.Where(u => ids.Contains(u.Id))
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.IsActive, true));
+    }
+
+    private async Task<string?> SetDefaultAsync(int position, string? leadId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var existing = await db.ShiftDefaultLeads.SingleOrDefaultAsync(d => d.Position == position);
+        var previous = existing?.ShiftLeadId;
+        if (existing != null) db.ShiftDefaultLeads.Remove(existing);
+        if (leadId != null)
+            db.ShiftDefaultLeads.Add(new ShiftDefaultLead { Position = position, ShiftLeadId = leadId });
+        await db.SaveChangesAsync();
+        return previous;
+    }
+
+    private async Task<LeadIdentity> FirstActiveManagerAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var manager = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Role == UserRole.Manager)
+            .OrderBy(u => u.CreatedAt).ThenBy(u => u.Id)
+            .FirstAsync();
+        return new LeadIdentity(manager.Id, manager.FullName);
     }
 
     private static async Task<JsonElement> RequiredJsonAsync(HttpResponseMessage response)
