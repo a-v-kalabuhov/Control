@@ -6,10 +6,15 @@
         <h2 class="text-2xl font-bold text-gray-800">Расписание смен</h2>
         <p class="text-gray-600 mt-1">Шаблон рабочих смен цеха, повторяется ежедневно</p>
       </div>
-      <el-button v-if="canEdit" type="primary" @click="openEditDialog">
-        <el-icon class="mr-1"><Edit /></el-icon>
-        Редактировать
-      </el-button>
+      <div v-if="canEdit" class="flex gap-2">
+        <el-button data-test="open-default-leads" @click="defaultLeadsDialogVisible = true">
+          Настройка
+        </el-button>
+        <el-button type="primary" @click="openEditDialog">
+          <el-icon class="mr-1"><Edit /></el-icon>
+          Редактировать
+        </el-button>
+      </div>
     </div>
 
     <!-- Часовой пояс (режим просмотра) -->
@@ -152,6 +157,8 @@
         <el-button type="primary" @click="saveShifts" :loading="saving">Сохранить</el-button>
       </template>
     </el-dialog>
+
+    <ShiftDefaultLeadsDialog v-if="canEdit" v-model="defaultLeadsDialogVisible" />
   </div>
 </template>
 
@@ -160,6 +167,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { shiftsApi } from '@/api/shifts'
 import { usePermissions } from '@/composables/usePermissions'
+import ShiftDefaultLeadsDialog from '@/components/shifts/ShiftDefaultLeadsDialog.vue'
 
 const { canAccess } = usePermissions()
 const canEdit = computed(() => canAccess(['Admin', 'Manager']))
@@ -186,6 +194,7 @@ function timeZoneLabel(tzId) {
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
+const defaultLeadsDialogVisible = ref(false)
 const shifts = ref([])
 const editShifts = ref([])
 const editTimeZoneId = ref('Europe/Moscow')
