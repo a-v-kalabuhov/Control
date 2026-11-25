@@ -175,6 +175,7 @@ else
 // Сервисы
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IRefreshTokenStore, MemoryRefreshTokenStore>();
+builder.Services.AddScoped<IPersonnelService, PersonnelService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<IShiftDefaultLeadService, ShiftDefaultLeadService>();
 builder.Services.AddScoped<IShiftLeadFallbackProvider, ShiftLeadFallbackProvider>();
