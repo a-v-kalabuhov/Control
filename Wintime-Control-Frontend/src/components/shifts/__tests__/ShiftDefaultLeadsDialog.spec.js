@@ -83,6 +83,16 @@ function mountDialog(modelValue = true) {
   })
 }
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 describe('ShiftDefaultLeadsDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -254,5 +264,149 @@ describe('ShiftDefaultLeadsDialog', () => {
 
     expect(shiftsApi.getDefaultLeads).toHaveBeenCalledTimes(2)
     expect(wrapper.vm.items[0].selectedShiftLeadId).toBe('lead-1')
+  })
+
+  it('игнорирует поздний успешный save после закрытия и повторного открытия', async () => {
+    const pendingSave = deferred()
+    shiftsApi.saveDefaultLeads.mockReturnValue(pendingSave.promise)
+    const wrapper = mountDialog()
+    await flushPromises()
+    wrapper.vm.items[0].selectedShiftLeadId = null
+    const oldSave = wrapper.vm.save()
+
+    const reopenedSettings = settings({
+      items: defaultItems().map(item => item.position === 1
+        ? {
+            ...item,
+            defaultShiftLeadId: 'manager-1',
+            defaultShiftLeadName: 'Петров Пётр',
+            defaultShiftLeadEmployeeId: '002'
+          }
+        : item),
+      fallbackManager: null
+    })
+    shiftsApi.getDefaultLeads.mockResolvedValueOnce({ data: reopenedSettings })
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    wrapper.vm.items[1].selectedShiftLeadId = 'lead-1'
+
+    pendingSave.resolve({ data: settings() })
+    await oldSave
+    await flushPromises()
+
+    expect(wrapper.vm.items[0].selectedShiftLeadId).toBe('manager-1')
+    expect(wrapper.vm.items[1].selectedShiftLeadId).toBe('lead-1')
+    expect(wrapper.vm.fallbackManager).toBeNull()
+    expect(wrapper.emitted('saved')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('игнорирует позднюю ошибку и finally старого save в новом контексте', async () => {
+    const oldRequest = deferred()
+    const currentRequest = deferred()
+    shiftsApi.saveDefaultLeads
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockReturnValueOnce(currentRequest.promise)
+    const wrapper = mountDialog()
+    await flushPromises()
+    const oldSave = wrapper.vm.save()
+
+    const reopenedSettings = settings({
+      items: defaultItems().map(item => item.position === 1
+        ? {
+            ...item,
+            defaultShiftLeadId: 'manager-1',
+            defaultShiftLeadName: 'Петров Пётр',
+            defaultShiftLeadEmployeeId: '002'
+          }
+        : item)
+    })
+    shiftsApi.getDefaultLeads.mockResolvedValueOnce({ data: reopenedSettings })
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    const currentSave = wrapper.vm.save()
+    expect(wrapper.vm.saving).toBe(true)
+
+    oldRequest.reject({ response: { status: 409, data: { message: 'Старый конфликт' } } })
+    await oldSave
+    await flushPromises()
+
+    expect(wrapper.vm.saving).toBe(true)
+    expect(wrapper.vm.errorMessage).toBe('')
+    expect(wrapper.vm.scheduleConflict).toBe(false)
+    expect(wrapper.vm.items[0].selectedShiftLeadId).toBe('manager-1')
+    expect(wrapper.emitted('saved')).toBeUndefined()
+
+    currentRequest.resolve({ data: reopenedSettings })
+    await currentSave
+    await flushPromises()
+
+    expect(wrapper.emitted('saved')).toHaveLength(1)
+    expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([false])
+  })
+
+  it('не применяет завершившийся save после unmount', async () => {
+    const pendingSave = deferred()
+    shiftsApi.saveDefaultLeads.mockReturnValue(pendingSave.promise)
+    const wrapper = mountDialog()
+    await flushPromises()
+    const oldSave = wrapper.vm.save()
+
+    wrapper.unmount()
+    pendingSave.resolve({ data: settings() })
+    await oldSave
+    await flushPromises()
+
+    expect(wrapper.emitted('saved')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('при initial load failure блокирует save и не показывает ложный fallback', async () => {
+    const pendingLoad = deferred()
+    shiftsApi.getDefaultLeads.mockReturnValueOnce(pendingLoad.promise)
+    const wrapper = mountDialog()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-test="save-default-leads"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).not.toContain('Нет активных менеджеров')
+
+    pendingLoad.reject({ response: { status: 500, data: { message: 'Ошибка загрузки' } } })
+    await flushPromises()
+
+    expect(wrapper.vm.loaded).toBe(false)
+    expect(wrapper.vm.items).toEqual([])
+    expect(wrapper.find('[data-test="save-default-leads"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="default-leads-error"]').text()).toContain('Ошибка загрузки')
+    expect(wrapper.text()).not.toContain('Нет активных менеджеров')
+
+    await wrapper.vm.save()
+    expect(shiftsApi.saveDefaultLeads).not.toHaveBeenCalled()
+  })
+
+  it('при reload failure очищает stale значения и блокирует select и save', async () => {
+    const wrapper = mountDialog()
+    await flushPromises()
+    expect(wrapper.vm.items).toHaveLength(3)
+
+    shiftsApi.getDefaultLeads.mockRejectedValueOnce({
+      response: { status: 500, data: { message: 'Не удалось перезагрузить' } }
+    })
+    await wrapper.vm.load()
+    await flushPromises()
+
+    expect(wrapper.vm.loaded).toBe(false)
+    expect(wrapper.vm.items).toEqual([])
+    expect(wrapper.vm.candidates).toEqual([])
+    expect(wrapper.findAllComponents({ name: 'ElSelect' })).toHaveLength(0)
+    expect(wrapper.find('[data-test="save-default-leads"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).not.toContain('первый активный менеджер:')
+    expect(wrapper.text()).not.toContain('Нет активных менеджеров')
+
+    await wrapper.vm.save()
+    expect(shiftsApi.saveDefaultLeads).not.toHaveBeenCalled()
   })
 })

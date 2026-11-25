@@ -58,7 +58,7 @@
             filterable
             placeholder="Не задан"
             class="w-full"
-            :disabled="loading || saving"
+            :disabled="!loaded || loading || saving"
           >
             <el-option
               v-for="candidate in optionsFor(row)"
@@ -71,12 +71,12 @@
       </el-table-column>
     </el-table>
 
-    <p v-if="fallbackManager" class="mt-4 text-sm text-gray-600">
+    <p v-if="loaded && fallbackManager" class="mt-4 text-sm text-gray-600">
       Если старший не задан, используется первый активный менеджер:
       <span class="font-medium text-gray-800">{{ fallbackManager.fullName }}</span>
     </p>
     <el-alert
-      v-else
+      v-else-if="loaded"
       class="mt-4"
       type="warning"
       title="Нет активных менеджеров для автоматического выбора старшего"
@@ -91,7 +91,7 @@
         data-test="save-default-leads"
         type="primary"
         :loading="saving"
-        :disabled="loading"
+        :disabled="!loaded || loading || saving"
         @click="save"
       >
         Сохранить
@@ -123,37 +123,57 @@ const candidates = ref([])
 const fallbackManager = ref(null)
 const loading = ref(false)
 const saving = ref(false)
+const loaded = ref(false)
 const errorMessage = ref('')
 const scheduleConflict = ref(false)
+let contextVersion = 0
 let loadSequence = 0
 
 watch(() => props.modelValue, isOpen => {
-  if (isOpen) load()
+  contextVersion++
+  loadSequence++
+  saving.value = false
+  if (isOpen) {
+    load()
+  } else {
+    resetState()
+  }
 }, { immediate: true })
 
 onBeforeUnmount(() => {
+  contextVersion++
   loadSequence++
 })
 
 async function load() {
+  const context = contextVersion
   const request = ++loadSequence
+  resetState()
   loading.value = true
-  errorMessage.value = ''
-  scheduleConflict.value = false
   try {
     const [settingsResponse, candidatesResponse] = await Promise.all([
       shiftsApi.getDefaultLeads(),
       shiftPlansApi.getLeadCandidates()
     ])
-    if (request !== loadSequence) return
+    if (context !== contextVersion || request !== loadSequence) return
     candidates.value = candidatesResponse.data
     applySettings(settingsResponse.data)
   } catch (error) {
-    if (request !== loadSequence) return
+    if (context !== contextVersion || request !== loadSequence) return
     errorMessage.value = apiErrorMessage(error, 'Не удалось загрузить настройки старших смен')
   } finally {
-    if (request === loadSequence) loading.value = false
+    if (context === contextVersion && request === loadSequence) loading.value = false
   }
+}
+
+function resetState() {
+  items.value = []
+  candidates.value = []
+  fallbackManager.value = null
+  loading.value = false
+  loaded.value = false
+  errorMessage.value = ''
+  scheduleConflict.value = false
 }
 
 function applySettings(data) {
@@ -162,10 +182,12 @@ function applySettings(data) {
     selectedShiftLeadId: item.defaultShiftLeadId
   }))
   fallbackManager.value = data.fallbackManager
+  loaded.value = true
 }
 
 async function save() {
-  if (saving.value || loading.value) return
+  if (saving.value || loading.value || !loaded.value || !props.modelValue) return
+  const context = contextVersion
   saving.value = true
   errorMessage.value = ''
   scheduleConflict.value = false
@@ -175,11 +197,13 @@ async function save() {
       shiftLeadId: item.selectedShiftLeadId ?? null
     }))
     const response = await shiftsApi.saveDefaultLeads(payload)
+    if (context !== contextVersion) return
     applySettings(response.data)
     ElMessage.success('Старшие смен по умолчанию сохранены')
     emit('saved', response.data)
     visible.value = false
   } catch (error) {
+    if (context !== contextVersion) return
     scheduleConflict.value = error?.response?.status === 409
     errorMessage.value = apiErrorMessage(
       error,
@@ -188,7 +212,7 @@ async function save() {
         : 'Не удалось сохранить старших смен по умолчанию'
     )
   } finally {
-    saving.value = false
+    if (context === contextVersion) saving.value = false
   }
 }
 
