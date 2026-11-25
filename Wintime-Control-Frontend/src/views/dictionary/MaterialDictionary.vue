@@ -196,7 +196,6 @@ async function showCreateModal() {
   editing.value = null
   Object.assign(form, emptyForm())
   dialogVisible.value = true
-  if (materialType !== 'Plastic') return
 
   try {
     const { data } = await materialsApi.suggestArticle(materialType)

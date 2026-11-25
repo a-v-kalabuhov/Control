@@ -152,6 +152,17 @@ describe('MaterialDictionary (PZP-22)', () => {
     expect(w.vm.form.article).toBe('PP-10')
   })
 
+  it('при создании красителя подставляет предложенный артикул', async () => {
+    materialsApi.suggestArticle.mockResolvedValue({ data: { article: 'C-10' } })
+    const w = mountView('Colorant')
+    await flushPromises()
+
+    await w.vm.showCreateModal()
+
+    expect(materialsApi.suggestArticle).toHaveBeenCalledWith('Colorant')
+    expect(w.vm.form.article).toBe('C-10')
+  })
+
   it('артикул переводится в верхний регистр на лету', async () => {
     const w = mountView()
     await flushPromises()
