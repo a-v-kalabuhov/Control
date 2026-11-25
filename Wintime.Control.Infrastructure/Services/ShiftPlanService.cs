@@ -31,7 +31,7 @@ public sealed class ShiftPlanService : IShiftPlanService
     }
 
     public async Task<IReadOnlyList<ShiftPlanDayDto>> GetAsync(
-        DateOnly from, DateOnly to, string callerUserId, CancellationToken ct)
+        DateOnly from, DateOnly to, string _, CancellationToken ct)
     {
         if (from > to)
             throw new DomainException("Дата начала диапазона не может быть позже даты окончания");
@@ -41,8 +41,6 @@ public sealed class ShiftPlanService : IShiftPlanService
         var now = DateTime.SpecifyKind(_factoryClock.UtcNow, DateTimeKind.Utc);
         var schedule = await _factoryClock.GetScheduleAsync(ct);
         var factoryToday = DateOnly.FromDateTime(schedule.ToLocal(now));
-        var callerCanSelfAssign = await _context.Users.AsNoTracking()
-            .AnyAsync(u => u.Id == callerUserId && u.IsActive && u.Role == UserRole.Manager, ct);
         var shifts = await _context.Shifts.AsNoTracking().ToListAsync(ct);
         var savedDays = await _context.ShiftPlanDays
             .AsNoTracking()
@@ -74,11 +72,11 @@ public sealed class ShiftPlanService : IShiftPlanService
             shifts, now, factoryToday, to, ct);
         var nearestByPosition = NearestByPosition(nearestCandidates, now);
         return days.Select(d => ToDto(
-            d.Day, d.IsSaved, factoryToday, now, nearestByPosition, indicators, callerCanSelfAssign)).ToList();
+            d.Day, d.IsSaved, factoryToday, now, nearestByPosition, indicators)).ToList();
     }
 
     public async Task<ShiftPlanDayDto> SetLeadAsync(
-        DateOnly date, int position, string? shiftLeadId, string callerUserId, CancellationToken ct)
+        DateOnly date, int position, string? shiftLeadId, string _, CancellationToken ct)
     {
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -136,21 +134,12 @@ public sealed class ShiftPlanService : IShiftPlanService
                      item.Closure?.State != initialItem.ClosureState))
                     throw new ShiftConcurrencyException(ConcurrencyMessage);
 
-                var caller = await _context.Users.SingleOrDefaultAsync(u => u.Id == callerUserId, ct);
                 var started = now >= DateTime.SpecifyKind(item.StartAtUtc, DateTimeKind.Utc);
-                var selfAssignAfterStart = started &&
-                    now < DateTime.SpecifyKind(item.EndAtUtc, DateTimeKind.Utc) &&
-                    item.ShiftLeadId == null && shiftLeadId == callerUserId &&
-                    caller is { IsActive: true, Role: UserRole.Manager };
-                if (started && !selfAssignAfterStart)
-                    throw new DomainException("Старшего можно изменить только до начала смены");
+                if (started && item.Closure?.State == ShiftClosureState.Closed)
+                    throw new DomainException("Старшего можно изменить только в незакрытой смене");
 
                 User? lead = null;
-                if (selfAssignAfterStart)
-                {
-                    lead = caller;
-                }
-                else if (shiftLeadId != null)
+                if (shiftLeadId != null)
                 {
                     lead = await _context.Users.SingleOrDefaultAsync(u =>
                         u.Id == shiftLeadId && u.IsActive &&
@@ -203,8 +192,7 @@ public sealed class ShiftPlanService : IShiftPlanService
                     savedItems, deleteDay ? [day] : [], currentShifts, now, factoryToday, date, ct);
                 var nearestByPosition = NearestByPosition(nearestCandidates, now);
                 var result = ToDto(
-                    day, isSaved, factoryToday, now, nearestByPosition, indicators,
-                    caller is { IsActive: true, Role: UserRole.Manager });
+                    day, isSaved, factoryToday, now, nearestByPosition, indicators);
                 await transaction.CommitAsync(ct);
                 return result;
             }
@@ -273,8 +261,7 @@ public sealed class ShiftPlanService : IShiftPlanService
         DateOnly factoryToday,
         DateTime now,
         IReadOnlyDictionary<int, ShiftPlanItem> nearestByPosition,
-        IReadOnlyDictionary<Guid, ShiftClosureIndicator> indicators,
-        bool callerCanSelfAssign) => new()
+        IReadOnlyDictionary<Guid, ShiftClosureIndicator> indicators) => new()
     {
         ShiftDate = day.ShiftDate,
         IsSaved = isSaved,
@@ -296,8 +283,7 @@ public sealed class ShiftPlanService : IShiftPlanService
                 ShiftLeadId = item.ShiftLeadId,
                 ShiftLeadName = item.ShiftLead?.FullName,
                 State = ShiftTiming.Resolve(item.StartAtUtc, item.EndAtUtc, now),
-                CanEditLead = now < DateTime.SpecifyKind(item.StartAtUtc, DateTimeKind.Utc) ||
-                    (callerCanSelfAssign && item.ShiftLeadId == null && !ended),
+                CanEditLead = !isClosed,
                 CanEditOperators = isSaved && item.ShiftLeadId != null && !isClosed &&
                     (ended || isNearest),
                 OperatorAssignmentCount = item.OperatorAssignments.Count,
