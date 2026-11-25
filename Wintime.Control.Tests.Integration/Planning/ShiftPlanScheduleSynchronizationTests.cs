@@ -80,34 +80,10 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
         return new TestUser(user.Id, login, password);
     }
 
-    private async Task WithNoActiveManagersAsync(Func<Task> test)
+    private static async Task WithNoLeadFallbackAsync(IntegrationTestFactory factory, Func<Task> test)
     {
-        List<string> managerIds;
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-            managerIds = await db.Users
-                .Where(u => u.IsActive && u.Role == UserRole.Manager)
-                .Select(u => u.Id)
-                .ToListAsync();
-            await db.Users.Where(u => managerIds.Contains(u.Id))
-                .ExecuteUpdateAsync(u => u.SetProperty(x => x.IsActive, false));
-        }
-
-        try
-        {
-            await test();
-        }
-        finally
-        {
-            if (managerIds.Count > 0)
-            {
-                using var scope = _factory.Services.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-                await db.Users.Where(u => managerIds.Contains(u.Id))
-                    .ExecuteUpdateAsync(u => u.SetProperty(x => x.IsActive, true));
-            }
-        }
+        await using var noFallback = await NoLeadFallbackScope.CreateAsync(factory);
+        await test();
     }
 
     private static List<ShiftScheduleItemDto> Schedule(params int[] startMinutes) =>
@@ -605,7 +581,7 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
         var date = NewFutureDate();
         var client = await ManagerClientAsync();
 
-        await WithNoActiveManagersAsync(() => WithScheduleAsync(client, Schedule(0, 480), async () =>
+        await WithNoLeadFallbackAsync(_factory, () => WithScheduleAsync(client, Schedule(0, 480), async () =>
         {
             using (var scope = _factory.Services.CreateScope())
             {

@@ -21,6 +21,7 @@ public sealed class ShiftPlanItemDto
     public string TimeZoneId { get; set; } = string.Empty;
     public string? ShiftLeadId { get; set; }
     public string? ShiftLeadName { get; set; }
+    public ShiftLeadSource? ShiftLeadSource { get; set; }
     public ShiftState State { get; set; }
     public bool CanEditLead { get; set; }
     public bool CanEditOperators { get; set; }

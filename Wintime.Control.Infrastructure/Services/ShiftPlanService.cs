@@ -19,15 +19,18 @@ public sealed class ShiftPlanService : IShiftPlanService
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
     private readonly IShiftClosureIndicatorService _closureIndicators;
+    private readonly IShiftLeadFallbackProvider _fallbackProvider;
 
     public ShiftPlanService(
         ControlDbContext context,
         IFactoryClock factoryClock,
-        IShiftClosureIndicatorService closureIndicators)
+        IShiftClosureIndicatorService closureIndicators,
+        IShiftLeadFallbackProvider fallbackProvider)
     {
         _context = context;
         _factoryClock = factoryClock;
         _closureIndicators = closureIndicators;
+        _fallbackProvider = fallbackProvider;
     }
 
     public async Task<IReadOnlyList<ShiftPlanDayDto>> GetAsync(
@@ -67,12 +70,13 @@ public sealed class ShiftPlanService : IShiftPlanService
 
         var itemIds = days.Where(d => d.IsSaved).SelectMany(d => d.Day.Items).Select(i => i.Id).ToList();
         var indicators = await _closureIndicators.GetAsync(itemIds, now, ct);
+        var fallback = await _fallbackProvider.GetAsync(ct);
         var nearestCandidates = BuildNearestCandidates(
             savedItems, days.Where(d => !d.IsSaved).Select(d => d.Day).ToList(),
             shifts, now, factoryToday, to, ct);
         var nearestByPosition = NearestByPosition(nearestCandidates, now);
         return days.Select(d => ToDto(
-            d.Day, d.IsSaved, factoryToday, now, nearestByPosition, indicators)).ToList();
+            d.Day, d.IsSaved, factoryToday, now, nearestByPosition, indicators, fallback)).ToList();
     }
 
     public async Task<ShiftPlanDayDto> SetLeadAsync(
@@ -138,6 +142,7 @@ public sealed class ShiftPlanService : IShiftPlanService
                 if (started && item.Closure?.State == ShiftClosureState.Closed)
                     throw new DomainException("Старшего можно изменить только в незакрытой смене");
 
+                var fallback = await _fallbackProvider.GetAsync(ct);
                 User? lead = null;
                 if (shiftLeadId != null)
                 {
@@ -147,19 +152,20 @@ public sealed class ShiftPlanService : IShiftPlanService
                     if (lead == null)
                         throw new DomainException("Старшим смены может быть только активный старший смены или руководитель");
                 }
-                else if (item.Closure != null)
+                else
                 {
-                    throw new DomainException("Нельзя снять старшего смены при существующем сменном рапорте");
-                }
-                else if (item.OperatorAssignments.Count > 0)
-                {
-                    throw new DomainException("Нельзя снять старшего смены, пока у позиции есть интервалы литейщиков");
+                    var effectiveAfterClear = EffectiveShiftLeadResolver.Resolve(
+                        new ShiftPlanItem { Position = item.Position }, fallback);
+                    if (effectiveAfterClear.Id == null && item.Closure != null)
+                        throw new DomainException("Нельзя снять старшего смены при существующем сменном рапорте");
+                    if (effectiveAfterClear.Id == null && item.OperatorAssignments.Count > 0)
+                        throw new DomainException("Нельзя снять старшего смены, пока у позиции есть интервалы литейщиков");
                 }
 
                 item.ShiftLeadId = lead?.Id;
                 item.ShiftLead = lead;
                 var deleteDay = shiftLeadId == null &&
-                    day.Items.All(i => i.ShiftLeadId == null) &&
+                    day.Items.All(i => EffectiveShiftLeadResolver.Resolve(i, fallback).Id == null) &&
                     day.Items.All(i => i.OperatorAssignments.Count == 0) &&
                     day.Items.All(i => i.Closure == null);
 
@@ -192,7 +198,7 @@ public sealed class ShiftPlanService : IShiftPlanService
                     savedItems, deleteDay ? [day] : [], currentShifts, now, factoryToday, date, ct);
                 var nearestByPosition = NearestByPosition(nearestCandidates, now);
                 var result = ToDto(
-                    day, isSaved, factoryToday, now, nearestByPosition, indicators);
+                    day, isSaved, factoryToday, now, nearestByPosition, indicators, fallback);
                 await transaction.CommitAsync(ct);
                 return result;
             }
@@ -217,11 +223,7 @@ public sealed class ShiftPlanService : IShiftPlanService
             .Include(d => d.Items).ThenInclude(i => i.Closure)
             .ToListAsync(ct);
 
-        var defaultPositions = (await _context.ShiftDefaultLeads
-            .Select(d => d.Position)
-            .ToListAsync(ct)).ToHashSet();
-        var hasManagerFallback = await _context.Users
-            .AnyAsync(u => u.IsActive && u.Role == UserRole.Manager, ct);
+        var fallback = await _fallbackProvider.GetAsync(ct);
 
         foreach (var day in futureDays)
         {
@@ -230,8 +232,8 @@ public sealed class ShiftPlanService : IShiftPlanService
             if (removed.Any(i => i.Closure != null))
                 throw new DomainException("Нельзя удалить позицию смены со сменным рапортом");
             _context.ShiftPlanItems.RemoveRange(removed);
-            if (!hasManagerFallback && day.Items.All(i =>
-                    i.ShiftLeadId == null && !defaultPositions.Contains(i.Position) &&
+            if (day.Items.All(i =>
+                    EffectiveShiftLeadResolver.Resolve(i, fallback).Id == null &&
                     !i.OperatorAssignments.Any() && i.Closure == null))
                 _context.ShiftPlanDays.Remove(day);
         }
@@ -269,7 +271,8 @@ public sealed class ShiftPlanService : IShiftPlanService
         DateOnly factoryToday,
         DateTime now,
         IReadOnlyDictionary<int, ShiftPlanItem> nearestByPosition,
-        IReadOnlyDictionary<Guid, ShiftClosureIndicator> indicators) => new()
+        IReadOnlyDictionary<Guid, ShiftClosureIndicator> indicators,
+        ShiftLeadFallbackSnapshot fallback) => new()
     {
         ShiftDate = day.ShiftDate,
         IsSaved = isSaved,
@@ -281,6 +284,11 @@ public sealed class ShiftPlanService : IShiftPlanService
                 && nearest.Id == item.Id;
             var isClosed = indicator?.ClosureStatus == ShiftClosureStatus.Closed;
             var ended = now >= DateTime.SpecifyKind(item.EndAtUtc, DateTimeKind.Utc);
+            var effectiveLead = EffectiveShiftLeadResolver.Resolve(item, fallback);
+            var effectiveLeadName = effectiveLead.Id != null &&
+                fallback.Users.TryGetValue(effectiveLead.Id, out var effectiveLeadUser)
+                    ? effectiveLeadUser.FullName
+                    : null;
             return new ShiftPlanItemDto
             {
                 Id = isSaved ? item.Id : null,
@@ -288,16 +296,17 @@ public sealed class ShiftPlanService : IShiftPlanService
                 StartAtUtc = item.StartAtUtc,
                 EndAtUtc = item.EndAtUtc,
                 TimeZoneId = item.TimeZoneId,
-                ShiftLeadId = item.ShiftLeadId,
-                ShiftLeadName = item.ShiftLead?.FullName,
+                ShiftLeadId = effectiveLead.Id,
+                ShiftLeadName = effectiveLeadName,
+                ShiftLeadSource = effectiveLead.Source,
                 State = ShiftTiming.Resolve(item.StartAtUtc, item.EndAtUtc, now),
                 CanEditLead = !isClosed,
-                CanEditOperators = isSaved && item.ShiftLeadId != null && !isClosed &&
+                CanEditOperators = isSaved && effectiveLead.Id != null && !isClosed &&
                     (ended || isNearest),
                 OperatorAssignmentCount = item.OperatorAssignments.Count,
                 ClosureStatus = indicator?.ClosureStatus,
                 HasOrphanOutput = indicator?.HasOrphanOutput ?? false,
-                HasMissingLeadWarning = item.ShiftLeadId == null && isNearest
+                HasMissingLeadWarning = effectiveLead.Id == null && isNearest
             };
         }).ToList()
     };
