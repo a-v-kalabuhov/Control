@@ -206,7 +206,14 @@ public class ControlDbContext : IdentityDbContext<User>
             t.HasCheckConstraint("CK_ShiftTasks_ReleaseBufferFixedMinutes", "\"ReleaseBufferFixedMinutes\" BETWEEN 0 AND 1440");
             t.HasCheckConstraint("CK_ShiftTasks_ReleaseBufferPercent", "\"ReleaseBufferPercent\" BETWEEN 0 AND 100");
         });
-        builder.Entity<User>().ToTable("Users");
+        builder.Entity<User>(entity =>
+        {
+            entity.ToTable("Users");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp with time zone")
+                .HasDefaultValueSql("now()");
+            entity.HasIndex(e => new { e.IsActive, e.Role, e.CreatedAt, e.Id });
+        });
 
         // Конфигурация ImmCycle
         builder.Entity<ImmCycle>(entity =>

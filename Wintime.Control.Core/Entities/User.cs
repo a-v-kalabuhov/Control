@@ -11,6 +11,7 @@ public class User : IdentityUser
     public string? EmployeeId { get; set; } // Табельный номер
     public string? Qualification { get; set; }
     public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation
     public ICollection<ShiftTask> AssignedTasks { get; set; } = new List<ShiftTask>();

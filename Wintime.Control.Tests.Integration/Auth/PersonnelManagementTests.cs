@@ -103,6 +103,58 @@ public class PersonnelManagementTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task UserCreatedAt_ApiCreate_AssignsServerUtcTimestamp()
+    {
+        var client = await ManagerClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/personnel", NewPerson("Operator"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var dto = await response.Content.ReadFromJsonAsync<PersonnelDto>();
+        var createdAt = (await LoadUserAsync(dto!.Id)).CreatedAt;
+        createdAt.Kind.Should().Be(DateTimeKind.Utc);
+        createdAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task UserCreatedAt_ApiCreate_IgnoresClientTimestamp()
+    {
+        var client = await ManagerClientAsync();
+        var request = NewPerson("Operator");
+        var clientTimestamp = new DateTime(2000, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+
+        var response = await client.PostAsJsonAsync("/api/personnel", new
+        {
+            request.EmployeeId,
+            request.FullName,
+            request.Login,
+            request.Password,
+            request.Role,
+            request.Qualification,
+            createdAt = clientTimestamp
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var dto = await response.Content.ReadFromJsonAsync<PersonnelDto>();
+        var createdAt = (await LoadUserAsync(dto!.Id)).CreatedAt;
+        createdAt.Should().NotBe(clientTimestamp);
+        createdAt.Kind.Should().Be(DateTimeKind.Utc);
+        createdAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public void UserCreatedAt_NewUserForBootstrapOrSeed_HasUtcTimestampFromInitializer()
+    {
+        var before = DateTime.UtcNow;
+
+        var user = new User();
+
+        var createdAt = user.CreatedAt;
+        createdAt.Kind.Should().Be(DateTimeKind.Utc);
+        createdAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(DateTime.UtcNow);
+    }
+
+    [Fact]
     public async Task CreatePersonnel_WithWeakPassword_ReturnsRussianPasswordErrors()
     {
         var client = await ManagerClientAsync();
