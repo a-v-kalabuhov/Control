@@ -23,6 +23,7 @@ public class ControlDbContext : IdentityDbContext<User>
     public DbSet<ImmStatusHistory> ImmStatusHistory { get; set; }
     public DbSet<AppHeartbeat> AppHeartbeat { get; set; }
     public DbSet<Shift> Shifts { get; set; }
+    public DbSet<ShiftDefaultLead> ShiftDefaultLeads { get; set; }
     public DbSet<ImmCycle> ImmCycles { get; set; }
     public DbSet<ProductType> ProductTypes { get; set; }
     public DbSet<Product> Products { get; set; }
@@ -337,6 +338,19 @@ public class ControlDbContext : IdentityDbContext<User>
             .OnDelete(DeleteBehavior.SetNull);
         builder.Entity<Wintime.Control.Core.Entities.ShiftTask>()
             .HasIndex(t => t.OrderId);                   // под Σ-агрегацию прогресса
+
+        // Старшие по умолчанию привязаны к позиции, а не к пересоздаваемой строке Shift.
+        builder.Entity<ShiftDefaultLead>(entity =>
+        {
+            entity.HasKey(e => e.Position);
+            entity.Property(e => e.Position).ValueGeneratedNever();
+            entity.Property(e => e.ShiftLeadId).IsRequired();
+            entity.HasOne(e => e.ShiftLead).WithMany()
+                  .HasForeignKey(e => e.ShiftLeadId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => e.ShiftLeadId);
+            entity.ToTable("ShiftDefaultLeads", t =>
+                t.HasCheckConstraint("CK_ShiftDefaultLeads_Position", "\"Position\" >= 1"));
+        });
 
         // План смен и интервалы назначения литейщиков (PZP-32).
         builder.Entity<ShiftPlanDay>(entity =>

@@ -217,6 +217,10 @@ public sealed class ShiftPlanService : IShiftPlanService
             .Include(d => d.Items).ThenInclude(i => i.Closure)
             .ToListAsync(ct);
 
+        var defaultPositions = (await _context.ShiftDefaultLeads
+            .Select(d => d.Position)
+            .ToListAsync(ct)).ToHashSet();
+
         foreach (var day in futureDays)
         {
             var windows = ShiftWindowCalculator.Build(day.ShiftDate, newSchedule);
@@ -224,7 +228,7 @@ public sealed class ShiftPlanService : IShiftPlanService
             if (removed.Any(i => i.Closure != null))
                 throw new DomainException("Нельзя удалить позицию смены со сменным рапортом");
             _context.ShiftPlanItems.RemoveRange(removed);
-            if (day.Items.All(i => i.ShiftLeadId == null))
+            if (day.Items.All(i => i.ShiftLeadId == null && !defaultPositions.Contains(i.Position)))
                 _context.ShiftPlanDays.Remove(day);
         }
     }
