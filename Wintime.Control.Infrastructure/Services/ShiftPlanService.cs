@@ -220,6 +220,8 @@ public sealed class ShiftPlanService : IShiftPlanService
         var defaultPositions = (await _context.ShiftDefaultLeads
             .Select(d => d.Position)
             .ToListAsync(ct)).ToHashSet();
+        var hasManagerFallback = await _context.Users
+            .AnyAsync(u => u.IsActive && u.Role == UserRole.Manager, ct);
 
         foreach (var day in futureDays)
         {
@@ -228,7 +230,9 @@ public sealed class ShiftPlanService : IShiftPlanService
             if (removed.Any(i => i.Closure != null))
                 throw new DomainException("Нельзя удалить позицию смены со сменным рапортом");
             _context.ShiftPlanItems.RemoveRange(removed);
-            if (day.Items.All(i => i.ShiftLeadId == null && !defaultPositions.Contains(i.Position)))
+            if (!hasManagerFallback && day.Items.All(i =>
+                    i.ShiftLeadId == null && !defaultPositions.Contains(i.Position) &&
+                    !i.OperatorAssignments.Any() && i.Closure == null))
                 _context.ShiftPlanDays.Remove(day);
         }
     }

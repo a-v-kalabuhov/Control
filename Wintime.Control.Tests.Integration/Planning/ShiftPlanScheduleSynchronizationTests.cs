@@ -80,6 +80,36 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
         return new TestUser(user.Id, login, password);
     }
 
+    private async Task WithNoActiveManagersAsync(Func<Task> test)
+    {
+        List<string> managerIds;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            managerIds = await db.Users
+                .Where(u => u.IsActive && u.Role == UserRole.Manager)
+                .Select(u => u.Id)
+                .ToListAsync();
+            await db.Users.Where(u => managerIds.Contains(u.Id))
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.IsActive, false));
+        }
+
+        try
+        {
+            await test();
+        }
+        finally
+        {
+            if (managerIds.Count > 0)
+            {
+                using var scope = _factory.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                await db.Users.Where(u => managerIds.Contains(u.Id))
+                    .ExecuteUpdateAsync(u => u.SetProperty(x => x.IsActive, true));
+            }
+        }
+    }
+
     private static List<ShiftScheduleItemDto> Schedule(params int[] startMinutes) =>
         startMinutes.Select(start => new ShiftScheduleItemDto
         {
@@ -569,13 +599,13 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
     }
 
     [Fact]
-    public async Task FutureDay_WithoutRemainingLeadsOrAssignments_IsDeleted()
+    public async Task FutureDay_WithoutRemainingLeadsAssignmentsOrManagerFallback_IsDeleted()
     {
         var lead = await SeedUserAsync(UserRole.ShiftLead);
         var date = NewFutureDate();
         var client = await ManagerClientAsync();
 
-        await WithScheduleAsync(client, Schedule(0, 480), async () =>
+        await WithNoActiveManagersAsync(() => WithScheduleAsync(client, Schedule(0, 480), async () =>
         {
             using (var scope = _factory.Services.CreateScope())
             {
@@ -620,7 +650,7 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
             virtualDay.GetProperty("isSaved").GetBoolean().Should().BeFalse();
             virtualDay.GetProperty("items").EnumerateArray().Should().ContainSingle()
                 .Which.GetProperty("shiftLeadId").ValueKind.Should().Be(JsonValueKind.Null);
-        });
+        }));
     }
 
     [Fact]

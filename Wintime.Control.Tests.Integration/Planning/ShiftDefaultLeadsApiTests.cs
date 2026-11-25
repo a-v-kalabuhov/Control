@@ -31,6 +31,8 @@ public class ShiftDefaultLeadsApiTests : IClassFixture<IntegrationTestFactory>, 
 
     private sealed record TestUser(string Id, string Login, string Password);
     private sealed record DefaultRow(int Position, string ShiftLeadId);
+    private sealed record ItemSnapshot(
+        Guid ItemId, int Position, Guid? AssignmentId, Guid? ClosureId, ShiftClosureState? ClosureState);
 
     [Fact]
     public async Task GetPut_RoundTripReturnsScheduleAndFallbackAndAllowsSameLeadOnSeveralPositions()
@@ -158,6 +160,26 @@ public class ShiftDefaultLeadsApiTests : IClassFixture<IntegrationTestFactory>, 
     }
 
     [Fact]
+    public async Task Put_NullItem_Returns400AndDoesNotChangeExistingDefaults()
+    {
+        var manager = await ManagerClientAsync();
+        var original = await SeedUserAsync(UserRole.ShiftLead);
+
+        await WithScheduleAsync(manager, Schedule(480), async () =>
+        {
+            (await PutDefaultsAsync(manager, (1, original.Id))).StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var response = await manager.PutAsJsonAsync("/api/shifts/default-leads", new
+            {
+                items = new object?[] { null }
+            });
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+            (await DefaultRowsAsync()).Should().Equal(new DefaultRow(1, original.Id));
+        });
+    }
+
+    [Fact]
     public async Task Put_StaleOrDuplicatePositions_Returns409AndDoesNotChangeExistingDefaults()
     {
         var manager = await ManagerClientAsync();
@@ -192,18 +214,19 @@ public class ShiftDefaultLeadsApiTests : IClassFixture<IntegrationTestFactory>, 
             {
                 await SeedOperationalDayAsync(date, lead.Id, @operator.Id);
                 (await PutDefaultsAsync(admin, (1, lead.Id))).StatusCode.Should().Be(HttpStatusCode.OK);
+                var before = await ItemSnapshotAsync(date, position: 1);
 
                 var rejected = await PutDefaultsAsync(admin, (1, null));
                 rejected.StatusCode.Should().Be(HttpStatusCode.BadRequest, await rejected.Content.ReadAsStringAsync());
                 (await DefaultRowsAsync()).Should().Equal(new DefaultRow(1, lead.Id));
-                (await OperationalDayCountAsync(date)).Should().Be(1);
+                (await ItemSnapshotAsync(date, position: 1)).Should().Be(before);
 
                 await RestoreManagersAsync(deactivated);
                 deactivated = [];
                 var accepted = await PutDefaultsAsync(admin, (1, null));
                 accepted.StatusCode.Should().Be(HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
                 (await DefaultRowsAsync()).Should().BeEmpty();
-                (await OperationalDayCountAsync(date)).Should().Be(1);
+                (await ItemSnapshotAsync(date, position: 1)).Should().Be(before);
             });
         }
         finally
@@ -293,6 +316,41 @@ public class ShiftDefaultLeadsApiTests : IClassFixture<IntegrationTestFactory>, 
     }
 
     [Fact]
+    public async Task ScheduleReplacement_AfterDefaultClear_PreservesManagerFallbackOperationalSnapshot()
+    {
+        var manager = await ManagerClientAsync();
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var @operator = await SeedUserAsync(UserRole.Operator);
+        var date = NewFutureDate();
+
+        try
+        {
+            await WithScheduleAsync(manager, Schedule(480), async () =>
+            {
+                await SeedOperationalDayAsync(date, lead.Id, @operator.Id);
+                (await PutDefaultsAsync(manager, (1, lead.Id))).StatusCode.Should().Be(HttpStatusCode.OK);
+                (await PutDefaultsAsync(manager, (1, null))).StatusCode.Should().Be(HttpStatusCode.OK);
+                (await DefaultRowsAsync()).Should().BeEmpty();
+                var before = await ItemSnapshotAsync(date, position: 1);
+                var changedSchedule = Schedule(480);
+                changedSchedule[0].BreakStartMinutes += 10;
+
+                var response = await SaveScheduleAsync(manager, changedSchedule);
+
+                response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+                var after = await ItemSnapshotAsync(date, position: 1);
+                after.Should().Be(before, "ManagerFallback и операционные данные сохраняют материализованный день");
+                after.ClosureState.Should().Be(ShiftClosureState.Draft);
+                (await DefaultRowsAsync()).Should().BeEmpty();
+            });
+        }
+        finally
+        {
+            await DeleteDayAsync(date);
+        }
+    }
+
+    [Fact]
     public async Task ScheduleReplacementFailure_RollsBackSchedulePlanAndDefaultsTogether()
     {
         var manager = await ManagerClientAsync();
@@ -304,13 +362,17 @@ public class ShiftDefaultLeadsApiTests : IClassFixture<IntegrationTestFactory>, 
             (await PutDefaultsAsync(manager, (1, null), (2, lead.Id))).StatusCode.Should().Be(HttpStatusCode.OK);
             await SeedDraftOnSecondPositionAsync(date, lead.Id);
             var scheduleBefore = await ScheduleKeysAsync();
+            var secondPositionBefore = await ItemSnapshotAsync(date, position: 2);
 
             var response = await SaveScheduleAsync(manager, Schedule(120));
 
             response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
             (await ScheduleKeysAsync()).Should().Equal(scheduleBefore);
             (await DefaultRowsAsync()).Should().Equal(new DefaultRow(2, lead.Id));
-            (await OperationalDayCountAsync(date)).Should().Be(1);
+            var secondPositionAfter = await ItemSnapshotAsync(date, position: 2);
+            secondPositionAfter.Should().Be(secondPositionBefore,
+                "rollback сохраняет вторую позицию и её Draft рапорт с прежними Id");
+            secondPositionAfter.ClosureState.Should().Be(ShiftClosureState.Draft);
             await DeleteDayAsync(date);
         });
     }
@@ -544,6 +606,23 @@ public class ShiftDefaultLeadsApiTests : IClassFixture<IntegrationTestFactory>, 
             command.CommandText = "DELETE FROM \"ShiftDefaultLeads\"";
             await command.ExecuteNonQueryAsync();
         }
+    }
+
+    private async Task<ItemSnapshot> ItemSnapshotAsync(DateOnly date, int position)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var item = await db.ShiftPlanItems.AsNoTracking()
+            .Include(i => i.OperatorAssignments)
+            .Include(i => i.Closure)
+            .SingleOrDefaultAsync(i => i.Day.ShiftDate == date && i.Position == position);
+        item.Should().NotBeNull($"позиция {position} даты {date:yyyy-MM-dd} должна сохраниться");
+        return new ItemSnapshot(
+            item!.Id,
+            item.Position,
+            item.OperatorAssignments.SingleOrDefault()?.Id,
+            item.Closure?.Id,
+            item.Closure?.State);
     }
 
     private async Task<int> OperationalDayCountAsync(DateOnly date)

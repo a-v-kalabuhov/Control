@@ -102,6 +102,8 @@ public sealed class ShiftDefaultLeadService : IShiftDefaultLeadService
     {
         if (request.Items == null)
             throw new DomainException("Список позиций старших по умолчанию обязателен");
+        if (request.Items.Any(i => i is null))
+            throw new DomainException("Позиция старшего по умолчанию не может быть null");
 
         var expected = Enumerable.Range(1, schedulePositionCount).ToHashSet();
         var positions = request.Items.Select(i => i.Position).ToList();
