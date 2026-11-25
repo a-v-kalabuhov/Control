@@ -390,10 +390,20 @@ async function fetchCompanies(search) {
   return data
 }
 
-function showCreateModal() {
+async function showCreateModal() {
   editing.value = null
   Object.assign(form, { article: '', name: '', company: '', packagingUnit: null })
   dialogVisible.value = true
+
+  try {
+    const { data } = await productTypesApi.suggestArticle()
+    // Не перезаписываем ввод пользователя или открытую позже карточку редактирования.
+    if (dialogVisible.value && !editing.value && !form.article) {
+      form.article = data.article ?? ''
+    }
+  } catch {
+    // Автозаполнение — подсказка: при ошибке поле остаётся пустым для ручного ввода.
+  }
 }
 
 function editItem(row) {
