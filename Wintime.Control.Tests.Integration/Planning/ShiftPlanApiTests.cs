@@ -193,7 +193,8 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
                 var items = day.GetProperty("items").EnumerateArray().ToList();
                 items.Select(i => i.GetProperty("position").GetInt32()).Should().Equal(1, 2);
                 items.Should().OnlyContain(i => i.GetProperty("id").ValueKind == JsonValueKind.Null);
-                items.Should().OnlyContain(i => !i.GetProperty("canEditOperators").GetBoolean());
+                if (day.GetProperty("shiftDate").GetString() == from.ToString("yyyy-MM-dd"))
+                    items.Should().OnlyContain(i => i.GetProperty("canEditOperators").GetBoolean());
                 var shiftDate = DateOnly.Parse(day.GetProperty("shiftDate").GetString()!);
                 var scheduleEntities = TwoShifts().Select(s => new Shift
                 {

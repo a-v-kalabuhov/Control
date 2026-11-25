@@ -178,6 +178,7 @@ builder.Services.AddSingleton<IRefreshTokenStore, MemoryRefreshTokenStore>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<IShiftDefaultLeadService, ShiftDefaultLeadService>();
 builder.Services.AddScoped<IShiftLeadFallbackProvider, ShiftLeadFallbackProvider>();
+builder.Services.AddScoped<IShiftPlanMaterializer, ShiftPlanMaterializer>();
 builder.Services.AddScoped<IShiftPlanService, ShiftPlanService>();
 builder.Services.AddScoped<IShiftStaffingService, ShiftStaffingService>();
 builder.Services.AddScoped<ShiftClosureReadModelLoader>();

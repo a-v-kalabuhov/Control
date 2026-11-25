@@ -29,5 +29,10 @@ public class ShiftPlanController : ControllerBase
         DateOnly date, int position, [FromBody] SetShiftLeadRequest request, CancellationToken ct) =>
         _service.SetLeadAsync(date, position, request.ShiftLeadId, CallerUserId, ct);
 
+    [HttpPost("days/{date}/items/{position:int}/materialize")]
+    public Task<ShiftPlanDayDto> Materialize(
+        DateOnly date, int position, CancellationToken ct) =>
+        _service.MaterializeAsync(date, position, CallerUserId, ct);
+
     private string CallerUserId => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 }
