@@ -60,3 +60,4 @@
 - [ADR-0029](0029-product-runner-weight.md) — Вес литника принадлежит изделию *(уточняет ADR-0024)*
 - [ADR-0030](0030-shift-closure-report.md) — Сменный рапорт: фактические интервалы, закрытие и неизменяемый снимок *(уточняет ADR-0027)*
 - [ADR-0031](0031-shift-closure-identity-and-output-conservation.md) — Closed timeline: текущий `User` по `OperatorId`; сохранение всего автоматического выпуска *(уточняет ADR-0030)*
+- [ADR-0032](0032-shift-default-lead.md) — Эффективный старший: Explicit → Default → первый активный Manager; ленивая материализация и фиксация при закрытии *(уточняет ADR-0027/0030/0031)*
