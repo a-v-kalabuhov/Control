@@ -62,11 +62,20 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         {
             var date = nearest.Day.ShiftDate;
             var position = nearest.Position;
+            var selectedStartAtUtc = nearest.StartAtUtc;
+            var selectedEndAtUtc = nearest.EndAtUtc;
+            var selectedTimeZoneId = nearest.TimeZoneId;
             var materializedDay = await _materializer.MaterializeAsync(date, position, ct);
-            var materializedId = materializedDay.Items.Single(i => i.Position == position).Id;
+            var materializedItem = materializedDay.Items.Single(i => i.Position == position);
+            if (materializedItem.StartAtUtc != selectedStartAtUtc ||
+                materializedItem.EndAtUtc != selectedEndAtUtc ||
+                materializedItem.TimeZoneId != selectedTimeZoneId)
+                throw new ShiftConcurrencyException(NearestConcurrencyMessage);
+            var materializedId = materializedItem.Id;
 
             // MaterializeAsync повторно читает график и default под ShiftScheduleLock.
-            // После него повторяем сам выбор: устаревший virtual itemId нельзя выдать клиенту.
+            // После него повторяем сам выбор по свежему времени: устаревший itemId нельзя выдать клиенту.
+            now = Now;
             var verified = await LoadNearestCandidatesAsync(now, ct);
             nearest = NearestShiftSelector.ForLead(
                 verified.Items, userId, now, item => EffectiveLeadId(item, verified.Fallback));

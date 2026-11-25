@@ -3,13 +3,17 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Wintime.Control.Core.DTOs.Shifts;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
+using Wintime.Control.Core.Interfaces;
+using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Infrastructure.Services;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -28,6 +32,28 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
     public ShiftStaffingDefaultLeadApiTests(IntegrationTestFactory factory) => _factory = factory;
 
     private sealed record TestUser(string Id, string Login, string Password, string FullName);
+
+    private sealed class ControlledTime
+    {
+        public DateTime UtcNow { get; set; }
+    }
+
+    private sealed class ControlledFactoryClock : IFactoryClock
+    {
+        private readonly FactoryClock _inner;
+        private readonly ControlledTime _time;
+
+        public ControlledFactoryClock(ControlDbContext context, ControlledTime time)
+        {
+            _inner = new FactoryClock(context);
+            _time = time;
+        }
+
+        public DateTime UtcNow => _time.UtcNow;
+
+        public Task<FactorySchedule> GetScheduleAsync(CancellationToken ct = default) =>
+            _inner.GetScheduleAsync(ct);
+    }
 
     [Theory]
     [InlineData(true)]
@@ -122,6 +148,102 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
 
                 var response = await request;
                 response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+                    await response.Content.ReadAsStringAsync());
+            });
+        }
+        finally
+        {
+            await DeleteNewDaysAsync(existingDayIds);
+            await SetDefaultAsync(position, previousDefault);
+            await RestoreSavedFallbackItemsAsync(isolatedItems);
+        }
+    }
+
+    [Fact]
+    public async Task Nearest_ClockCrossesShiftEndDuringScheduleLock_Returns409()
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var isolationLead = await SeedUserAsync(UserRole.ShiftLead);
+        var previousFirstDefault = await SetDefaultAsync(1, lead.Id);
+        var previousSecondDefault = await SetDefaultAsync(2, lead.Id);
+        var isolatedItems = await IsolateSavedFallbackItemsAsync(1, isolationLead.Id);
+        isolatedItems.AddRange(await IsolateSavedFallbackItemsAsync(2, isolationLead.Id));
+        var existingDayIds = await DayIdsAsync();
+        var admin = await AdminClientAsync();
+        var initialNow = DateTime.SpecifyKind(
+            DateTime.UtcNow.Date.AddDays(Interlocked.Increment(ref _dateOffset))
+                .AddHours(7).AddMinutes(59).AddSeconds(59), DateTimeKind.Utc);
+        var controlledTime = new ControlledTime { UtcNow = initialNow };
+        try
+        {
+            await WithScheduleAsync(admin, TwoFixedShifts(), async () =>
+            {
+                await using var controlledFactory = _factory.WithWebHostBuilder(builder =>
+                    builder.ConfigureServices(services =>
+                    {
+                        services.AddSingleton(controlledTime);
+                        services.AddScoped<IFactoryClock>(sp => new ControlledFactoryClock(
+                            sp.GetRequiredService<ControlDbContext>(), controlledTime));
+                    }));
+                using var client = await AuthenticateAsync(
+                    controlledFactory.CreateClient(), lead.Login, lead.Password);
+                await using var connection = new NpgsqlConnection(await ConnectionStringAsync());
+                await connection.OpenAsync();
+                await using var transaction = await connection.BeginTransactionAsync();
+                await using (var lockCommand = new NpgsqlCommand(
+                                 $"SELECT pg_advisory_xact_lock({ScheduleLockKey})", connection, transaction))
+                    await lockCommand.ExecuteNonQueryAsync();
+
+                var request = client.GetAsync("/api/shift-staffing/nearest");
+                await WaitForAdvisoryWaiterAsync(connection, transaction);
+                controlledTime.UtcNow = initialNow.AddSeconds(6);
+                await transaction.CommitAsync();
+
+                var response = await request;
+                response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+                    "после 08:00 нельзя вернуть ранее выбранную S1 как Current: " +
+                    await response.Content.ReadAsStringAsync());
+            });
+        }
+        finally
+        {
+            await DeleteNewDaysAsync(existingDayIds);
+            await SetDefaultAsync(1, previousFirstDefault);
+            await SetDefaultAsync(2, previousSecondDefault);
+            await RestoreSavedFallbackItemsAsync(isolatedItems);
+        }
+    }
+
+    [Fact]
+    public async Task Nearest_ScheduleWindowChangedWhileWaitingForScheduleLock_Returns409()
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var isolationLead = await SeedUserAsync(UserRole.ShiftLead);
+        const int position = 1;
+        var previousDefault = await SetDefaultAsync(position, lead.Id);
+        var isolatedItems = await IsolateSavedFallbackItemsAsync(position, isolationLead.Id);
+        var existingDayIds = await DayIdsAsync();
+        var client = await ClientAsync(lead);
+        var admin = await AdminClientAsync();
+        try
+        {
+            await WithScheduleAsync(admin, SingleShiftAroundNow(current: true), async () =>
+            {
+                await using var connection = new NpgsqlConnection(await ConnectionStringAsync());
+                await connection.OpenAsync();
+                await using var transaction = await connection.BeginTransactionAsync();
+                await using (var lockCommand = new NpgsqlCommand(
+                                 $"SELECT pg_advisory_xact_lock({ScheduleLockKey})", connection, transaction))
+                    await lockCommand.ExecuteNonQueryAsync();
+
+                var request = client.GetAsync("/api/shift-staffing/nearest");
+                await WaitForAdvisoryWaiterAsync(connection, transaction);
+                await ChangeSingleShiftWindowAsync(startOffsetMinutes: -30, durationMinutes: 150);
+                await transaction.CommitAsync();
+
+                var response = await request;
+                response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+                    "изменённое за ожиданием окно нельзя выдать как успешный nearest: " +
                     await response.Content.ReadAsStringAsync());
             });
         }
@@ -241,6 +363,42 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
             await DeleteDayAsync(item.Day.ShiftDate);
             await SetDefaultAsync(position, previousDefault);
         }
+    }
+
+    private static List<ShiftScheduleItemDto> TwoFixedShifts() =>
+    [
+        new ShiftScheduleItemDto
+        {
+            StartMinutes = 0,
+            DurationMinutes = 480,
+            TimeZoneId = "UTC"
+        },
+        new ShiftScheduleItemDto
+        {
+            StartMinutes = 480,
+            DurationMinutes = 480,
+            TimeZoneId = "UTC"
+        }
+    ];
+
+    private async Task<string> ConnectionStringAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        return db.Database.GetDbConnection().ConnectionString;
+    }
+
+    private async Task ChangeSingleShiftWindowAsync(int startOffsetMinutes, int durationMinutes)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var shift = await db.Shifts.SingleAsync();
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById(shift.TimeZoneId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
+        var start = localNow.TimeOfDay.Add(TimeSpan.FromMinutes(startOffsetMinutes));
+        shift.StartMinutes = ((int)start.TotalMinutes % 1440 + 1440) % 1440;
+        shift.DurationMinutes = durationMinutes;
+        await db.SaveChangesAsync();
     }
 
     private static List<ShiftScheduleItemDto> SingleShiftAroundNow(bool current)
@@ -472,10 +630,15 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
         NpgsqlConnection connection, NpgsqlTransaction transaction)
     {
         var waiting = 0;
+        var classId = (uint)((ulong)ScheduleLockKey >> 32);
+        var objectId = unchecked((uint)ScheduleLockKey);
         for (var attempt = 0; attempt < 200 && waiting == 0; attempt++)
         {
             await using var command = new NpgsqlCommand(
-                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted",
+                "SELECT count(*) FROM pg_locks " +
+                "WHERE locktype = 'advisory' AND NOT granted " +
+                $"AND classid = {classId} AND objid = {objectId} " +
+                "AND pid <> pg_backend_pid()",
                 connection, transaction);
             waiting = Convert.ToInt32(await command.ExecuteScalarAsync());
             if (waiting == 0) await Task.Delay(25);
