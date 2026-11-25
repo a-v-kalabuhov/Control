@@ -36,14 +36,16 @@
     <el-form label-position="top">
       <el-form-item label="Старший смены">
         <el-select
-          v-model="selectedLeadId"
+          :model-value="selectedExplicitLeadId"
           data-test="lead-select"
           filterable
           class="w-full"
-          placeholder="Выберите старшего смены"
+          :placeholder="emptyLeadOptionLabel"
           :disabled="!canEdit"
           :loading="isSaving"
+          @update:model-value="selectLead"
         >
+          <el-option :label="emptyLeadOptionLabel" value="" />
           <el-option
             v-for="candidate in options"
             :key="candidate.id"
@@ -63,6 +65,16 @@
       >
         Открыть ТПА и литейщиков
       </router-link>
+      <button
+        v-else-if="item?.shiftLeadId"
+        type="button"
+        class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
+        data-test="open-staffing"
+        :disabled="isSaving"
+        @click="materializeAndOpen('staffing')"
+      >
+        Открыть ТПА и литейщиков
+      </button>
       <router-link
         v-if="item?.id && item?.shiftLeadId"
         :to="`/shift-lead/items/${item.id}/report`"
@@ -71,6 +83,16 @@
       >
         Сменный рапорт
       </router-link>
+      <button
+        v-else-if="item?.shiftLeadId"
+        type="button"
+        class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
+        data-test="open-closure"
+        :disabled="isSaving"
+        @click="materializeAndOpen('closure')"
+      >
+        Сменный рапорт
+      </button>
     </div>
 
     <template #footer>
@@ -111,6 +133,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
@@ -132,7 +155,8 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'saved', 'reload'])
 const authStore = useAuthStore()
-const selectedLeadId = ref(null)
+const router = useRouter()
+const selectedExplicitLeadId = ref(null)
 const requestSaving = ref(false)
 let contextVersion = 0
 let saveSequence = 0
@@ -144,17 +168,27 @@ const visible = computed({
 const isSaving = computed(() => props.saving || requestSaving.value)
 const canEdit = computed(() => props.item?.canEditLead === true && !isSaving.value)
 const canSelfAssign = computed(() => props.item?.canEditLead === true &&
-  !props.item?.shiftLeadId && authStore.isManager && !!authStore.user?.id)
-const canSave = computed(() => canEdit.value && !!selectedLeadId.value)
-const canClear = computed(() => canEdit.value && !!props.item?.shiftLeadId &&
-  (props.item?.operatorAssignmentCount ?? 0) === 0)
+  props.item?.shiftLeadSource !== 'Explicit' && authStore.isManager && !!authStore.user?.id)
+const canSave = computed(() => canEdit.value && !!selectedExplicitLeadId.value)
+const canClear = computed(() => canEdit.value && props.item?.shiftLeadSource === 'Explicit' &&
+  !!props.item?.shiftLeadId && (props.item?.operatorAssignmentCount ?? 0) === 0)
+const emptyLeadOptionLabel = computed(() => {
+  if (props.item?.shiftLeadSource === 'Default' && props.item.shiftLeadName) {
+    return `По умолчанию: ${props.item.shiftLeadName}`
+  }
+  if (props.item?.shiftLeadSource === 'ManagerFallback' && props.item.shiftLeadName) {
+    return `Первый активный менеджер: ${props.item.shiftLeadName}`
+  }
+  return 'Не назначен'
+})
 
 const options = computed(() => {
   const result = [...props.candidates]
-  if (props.item?.shiftLeadId && !result.some(c => c.id === props.item.shiftLeadId)) {
+  const explicitId = props.item?.shiftLeadSource === 'Explicit' ? props.item.shiftLeadId : null
+  if (explicitId && !result.some(c => c.id === explicitId)) {
     result.unshift({
-      id: props.item.shiftLeadId,
-      fullName: props.item.shiftLeadName || props.item.shiftLeadId,
+      id: explicitId,
+      fullName: props.item.shiftLeadName || explicitId,
       employeeId: null
     })
   }
@@ -165,12 +199,15 @@ watch(() => [
   props.modelValue,
   props.day?.shiftDate,
   props.item?.position,
-  props.item?.shiftLeadId
+  props.item?.shiftLeadId,
+  props.item?.shiftLeadSource
 ], () => {
   contextVersion++
   saveSequence++
   requestSaving.value = false
-  selectedLeadId.value = props.item?.shiftLeadId ?? null
+  selectedExplicitLeadId.value = props.item?.shiftLeadSource === 'Explicit'
+    ? props.item.shiftLeadId ?? null
+    : null
 }, { immediate: true })
 
 onBeforeUnmount(() => {
@@ -182,6 +219,10 @@ function candidateLabel(candidate) {
   return candidate.employeeId
     ? `${candidate.fullName} (${candidate.employeeId})`
     : candidate.fullName
+}
+
+function selectLead(value) {
+  selectedExplicitLeadId.value = value || null
 }
 
 function formatDate(value) {
@@ -201,12 +242,39 @@ async function selfAssignLead() {
 
 async function saveLead() {
   if (!canSave.value) return
-  await persist(selectedLeadId.value)
+  await persist(selectedExplicitLeadId.value)
 }
 
 async function clearLead() {
   if (!canClear.value) return
   await persist(null)
+}
+
+async function materializeAndOpen(destination) {
+  if (!props.day || !props.item?.shiftLeadId || props.item.id || requestSaving.value) return
+  const date = props.day.shiftDate
+  const position = props.item.position
+  const version = contextVersion
+  const request = ++saveSequence
+  const isCurrent = () => request === saveSequence && version === contextVersion &&
+    props.modelValue && props.day?.shiftDate === date && props.item?.position === position
+
+  requestSaving.value = true
+  try {
+    const { data } = await shiftPlansApi.materializeShift(date, position)
+    if (!isCurrent()) return
+    emit('saved', data, { date, position, request })
+    const savedItem = data?.items?.find(item => item.position === position)
+    if (!savedItem?.id) return
+    const suffix = destination === 'closure' ? '/report' : ''
+    await router.push(`/shift-lead/items/${savedItem.id}${suffix}`)
+  } catch (error) {
+    if (!isCurrent()) return
+    ElMessage.error(apiErrorMessage(error, 'Не удалось сохранить смену'))
+    if (error?.response?.status === 409) emit('reload')
+  } finally {
+    if (request === saveSequence) requestSaving.value = false
+  }
 }
 
 async function persist(shiftLeadId) {
@@ -222,7 +290,10 @@ async function persist(shiftLeadId) {
   try {
     const { data } = await shiftPlansApi.setLead(date, position, shiftLeadId)
     if (!isCurrent()) return
-    selectedLeadId.value = shiftLeadId
+    const savedItem = data?.items?.find(item => item.position === position)
+    selectedExplicitLeadId.value = savedItem?.shiftLeadSource === 'Explicit'
+      ? savedItem.shiftLeadId ?? null
+      : null
     emit('saved', data, { date, position, request })
   } catch (error) {
     if (!isCurrent()) return

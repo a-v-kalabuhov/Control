@@ -131,6 +131,33 @@ describe('ShiftPlanView', () => {
     expect(cells[4].text()).toContain('05:00–17:00')
   })
 
+  it('показывает source badges для Default и ManagerFallback, а warning только без старшего', async () => {
+    const sourceDay = day('2026-11-09', [
+      item(1, {
+        id: 'explicit', shiftLeadId: 'lead-1', shiftLeadName: 'Явный Старший',
+        shiftLeadSource: 'Explicit'
+      }),
+      item(2, {
+        shiftLeadId: 'lead-1', shiftLeadName: 'Иванов Иван', shiftLeadSource: 'Default'
+      }),
+      item(3, {
+        shiftLeadId: 'manager-1', shiftLeadName: 'Петров Пётр', shiftLeadSource: 'ManagerFallback'
+      }),
+      item(4, { shiftLeadSource: null, hasMissingLeadWarning: true })
+    ])
+    shiftPlansApi.getRange.mockResolvedValue({ data: [sourceDay] })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const cells = wrapper.findAll('.shift-plan-item')
+    expect(cells[0].find('[data-test="lead-source"]').exists()).toBe(false)
+    expect(cells[1].find('[data-test="lead-source"]').text()).toBe('По умолчанию')
+    expect(cells[2].find('[data-test="lead-source"]').text()).toBe('Первый активный менеджер')
+    expect(cells[3].find('[data-test="lead-source"]').exists()).toBe(false)
+    expect(cells.slice(0, 3).every(cell => !cell.find('[data-test="missing-lead"]').exists())).toBe(true)
+    expect(cells[3].find('[data-test="missing-lead"]').text()).toBe('Не назначен старший')
+  })
+
   it('показывает закрытие только по серверному closureStatus без pending badge для Draft', async () => {
     const indicatorDay = day('2026-11-08', [
       item(1, { id: 'closed', state: 'Historical', closureStatus: 'Closed' }),

@@ -329,7 +329,7 @@ describe('ShiftWorkPlanView', () => {
   })
 
   it.each([
-    ['virtual item', planItem({ id: null })],
+    ['virtual Default item', planItem({ id: null, shiftLeadSource: 'Default' })],
     ['без старшего', planItem({ shiftLeadId: null, shiftLeadName: null })]
   ])('показывает объяснение для %s без вызова closure API', async (_name, item) => {
     shiftPlansApi.getRange.mockResolvedValue({ data: [planDay(item)] })

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/api/client', () => ({
-  default: { get: vi.fn(), put: vi.fn() }
+  default: { get: vi.fn(), post: vi.fn(), put: vi.fn() }
 }))
 
 const { default: apiClient } = await import('@/api/client')
@@ -27,5 +27,10 @@ describe('shiftPlansApi', () => {
     expect(apiClient.put).toHaveBeenCalledWith('/shift-plan/days/2026-11-10/items/2/lead', {
       shiftLeadId
     })
+  })
+
+  it('материализует virtual смену без тела по дате и позиции', () => {
+    shiftPlansApi.materializeShift('2026-11-10', 2)
+    expect(apiClient.post).toHaveBeenCalledWith('/shift-plan/days/2026-11-10/items/2/materialize')
   })
 })

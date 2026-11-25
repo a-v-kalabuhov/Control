@@ -8,8 +8,15 @@ import ShiftPlanItemDialog from '../ShiftPlanItemDialog.vue'
 import { shiftPlansApi } from '@/api/shiftPlans'
 import { useAuthStore } from '@/stores/auth'
 
+const { routerPush } = vi.hoisted(() => ({ routerPush: vi.fn() }))
+
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal(),
+  useRouter: () => ({ push: routerPush })
+}))
+
 vi.mock('@/api/shiftPlans', () => ({
-  shiftPlansApi: { setLead: vi.fn() }
+  shiftPlansApi: { setLead: vi.fn(), materializeShift: vi.fn() }
 }))
 
 const candidates = [
@@ -33,6 +40,7 @@ function makeItem(overrides = {}) {
     timeZoneId: 'Europe/Moscow',
     shiftLeadId: 'lead-1',
     shiftLeadName: 'Иванов Иван',
+    shiftLeadSource: 'Explicit',
     state: 'Future',
     canEditLead: true,
     canEditOperators: true,
@@ -76,7 +84,9 @@ describe('ShiftPlanItemDialog', () => {
     auth.user = { id: 'manager-current', role: 'Manager', fullName: 'Менеджер Текущий' }
     auth.userRole = 'Manager'
     vi.clearAllMocks()
+    routerPush.mockResolvedValue(undefined)
     shiftPlansApi.setLead.mockResolvedValue({ data: { ...day, items: [makeItem()] } })
+    shiftPlansApi.materializeShift.mockResolvedValue({ data: { ...day, items: [makeItem()] } })
     vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
   })
 
@@ -91,6 +101,72 @@ describe('ShiftPlanItemDialog', () => {
     expect(wrapper.vm.options.map(option => option.id)).toEqual(['lead-1', 'manager-current'])
     expect(wrapper.vm.options.map(option => option.fullName)).toContain('Менеджер Текущий')
     expect(wrapper.vm.options.map(option => option.fullName)).not.toContain('Admin')
+  })
+
+  it.each([
+    ['Default', 'По умолчанию: Иванов Иван'],
+    ['ManagerFallback', 'Первый активный менеджер: Иванов Иван']
+  ])('оставляет explicit select пустым для %s и подписывает effective fallback', async (source, label) => {
+    const wrapper = mountDialog(makeItem({ id: null, shiftLeadSource: source }))
+    await nextTick()
+
+    expect(wrapper.vm.selectedExplicitLeadId).toBeNull()
+    expect(wrapper.findComponent('[data-test="lead-select"]').props('modelValue')).toBeNull()
+    const emptyOption = wrapper.findAllComponents({ name: 'ElOption' })
+      .find(option => option.props('value') === '')
+    expect(emptyOption?.props('label')).toBe(label)
+    expect(wrapper.vm.canSave).toBe(false)
+
+    await wrapper.findComponent('[data-test="lead-select"]').vm.$emit('update:modelValue', '')
+    expect(wrapper.vm.selectedExplicitLeadId).toBeNull()
+  })
+
+  it('показывает «Не назначен» только при отсутствии effective старшего', async () => {
+    const wrapper = mountDialog(makeItem({
+      id: null, shiftLeadId: null, shiftLeadName: null, shiftLeadSource: null,
+      hasMissingLeadWarning: true
+    }))
+    await nextTick()
+
+    const emptyOption = wrapper.findAllComponents({ name: 'ElOption' })
+      .find(option => option.props('value') === '')
+    expect(emptyOption?.props('label')).toBe('Не назначен')
+    expect(document.body.querySelector('[data-test="missing-lead"]')).not.toBeNull()
+  })
+
+  it('не превращает effective fallback в явное назначение при save', async () => {
+    const wrapper = mountDialog(makeItem({ id: null, shiftLeadSource: 'Default' }))
+    await nextTick()
+
+    await wrapper.vm.saveLead()
+
+    expect(shiftPlansApi.setLead).not.toHaveBeenCalled()
+  })
+
+  it('разрешает очистку только Explicit, а не Default или ManagerFallback', async () => {
+    const wrapper = mountDialog(makeItem({ id: null, shiftLeadSource: 'Default' }))
+    await nextTick()
+    expect(wrapper.vm.canClear).toBe(false)
+    expect(button('clear-lead').disabled).toBe(true)
+
+    await wrapper.setProps({ item: makeItem({ id: null, shiftLeadSource: 'ManagerFallback' }) })
+    expect(wrapper.vm.canClear).toBe(false)
+    expect(button('clear-lead').disabled).toBe(true)
+
+    await wrapper.setProps({ item: makeItem() })
+    expect(wrapper.vm.canClear).toBe(true)
+    expect(button('clear-lead').disabled).toBe(false)
+  })
+
+  it('Manager назначает себя явным старшим поверх Default fallback', async () => {
+    const wrapper = mountDialog(makeItem({ id: null, shiftLeadSource: 'Default' }))
+    await nextTick()
+
+    expect(button('self-assign-lead')).not.toBeNull()
+    button('self-assign-lead').click()
+    await flushPromises()
+
+    expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, 'manager-current')
   })
 
   it('canEditLead=false отключает выбор, назначение и очистку', async () => {
@@ -120,7 +196,7 @@ describe('ShiftPlanItemDialog', () => {
     shiftPlansApi.setLead.mockResolvedValue({ data: savedDay })
     const wrapper = mountDialog()
 
-    wrapper.vm.selectedLeadId = 'manager-current'
+    wrapper.vm.selectedExplicitLeadId = 'manager-current'
     await nextTick()
     button('save-lead').click()
     await flushPromises()
@@ -143,6 +219,26 @@ describe('ShiftPlanItemDialog', () => {
 
     expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, null)
     expect(wrapper.emitted('saved')).toHaveLength(1)
+  })
+
+  it('после очистки Explicit показывает возвращённый сервером Default без explicit id', async () => {
+    const fallbackItem = makeItem({
+      id: null, shiftLeadSource: 'Default', hasMissingLeadWarning: false
+    })
+    const savedDay = { ...day, items: [fallbackItem] }
+    shiftPlansApi.setLead.mockResolvedValue({ data: savedDay })
+    const wrapper = mountDialog()
+    await nextTick()
+
+    button('clear-lead').click()
+    await flushPromises()
+    await wrapper.setProps({ day: savedDay, item: fallbackItem })
+
+    expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, null)
+    expect(wrapper.vm.selectedExplicitLeadId).toBeNull()
+    const emptyOption = wrapper.findAllComponents({ name: 'ElOption' })
+      .find(option => option.props('value') === '')
+    expect(emptyOption?.props('label')).toBe('По умолчанию: Иванов Иван')
   })
 
   it('показывает loading на время сохранения и учитывает внешний saving', async () => {
@@ -202,7 +298,7 @@ describe('ShiftPlanItemDialog', () => {
       .mockImplementationOnce(() => requestA.promise)
       .mockImplementationOnce(() => requestB.promise)
     const dayB = { ...day, shiftDate: '2026-11-11' }
-    const itemB = makeItem({ id: 'item-b', position: 1, shiftLeadId: null, shiftLeadName: null })
+    const itemB = makeItem({ id: 'item-b', position: 1, shiftLeadId: null, shiftLeadName: null, shiftLeadSource: null })
     const savedDayA = { ...day, items: [makeItem()] }
     const savedDayB = { ...dayB, items: [makeItem({ id: 'item-b', position: 1 })] }
     const wrapper = mountDialog()
@@ -214,7 +310,7 @@ describe('ShiftPlanItemDialog', () => {
 
     await wrapper.setProps({ modelValue: false })
     await wrapper.setProps({ modelValue: true, day: dayB, item: itemB })
-    wrapper.vm.selectedLeadId = 'manager-current'
+    wrapper.vm.selectedExplicitLeadId = 'manager-current'
     await nextTick()
     expect(button('save-lead').disabled).toBe(false)
     button('save-lead').click()
@@ -251,7 +347,7 @@ describe('ShiftPlanItemDialog', () => {
 
     await wrapper.setProps({
       item: makeItem({
-        id: null, shiftLeadId: null, shiftLeadName: null, state: 'Current',
+        id: null, shiftLeadId: null, shiftLeadName: null, shiftLeadSource: null, state: 'Current',
         closureStatus: null, hasMissingLeadWarning: true
       })
     })
@@ -260,7 +356,7 @@ describe('ShiftPlanItemDialog', () => {
       .toBe('Не назначен старший')
   })
 
-  it('показывает ссылку на сменный рапорт только для materialized позиции со старшим', async () => {
+  it('показывает ссылку на сменный рапорт для materialized и virtual позиции со старшим', async () => {
     const wrapper = mountDialog()
     await nextTick()
 
@@ -269,15 +365,15 @@ describe('ShiftPlanItemDialog', () => {
     expect(link.getAttribute('href')).toBe('/shift-lead/items/item-1/report')
     expect(link.textContent).toContain('Сменный рапорт')
 
-    await wrapper.setProps({ item: makeItem({ id: null }) })
-    expect(document.body.querySelector('[data-test="open-closure"]')).toBeNull()
-    await wrapper.setProps({ item: makeItem({ shiftLeadId: null, shiftLeadName: null }) })
+    await wrapper.setProps({ item: makeItem({ id: null, shiftLeadSource: 'Default' }) })
+    expect(document.body.querySelector('[data-test="open-closure"]')).not.toBeNull()
+    await wrapper.setProps({ item: makeItem({ shiftLeadId: null, shiftLeadName: null, shiftLeadSource: null }) })
     expect(document.body.querySelector('[data-test="open-closure"]')).toBeNull()
   })
 
   it('Manager назначает себя старшим текущей virtual позиции и открывает рапорт после saved', async () => {
     const virtualItem = makeItem({
-      id: null, shiftLeadId: null, shiftLeadName: null, state: 'Current',
+      id: null, shiftLeadId: null, shiftLeadName: null, shiftLeadSource: null, state: 'Current',
       canEditLead: true, closureStatus: null, hasMissingLeadWarning: true
     })
     const savedItem = makeItem({
@@ -306,7 +402,7 @@ describe('ShiftPlanItemDialog', () => {
 
   it('не показывает self-action Admin, при существующем старшем и при canEditLead=false', async () => {
     const virtualItem = makeItem({
-      id: null, shiftLeadId: null, shiftLeadName: null, state: 'Current', canEditLead: true
+      id: null, shiftLeadId: null, shiftLeadName: null, shiftLeadSource: null, state: 'Current', canEditLead: true
     })
     const wrapper = mountDialog(virtualItem)
     useAuthStore().user = { id: 'admin-1', role: 'Admin', fullName: 'Администратор' }
@@ -324,7 +420,7 @@ describe('ShiftPlanItemDialog', () => {
     expect(shiftPlansApi.setLead).not.toHaveBeenCalled()
   })
 
-  it('открывает ТПА и литейщиков только для сохранённой смены со старшим', async () => {
+  it('открывает ТПА и литейщиков для materialized и virtual смены со старшим', async () => {
     const wrapper = mountDialog()
     await nextTick()
     const link = document.body.querySelector('[data-test="open-staffing"]')
@@ -332,9 +428,49 @@ describe('ShiftPlanItemDialog', () => {
     expect(link.getAttribute('href')).toBe('/shift-lead/items/item-1')
     expect(link.textContent).toContain('Открыть ТПА и литейщиков')
 
-    await wrapper.setProps({ item: makeItem({ id: null }) })
+    await wrapper.setProps({ item: makeItem({ id: null, shiftLeadSource: 'Default' }) })
+    expect(document.body.querySelector('[data-test="open-staffing"]')).not.toBeNull()
+    await wrapper.setProps({ item: makeItem({ shiftLeadId: null, shiftLeadName: null, shiftLeadSource: null }) })
     expect(document.body.querySelector('[data-test="open-staffing"]')).toBeNull()
-    await wrapper.setProps({ item: makeItem({ shiftLeadId: null, shiftLeadName: null }) })
-    expect(document.body.querySelector('[data-test="open-staffing"]')).toBeNull()
+  })
+
+  it.each([
+    ['open-staffing', '/shift-lead/items/materialized-item'],
+    ['open-closure', '/shift-lead/items/materialized-item/report']
+  ])('virtual %s сначала materialize, затем saved и route по returned itemId', async (testId, path) => {
+    const virtualItem = makeItem({ id: null, shiftLeadSource: 'Default' })
+    const savedItem = makeItem({ id: 'materialized-item', shiftLeadSource: 'Default' })
+    const savedDay = { ...day, isSaved: true, items: [savedItem] }
+    shiftPlansApi.materializeShift.mockResolvedValue({ data: savedDay })
+    const wrapper = mountDialog(virtualItem)
+    await nextTick()
+    routerPush.mockImplementation(() => {
+      expect(wrapper.emitted('saved')).toEqual([[savedDay, {
+        date: '2026-11-10', position: 2, request: expect.any(Number)
+      }]])
+      return Promise.resolve()
+    })
+
+    document.body.querySelector(`[data-test="${testId}"]`).click()
+    await flushPromises()
+
+    expect(shiftPlansApi.materializeShift).toHaveBeenCalledWith('2026-11-10', 2)
+    expect(routerPush).toHaveBeenCalledWith(path)
+    expect(shiftPlansApi.setLead).not.toHaveBeenCalled()
+  })
+
+  it('ошибка materialize показывает сообщение и не выполняет route', async () => {
+    shiftPlansApi.materializeShift.mockRejectedValue({
+      response: { status: 400, data: { message: 'Смена уже изменена' } }
+    })
+    const wrapper = mountDialog(makeItem({ id: null, shiftLeadSource: 'ManagerFallback' }))
+    await nextTick()
+
+    document.body.querySelector('[data-test="open-staffing"]').click()
+    await flushPromises()
+
+    expect(ElMessage.error).toHaveBeenCalledWith('Смена уже изменена')
+    expect(wrapper.emitted('saved')).toBeUndefined()
+    expect(routerPush).not.toHaveBeenCalled()
   })
 })
