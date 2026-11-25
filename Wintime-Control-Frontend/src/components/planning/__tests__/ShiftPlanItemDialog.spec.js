@@ -158,8 +158,8 @@ describe('ShiftPlanItemDialog', () => {
     expect(button('clear-lead').disabled).toBe(false)
   })
 
-  it('Manager назначает себя явным старшим поверх Default fallback', async () => {
-    const wrapper = mountDialog(makeItem({ id: null, shiftLeadSource: 'Default' }))
+  it.each(['Default', 'ManagerFallback'])('Manager назначает себя явным старшим поверх %s', async source => {
+    const wrapper = mountDialog(makeItem({ id: null, shiftLeadSource: source }))
     await nextTick()
 
     expect(button('self-assign-lead')).not.toBeNull()
@@ -180,15 +180,34 @@ describe('ShiftPlanItemDialog', () => {
     expect(button('clear-lead').disabled).toBe(true)
   })
 
-  it('назначения литейщиков запрещают только очистку, но не переназначение', async () => {
+  it('назначения литейщиков не блокируют переназначение и запрос очистки Explicit', async () => {
     const wrapper = mountDialog(makeItem({ operatorAssignmentCount: 2 }))
     await nextTick()
 
     expect(wrapper.vm.canEdit).toBe(true)
     expect(wrapper.vm.canSave).toBe(true)
-    expect(wrapper.vm.canClear).toBe(false)
+    expect(wrapper.vm.canClear).toBe(true)
     expect(button('save-lead').disabled).toBe(false)
-    expect(button('clear-lead').disabled).toBe(true)
+    expect(button('clear-lead').disabled).toBe(false)
+
+    button('clear-lead').click()
+    await flushPromises()
+    expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, null)
+  })
+
+  it('передаёт серверу запрет очистки без fallback при литейщиках и черновике', async () => {
+    shiftPlansApi.setLead.mockRejectedValue({
+      response: { status: 400, data: { message: 'Нельзя снять старшего без fallback' } }
+    })
+    const wrapper = mountDialog(makeItem({ operatorAssignmentCount: 2, closureStatus: 'Draft' }))
+    await nextTick()
+
+    button('clear-lead').click()
+    await flushPromises()
+
+    expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, null)
+    expect(ElMessage.error).toHaveBeenCalledWith('Нельзя снять старшего без fallback')
+    expect(wrapper.emitted('saved')).toBeUndefined()
   })
 
   it('сохраняет переназначение и передаёт сохранённый день родителю', async () => {
@@ -221,24 +240,35 @@ describe('ShiftPlanItemDialog', () => {
     expect(wrapper.emitted('saved')).toHaveLength(1)
   })
 
-  it('после очистки Explicit показывает возвращённый сервером Default без explicit id', async () => {
+  it.each([
+    ['Default', 'По умолчанию: Иванов Иван'],
+    ['ManagerFallback', 'Первый активный менеджер: Иванов Иван']
+  ])('очистка Explicit с литейщиками и черновиком возвращает %s и сохраняет данные', async (source, label) => {
     const fallbackItem = makeItem({
-      id: null, shiftLeadSource: 'Default', hasMissingLeadWarning: false
+      shiftLeadSource: source, hasMissingLeadWarning: false,
+      operatorAssignmentCount: 2, closureStatus: 'Draft'
     })
-    const savedDay = { ...day, items: [fallbackItem] }
+    const savedDay = { ...day, isSaved: true, items: [fallbackItem] }
     shiftPlansApi.setLead.mockResolvedValue({ data: savedDay })
-    const wrapper = mountDialog()
+    const wrapper = mountDialog(makeItem({ operatorAssignmentCount: 2, closureStatus: 'Draft' }))
     await nextTick()
 
+    expect(wrapper.vm.canClear).toBe(true)
     button('clear-lead').click()
     await flushPromises()
     await wrapper.setProps({ day: savedDay, item: fallbackItem })
 
     expect(shiftPlansApi.setLead).toHaveBeenCalledWith('2026-11-10', 2, null)
+    expect(wrapper.emitted('saved')).toEqual([[savedDay, {
+      date: '2026-11-10', position: 2, request: expect.any(Number)
+    }]])
+    expect(wrapper.props('item')).toMatchObject({
+      id: 'item-1', shiftLeadSource: source, operatorAssignmentCount: 2, closureStatus: 'Draft'
+    })
     expect(wrapper.vm.selectedExplicitLeadId).toBeNull()
     const emptyOption = wrapper.findAllComponents({ name: 'ElOption' })
       .find(option => option.props('value') === '')
-    expect(emptyOption?.props('label')).toBe('По умолчанию: Иванов Иван')
+    expect(emptyOption?.props('label')).toBe(label)
   })
 
   it('показывает loading на время сохранения и учитывает внешний saving', async () => {
@@ -444,10 +474,9 @@ describe('ShiftPlanItemDialog', () => {
     shiftPlansApi.materializeShift.mockResolvedValue({ data: savedDay })
     const wrapper = mountDialog(virtualItem)
     await nextTick()
+    let savedEventsAtRoute = 0
     routerPush.mockImplementation(() => {
-      expect(wrapper.emitted('saved')).toEqual([[savedDay, {
-        date: '2026-11-10', position: 2, request: expect.any(Number)
-      }]])
+      savedEventsAtRoute = wrapper.emitted('saved')?.length ?? 0
       return Promise.resolve()
     })
 
@@ -455,8 +484,33 @@ describe('ShiftPlanItemDialog', () => {
     await flushPromises()
 
     expect(shiftPlansApi.materializeShift).toHaveBeenCalledWith('2026-11-10', 2)
+    expect(wrapper.emitted('saved')).toEqual([[savedDay, {
+      date: '2026-11-10', position: 2, request: expect.any(Number)
+    }]])
+    expect(savedEventsAtRoute).toBe(1)
     expect(routerPush).toHaveBeenCalledWith(path)
     expect(shiftPlansApi.setLead).not.toHaveBeenCalled()
+  })
+
+  it('после успешного materialize сообщает об ошибке открытия, а не сохранения, при router reject', async () => {
+    const savedItem = makeItem({ id: 'materialized-item', shiftLeadSource: 'Default' })
+    const savedDay = { ...day, isSaved: true, items: [savedItem] }
+    shiftPlansApi.materializeShift.mockResolvedValue({ data: savedDay })
+    routerPush.mockRejectedValue(new Error('Lazy route failed'))
+    const wrapper = mountDialog(makeItem({ id: null, shiftLeadSource: 'Default' }))
+    await nextTick()
+
+    document.body.querySelector('[data-test="open-staffing"]').click()
+    await flushPromises()
+
+    expect(shiftPlansApi.materializeShift).toHaveBeenCalledWith('2026-11-10', 2)
+    expect(wrapper.emitted('saved')).toEqual([[savedDay, {
+      date: '2026-11-10', position: 2, request: expect.any(Number)
+    }]])
+    expect(routerPush).toHaveBeenCalledWith('/shift-lead/items/materialized-item')
+    expect(ElMessage.error).toHaveBeenCalledWith('Смена сохранена, но не удалось открыть её')
+    expect(ElMessage.error).not.toHaveBeenCalledWith('Не удалось сохранить смену')
+    expect(wrapper.emitted('reload')).toBeUndefined()
   })
 
   it('ошибка materialize показывает сообщение и не выполняет route', async () => {

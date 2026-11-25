@@ -171,7 +171,7 @@ const canSelfAssign = computed(() => props.item?.canEditLead === true &&
   props.item?.shiftLeadSource !== 'Explicit' && authStore.isManager && !!authStore.user?.id)
 const canSave = computed(() => canEdit.value && !!selectedExplicitLeadId.value)
 const canClear = computed(() => canEdit.value && props.item?.shiftLeadSource === 'Explicit' &&
-  !!props.item?.shiftLeadId && (props.item?.operatorAssignmentCount ?? 0) === 0)
+  !!props.item?.shiftLeadId)
 const emptyLeadOptionLabel = computed(() => {
   if (props.item?.shiftLeadSource === 'Default' && props.item.shiftLeadName) {
     return `По умолчанию: ${props.item.shiftLeadName}`
@@ -261,17 +261,28 @@ async function materializeAndOpen(destination) {
 
   requestSaving.value = true
   try {
-    const { data } = await shiftPlansApi.materializeShift(date, position)
+    let data
+    try {
+      const response = await shiftPlansApi.materializeShift(date, position)
+      data = response.data
+    } catch (error) {
+      if (!isCurrent()) return
+      ElMessage.error(apiErrorMessage(error, 'Не удалось сохранить смену'))
+      if (error?.response?.status === 409) emit('reload')
+      return
+    }
+
     if (!isCurrent()) return
     emit('saved', data, { date, position, request })
     const savedItem = data?.items?.find(item => item.position === position)
     if (!savedItem?.id) return
     const suffix = destination === 'closure' ? '/report' : ''
-    await router.push(`/shift-lead/items/${savedItem.id}${suffix}`)
-  } catch (error) {
-    if (!isCurrent()) return
-    ElMessage.error(apiErrorMessage(error, 'Не удалось сохранить смену'))
-    if (error?.response?.status === 409) emit('reload')
+    try {
+      await router.push(`/shift-lead/items/${savedItem.id}${suffix}`)
+    } catch (error) {
+      if (!isCurrent()) return
+      ElMessage.error(apiErrorMessage(error, 'Смена сохранена, но не удалось открыть её'))
+    }
   } finally {
     if (request === saveSequence) requestSaving.value = false
   }
