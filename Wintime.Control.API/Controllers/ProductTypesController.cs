@@ -193,6 +193,31 @@ public class ProductTypesController : ControllerBase
         return Ok(ToDto(pt, usedIds));
     }
 
+    /// <summary>Следующий свободный артикул по последнему добавленному типу изделия.</summary>
+    [HttpGet("article-suggestion")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<ProductTypeArticleSuggestionDto>> SuggestArticle()
+    {
+        var types = await _context.ProductTypes
+            .Select(t => new { t.Article, t.CreatedAt, t.Id }).ToListAsync();
+        var productArticles = await _context.Products.Select(p => p.FullArticle).ToListAsync();
+        var occupied = types.Select(t => t.Article).Concat(productArticles)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var latestArticle = types.OrderByDescending(t => t.CreatedAt).ThenByDescending(t => t.Id)
+            .FirstOrDefault()?.Article;
+
+        string? candidate = latestArticle;
+        while (true)
+        {
+            candidate = MaterialArticleSuggester.Suggest(candidate, occupied);
+            if (candidate == null || !occupied.Contains(ProductArticle.Compose(candidate, ProductArticle.DefaultPart)))
+                break;
+            // Артикул свободен, но изделие по умолчанию «candidate.0» создать нельзя — ищем дальше.
+        }
+
+        return Ok(new ProductTypeArticleSuggestionDto { Article = candidate });
+    }
+
     [HttpPost]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
     public async Task<ActionResult<ProductTypeDto>> Create([FromBody] CreateProductTypeRequestDto request)

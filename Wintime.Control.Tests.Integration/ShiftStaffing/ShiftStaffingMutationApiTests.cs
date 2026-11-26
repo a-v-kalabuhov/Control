@@ -136,25 +136,30 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         var foreign = (await SeedDayAsync(
             Item(NextPosition(), otherLead.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
         var leadClient = await ClientAsync(lead);
-        var manager = await ManagerClientAsync();
         var admin = await AdminClientAsync();
-
-        foreach (var client in new[] { leadClient, manager, admin })
+        var deactivatedManagers = await DeactivateManagersAsync();
+        try
         {
-            await RussianErrorAsync(await AssignAsync(client, noLead.Id, immId, @operator.Id),
+            await RussianErrorAsync(await AssignAsync(leadClient, noLead.Id, immId, @operator.Id),
+                HttpStatusCode.Forbidden);
+            await RussianErrorAsync(await AssignAsync(admin, noLead.Id, immId, @operator.Id),
                 HttpStatusCode.BadRequest);
-        }
-        await RussianErrorAsync(await AssignAsync(leadClient, foreign.Id, immId, @operator.Id),
-            HttpStatusCode.Forbidden);
-        await RussianErrorAsync(await AssignAsync(leadClient, later.Id, immId, @operator.Id),
-            HttpStatusCode.Forbidden);
-        await RussianErrorAsync(await AssignAsync(manager, later.Id, immId, @operator.Id),
-            HttpStatusCode.Forbidden);
-        await RussianErrorAsync(await AssignAsync(leadClient, Guid.NewGuid(), immId, @operator.Id),
-            HttpStatusCode.NotFound);
+            await RussianErrorAsync(await AssignAsync(leadClient, foreign.Id, immId, @operator.Id),
+                HttpStatusCode.Forbidden);
+            await RussianErrorAsync(await AssignAsync(leadClient, later.Id, immId, @operator.Id),
+                HttpStatusCode.Forbidden);
+            await RussianErrorAsync(await AssignAsync(admin, later.Id, immId, @operator.Id),
+                HttpStatusCode.Forbidden);
+            await RussianErrorAsync(await AssignAsync(leadClient, Guid.NewGuid(), immId, @operator.Id),
+                HttpStatusCode.NotFound);
 
-        (await AssignmentsAsync(noLead.Id)).Should().BeEmpty();
-        (await AssignmentsAsync(nearest.Id)).Should().BeEmpty();
+            (await AssignmentsAsync(noLead.Id)).Should().BeEmpty();
+            (await AssignmentsAsync(nearest.Id)).Should().BeEmpty();
+        }
+        finally
+        {
+            await RestoreManagersAsync(deactivatedManagers);
+        }
     }
 
     [Fact]
@@ -751,6 +756,25 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
             .Where(a => a.ShiftPlanItemId == itemId)
             .OrderBy(a => a.AssignedAt).ThenBy(a => a.Id)
             .ToListAsync();
+    }
+
+    private async Task<List<string>> DeactivateManagersAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var managers = await db.Users.Where(u => u.IsActive && u.Role == UserRole.Manager).ToListAsync();
+        foreach (var manager in managers) manager.IsActive = false;
+        await db.SaveChangesAsync();
+        return managers.Select(u => u.Id).ToList();
+    }
+
+    private async Task RestoreManagersAsync(IReadOnlyCollection<string> managerIds)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var managers = await db.Users.Where(u => managerIds.Contains(u.Id)).ToListAsync();
+        foreach (var manager in managers) manager.IsActive = true;
+        await db.SaveChangesAsync();
     }
 
     private static int NextPosition() => Interlocked.Increment(ref _positionOffset);

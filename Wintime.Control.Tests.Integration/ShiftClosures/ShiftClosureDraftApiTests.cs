@@ -24,11 +24,12 @@ public class ShiftClosureDraftApiTests : IClassFixture<IntegrationTestFactory>
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static int _dateOffset = 7000;
+    private static int _positionOffset = 33000;
     private readonly IntegrationTestFactory _factory;
 
     public ShiftClosureDraftApiTests(IntegrationTestFactory factory) => _factory = factory;
 
-    private sealed record TestUser(string Id, string Login, string Password);
+    private sealed record TestUser(string Id, string Login, string Password, string FullName);
     private sealed record FieldError(Guid TaskId, string Field, string Code);
 
     [Fact]
@@ -220,6 +221,42 @@ public class ShiftClosureDraftApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task FutureOwnNonNearestShift_Returns403ForReadAndDraft()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var nearest = (await SeedDayAsync(Item(lead.Id, now.AddHours(1), now.AddHours(2)))).Items.Single();
+        var later = (await SeedDayAsync(Item(lead.Id, now.AddHours(3), now.AddHours(4)))).Items.Single();
+        var client = await ClientAsync(lead);
+
+        (await client.GetAsync($"/api/shift-closures/items/{later.Id}")).StatusCode.Should()
+            .Be(HttpStatusCode.Forbidden);
+        (await PutAsync(client, later.Id)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await client.GetAsync($"/api/shift-closures/items/{nearest.Id}")).StatusCode.Should()
+            .Be(HttpStatusCode.OK);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        (await db.ShiftClosures.CountAsync(c => c.ShiftPlanItemId == later.Id)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ClosedOwnNonNearestCurrentShift_RemainsReadable()
+    {
+        var now = DateTime.UtcNow;
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        await SeedDayAsync(Item(lead.Id, now.AddHours(-1), now.AddHours(1)));
+        var closed = (await SeedDayAsync(Item(lead.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
+        await SeedClosureAsync(closed, lead.Id, ShiftClosureState.Closed);
+        var client = await ClientAsync(lead);
+
+        var response = await client.GetAsync($"/api/shift-closures/items/{closed.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            "Closed — исторический неизменяемый снимок, nearest ограничивает только незакрытые смены: " +
+            await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Put_DraftAcceptsIncompleteOfflineFallback()
     {
         var now = DateTime.UtcNow;
@@ -353,6 +390,41 @@ public class ShiftClosureDraftApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task Put_DefaultLeadCreatesDraftWithEffectiveIdentityWithoutFreezingOverride()
+    {
+        var position = Interlocked.Increment(ref _positionOffset);
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var previousDefault = await SetDefaultAsync(position, lead.Id);
+        try
+        {
+            var now = DateTime.UtcNow;
+            var start = Utc(now.AddHours(-4));
+            var end = Utc(now.AddHours(-2));
+            var immId = await SeedImmAsync();
+            var item = (await SeedDayAsync(Item(null, start, end, position))).Items.Single();
+            var task = await SeedTaskAsync(immId, start, end);
+            var client = await ClientAsync(lead);
+
+            var body = await RequiredJsonAsync(await PutAsync(client, item.Id,
+                Manual(task.Id, actualPartWeightGrams: 4.25m)));
+
+            body.GetProperty("shiftLeadId").GetString().Should().Be(lead.Id);
+            body.GetProperty("shiftLeadName").GetString().Should().Be(lead.FullName);
+            Entry(body, task.Id).GetProperty("actualPartWeightGrams").GetDecimal().Should().Be(4.25m);
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            (await db.ShiftPlanItems.AsNoTracking().SingleAsync(i => i.Id == item.Id))
+                .ShiftLeadId.Should().BeNull("сохранение черновика не фиксирует default");
+            (await db.ShiftClosures.SingleAsync(c => c.ShiftPlanItemId == item.Id))
+                .CreatedById.Should().Be(lead.Id);
+        }
+        finally
+        {
+            await SetDefaultAsync(position, previousDefault);
+        }
+    }
+
+    [Fact]
     public void DraftRequest_ContainsOnlyTaskIdAndSixManualFields()
     {
         var assembly = typeof(ShiftClosureDto).Assembly;
@@ -417,13 +489,14 @@ public class ShiftClosureDraftApiTests : IClassFixture<IntegrationTestFactory>
         var suffix = Guid.NewGuid().ToString("N");
         var login = $"draft_{role}_{suffix}";
         const string password = "Passw0rd!";
+        var fullName = $"{role} {suffix}";
         var user = new User
         {
             UserName = login,
             NormalizedUserName = login.ToUpperInvariant(),
             Email = $"{login}@test.local",
             NormalizedEmail = $"{login.ToUpperInvariant()}@TEST.LOCAL",
-            FullName = $"{role} {suffix}",
+            FullName = fullName,
             EmployeeId = $"EMP-{suffix}"[..12],
             Role = role,
             IsActive = true,
@@ -433,7 +506,7 @@ public class ShiftClosureDraftApiTests : IClassFixture<IntegrationTestFactory>
         using var scope = _factory.Services.CreateScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
         (await users.CreateAsync(user, password)).Succeeded.Should().BeTrue();
-        return new TestUser(user.Id, login, password);
+        return new TestUser(user.Id, login, password, fullName);
     }
 
     private async Task<Guid> SeedImmAsync()
@@ -452,9 +525,10 @@ public class ShiftClosureDraftApiTests : IClassFixture<IntegrationTestFactory>
         return imm.Id;
     }
 
-    private static ShiftPlanItem Item(string? leadId, DateTime start, DateTime end) => new()
+    private static ShiftPlanItem Item(
+        string? leadId, DateTime start, DateTime end, int position = 1) => new()
     {
-        Position = 1,
+        Position = position,
         ShiftLeadId = leadId,
         StartAtUtc = Utc(start),
         EndAtUtc = Utc(end),
@@ -567,6 +641,19 @@ public class ShiftClosureDraftApiTests : IClassFixture<IntegrationTestFactory>
             ClosedAt = state == ShiftClosureState.Closed ? Utc(item.EndAtUtc) : null
         });
         await db.SaveChangesAsync();
+    }
+
+    private async Task<string?> SetDefaultAsync(int position, string? leadId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var existing = await db.ShiftDefaultLeads.SingleOrDefaultAsync(d => d.Position == position);
+        var previous = existing?.ShiftLeadId;
+        if (existing != null) db.ShiftDefaultLeads.Remove(existing);
+        if (leadId != null)
+            db.ShiftDefaultLeads.Add(new ShiftDefaultLead { Position = position, ShiftLeadId = leadId });
+        await db.SaveChangesAsync();
+        return previous;
     }
 
     private static async Task<JsonElement> RequiredJsonAsync(HttpResponseMessage response)

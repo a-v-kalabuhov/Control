@@ -12,8 +12,13 @@ namespace Wintime.Control.API.Controllers;
 public class ShiftsController : ControllerBase
 {
     private readonly IShiftService _shiftService;
+    private readonly IShiftDefaultLeadService _defaultLeads;
 
-    public ShiftsController(IShiftService shiftService) => _shiftService = shiftService;
+    public ShiftsController(IShiftService shiftService, IShiftDefaultLeadService defaultLeads)
+    {
+        _shiftService = shiftService;
+        _defaultLeads = defaultLeads;
+    }
 
     /// <summary>
     /// Список смен (доступен всем авторизованным пользователям)
@@ -40,4 +45,15 @@ public class ShiftsController : ControllerBase
 
         return Ok(await _shiftService.SaveShiftsAsync(request.Shifts));
     }
+
+    [HttpGet("default-leads")]
+    [Authorize(Policy = "ManagerOrAdmin")]
+    public Task<ShiftDefaultLeadSettingsDto> GetDefaultLeads(CancellationToken ct) =>
+        _defaultLeads.GetAsync(ct);
+
+    [HttpPut("default-leads")]
+    [Authorize(Policy = "ManagerOrAdmin")]
+    public Task<ShiftDefaultLeadSettingsDto> SaveDefaultLeads(
+        [FromBody] SaveShiftDefaultLeadsRequestDto request, CancellationToken ct) =>
+        _defaultLeads.SaveAsync(request, ct);
 }

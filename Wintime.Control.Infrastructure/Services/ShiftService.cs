@@ -11,13 +11,18 @@ public class ShiftService : IShiftService
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
     private readonly IShiftPlanService _shiftPlan;
+    private readonly IShiftDefaultLeadService _defaultLeads;
 
     public ShiftService(
-        ControlDbContext context, IFactoryClock factoryClock, IShiftPlanService shiftPlan)
+        ControlDbContext context,
+        IFactoryClock factoryClock,
+        IShiftPlanService shiftPlan,
+        IShiftDefaultLeadService defaultLeads)
     {
         _context = context;
         _factoryClock = factoryClock;
         _shiftPlan = shiftPlan;
+        _defaultLeads = defaultLeads;
     }
 
     public async Task<IReadOnlyList<ShiftDto>> GetShiftsAsync()
@@ -121,6 +126,7 @@ public class ShiftService : IShiftService
             .ToList();
 
         _context.Shifts.AddRange(newShifts);
+        await _defaultLeads.SynchronizeWithScheduleAsync(newShifts.Count, ct);
         await _shiftPlan.SynchronizeFutureDaysAsync(newShifts, nowUtc, ct);
         await _context.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);

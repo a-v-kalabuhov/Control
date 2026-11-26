@@ -51,6 +51,7 @@ public sealed class ShiftPlanClosureIndicatorTests : IClassFixture<IntegrationTe
         await SeedCycleAsync(frozenTask, closed.StartAtUtc.AddMinutes(30), cavities: 5);
         await SeedClosureAsync(closed.Id, lead.Id, ShiftClosureState.Closed);
         var client = await ManagerClientAsync();
+        await using var noFallback = await NoLeadFallbackScope.CreateAsync(_factory);
 
         var body = await GetDayAsync(client, date);
 
@@ -81,6 +82,7 @@ public sealed class ShiftPlanClosureIndicatorTests : IClassFixture<IntegrationTe
     public async Task MissingLeadWarning_UsesVirtualCurrentOutsideRangeAndSkipsLateFutureAndPast()
     {
         var manager = await ManagerClientAsync();
+        await using var noFallback = await NoLeadFallbackScope.CreateAsync(_factory);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(
             DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow"));
         var schedule = new List<ShiftScheduleItemDto>
@@ -109,6 +111,8 @@ public sealed class ShiftPlanClosureIndicatorTests : IClassFixture<IntegrationTe
             virtualItem.GetProperty("id").ValueKind.Should().Be(JsonValueKind.Null);
             virtualItem.GetProperty("closureStatus").ValueKind.Should().Be(JsonValueKind.Null);
             virtualItem.GetProperty("hasOrphanOutput").GetBoolean().Should().BeFalse();
+            virtualItem.GetProperty("shiftLeadId").ValueKind.Should().Be(JsonValueKind.Null);
+            virtualItem.GetProperty("shiftLeadSource").ValueKind.Should().Be(JsonValueKind.Null);
             virtualItem.GetProperty("hasMissingLeadWarning").GetBoolean().Should().BeTrue();
 
             var lateItem = Item(await GetDayAsync(manager, lateDate), 1);
@@ -117,6 +121,43 @@ public sealed class ShiftPlanClosureIndicatorTests : IClassFixture<IntegrationTe
             var pastItem = Item(await GetDayAsync(manager, pastDate), 1);
             pastItem.GetProperty("hasMissingLeadWarning").GetBoolean().Should().BeFalse();
         });
+    }
+
+    [Fact]
+    public async Task Get_UsesDefaultAndManagerFallbackForDraftIndicators()
+    {
+        var now = DateTime.UtcNow;
+        var defaultLead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = NewDate();
+        await SeedDayAsync(date,
+            Item(201, null, now.AddHours(-1), now.AddHours(1)),
+            Item(202, null, now.AddHours(2), now.AddHours(4)));
+        var client = await ManagerClientAsync();
+
+        try
+        {
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                await db.ShiftDefaultLeads.Where(d => d.Position == 201).ExecuteDeleteAsync();
+                db.ShiftDefaultLeads.Add(new ShiftDefaultLead { Position = 201, ShiftLeadId = defaultLead.Id });
+                await db.SaveChangesAsync();
+            }
+
+            var body = await GetDayAsync(client, date);
+
+            Item(body, 201).GetProperty("closureStatus").GetString().Should().Be("Draft");
+            Item(body, 201).GetProperty("shiftLeadSource").GetString().Should().Be("Default");
+            Item(body, 202).GetProperty("closureStatus").GetString().Should().Be("Draft");
+            Item(body, 202).GetProperty("shiftLeadSource").GetString().Should().Be("ManagerFallback");
+        }
+        finally
+        {
+            await DeleteDayAsync(date);
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            await db.ShiftDefaultLeads.Where(d => d.Position == 201).ExecuteDeleteAsync();
+        }
     }
 
     private async Task<HttpClient> ManagerClientAsync()

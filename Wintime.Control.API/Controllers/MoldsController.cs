@@ -64,6 +64,19 @@ public class MoldsController : ControllerBase
         return Ok(dtos);
     }
 
+    /// <summary>Следующий свободный артикул по последней добавленной пресс-форме.</summary>
+    [HttpGet("article-suggestion")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Manager}")]
+    public async Task<ActionResult<MoldArticleSuggestionDto>> SuggestArticle()
+    {
+        var molds = await _context.Molds
+            .Select(m => new { m.FormId, m.CreatedAt, m.Id }).ToListAsync();
+        var latestArticle = molds.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+            .FirstOrDefault()?.FormId;
+        var article = MaterialArticleSuggester.Suggest(latestArticle, molds.Select(m => m.FormId));
+        return Ok(new MoldArticleSuggestionDto { Article = article });
+    }
+
     /// <summary>
     /// Получить данные пресс-формы по ID
     /// </summary>

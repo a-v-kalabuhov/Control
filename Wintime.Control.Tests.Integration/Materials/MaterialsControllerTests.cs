@@ -290,6 +290,33 @@ public class MaterialsControllerTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task ArticleSuggestion_UsesLatestColorantAndSkipsOccupiedArticles()
+    {
+        var client = await ManagerAsync();
+        await CreateAsync(client, new CreateMaterialRequestDto
+        {
+            Type = MaterialType.Colorant, Article = "ARTICLE-COLORANT-SUGGEST-0100",
+            Name = Uniq("Краситель"), ColorName = "Чёрный"
+        });
+        await CreateAsync(client, new CreateMaterialRequestDto
+        {
+            Type = MaterialType.Colorant, Article = "ARTICLE-COLORANT-SUGGEST-0101",
+            Name = Uniq("Краситель"), ColorName = "Чёрный"
+        });
+        await CreateAsync(client, new CreateMaterialRequestDto
+        {
+            Type = MaterialType.Colorant, Article = "ARTICLE-COLORANT-SUGGEST-0099",
+            Name = Uniq("Краситель"), ColorName = "Чёрный"
+        });
+        await CreateAsync(client, Plastic(article: "ARTICLE-COLORANT-SUGGEST-0102"));
+
+        var dto = await client.GetFromJsonAsync<MaterialArticleSuggestionDto>(
+            "/api/materials/article-suggestion?type=Colorant", JsonOptions);
+
+        dto!.Article.Should().Be("ARTICLE-COLORANT-SUGGEST-0103");
+    }
+
+    [Fact]
     public async Task ArticleSuggestion_WithoutDigits_AppendsZero()
     {
         var client = await ManagerAsync();

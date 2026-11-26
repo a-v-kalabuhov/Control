@@ -52,7 +52,7 @@
             <el-menu-item
               v-if="canAccess(['Admin', 'Manager'])"
               index="/planning/shift-plan"
-            >План смен</el-menu-item>
+            >График смен</el-menu-item>
             <el-menu-item index="/planning/gantt">План-график цеха <PlanConflictsBadge /></el-menu-item>
           </el-sub-menu>
 

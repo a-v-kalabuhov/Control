@@ -16,7 +16,11 @@ export const moldsApi = {
   update(id, data) {
     return apiClient.put(`/molds/${id}`, data)
   },
-  
+
+  suggestArticle() {
+    return apiClient.get('/molds/article-suggestion')
+  },
+
   getQr(id) {
     return apiClient.get(`/molds/${id}/qr`)
   }

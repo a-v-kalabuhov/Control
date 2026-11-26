@@ -25,6 +25,7 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static int _dateOffset = 15000;
     private static int _windowOffset;
+    private static int _positionOffset = 34000;
     private readonly IntegrationTestFactory _factory;
 
     public ShiftClosurePdfApiTests(IntegrationTestFactory factory) => _factory = factory;
@@ -192,6 +193,41 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
         var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
         (await db.ShiftClosureCorrections.CountAsync(c => c.ShiftClosureId == fixture.ClosureId))
             .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task BlankPdf_DefaultLeadUsesEffectiveIdentityWithoutCreatingClosureOrOverride()
+    {
+        var position = Interlocked.Increment(ref _positionOffset);
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var previousDefault = await SetDefaultAsync(position, lead.Id);
+        try
+        {
+            var now = PastAnchor();
+            var start = Utc(now.AddHours(-4));
+            var end = Utc(now.AddHours(-2));
+            var operatorUser = await SeedUserAsync(UserRole.Operator);
+            var immId = await SeedImmAsync();
+            var item = (await SeedDayAsync(Item(null, start, end, position))).Items.Single();
+            var task = await SeedTaskAsync(immId, start, end, TaskStatus.Completed);
+            await SeedAssignmentAsync(item.Id, immId, operatorUser.Id, start, null);
+            await SeedCycleAsync(task, start.AddMinutes(30), cavities: 2, durationSeconds: 40);
+            await SeedStatusAsync(immId, ImmStatus.Auto, start, end);
+            var client = await ClientAsync(lead);
+
+            await AssertPdfAsync(await client.GetAsync(
+                $"/api/shift-closures/items/{item.Id}/blank-pdf"));
+
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            (await db.ShiftPlanItems.AsNoTracking().SingleAsync(i => i.Id == item.Id))
+                .ShiftLeadId.Should().BeNull();
+            (await db.ShiftClosures.AnyAsync(c => c.ShiftPlanItemId == item.Id)).Should().BeFalse();
+        }
+        finally
+        {
+            await SetDefaultAsync(position, previousDefault);
+        }
     }
 
     private async Task<DraftFixture> SeedDraftAsync(
@@ -372,9 +408,10 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
         return imm.Id;
     }
 
-    private static ShiftPlanItem Item(string? leadId, DateTime start, DateTime end) => new()
+    private static ShiftPlanItem Item(
+        string? leadId, DateTime start, DateTime end, int position = 1) => new()
     {
-        Position = 1,
+        Position = position,
         ShiftLeadId = leadId,
         StartAtUtc = Utc(start),
         EndAtUtc = Utc(end),
@@ -517,6 +554,19 @@ public class ShiftClosurePdfApiTests : IClassFixture<IntegrationTestFactory>
                 SortOrder = 2
             });
         await db.SaveChangesAsync();
+    }
+
+    private async Task<string?> SetDefaultAsync(int position, string? leadId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var existing = await db.ShiftDefaultLeads.SingleOrDefaultAsync(d => d.Position == position);
+        var previous = existing?.ShiftLeadId;
+        if (existing != null) db.ShiftDefaultLeads.Remove(existing);
+        if (leadId != null)
+            db.ShiftDefaultLeads.Add(new ShiftDefaultLead { Position = position, ShiftLeadId = leadId });
+        await db.SaveChangesAsync();
+        return previous;
     }
 
     private static async Task<HttpResponseMessage> RequiredResponseAsync(Task<HttpResponseMessage> request)

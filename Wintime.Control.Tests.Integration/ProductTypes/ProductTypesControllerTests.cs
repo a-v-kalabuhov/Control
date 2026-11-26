@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -154,6 +155,38 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
 
         var get = await client.GetAsync($"/api/producttypes/{dto.Id}");
         get.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task ArticleSuggestion_UsesLatestTypeAndSkipsAllArticleConflicts()
+    {
+        var client = await ManagerClientAsync();
+        async Task<ProductTypeDto> CreateType(string article)
+        {
+            var response = await client.PostAsJsonAsync("/api/producttypes",
+                new CreateProductTypeRequestDto { Article = article, Name = article });
+            response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+            return (await response.Content.ReadFromJsonAsync<ProductTypeDto>())!;
+        }
+
+        var holder = await CreateType("ARTICLE");
+        (await client.PostAsJsonAsync($"/api/producttypes/{holder.Id}/products",
+                new CreateProductRequestDto { Article = "TYPE-SUGGEST-0102", Name = "Занятый полный артикул" }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        await CreateType("ARTICLE.TYPE-SUGGEST-0100");
+        await CreateType("ARTICLE.TYPE-SUGGEST-0101");
+        await CreateType("ARTICLE.TYPE-SUGGEST-0103");
+        await CreateType("ARTICLE.TYPE-SUGGEST-0104.0");
+        await CreateType("ARTICLE.TYPE-SUGGEST-0099");
+
+        var response = await client.GetAsync("/api/producttypes/article-suggestion");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var content = await response.Content.ReadAsStringAsync();
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json", content);
+        using var json = JsonDocument.Parse(content);
+
+        // 0102 — полный артикул изделия, 0103 — артикул типа, 0104.0 — занятое изделие по умолчанию.
+        json.RootElement.GetProperty("article").GetString().Should().Be("ARTICLE.TYPE-SUGGEST-0105");
     }
 
     [Fact]

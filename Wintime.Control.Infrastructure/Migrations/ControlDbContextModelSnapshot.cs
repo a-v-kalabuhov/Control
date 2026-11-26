@@ -1027,6 +1027,25 @@ namespace Wintime.Control.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftDefaultLead", b =>
+                {
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ShiftLeadId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Position");
+
+                    b.HasIndex("ShiftLeadId");
+
+                    b.ToTable("ShiftDefaultLeads", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShiftDefaultLeads_Position", "\"Position\" >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftImmOperatorAssignment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1439,6 +1458,11 @@ namespace Wintime.Control.Infrastructure.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("text");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
@@ -1503,6 +1527,8 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
+
+                    b.HasIndex("IsActive", "Role", "CreatedAt", "Id");
 
                     b.ToTable("Users", (string)null);
                 });
@@ -1806,6 +1832,17 @@ namespace Wintime.Control.Infrastructure.Migrations
                     b.Navigation("Operator");
 
                     b.Navigation("ShiftClosureEntry");
+                });
+
+            modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftDefaultLead", b =>
+                {
+                    b.HasOne("Wintime.Control.Core.Entities.User", "ShiftLead")
+                        .WithMany()
+                        .HasForeignKey("ShiftLeadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ShiftLead");
                 });
 
             modelBuilder.Entity("Wintime.Control.Core.Entities.ShiftImmOperatorAssignment", b =>

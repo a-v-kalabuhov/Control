@@ -51,6 +51,17 @@
                     {{ item.shiftLeadName || 'Не назначен' }}
                   </span>
                   <span
+                    v-if="item.shiftLeadSource === 'Default'"
+                    data-test="lead-source"
+                    class="shift-plan-badge bg-sky-100 text-sky-800"
+                  >По умолчанию</span>
+                  <span
+                    v-else-if="item.shiftLeadSource === 'ManagerFallback'"
+                    data-test="lead-source"
+                    class="shift-plan-badge bg-violet-100 text-violet-800"
+                    title="Старший выбран автоматически: первый активный менеджер"
+                  >Первый активный менеджер</span>
+                  <span
                     v-if="item.closureStatus === 'Closed'"
                     data-test="closure-status"
                     class="shift-plan-badge bg-emerald-100 text-emerald-800"

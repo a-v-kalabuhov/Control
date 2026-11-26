@@ -18,41 +18,51 @@ public sealed class ShiftClosureReadModelLoader
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
     private readonly IEffectiveStatusHistoryService _effectiveStatusHistory;
+    private readonly IShiftLeadFallbackProvider _fallbackProvider;
 
     public ShiftClosureReadModelLoader(
         ControlDbContext context,
         IFactoryClock factoryClock,
-        IEffectiveStatusHistoryService effectiveStatusHistory)
+        IEffectiveStatusHistoryService effectiveStatusHistory,
+        IShiftLeadFallbackProvider fallbackProvider)
     {
         _context = context;
         _factoryClock = factoryClock;
         _effectiveStatusHistory = effectiveStatusHistory;
+        _fallbackProvider = fallbackProvider;
     }
 
     public async Task<ShiftClosureDto> LoadAsync(
-        Guid itemId, StaffingCaller caller, DateTime nowUtc, CancellationToken ct)
+        Guid itemId, StaffingCaller caller, DateTime nowUtc, CancellationToken ct,
+        ShiftLeadFallbackSnapshot? fallback = null)
     {
         var item = await ItemQuery().SingleOrDefaultAsync(i => i.Id == itemId, ct)
             ?? throw new ShiftNotFoundException("Смена не найдена");
-        EnsureAccess(item, caller);
+        fallback ??= await _fallbackProvider.GetAsync(ct);
+        var effectiveLead = EffectiveShiftLeadResolver.Resolve(item, fallback);
+        EnsureAccess(caller, fallback, effectiveLead.Id);
         if (item.Closure?.State == ShiftClosureState.Closed)
         {
             var assignments = await AssignmentQuery(item.Id).ToListAsync(ct);
-            return ProjectClosed(item, assignments);
+            return ProjectClosed(item, assignments, effectiveLead, fallback);
         }
-        return await ProjectDraftAsync(item, Utc(nowUtc), ct);
+        await EnsureNearestFutureAccessAsync(item, caller, nowUtc, fallback, ct);
+        return await ProjectDraftAsync(item, Utc(nowUtc), effectiveLead, fallback, ct);
     }
 
     public async Task<ShiftClosureDto> LoadClosedAsync(
-        Guid closureId, StaffingCaller caller, CancellationToken ct)
+        Guid closureId, StaffingCaller caller, CancellationToken ct,
+        ShiftLeadFallbackSnapshot? fallback = null)
     {
         var item = await ItemQuery().SingleOrDefaultAsync(i => i.Closure!.Id == closureId, ct)
             ?? throw new ShiftNotFoundException("Рапорт не найден");
-        EnsureAccess(item, caller);
+        fallback ??= await _fallbackProvider.GetAsync(ct);
+        var effectiveLead = EffectiveShiftLeadResolver.Resolve(item, fallback);
+        EnsureAccess(caller, fallback, effectiveLead.Id);
         if (item.Closure?.State != ShiftClosureState.Closed)
             throw new ShiftNotFoundException("Закрытый рапорт не найден");
         var assignments = await AssignmentQuery(item.Id).ToListAsync(ct);
-        return ProjectClosed(item, assignments);
+        return ProjectClosed(item, assignments, effectiveLead, fallback);
     }
 
     public async Task<Dictionary<Guid, bool>> GetOrphanOutputByItemAsync(
@@ -137,6 +147,36 @@ public sealed class ShiftClosureReadModelLoader
         return result;
     }
 
+    private async Task EnsureNearestFutureAccessAsync(
+        ShiftPlanItem item,
+        StaffingCaller caller,
+        DateTime nowUtc,
+        ShiftLeadFallbackSnapshot fallback,
+        CancellationToken ct)
+    {
+        var now = Utc(nowUtc);
+        if (!caller.IsShiftLead || now >= Utc(item.EndAtUtc)) return;
+
+        var savedItems = await _context.ShiftPlanItems
+            .AsNoTracking()
+            .Include(i => i.Day)
+            .ToListAsync(ct);
+        var shifts = await _context.Shifts.AsNoTracking().ToListAsync(ct);
+        var schedule = await _factoryClock.GetScheduleAsync(ct);
+        var factoryToday = DateOnly.FromDateTime(schedule.ToLocal(now));
+        var savedDates = savedItems.Select(i => i.Day.ShiftDate).ToHashSet();
+        var requestedVirtualDays = new[] { factoryToday.AddDays(-1), factoryToday, factoryToday.AddDays(1) }
+            .Where(date => !savedDates.Contains(date))
+            .Select(date => ShiftPlanCandidateBuilder.BuildVirtualDay(date, shifts))
+            .ToList();
+        var candidates = ShiftPlanCandidateBuilder.BuildNearestCandidatesForLead(
+            savedItems, requestedVirtualDays, shifts, now, factoryToday, caller.UserId, fallback, ct);
+        var nearest = NearestShiftSelector.ForLead(candidates, caller.UserId, now,
+            candidate => EffectiveShiftLeadResolver.Resolve(candidate, fallback).Id);
+        if (nearest?.Id != item.Id)
+            throw new ShiftAccessException("Старшему доступны только ближайшая и собственные исторические смены");
+    }
+
     private IQueryable<ShiftPlanItem> ItemQuery() => _context.ShiftPlanItems
         .AsNoTracking()
         .Include(i => i.Day)
@@ -151,18 +191,21 @@ public sealed class ShiftClosureReadModelLoader
             .Include(a => a.Operator)
             .Where(a => a.ShiftPlanItemId == itemId);
 
-    private static void EnsureAccess(ShiftPlanItem item, StaffingCaller caller)
+    private static void EnsureAccess(
+        StaffingCaller caller, ShiftLeadFallbackSnapshot fallback, string? effectiveLeadId)
     {
-        if (string.IsNullOrEmpty(item.ShiftLeadId))
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, fallback);
+        if (string.IsNullOrEmpty(effectiveLeadId))
             throw new DomainException("shiftLeadRequired");
-        if (caller.IsShiftLead && item.ShiftLeadId != caller.UserId)
+        if (caller.IsShiftLead && effectiveLeadId != caller.UserId)
             throw new ShiftAccessException("Старшему доступны только собственные смены");
         if (!caller.IsShiftLead && !caller.IsManagerOrAdmin)
             throw new ShiftAccessException("Недостаточно прав для чтения сменного рапорта");
     }
 
     private async Task<ShiftClosureDto> ProjectDraftAsync(
-        ShiftPlanItem item, DateTime nowUtc, CancellationToken ct)
+        ShiftPlanItem item, DateTime nowUtc, EffectiveShiftLead effectiveLead,
+        ShiftLeadFallbackSnapshot fallback, CancellationToken ct)
     {
         var shiftStart = Utc(item.StartAtUtc);
         var shiftEnd = Utc(item.EndAtUtc);
@@ -310,7 +353,7 @@ public sealed class ShiftClosureReadModelLoader
             };
         }).OrderBy(t => t.ImmName).ThenBy(t => t.ImmId).ToList();
 
-        return Header(item, item.Closure, factEnd) with
+        return Header(item, item.Closure, factEnd, effectiveLead, fallback) with
         {
             Entries = entries,
             Timelines = timelines
@@ -353,7 +396,8 @@ public sealed class ShiftClosureReadModelLoader
         .AsQueryable();
 
     private static ShiftClosureDto ProjectClosed(
-        ShiftPlanItem item, IReadOnlyList<ShiftImmOperatorAssignment> assignments)
+        ShiftPlanItem item, IReadOnlyList<ShiftImmOperatorAssignment> assignments,
+        EffectiveShiftLead effectiveLead, ShiftLeadFallbackSnapshot fallback)
     {
         var closure = item.Closure!;
         var shiftStart = Utc(item.StartAtUtc);
@@ -436,11 +480,12 @@ public sealed class ShiftClosureReadModelLoader
                 }).ToList()
             };
         }).OrderBy(t => t.ImmName).ThenBy(t => t.ImmId).ToList();
-        return Header(item, closure, factEnd) with { Entries = entries, Timelines = timelines };
+        return Header(item, closure, factEnd, effectiveLead, fallback) with { Entries = entries, Timelines = timelines };
     }
 
     private static ShiftClosureDto Header(
-        ShiftPlanItem item, ShiftClosure? closure, DateTime factEnd) => new()
+        ShiftPlanItem item, ShiftClosure? closure, DateTime factEnd,
+        EffectiveShiftLead effectiveLead, ShiftLeadFallbackSnapshot fallback) => new()
     {
         Id = closure?.Id,
         ShiftPlanItemId = item.Id,
@@ -450,8 +495,10 @@ public sealed class ShiftClosureReadModelLoader
         EndAtUtc = Utc(item.EndAtUtc),
         FactEndUtc = Utc(factEnd),
         TimeZoneId = item.TimeZoneId,
-        ShiftLeadId = item.ShiftLeadId!,
-        ShiftLeadName = item.ShiftLead?.FullName ?? string.Empty,
+        ShiftLeadId = effectiveLead.Id!,
+        ShiftLeadName = effectiveLead.Id != null && fallback.Users.TryGetValue(effectiveLead.Id, out var lead)
+            ? lead.FullName
+            : string.Empty,
         CreatedById = closure?.CreatedById ?? string.Empty,
         CreatedAt = closure == null ? null : Utc(closure.CreatedAt),
         ClosedById = closure?.ClosedById,

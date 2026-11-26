@@ -18,13 +18,16 @@ public sealed class ShiftClosureService : IShiftClosureService
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
     private readonly ShiftClosureReadModelLoader _loader;
+    private readonly IShiftLeadFallbackProvider _fallbackProvider;
 
     public ShiftClosureService(
-        ControlDbContext context, IFactoryClock factoryClock, ShiftClosureReadModelLoader loader)
+        ControlDbContext context, IFactoryClock factoryClock, ShiftClosureReadModelLoader loader,
+        IShiftLeadFallbackProvider fallbackProvider)
     {
         _context = context;
         _factoryClock = factoryClock;
         _loader = loader;
+        _fallbackProvider = fallbackProvider;
     }
 
     public Task<ShiftClosureDto> GetAsync(
@@ -56,14 +59,15 @@ public sealed class ShiftClosureService : IShiftClosureService
                     .Include(i => i.Closure).ThenInclude(c => c!.Entries)
                     .SingleOrDefaultAsync(ct)
                     ?? throw new ShiftConcurrencyException(ConcurrencyMessage);
-                EnsureAccess(item, caller);
+                var fallback = await _fallbackProvider.GetAsync(ct);
+                EnsureAccess(caller, fallback, EffectiveShiftLeadResolver.Resolve(item, fallback).Id);
                 if (item.Closure?.State != initialClosureState)
                     throw new ShiftConcurrencyException(ConcurrencyMessage);
                 if (item.Closure?.State == ShiftClosureState.Closed)
                     throw new DomainException("shiftClosed");
 
                 // Состав и FK берутся только из актуальной серверной read model.
-                var readModel = await _loader.LoadAsync(itemId, caller, Now, ct);
+                var readModel = await _loader.LoadAsync(itemId, caller, Now, ct, fallback);
                 var currentByTask = readModel.Entries.ToDictionary(e => e.TaskId);
                 var errors = new List<ShiftClosureFieldError>();
                 foreach (var input in request.Entries)
@@ -127,7 +131,7 @@ public sealed class ShiftClosureService : IShiftClosureService
 
                 await _context.SaveChangesAsync(ct);
                 await transaction.CommitAsync(ct);
-                return await GetAsync(itemId, caller, ct);
+                return await _loader.LoadAsync(itemId, caller, Now, ct, fallback);
             }
             catch (Exception exception) when (IsConcurrencyFailure(exception))
             {
@@ -155,7 +159,8 @@ public sealed class ShiftClosureService : IShiftClosureService
                     .Include(i => i.Closure).ThenInclude(c => c!.Entries).ThenInclude(e => e.OutputShares)
                     .SingleOrDefaultAsync(ct)
                     ?? throw new ShiftNotFoundException("Смена не найдена");
-                EnsureAccess(item, caller);
+                var fallback = await _fallbackProvider.GetAsync(ct);
+                EnsureAccess(caller, fallback, EffectiveShiftLeadResolver.Resolve(item, fallback).Id);
                 if (item.Closure?.State == ShiftClosureState.Closed)
                     throw new ShiftConcurrencyException(ConcurrencyMessage);
 
@@ -165,7 +170,7 @@ public sealed class ShiftClosureService : IShiftClosureService
 
                 // Loader повторно читает задания, циклы, назначения и сырые статусы
                 // в этом же DbContext и после lock; pre-lock DTO здесь не существует.
-                var readModel = await _loader.LoadAsync(itemId, caller, now, ct);
+                var readModel = await _loader.LoadAsync(itemId, caller, now, ct, fallback);
                 var errors = new List<ShiftClosureFieldError>();
                 foreach (var current in readModel.Entries)
                 {
@@ -273,9 +278,10 @@ public sealed class ShiftClosureService : IShiftClosureService
                 closure.State = ShiftClosureState.Closed;
                 closure.ClosedAt = now;
                 closure.ClosedById = caller.UserId;
+                item.ShiftLeadId ??= readModel.ShiftLeadId;
                 await _context.SaveChangesAsync(ct);
                 await transaction.CommitAsync(ct);
-                return await GetAsync(itemId, caller, ct);
+                return await _loader.LoadAsync(itemId, caller, Now, ct, fallback);
             }
             catch (Exception exception) when (IsConcurrencyFailure(exception))
             {
@@ -300,7 +306,9 @@ public sealed class ShiftClosureService : IShiftClosureService
                     .Include(c => c.Entries).ThenInclude(e => e.OutputShares)
                     .SingleOrDefaultAsync(ct)
                     ?? throw new ShiftNotFoundException("Рапорт не найден");
-                EnsureAccess(closure.ShiftPlanItem, caller);
+                var fallback = await _fallbackProvider.GetAsync(ct);
+                EnsureAccess(caller, fallback,
+                    EffectiveShiftLeadResolver.Resolve(closure.ShiftPlanItem, fallback).Id);
                 if (closure.State != ShiftClosureState.Closed)
                     throw new DomainException("shiftNotClosed");
                 if (string.IsNullOrWhiteSpace(request.Reason))
@@ -379,7 +387,9 @@ public sealed class ShiftClosureService : IShiftClosureService
             .Include(c => c.ShiftPlanItem)
             .SingleOrDefaultAsync(c => c.Id == closureId, ct)
             ?? throw new ShiftNotFoundException("Рапорт не найден");
-        EnsureAccess(closure.ShiftPlanItem, caller);
+        var fallback = await _fallbackProvider.GetAsync(ct);
+        EnsureAccess(caller, fallback,
+            EffectiveShiftLeadResolver.Resolve(closure.ShiftPlanItem, fallback).Id);
         if (closure.State != ShiftClosureState.Closed)
             throw new ShiftNotFoundException("Закрытый рапорт не найден");
         var corrections = await _context.ShiftClosureCorrections.AsNoTracking()
@@ -433,24 +443,31 @@ public sealed class ShiftClosureService : IShiftClosureService
             .Include(i => i.Day)
             .Include(i => i.ShiftLead)
             .Include(i => i.Closure)
-            .Where(i => i.ShiftLeadId != null && i.EndAtUtc <= now
+            .Where(i => i.EndAtUtc <= now
                 && (i.Closure == null || i.Closure.State != ShiftClosureState.Closed));
-        if (caller.IsShiftLead)
-            query = query.Where(i => i.ShiftLeadId == caller.UserId);
         var items = await query.OrderByDescending(i => i.StartAtUtc).ThenByDescending(i => i.Id)
             .ToListAsync(ct);
-        var orphanByItem = await _loader.GetOrphanOutputByItemAsync(items, now, ct);
-        return items.Select(item => new ShiftClosurePendingDto
+        var fallback = await _fallbackProvider.GetAsync(ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, fallback);
+        var accessible = items
+            .Select(item => (Item: item, Lead: EffectiveShiftLeadResolver.Resolve(item, fallback)))
+            .Where(x => x.Lead.Id != null && (!caller.IsShiftLead || x.Lead.Id == caller.UserId))
+            .ToList();
+        var orphanByItem = await _loader.GetOrphanOutputByItemAsync(
+            accessible.Select(x => x.Item).ToList(), now, ct);
+        return accessible.Select(x => new ShiftClosurePendingDto
         {
-            ShiftPlanItemId = item.Id,
-            ShiftDate = item.Day.ShiftDate,
-            Position = item.Position,
-            StartAtUtc = item.StartAtUtc,
-            EndAtUtc = item.EndAtUtc,
-            TimeZoneId = item.TimeZoneId,
-            ShiftLeadId = item.ShiftLeadId!,
-            ShiftLeadName = item.ShiftLead?.FullName ?? string.Empty,
-            HasOrphanOutput = orphanByItem[item.Id]
+            ShiftPlanItemId = x.Item.Id,
+            ShiftDate = x.Item.Day.ShiftDate,
+            Position = x.Item.Position,
+            StartAtUtc = x.Item.StartAtUtc,
+            EndAtUtc = x.Item.EndAtUtc,
+            TimeZoneId = x.Item.TimeZoneId,
+            ShiftLeadId = x.Lead.Id!,
+            ShiftLeadName = fallback.Users.TryGetValue(x.Lead.Id!, out var lead)
+                ? lead.FullName
+                : string.Empty,
+            HasOrphanOutput = orphanByItem[x.Item.Id]
         }).ToList();
     }
 
@@ -458,11 +475,13 @@ public sealed class ShiftClosureService : IShiftClosureService
         Guid closureId, StaffingCaller caller, CancellationToken ct) =>
         _loader.LoadClosedAsync(closureId, caller, ct);
 
-    private static void EnsureAccess(ShiftPlanItem item, StaffingCaller caller)
+    private static void EnsureAccess(
+        StaffingCaller caller, ShiftLeadFallbackSnapshot fallback, string? effectiveLeadId)
     {
-        if (string.IsNullOrEmpty(item.ShiftLeadId))
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, fallback);
+        if (string.IsNullOrEmpty(effectiveLeadId))
             throw new DomainException("shiftLeadRequired");
-        if (caller.IsShiftLead && item.ShiftLeadId != caller.UserId)
+        if (caller.IsShiftLead && effectiveLeadId != caller.UserId)
             throw new ShiftAccessException("Старшему доступны только собственные смены");
         if (!caller.IsShiftLead && !caller.IsManagerOrAdmin)
             throw new ShiftAccessException("Недостаточно прав для изменения сменного рапорта");

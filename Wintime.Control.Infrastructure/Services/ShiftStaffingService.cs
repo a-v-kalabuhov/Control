@@ -19,12 +19,15 @@ namespace Wintime.Control.Infrastructure.Services;
 public sealed class ShiftStaffingService : IShiftStaffingService
 {
     private const string ConcurrencyMessage = "Состав литейщиков изменился. Обновите данные смены";
+    private const string NearestConcurrencyMessage = "Ближайшая смена изменилась. Обновите данные";
 
     private readonly ControlDbContext _context;
     private readonly IFactoryClock _factoryClock;
     private readonly IImmStatusCache _statusCache;
     private readonly IEffectiveStatusHistoryService _effectiveStatusHistory;
     private readonly ITaskResultsService _taskResults;
+    private readonly IShiftLeadFallbackProvider _fallbackProvider;
+    private readonly IShiftPlanMaterializer _materializer;
     private readonly DowntimeSettings _downtime;
 
     public ShiftStaffingService(
@@ -33,6 +36,8 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         IImmStatusCache statusCache,
         IEffectiveStatusHistoryService effectiveStatusHistory,
         ITaskResultsService taskResults,
+        IShiftLeadFallbackProvider fallbackProvider,
+        IShiftPlanMaterializer materializer,
         IOptions<DowntimeSettings> downtime)
     {
         _context = context;
@@ -40,22 +45,51 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         _statusCache = statusCache;
         _effectiveStatusHistory = effectiveStatusHistory;
         _taskResults = taskResults;
+        _fallbackProvider = fallbackProvider;
+        _materializer = materializer;
         _downtime = downtime.Value;
     }
 
     public async Task<NearestShiftDto> GetNearestAsync(string userId, CancellationToken ct)
     {
         var now = Now;
-        var candidates = await _context.ShiftPlanItems
-            .AsNoTracking()
-            .Include(i => i.Day)
-            .Include(i => i.Closure)
-            .Where(i => i.ShiftLeadId == userId && i.EndAtUtc > now)
-            .ToListAsync(ct);
-        var nearest = NearestShiftSelector.ForLead(candidates, userId, now);
+        var candidateSet = await LoadNearestCandidatesAsync(now, userId, ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(userId, candidateSet.Fallback);
+        var nearest = NearestShiftSelector.ForLead(
+            candidateSet.Items, userId, now, item => EffectiveLeadId(item, candidateSet.Fallback));
+        var fallback = candidateSet.Fallback;
+
+        if (nearest?.ShiftPlanDayId == Guid.Empty)
+        {
+            var date = nearest.Day.ShiftDate;
+            var position = nearest.Position;
+            var selectedStartAtUtc = nearest.StartAtUtc;
+            var selectedEndAtUtc = nearest.EndAtUtc;
+            var selectedTimeZoneId = nearest.TimeZoneId;
+            var materializedDay = await _materializer.MaterializeAsync(date, position, ct);
+            var materializedItem = materializedDay.Items.Single(i => i.Position == position);
+            if (materializedItem.StartAtUtc != selectedStartAtUtc ||
+                materializedItem.EndAtUtc != selectedEndAtUtc ||
+                materializedItem.TimeZoneId != selectedTimeZoneId)
+                throw new ShiftConcurrencyException(NearestConcurrencyMessage);
+            var materializedId = materializedItem.Id;
+
+            // MaterializeAsync повторно читает график и default под ShiftScheduleLock.
+            // После него повторяем сам выбор по свежему времени: устаревший itemId нельзя выдать клиенту.
+            now = Now;
+            var verified = await LoadNearestCandidatesAsync(now, userId, ct);
+            ShiftLeadAccessPolicy.EnsureCurrentRole(userId, verified.Fallback);
+            nearest = NearestShiftSelector.ForLead(
+                verified.Items, userId, now, item => EffectiveLeadId(item, verified.Fallback));
+            if (nearest?.Id != materializedId)
+                throw new ShiftConcurrencyException(NearestConcurrencyMessage);
+            fallback = verified.Fallback;
+        }
+
         return new NearestShiftDto(nearest == null
             ? null
-            : ToSummary(nearest, now, CanEditNearestForLead(nearest, userId, now)));
+            : ToSummary(nearest, now,
+                CanEditNearestForLead(nearest, EffectiveLeadId(nearest, fallback), now)));
     }
 
     public async Task<IReadOnlyList<ShiftStaffingSummaryDto>> GetHistoryAsync(
@@ -66,11 +100,17 @@ public sealed class ShiftStaffingService : IShiftStaffingService
             .AsNoTracking()
             .Include(i => i.Day)
             .Include(i => i.Closure)
-            .Where(i => i.ShiftLeadId == userId && i.EndAtUtc <= now)
+            .Where(i => i.EndAtUtc <= now)
+            .ToListAsync(ct);
+        var fallback = await _fallbackProvider.GetAsync(ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(userId, fallback);
+        return items
+            .Where(i => EffectiveLeadId(i, fallback) == userId)
             .OrderByDescending(i => i.StartAtUtc)
             .ThenByDescending(i => i.Id)
-            .ToListAsync(ct);
-        return items.Select(i => ToSummary(i, now, CanEditEndedUnclosed(i, now))).ToList();
+            .Select(i => ToSummary(i, now,
+                CanEditEndedUnclosed(i, EffectiveLeadId(i, fallback), now)))
+            .ToList();
     }
 
     public Task<ShiftStaffingItemDto> GetItemAsync(
@@ -108,27 +148,32 @@ public sealed class ShiftStaffingService : IShiftStaffingService
             ?? throw new ShiftNotFoundException("Смена не найдена");
 
         var now = Now;
-        var nearestCandidates = await _context.ShiftPlanItems
-            .AsNoTracking()
-            .Where(i => i.ShiftLeadId != null)
-            .ToListAsync(ct);
+        var candidateSet = await LoadNearestCandidatesAsync(
+            now, caller.IsShiftLead ? caller.UserId : null, ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, candidateSet.Fallback);
+        var effectiveLead = EffectiveShiftLeadResolver.Resolve(item, candidateSet.Fallback);
 
         var isClosed = item.Closure?.State == ShiftClosureState.Closed;
-        var hasLead = !string.IsNullOrEmpty(item.ShiftLeadId);
+        var hasLead = effectiveLead.Id != null;
         bool canEditOperators;
         if (caller.IsManagerOrAdmin)
         {
             canEditOperators = hasLead && !isClosed &&
-                (now >= item.EndAtUtc || NearestShiftSelector.IsNearestForManager(nearestCandidates, item, now));
+                (now >= item.EndAtUtc || NearestShiftSelector.IsNearestForManager(
+                    candidateSet.Items, item, now,
+                    candidate => EffectiveLeadId(candidate, candidateSet.Fallback)));
         }
         else if (caller.IsShiftLead)
         {
-            var nearest = NearestShiftSelector.ForLead(nearestCandidates, caller.UserId, now);
+            var nearest = NearestShiftSelector.ForLead(
+                candidateSet.Items, caller.UserId, now,
+                candidate => EffectiveLeadId(candidate, candidateSet.Fallback));
             var isNearest = nearest?.Id == item.Id;
-            if (item.ShiftLeadId != caller.UserId || (!isNearest && item.EndAtUtc > now))
+            if (effectiveLead.Id != caller.UserId || (!isNearest && item.EndAtUtc > now))
                 throw new ShiftAccessException("Старшему доступны только ближайшая и собственные исторические смены");
             canEditOperators = !isClosed &&
-                (CanEditNearestForLead(item, caller.UserId, now) || CanEditEndedUnclosed(item, now));
+                (CanEditNearestForLead(item, effectiveLead.Id, now) ||
+                 CanEditEndedUnclosed(item, effectiveLead.Id, now));
         }
         else
         {
@@ -139,14 +184,20 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         return new ShiftStaffingItemDto
         {
             Shift = summary,
-            ShiftLeadId = item.ShiftLeadId ?? string.Empty,
-            ShiftLeadName = item.ShiftLead?.FullName ?? string.Empty,
+            ShiftLeadId = effectiveLead.Id ?? string.Empty,
+            ShiftLeadName = effectiveLead.Id != null &&
+                candidateSet.Fallback.Users.TryGetValue(effectiveLead.Id, out var effectiveLeadUser)
+                    ? effectiveLeadUser.FullName
+                    : string.Empty,
             Imms = await LoadImmsAsync(item, now, summary.State, ct)
         };
     }
 
-    public async Task<IReadOnlyList<StaffPersonDto>> GetOperatorsAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<StaffPersonDto>> GetOperatorsAsync(
+        StaffingCaller caller, CancellationToken ct)
     {
+        var fallback = await _fallbackProvider.GetAsync(ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, fallback);
         var users = await _context.Users
             .AsNoTracking()
             .Where(u => u.IsActive && u.Role == UserRole.Operator)
@@ -403,26 +454,31 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         ShiftPlanItem item, StaffingCaller caller, DateTime now,
         ShiftClosureState? initialClosureState, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(item.ShiftLeadId))
-            throw new DomainException("Сначала назначьте старшего смены");
-        if (caller.IsShiftLead && item.ShiftLeadId != caller.UserId)
-            throw new ShiftAccessException("Старшему доступно изменение только собственной смены");
         if (!caller.IsManagerOrAdmin && !caller.IsShiftLead)
             throw new ShiftAccessException("Недостаточно прав для изменения состава смены");
 
-        var nearestCandidates = await _context.ShiftPlanItems
-            .AsNoTracking()
-            .Where(i => i.ShiftLeadId != null)
-            .ToListAsync(ct);
+        var candidateSet = await LoadNearestCandidatesAsync(
+            now, caller.IsShiftLead ? caller.UserId : null, ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, candidateSet.Fallback);
+        var effectiveLeadId = EffectiveLeadId(item, candidateSet.Fallback);
+        if (caller.IsShiftLead && effectiveLeadId != caller.UserId)
+            throw new ShiftAccessException("Старшему доступно изменение только собственной смены");
+        if (effectiveLeadId == null)
+            throw new DomainException("Сначала назначьте старшего смены");
+
         var ended = now >= Utc(item.EndAtUtc);
         if (caller.IsManagerOrAdmin)
         {
-            if (!ended && !NearestShiftSelector.IsNearestForManager(nearestCandidates, item, now))
+            if (!ended && !NearestShiftSelector.IsNearestForManager(
+                    candidateSet.Items, item, now,
+                    candidate => EffectiveLeadId(candidate, candidateSet.Fallback)))
                 throw new ShiftAccessException("Руководителю доступно изменение только ближайшей или завершённой незакрытой смены");
         }
         else if (!ended)
         {
-            var nearest = NearestShiftSelector.ForLead(nearestCandidates, caller.UserId, now);
+            var nearest = NearestShiftSelector.ForLead(
+                candidateSet.Items, caller.UserId, now,
+                candidate => EffectiveLeadId(candidate, candidateSet.Fallback));
             if (nearest?.Id != item.Id)
                 throw new ShiftAccessException("Старшему доступно изменение только собственной ближайшей смены");
         }
@@ -434,6 +490,35 @@ public sealed class ShiftStaffingService : IShiftStaffingService
             throw new DomainException("shiftClosed");
         }
     }
+
+    private async Task<(List<ShiftPlanItem> Items, ShiftLeadFallbackSnapshot Fallback)>
+        LoadNearestCandidatesAsync(DateTime now, string? leadId, CancellationToken ct)
+    {
+        var savedItems = await _context.ShiftPlanItems
+            .AsNoTracking()
+            .Include(i => i.Day)
+            .Include(i => i.Closure)
+            .ToListAsync(ct);
+        var shifts = await _context.Shifts.AsNoTracking().ToListAsync(ct);
+        var schedule = await _factoryClock.GetScheduleAsync(ct);
+        var factoryToday = DateOnly.FromDateTime(schedule.ToLocal(now));
+        var savedDates = savedItems.Select(i => i.Day.ShiftDate).ToHashSet();
+        var requestedVirtualDays = new[] { factoryToday.AddDays(-1), factoryToday, factoryToday.AddDays(1) }
+            .Where(date => !savedDates.Contains(date))
+            .Select(date => ShiftPlanCandidateBuilder.BuildVirtualDay(date, shifts))
+            .ToList();
+        var fallback = await _fallbackProvider.GetAsync(ct);
+        var candidates = leadId == null
+            ? ShiftPlanCandidateBuilder.BuildNearestCandidates(
+                savedItems, requestedVirtualDays, shifts, now, factoryToday, factoryToday, ct)
+            : ShiftPlanCandidateBuilder.BuildNearestCandidatesForLead(
+                savedItems, requestedVirtualDays, shifts, now, factoryToday, leadId, fallback, ct);
+        return (candidates, fallback);
+    }
+
+    private static string? EffectiveLeadId(
+        ShiftPlanItem item, ShiftLeadFallbackSnapshot fallback) =>
+        EffectiveShiftLeadResolver.Resolve(item, fallback).Id;
 
     private static bool IsConcurrencyFailure(Exception exception)
     {
@@ -623,12 +708,14 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         CanEditOperators = canEditOperators
     };
 
-    private static bool CanEditNearestForLead(ShiftPlanItem item, string userId, DateTime now) =>
-        item.ShiftLeadId == userId && !string.IsNullOrEmpty(item.ShiftLeadId) &&
+    private static bool CanEditNearestForLead(
+        ShiftPlanItem item, string? effectiveLeadId, DateTime now) =>
+        !string.IsNullOrEmpty(effectiveLeadId) &&
         item.Closure?.State != ShiftClosureState.Closed && now < item.EndAtUtc;
 
-    private static bool CanEditEndedUnclosed(ShiftPlanItem item, DateTime now) =>
-        !string.IsNullOrEmpty(item.ShiftLeadId) &&
+    private static bool CanEditEndedUnclosed(
+        ShiftPlanItem item, string? effectiveLeadId, DateTime now) =>
+        !string.IsNullOrEmpty(effectiveLeadId) &&
         item.Closure?.State != ShiftClosureState.Closed && now >= item.EndAtUtc;
 
     private DateTime Now => Utc(_factoryClock.UtcNow);

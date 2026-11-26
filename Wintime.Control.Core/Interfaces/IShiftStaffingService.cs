@@ -10,7 +10,7 @@ public interface IShiftStaffingService
     Task<ShiftStaffingItemDto> GetItemAsync(Guid itemId, StaffingCaller caller, CancellationToken ct);
     Task<ShiftStaffingTaskDto> GetTaskAsync(
         Guid itemId, Guid taskId, StaffingCaller caller, CancellationToken ct);
-    Task<IReadOnlyList<StaffPersonDto>> GetOperatorsAsync(CancellationToken ct);
+    Task<IReadOnlyList<StaffPersonDto>> GetOperatorsAsync(StaffingCaller caller, CancellationToken ct);
     Task<ShiftOperatorAssignmentDto> AssignAsync(
         Guid itemId, AssignOperatorRequest request, StaffingCaller caller, CancellationToken ct);
     Task<ShiftOperatorAssignmentDto> UnassignAsync(

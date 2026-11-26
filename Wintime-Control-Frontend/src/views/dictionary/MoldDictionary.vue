@@ -457,7 +457,7 @@ const loadMolds = async () => {
   }
 }
 
-const showCreateModal = () => {
+const showCreateModal = async () => {
   editingMold.value = null
   editingArchivedType.value = null
   Object.assign(form, {
@@ -476,6 +476,16 @@ const showCreateModal = () => {
     compatibleImmIds: [],
   })
   dialogVisible.value = true
+
+  try {
+    const { data } = await moldsApi.suggestArticle()
+    // Не перезаписываем ввод пользователя или открытую позже карточку редактирования.
+    if (dialogVisible.value && !editingMold.value && !form.formId) {
+      form.formId = data.article ?? ''
+    }
+  } catch {
+    // Автозаполнение — подсказка: при ошибке поле остаётся пустым для ручного ввода.
+  }
 }
 
 const editMold = (mold) => {

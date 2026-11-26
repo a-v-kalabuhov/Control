@@ -10,6 +10,7 @@ vi.mock('@/api/molds', () => ({
     getList: vi.fn(() => Promise.resolve({ data: [] })),
     create: vi.fn(() => Promise.resolve({ data: {} })),
     update: vi.fn(() => Promise.resolve({ data: {} })),
+    suggestArticle: vi.fn(() => Promise.resolve({ data: { article: null } })),
     getQr: vi.fn(() => Promise.resolve({ data: {} }))
   }
 }))
@@ -86,6 +87,17 @@ describe('MoldDictionary — разметка формы', () => {
     const nameField = dialog.findAllComponents({ name: 'ElFormItem' })
       .find(item => item.props('label') === 'Наименование')
     expect(nameField.element.closest('.el-col').classList).toContain('el-col-24')
+  })
+
+  it('при создании пресс-формы подставляет предложенный артикул', async () => {
+    moldsApi.suggestArticle.mockResolvedValueOnce({ data: { article: 'PF-0103' } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.showCreateModal()
+
+    expect(moldsApi.suggestArticle).toHaveBeenCalled()
+    expect(wrapper.vm.form.formId).toBe('PF-0103')
   })
 
   it('не показывает вес литника в таблице и форме пресс-формы', async () => {

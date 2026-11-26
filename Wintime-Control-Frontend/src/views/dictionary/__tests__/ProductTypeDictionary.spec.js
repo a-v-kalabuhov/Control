@@ -14,6 +14,7 @@ vi.mock('@/api/productTypes', () => ({
     create: vi.fn(),
     update: vi.fn(() => Promise.resolve({})),
     suggestCompanies: vi.fn(() => Promise.resolve({ data: [] })),
+    suggestArticle: vi.fn(() => Promise.resolve({ data: { article: null } })),
     addProduct: vi.fn(),
     updateProduct: vi.fn(() => Promise.resolve({})),
     deleteProduct: vi.fn(() => Promise.resolve({}))
@@ -140,6 +141,17 @@ describe('ProductTypeDictionary (PZP-19)', () => {
     await flushPromises()
     const cells = wrapper.findAll('.products-count')
     expect(cells[0].text()).toBe('2')
+  })
+
+  it('при создании типа подставляет предложенный артикул', async () => {
+    productTypesApi.suggestArticle.mockResolvedValue({ data: { article: 'A124' } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.showCreateModal()
+
+    expect(productTypesApi.suggestArticle).toHaveBeenCalled()
+    expect(wrapper.vm.form.article).toBe('A124')
   })
 
   it('после создания окно остаётся в режиме редактирования с изделием 0', async () => {

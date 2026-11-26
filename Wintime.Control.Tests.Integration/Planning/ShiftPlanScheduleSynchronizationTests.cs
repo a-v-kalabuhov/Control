@@ -80,6 +80,12 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
         return new TestUser(user.Id, login, password);
     }
 
+    private static async Task WithNoLeadFallbackAsync(IntegrationTestFactory factory, Func<Task> test)
+    {
+        await using var noFallback = await NoLeadFallbackScope.CreateAsync(factory);
+        await test();
+    }
+
     private static List<ShiftScheduleItemDto> Schedule(params int[] startMinutes) =>
         startMinutes.Select(start => new ShiftScheduleItemDto
         {
@@ -569,13 +575,13 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
     }
 
     [Fact]
-    public async Task FutureDay_WithoutRemainingLeadsOrAssignments_IsDeleted()
+    public async Task FutureDay_WithoutRemainingLeadsAssignmentsOrManagerFallback_IsDeleted()
     {
         var lead = await SeedUserAsync(UserRole.ShiftLead);
         var date = NewFutureDate();
         var client = await ManagerClientAsync();
 
-        await WithScheduleAsync(client, Schedule(0, 480), async () =>
+        await WithNoLeadFallbackAsync(_factory, () => WithScheduleAsync(client, Schedule(0, 480), async () =>
         {
             using (var scope = _factory.Services.CreateScope())
             {
@@ -620,7 +626,7 @@ public class ShiftPlanScheduleSynchronizationTests : IClassFixture<IntegrationTe
             virtualDay.GetProperty("isSaved").GetBoolean().Should().BeFalse();
             virtualDay.GetProperty("items").EnumerateArray().Should().ContainSingle()
                 .Which.GetProperty("shiftLeadId").ValueKind.Should().Be(JsonValueKind.Null);
-        });
+        }));
     }
 
     [Fact]
