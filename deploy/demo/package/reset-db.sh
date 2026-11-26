@@ -13,6 +13,14 @@ PG=wtctrl-demo-postgres
 
 [ -f seed_demo.sql ] || { echo "Нет seed_demo.sql рядом со скриптом" >&2; exit 1; }
 
+start_api() {
+  if ! docker compose up -d --force-recreate migrations api; then
+    echo "Запуск migrations/api завершился ошибкой:" >&2
+    docker compose logs --tail 100 migrations api >&2
+    return 1
+  fi
+}
+
 echo "==> 1/6 Останавливаю API и удаляю БД..."
 docker compose stop api
 docker compose rm -f -s postgres
@@ -38,8 +46,8 @@ for i in $(seq 1 90); do
   sleep 2
 done
 
-echo "==> 3/6 Запускаю API: миграции и демо-аккаунты..."
-docker compose up -d api
+echo "==> 3/6 Применяю миграции и запускаю API для демо-аккаунтов..."
+start_api
 for i in $(seq 1 90); do
   if docker exec "$PG" psql -U postgres -d "$DB" -Atc "SELECT 1 FROM \"Users\" WHERE \"UserName\" = 'adjuster'" 2>/dev/null | grep -q 1; then
     break
@@ -61,6 +69,6 @@ docker exec -i "$PG" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -q < seed_demo
 size=$(docker exec "$PG" psql -U postgres -d "$DB" -Atc "SELECT pg_size_pretty(pg_database_size(current_database()))")
 echo "    готово за $(( ($(date +%s) - start) / 60 )) мин, размер БД ${size}"
 
-echo "==> 6/6 Запускаю API..."
-docker compose up -d api
+echo "==> 6/6 Повторно проверяю миграции и запускаю API..."
+start_api
 echo "Сброс БД завершён."
