@@ -18,4 +18,9 @@ public sealed class AdminTelemetryController : ControllerBase
     public async Task<ActionResult<TelemetryStatisticsDto>> GetStatistics(
         [FromQuery] string? timeZone, CancellationToken ct) =>
         Ok(await _service.GetStatisticsAsync(timeZone, ct));
+
+    [HttpGet("cleanup/preview")]
+    public async Task<ActionResult<TelemetryCleanupPreviewDto>> PreviewCleanup(
+        [FromQuery] DateOnly date, [FromQuery] string? timeZone, CancellationToken ct) =>
+        Ok(await _service.PreviewCleanupAsync(date, timeZone, ct));
 }

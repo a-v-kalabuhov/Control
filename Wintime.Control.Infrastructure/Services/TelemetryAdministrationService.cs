@@ -48,6 +48,14 @@ public sealed class TelemetryAdministrationService : ITelemetryAdministrationSer
             })).ToArray());
     }
 
+    public async Task<TelemetryCleanupPreviewDto> PreviewCleanupAsync(
+        DateOnly date, string? timeZone, CancellationToken ct)
+    {
+        var cutoffUtc = TelemetryPeriodCalculator.GetCleanupCutoffUtc(date, DateTime.UtcNow, timeZone);
+        var count = await _context.Telemetry.LongCountAsync(t => t.Timestamp < cutoffUtc, ct);
+        return new TelemetryCleanupPreviewDto(date, cutoffUtc, count);
+    }
+
     private static PeriodCountDto ToDto(TelemetryPeriod period, long count) =>
         new(period.StartDate, period.EndDate, count, period.IsCurrent);
 }
