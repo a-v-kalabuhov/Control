@@ -1385,7 +1385,17 @@ Expected: migrator не стартует до healthy PostgreSQL после во
 
   cd "$work"
   bash reset-db.sh
-  curl -k --fail --max-time 10 https://localhost:18443/health
+  healthy=0
+  for attempt in {1..45}; do
+    if curl -k --fail --max-time 10 https://localhost:18443/health; then
+      healthy=1
+      break
+    fi
+    if [ "$attempt" -lt 45 ]; then
+      sleep 2
+    fi
+  done
+  [ "$healthy" = "1" ]
   [ "$(docker inspect -f '{{.State.ExitCode}}' wtctrl-demo-migrations)" = "0" ]
   [ "$(docker inspect -f '{{.Config.Image}}' wtctrl-demo-migrations)" = "ghcr.io/a-v-kalabuhov/control/migrations:local" ]
   [ "$(docker inspect -f '{{.Config.Image}}' wtctrl-demo-api)" = "ghcr.io/a-v-kalabuhov/control/api:local" ]
@@ -1396,7 +1406,7 @@ Expected: migrator не стартует до healthy PostgreSQL после во
 )
 ```
 
-Expected: в выводе есть `Сброс БД завершён.`; первая фаза создала схему и демо-аккаунты, малый SQL применён, вторая фаза выполнила successful no-op; `/health` успешен, `adjuster` и default shift существуют, API и migrations используют общий тег `local`. Trap удаляет только созданные на изолированном host ресурсы. Не запускать этот шаг на demo VPS.
+Expected: в выводе есть `Сброс БД завершён.`; первая фаза создала схему и демо-аккаунты, малый SQL применён, вторая фаза выполнила successful no-op; готовность `/health` ожидается ограниченным циклом 45×2 с, поскольку `docker compose up -d` не является гейтом готовности API, немедленный `curl` не требуется; `adjuster` и default shift существуют, API и migrations используют общий тег `local`. Trap удаляет только созданные на изолированном host ресурсы. Не запускать этот шаг на demo VPS.
 
 - [ ] **Step 6: Финальный source/artifact audit**
 
