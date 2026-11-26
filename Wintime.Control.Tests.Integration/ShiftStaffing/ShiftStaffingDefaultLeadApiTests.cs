@@ -241,6 +241,64 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
     }
 
     [Fact]
+    public async Task Nearest_CurrentForeignShift_DoesNotHideLaterOwnDefault()
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var otherLead = await SeedUserAsync(UserRole.ShiftLead);
+        var isolationLead = await SeedUserAsync(UserRole.ShiftLead);
+        const int position = 1;
+        var previousDefault = await SetDefaultAsync(position, lead.Id);
+        var isolatedItems = await IsolateSavedFallbackItemsAsync(position, isolationLead.Id);
+        var existingDayIds = await DayIdsAsync();
+        var admin = await AdminClientAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow)
+            .AddDays(Interlocked.Increment(ref _dateOffset));
+        var controlledTime = new ControlledTime
+        {
+            UtcNow = today.ToDateTime(new TimeOnly(8, 30), DateTimeKind.Utc)
+        };
+        foreach (var date in new[] { today, today.AddDays(1) })
+        {
+            await SeedDayAtDateAsync(date, Item(
+                position, otherLead.Id,
+                date.ToDateTime(new TimeOnly(8, 0), DateTimeKind.Utc),
+                date.ToDateTime(new TimeOnly(9, 0), DateTimeKind.Utc)));
+        }
+
+        try
+        {
+            await WithScheduleAsync(admin, SingleFixedShift(), async () =>
+            {
+                await using var controlledFactory = _factory.WithWebHostBuilder(builder =>
+                    builder.ConfigureServices(services =>
+                    {
+                        services.AddSingleton(controlledTime);
+                        services.AddScoped<IFactoryClock>(sp => new ControlledFactoryClock(
+                            sp.GetRequiredService<ControlDbContext>(), controlledTime));
+                    }));
+                using var client = await AuthenticateAsync(
+                    controlledFactory.CreateClient(), lead.Login, lead.Password);
+
+                var body = await RequiredJsonAsync(
+                    await client.GetAsync("/api/shift-staffing/nearest"));
+
+                var item = body.GetProperty("item");
+                item.ValueKind.Should().NotBe(JsonValueKind.Null);
+                item.GetProperty("state").GetString().Should().Be("Future");
+                item.GetProperty("shiftDate").GetString().Should()
+                    .Be(today.AddDays(2).ToString("yyyy-MM-dd"));
+                item.GetProperty("itemId").GetGuid().Should().NotBeEmpty();
+            });
+        }
+        finally
+        {
+            await DeleteNewDaysAsync(existingDayIds);
+            await SetDefaultAsync(position, previousDefault);
+            await RestoreSavedFallbackItemsAsync(isolatedItems);
+        }
+    }
+
+    [Fact]
     public async Task Nearest_DefaultChangedWhileWaitingForScheduleLock_Returns409()
     {
         var lead = await SeedUserAsync(UserRole.ShiftLead);
@@ -409,6 +467,62 @@ public class ShiftStaffingDefaultLeadApiTests : IClassFixture<IntegrationTestFac
         finally
         {
             await DeleteDayAsync(item.Day.ShiftDate);
+        }
+    }
+
+    [Theory]
+    [InlineData("archive")]
+    [InlineData("role")]
+    public async Task DefaultLead_ArchiveOrRoleChange_RevokesPersonalAccessButPreservesAssignment(string mode)
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var admin = await AdminClientAsync();
+        var now = DateTime.UtcNow;
+        var position = NextPosition();
+        var item = (await SeedDayAsync(Item(
+            position, null, now.AddHours(-1), now.AddHours(1)))).Items.Single();
+        var previousDefault = await SetDefaultAsync(position, lead.Id);
+        var client = await ClientAsync(lead);
+        try
+        {
+            (await client.GetAsync($"/api/shift-staffing/items/{item.Id}")).StatusCode.Should()
+                .Be(HttpStatusCode.OK);
+            object update = mode == "archive"
+                ? new { isActive = false, role = (string?)null }
+                : new { isActive = (bool?)null, role = nameof(UserRole.Observer) };
+            (await admin.PutAsJsonAsync($"/api/personnel/{lead.Id}", update)).StatusCode.Should()
+                .Be(HttpStatusCode.NoContent);
+
+            (await client.GetAsync("/api/shift-staffing/nearest")).StatusCode.Should()
+                .Be(HttpStatusCode.Forbidden);
+            (await client.GetAsync("/api/shift-staffing/history")).StatusCode.Should()
+                .Be(HttpStatusCode.Forbidden);
+            (await client.GetAsync("/api/shift-staffing/operators")).StatusCode.Should()
+                .Be(HttpStatusCode.Forbidden);
+            (await client.GetAsync($"/api/shift-staffing/items/{item.Id}")).StatusCode.Should()
+                .Be(HttpStatusCode.Forbidden);
+            (await client.GetAsync($"/api/shift-closures/items/{item.Id}")).StatusCode.Should()
+                .Be(HttpStatusCode.Forbidden);
+
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            (await db.ShiftDefaultLeads.AsNoTracking().SingleAsync(d => d.Position == position))
+                .ShiftLeadId.Should().Be(lead.Id);
+            (await db.ShiftPlanItems.AsNoTracking().SingleAsync(i => i.Id == item.Id))
+                .ShiftLeadId.Should().BeNull();
+
+            object restore = mode == "archive"
+                ? new { isActive = true, role = (string?)null }
+                : new { isActive = (bool?)null, role = nameof(UserRole.ShiftLead) };
+            (await admin.PutAsJsonAsync($"/api/personnel/{lead.Id}", restore)).StatusCode.Should()
+                .Be(HttpStatusCode.NoContent);
+            (await client.GetAsync($"/api/shift-staffing/items/{item.Id}")).StatusCode.Should()
+                .Be(HttpStatusCode.OK, "восстановление активной роли ShiftLead возвращает доступ");
+        }
+        finally
+        {
+            await DeleteDayAsync(item.Day.ShiftDate);
+            await SetDefaultAsync(position, previousDefault);
         }
     }
 

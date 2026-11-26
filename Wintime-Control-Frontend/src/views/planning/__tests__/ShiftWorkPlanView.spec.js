@@ -28,7 +28,7 @@ vi.mock('@/api/shifts', () => ({
   shiftsApi: { getShifts: vi.fn() }
 }))
 vi.mock('@/api/shiftPlans', () => ({
-  shiftPlansApi: { getRange: vi.fn() }
+  shiftPlansApi: { getRange: vi.fn(), materializeShift: vi.fn() }
 }))
 vi.mock('@/api/shiftClosures', () => ({
   getByItem: vi.fn(),
@@ -329,21 +329,67 @@ describe('ShiftWorkPlanView', () => {
   })
 
   it.each(['Default', 'ManagerFallback'])(
-    'для виртуальной %s позиции просит сначала сохранить смену без вызова closure API',
+    'для виртуальной %s позиции материализует смену и открывает рапорт по возвращённому id',
     async source => {
       shiftPlansApi.getRange.mockResolvedValue({
         data: [planDay(planItem({ id: null, shiftLeadSource: source }))]
+      })
+      shiftPlansApi.materializeShift.mockResolvedValue({
+        data: planDay(planItem({ id: 'materialized-item', shiftLeadSource: source }))
       })
       const wrapper = mountView()
       await flushPromises()
 
       await openClosureTab(wrapper)
 
-      expect(wrapper.text()).toContain('Сначала сохраните смену через План смен')
-      expect(wrapper.text()).not.toContain('Назначьте старшего смены')
-      expect(shiftClosuresApi.getByItem).not.toHaveBeenCalled()
+      expect(shiftPlansApi.materializeShift).toHaveBeenCalledWith('2026-11-06', 1)
+      expect(shiftClosuresApi.getByItem).toHaveBeenCalledWith('materialized-item')
+      expect(wrapper.text()).not.toContain('Сначала сохраните смену через План смен')
     }
   )
+
+  it('при ошибке materialize показывает сообщение и не запрашивает рапорт по старому id', async () => {
+    shiftPlansApi.getRange.mockResolvedValue({
+      data: [planDay(planItem({ id: null, shiftLeadSource: 'Default' }))]
+    })
+    shiftPlansApi.materializeShift.mockRejectedValue({
+      response: { status: 409, data: { message: 'План смены уже изменён' } }
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await openClosureTab(wrapper)
+
+    expect(shiftPlansApi.materializeShift).toHaveBeenCalledWith('2026-11-06', 1)
+    expect(shiftClosuresApi.getByItem).not.toHaveBeenCalled()
+    expect(ElMessage.error).toHaveBeenCalledWith('План смены уже изменён')
+  })
+
+  it('при быстром повторном открытии использует один materialize и не теряет созданный id', async () => {
+    shiftPlansApi.getRange.mockResolvedValue({
+      data: [planDay(planItem({ id: null, shiftLeadSource: 'Default' }))]
+    })
+    let completeMaterialize
+    shiftPlansApi.materializeShift.mockImplementation(() => new Promise(resolve => {
+      completeMaterialize = resolve
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+    await openClosureTab(wrapper)
+    const assignmentsTab = wrapper.findAll('.el-tabs__item')
+      .find(node => node.text() === 'Назначение наладчиков')
+    await assignmentsTab.trigger('click')
+    await flushPromises()
+
+    await openClosureTab(wrapper)
+
+    expect(shiftPlansApi.materializeShift).toHaveBeenCalledTimes(1)
+    completeMaterialize({
+      data: planDay(planItem({ id: 'shared-materialized-item', shiftLeadSource: 'Default' }))
+    })
+    await flushPromises()
+    expect(shiftClosuresApi.getByItem).toHaveBeenCalledWith('shared-materialized-item')
+  })
 
   it('без старшего показывает назначение без вызова closure API', async () => {
     shiftPlansApi.getRange.mockResolvedValue({

@@ -100,6 +100,10 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
     [Fact]
     public async Task ItemAccess_ShiftLeadGetsNearestAndOwnHistoryOnly_ManagerAdminGetAnyWithServerEditFlags()
     {
+        var adminClient = await AdminClientAsync();
+        // Фикстура использует относительные StartAtUtc при будущих ShiftDate. Отключаем
+        // виртуальный ManagerFallback, чтобы он не конкурировал с проверкой persistent ID.
+        await using var noFallback = await Planning.NoLeadFallbackScope.CreateAsync(_factory);
         var now = DateTime.UtcNow;
         var lead = await SeedUserAsync(UserRole.ShiftLead);
         var other = await SeedUserAsync(UserRole.ShiftLead);
@@ -132,7 +136,7 @@ public class ShiftStaffingReadApiTests : IClassFixture<IntegrationTestFactory>
         (await leadClient.GetAsync($"/api/shift-staffing/items/{Guid.NewGuid()}")).StatusCode.Should()
             .Be(HttpStatusCode.NotFound);
 
-        foreach (var client in new[] { await ManagerClientAsync(), await AdminClientAsync() })
+        foreach (var client in new[] { adminClient })
         {
             var nearestForManager = await RequiredJsonAsync(
                 await client.GetAsync($"/api/shift-staffing/items/{nearest.Id}"));

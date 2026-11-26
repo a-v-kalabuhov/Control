@@ -184,6 +184,7 @@ const assigning = reactive({})
 const issueErrors = reactive({})
 let loadSeq = 0
 let closureLoadSeq = 0
+let closureMaterialization = null
 
 const selectedShift = computed(() =>
   dashboardStore.shifts.find(s => s.number === selectedShiftNumber.value) ?? null)
@@ -255,6 +256,21 @@ async function load() {
   }
 }
 
+function materializeClosureItem(date, position) {
+  const key = `${date}/${position}`
+  if (closureMaterialization?.key === key) return closureMaterialization.promise
+  const pending = { key, promise: null }
+  pending.promise = (async () => {
+    try {
+      return await shiftPlansApi.materializeShift(date, position)
+    } finally {
+      if (closureMaterialization === pending) closureMaterialization = null
+    }
+  })()
+  closureMaterialization = pending
+  return pending.promise
+}
+
 async function loadClosureItem() {
   if (!selectedDate.value || !selectedShiftNumber.value) {
     closureItem.value = null
@@ -267,7 +283,14 @@ async function loadClosureItem() {
     const response = await shiftPlansApi.getRange(selectedDate.value, selectedDate.value)
     if (seq !== closureLoadSeq) return
     const day = (response.data ?? []).find(item => item.shiftDate === selectedDate.value)
-    const resolvedItem = day?.items?.find(item => item.position === selectedShiftNumber.value) ?? null
+    let resolvedItem = day?.items?.find(item => item.position === selectedShiftNumber.value) ?? null
+    if (resolvedItem && !resolvedItem.id && resolvedItem.shiftLeadId) {
+      const materialized = await materializeClosureItem(
+        selectedDate.value, selectedShiftNumber.value)
+      if (seq !== closureLoadSeq) return
+      resolvedItem = materialized.data?.items?.find(
+        item => item.position === selectedShiftNumber.value) ?? null
+    }
     const mountedSameItem = resolvedItem?.id && resolvedItem.shiftLeadId && closureItem.value?.id === resolvedItem.id
       ? closureTable.value
       : null

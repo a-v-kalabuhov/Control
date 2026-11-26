@@ -47,6 +47,15 @@ public static class NearestShiftSelector
                 .ThenBy(item => item.Position)
                 .FirstOrDefault();
 
-        return nearest?.Id == candidate.Id;
+        return nearest != null && RepresentsSameShift(nearest, candidate);
+    }
+
+    public static bool RepresentsSameShift(ShiftPlanItem left, ShiftPlanItem right)
+    {
+        if (left.Id != Guid.Empty || right.Id != Guid.Empty)
+            return left.Id != Guid.Empty && left.Id == right.Id;
+
+        return ReferenceEquals(left, right) ||
+            (left.Day?.ShiftDate == right.Day?.ShiftDate && left.Position == right.Position);
     }
 }

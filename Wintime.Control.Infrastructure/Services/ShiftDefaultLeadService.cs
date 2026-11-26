@@ -45,7 +45,12 @@ public sealed class ShiftDefaultLeadService : IShiftDefaultLeadService
             var existing = await _context.ShiftDefaultLeads.ToListAsync(ct);
             var snapshot = await _fallbackProvider.GetAsync(ct);
 
-            ValidateCandidates(requested.Values, snapshot);
+            var existingByPosition = existing.ToDictionary(d => d.Position, d => d.ShiftLeadId);
+            var changedCandidates = requested
+                .Where(p => p.Value != null && (!existingByPosition.TryGetValue(p.Key, out var existingId)
+                    || existingId != p.Value))
+                .Select(p => p.Value);
+            ValidateCandidates(changedCandidates, snapshot);
             var requestedDefaults = requested
                 .Where(p => p.Value != null)
                 .ToDictionary(p => p.Key, p => p.Value!);

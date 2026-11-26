@@ -160,6 +160,50 @@ public class ShiftDefaultLeadsApiTests : IClassFixture<IntegrationTestFactory>, 
     }
 
     [Fact]
+    public async Task SavedInvalidDefault_DoesNotBlockUnrelatedValidChange()
+    {
+        var manager = await ManagerClientAsync();
+        var original = await SeedUserAsync(UserRole.ShiftLead);
+        var other = await SeedUserAsync(UserRole.ShiftLead);
+
+        await WithScheduleAsync(manager, Schedule(480, 960), async () =>
+        {
+            (await PutDefaultsAsync(manager, (1, original.Id), (2, null))).StatusCode.Should()
+                .Be(HttpStatusCode.OK);
+            (await manager.PutAsJsonAsync($"/api/personnel/{original.Id}", new { isActive = false }))
+                .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+            var response = await PutDefaultsAsync(manager, (1, original.Id), (2, other.Id));
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK,
+                "неизменный архивный default сохраняется, а не считается новым выбором: " +
+                await response.Content.ReadAsStringAsync());
+            (await DefaultRowsAsync()).Should().Equal(
+                new DefaultRow(1, original.Id), new DefaultRow(2, other.Id));
+        });
+    }
+
+    [Fact]
+    public async Task SavedDefault_LoginClear_PreservesSettingButPreventsLogin()
+    {
+        var manager = await ManagerClientAsync();
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+
+        await WithScheduleAsync(manager, Schedule(480), async () =>
+        {
+            (await PutDefaultsAsync(manager, (1, lead.Id))).StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var response = await manager.PutAsJsonAsync($"/api/personnel/{lead.Id}", new { login = "" });
+
+            response.StatusCode.Should().Be(HttpStatusCode.NoContent,
+                await response.Content.ReadAsStringAsync());
+            (await DefaultRowsAsync()).Should().Equal(new DefaultRow(1, lead.Id));
+            var token = await AuthHelper.GetTokenAsync(_factory.CreateClient(), lead.Login, lead.Password);
+            token.Should().BeNull("очищенный логин и удалённый пароль не позволяют войти");
+        });
+    }
+
+    [Fact]
     public async Task Put_NullItem_Returns400AndDoesNotChangeExistingDefaults()
     {
         var manager = await ManagerClientAsync();

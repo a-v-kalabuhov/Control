@@ -53,7 +53,8 @@ public sealed class ShiftStaffingService : IShiftStaffingService
     public async Task<NearestShiftDto> GetNearestAsync(string userId, CancellationToken ct)
     {
         var now = Now;
-        var candidateSet = await LoadNearestCandidatesAsync(now, ct);
+        var candidateSet = await LoadNearestCandidatesAsync(now, userId, ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(userId, candidateSet.Fallback);
         var nearest = NearestShiftSelector.ForLead(
             candidateSet.Items, userId, now, item => EffectiveLeadId(item, candidateSet.Fallback));
         var fallback = candidateSet.Fallback;
@@ -76,7 +77,8 @@ public sealed class ShiftStaffingService : IShiftStaffingService
             // MaterializeAsync повторно читает график и default под ShiftScheduleLock.
             // После него повторяем сам выбор по свежему времени: устаревший itemId нельзя выдать клиенту.
             now = Now;
-            var verified = await LoadNearestCandidatesAsync(now, ct);
+            var verified = await LoadNearestCandidatesAsync(now, userId, ct);
+            ShiftLeadAccessPolicy.EnsureCurrentRole(userId, verified.Fallback);
             nearest = NearestShiftSelector.ForLead(
                 verified.Items, userId, now, item => EffectiveLeadId(item, verified.Fallback));
             if (nearest?.Id != materializedId)
@@ -101,6 +103,7 @@ public sealed class ShiftStaffingService : IShiftStaffingService
             .Where(i => i.EndAtUtc <= now)
             .ToListAsync(ct);
         var fallback = await _fallbackProvider.GetAsync(ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(userId, fallback);
         return items
             .Where(i => EffectiveLeadId(i, fallback) == userId)
             .OrderByDescending(i => i.StartAtUtc)
@@ -145,7 +148,9 @@ public sealed class ShiftStaffingService : IShiftStaffingService
             ?? throw new ShiftNotFoundException("Смена не найдена");
 
         var now = Now;
-        var candidateSet = await LoadNearestCandidatesAsync(now, ct);
+        var candidateSet = await LoadNearestCandidatesAsync(
+            now, caller.IsShiftLead ? caller.UserId : null, ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, candidateSet.Fallback);
         var effectiveLead = EffectiveShiftLeadResolver.Resolve(item, candidateSet.Fallback);
 
         var isClosed = item.Closure?.State == ShiftClosureState.Closed;
@@ -188,8 +193,11 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         };
     }
 
-    public async Task<IReadOnlyList<StaffPersonDto>> GetOperatorsAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<StaffPersonDto>> GetOperatorsAsync(
+        StaffingCaller caller, CancellationToken ct)
     {
+        var fallback = await _fallbackProvider.GetAsync(ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, fallback);
         var users = await _context.Users
             .AsNoTracking()
             .Where(u => u.IsActive && u.Role == UserRole.Operator)
@@ -449,7 +457,9 @@ public sealed class ShiftStaffingService : IShiftStaffingService
         if (!caller.IsManagerOrAdmin && !caller.IsShiftLead)
             throw new ShiftAccessException("Недостаточно прав для изменения состава смены");
 
-        var candidateSet = await LoadNearestCandidatesAsync(now, ct);
+        var candidateSet = await LoadNearestCandidatesAsync(
+            now, caller.IsShiftLead ? caller.UserId : null, ct);
+        ShiftLeadAccessPolicy.EnsureCurrentRole(caller, candidateSet.Fallback);
         var effectiveLeadId = EffectiveLeadId(item, candidateSet.Fallback);
         if (caller.IsShiftLead && effectiveLeadId != caller.UserId)
             throw new ShiftAccessException("Старшему доступно изменение только собственной смены");
@@ -482,7 +492,7 @@ public sealed class ShiftStaffingService : IShiftStaffingService
     }
 
     private async Task<(List<ShiftPlanItem> Items, ShiftLeadFallbackSnapshot Fallback)>
-        LoadNearestCandidatesAsync(DateTime now, CancellationToken ct)
+        LoadNearestCandidatesAsync(DateTime now, string? leadId, CancellationToken ct)
     {
         var savedItems = await _context.ShiftPlanItems
             .AsNoTracking()
@@ -497,9 +507,12 @@ public sealed class ShiftStaffingService : IShiftStaffingService
             .Where(date => !savedDates.Contains(date))
             .Select(date => ShiftPlanCandidateBuilder.BuildVirtualDay(date, shifts))
             .ToList();
-        var candidates = ShiftPlanCandidateBuilder.BuildNearestCandidates(
-            savedItems, requestedVirtualDays, shifts, now, factoryToday, factoryToday, ct);
         var fallback = await _fallbackProvider.GetAsync(ct);
+        var candidates = leadId == null
+            ? ShiftPlanCandidateBuilder.BuildNearestCandidates(
+                savedItems, requestedVirtualDays, shifts, now, factoryToday, factoryToday, ct)
+            : ShiftPlanCandidateBuilder.BuildNearestCandidatesForLead(
+                savedItems, requestedVirtualDays, shifts, now, factoryToday, leadId, fallback, ct);
         return (candidates, fallback);
     }
 

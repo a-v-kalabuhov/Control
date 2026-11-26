@@ -510,6 +510,145 @@ public class ShiftPlanMaterializationApiTests : IClassFixture<IntegrationTestFac
     }
 
     [Fact]
+    public async Task Materialize_DefaultClearedAfterCommit_Returns409WhenDaySurvivesOnOtherPosition()
+    {
+        var selectedLead = await SeedUserAsync(UserRole.ShiftLead);
+        var otherLead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = NewDate();
+        var admin = await AdminClientAsync();
+        var gate = new MaterializationGate();
+        await using var noFallback = await NoLeadFallbackScope.CreateAsync(_factory);
+        await SetDefaultAsync(1, selectedLead.Id);
+        await SetDefaultAsync(2, otherLead.Id);
+        try
+        {
+            await WithScheduleAsync(admin, TwoShifts(), async () =>
+            {
+                await using var raceFactory = _factory.WithWebHostBuilder(builder =>
+                    builder.ConfigureServices(services =>
+                    {
+                        services.AddScoped<IShiftPlanMaterializer>(sp =>
+                            new BlockingShiftPlanMaterializer(
+                                new ShiftPlanMaterializer(
+                                    sp.GetRequiredService<ControlDbContext>(),
+                                    sp.GetRequiredService<IShiftLeadFallbackProvider>()),
+                                gate));
+                    }));
+                using var client = raceFactory.CreateClient();
+                var token = await AuthHelper.GetTokenAsync(client, "admin", "Admin123!");
+                AuthHelper.SetBearerToken(client, token!);
+
+                var request = MaterializeAsync(client, date, 1);
+                try
+                {
+                    await gate.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    var clear = await admin.PutAsJsonAsync("/api/shifts/default-leads", new
+                    {
+                        items = new[]
+                        {
+                            new { position = 1, shiftLeadId = (string?)null },
+                            new { position = 2, shiftLeadId = (string?)otherLead.Id }
+                        }
+                    });
+                    clear.StatusCode.Should().Be(HttpStatusCode.OK,
+                        await clear.Content.ReadAsStringAsync());
+                    using var scope = _factory.Services.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                    (await db.ShiftPlanDays.CountAsync(d => d.ShiftDate == date)).Should().Be(1);
+                }
+                finally
+                {
+                    gate.Release.TrySetResult();
+                }
+
+                var response = await request;
+                response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+                    "сохранившийся день не должен маскировать потерю effective lead выбранной позиции: " +
+                    await response.Content.ReadAsStringAsync());
+            });
+        }
+        finally
+        {
+            await DeleteDayAsync(date);
+            await SetDefaultAsync(1, null);
+            await SetDefaultAsync(2, null);
+        }
+    }
+
+    [Fact]
+    public async Task Materialize_ExplicitLeadChangedAfterCommit_DoesNotReturnStaleLead()
+    {
+        var oldLead = await SeedUserAsync(UserRole.ShiftLead);
+        var newLead = await SeedUserAsync(UserRole.ShiftLead);
+        var date = NewDate();
+        var admin = await AdminClientAsync();
+        var gate = new MaterializationGate();
+        var now = DateTime.UtcNow;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var day = new ShiftPlanDay { ShiftDate = date };
+            day.Items.Add(new ShiftPlanItem
+            {
+                Position = 1,
+                StartAtUtc = now.AddHours(2),
+                EndAtUtc = now.AddHours(3),
+                TimeZoneId = "Europe/Moscow",
+                ShiftLeadId = oldLead.Id
+            });
+            db.ShiftPlanDays.Add(day);
+            await db.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var raceFactory = _factory.WithWebHostBuilder(builder =>
+                builder.ConfigureServices(services =>
+                {
+                    services.AddScoped<IShiftPlanMaterializer>(sp =>
+                        new BlockingShiftPlanMaterializer(
+                            new ShiftPlanMaterializer(
+                                sp.GetRequiredService<ControlDbContext>(),
+                                sp.GetRequiredService<IShiftLeadFallbackProvider>()),
+                            gate));
+                }));
+            using var client = raceFactory.CreateClient();
+            var token = await AuthHelper.GetTokenAsync(client, "admin", "Admin123!");
+            AuthHelper.SetBearerToken(client, token!);
+
+            var request = MaterializeAsync(client, date, 1);
+            try
+            {
+                await gate.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                var update = await admin.PutAsJsonAsync(
+                    $"/api/shift-plan/days/{date:yyyy-MM-dd}/items/1/lead",
+                    new { shiftLeadId = newLead.Id });
+                update.StatusCode.Should().Be(HttpStatusCode.OK,
+                    await update.Content.ReadAsStringAsync());
+            }
+            finally
+            {
+                gate.Release.TrySetResult();
+            }
+
+            var response = await request;
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Conflict);
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                var result = await JsonAsync(response);
+                Item(result, 1).GetProperty("shiftLeadId").GetString().Should().Be(newLead.Id,
+                    "post-commit ответ не должен строиться из старого tracked-объекта");
+            }
+            Item(await GetDayAsync(admin, date), 1).GetProperty("shiftLeadId").GetString()
+                .Should().Be(newLead.Id);
+        }
+        finally
+        {
+            await DeleteDayAsync(date);
+        }
+    }
+
+    [Fact]
     public async Task ConcurrentMaterialize_ReturnsOneSuccessAndOne409WithoutDuplicates()
     {
         var date = NewDate();

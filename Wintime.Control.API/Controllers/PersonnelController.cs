@@ -109,7 +109,8 @@ public class PersonnelController : ControllerBase
         };
 
         // Парсинг роли; роль Admin выдаёт только администратор
-        if (!Enum.TryParse<Core.Enums.UserRole>(request.Role, out var role))
+        if (!Enum.TryParse<Core.Enums.UserRole>(request.Role, out var role) ||
+            !Enum.IsDefined(role))
             return BadRequest("Неверная роль");
 
         if (role == Core.Enums.UserRole.Admin && !User.IsInRole(Roles.Admin))

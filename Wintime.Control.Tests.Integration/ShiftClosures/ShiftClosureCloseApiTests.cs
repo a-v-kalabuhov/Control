@@ -403,11 +403,11 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
         (await JsonAsync(beforeStart)).GetProperty("code").GetString().Should().Be("closeBeforeShiftStart");
         (await CloseAsync(client, foreign.Id)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await CloseAsync(client, Guid.NewGuid())).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        var managerClient = await ManagerClientAsync();
+        var adminClient = await AdminClientAsync();
         var deactivatedManagers = await DeactivateActiveManagersAsync();
         try
         {
-            var missingLead = await CloseAsync(managerClient, withoutLead.Id);
+            var missingLead = await CloseAsync(adminClient, withoutLead.Id);
             missingLead.StatusCode.Should().Be(HttpStatusCode.BadRequest);
             (await JsonAsync(missingLead)).GetProperty("message").GetString().Should().Be("shiftLeadRequired");
         }
@@ -599,6 +599,26 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
             var end = Utc(now.AddHours(-2));
             var item = (await SeedDayAsync(Item(null, start, end, position))).Items.Single();
             var client = useDefault ? await ClientAsync(defaultLead) : await ManagerClientAsync();
+            var operatorUser = await SeedUserAsync(UserRole.Operator);
+            var immId = await SeedImmAsync();
+
+            var assignment = await RequiredJsonAsync(await client.PostAsJsonAsync(
+                $"/api/shift-staffing/items/{item.Id}/operators", new
+                {
+                    immId,
+                    operatorId = operatorUser.Id,
+                    assignedAt = start,
+                    unassignedAt = end
+                }));
+            var assignmentId = assignment.GetProperty("id").GetGuid();
+            var correctedInterval = await RequiredJsonAsync(await client.PutAsJsonAsync(
+                $"/api/shift-staffing/assignments/{assignmentId}/interval", new
+                {
+                    assignedAt = start.AddMinutes(15),
+                    unassignedAt = end
+                }));
+            correctedInterval.GetProperty("assignedAt").GetDateTime().Should()
+                .BeCloseTo(start.AddMinutes(15), TimeSpan.FromMicroseconds(1));
 
             var draft = await RequiredJsonAsync(await PutDraftAsync(client, item.Id));
             draft.GetProperty("shiftLeadId").GetString().Should().Be(expectedLead.Id);
@@ -768,6 +788,14 @@ public class ShiftClosureCloseApiTests : IClassFixture<IntegrationTestFactory>
     {
         var client = _factory.CreateClient();
         var token = await AuthHelper.GetTokenAsync(client, "test_manager", "Manager123!");
+        AuthHelper.SetBearerToken(client, token!);
+        return client;
+    }
+
+    private async Task<HttpClient> AdminClientAsync()
+    {
+        var client = _factory.CreateClient();
+        var token = await AuthHelper.GetTokenAsync(client, "admin", "Admin123!");
         AuthHelper.SetBearerToken(client, token!);
         return client;
     }

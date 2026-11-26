@@ -135,6 +135,27 @@ public class ShiftManagerFallbackTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task NonManagerRoleChange_WaitsForScheduleLockToAvoidStaleRoleDecision()
+    {
+        var admin = await AdminClientAsync();
+        var user = await SeedUserAsync(UserRole.Adjuster, DateTime.UtcNow.AddYears(-10));
+        try
+        {
+            var race = await UpdateUnderScheduleLockAsync(admin, user.Id,
+                new UpdatePersonnelRequestDto { Role = nameof(UserRole.ShiftLead) });
+
+            race.BothWaited.Should().BeTrue(
+                "решение о блокировке нельзя принимать по снимку роли, который может устареть");
+            race.Update.StatusCode.Should().Be(HttpStatusCode.NoContent,
+                await race.Update.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await ArchiveUsersAsync(user.Id);
+        }
+    }
+
+    [Fact]
     public async Task CreateLaterManager_DoesNotChangeCurrentFallback()
     {
         var admin = await AdminClientAsync();
@@ -223,6 +244,57 @@ public class ShiftManagerFallbackTests : IClassFixture<IntegrationTestFactory>
             using var verifyScope = _factory.Services.CreateScope();
             verifyScope.ServiceProvider.GetRequiredService<IRefreshTokenStore>()
                 .GetActive(refreshToken).Should().BeNull();
+        }
+        finally
+        {
+            await ArchiveUsersAsync(manager.Id);
+        }
+    }
+
+    [Fact]
+    public async Task AdminLoginClear_WaitsForScheduleLockBeforeLastAdminGuard()
+    {
+        var admin = await AdminClientAsync();
+        var otherAdmin = await SeedUserAsync(UserRole.Admin, DateTime.UtcNow.AddYears(-10));
+        try
+        {
+            var race = await UpdateUnderScheduleLockAsync(admin, otherAdmin.Id,
+                new UpdatePersonnelRequestDto { Login = "" });
+
+            race.BothWaited.Should().BeTrue(
+                "проверка последнего администратора должна быть сериализована с другими отзывами доступа");
+            race.Update.StatusCode.Should().Be(HttpStatusCode.NoContent,
+                await race.Update.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await ArchiveUsersAsync(otherAdmin.Id);
+        }
+    }
+
+    [Theory]
+    [InlineData("archive")]
+    [InlineData("role")]
+    public async Task ManagerArchiveOrRoleChange_RevokesShiftAccessWithExistingToken(string mode)
+    {
+        var admin = await AdminClientAsync();
+        var manager = await SeedUserAsync(UserRole.Manager, DateTime.UtcNow.AddYears(-10));
+        var client = await ClientAsync(manager.Login, manager.Password);
+        try
+        {
+            (await client.GetAsync("/api/shift-closures/pending")).StatusCode.Should().Be(HttpStatusCode.OK);
+            (await client.GetAsync("/api/shift-staffing/operators")).StatusCode.Should().Be(HttpStatusCode.OK);
+            object update = mode == "archive"
+                ? new { isActive = false, role = (string?)null }
+                : new { isActive = (bool?)null, role = nameof(UserRole.Observer) };
+
+            (await admin.PutAsJsonAsync($"/api/personnel/{manager.Id}", update)).StatusCode.Should()
+                .Be(HttpStatusCode.NoContent);
+
+            (await client.GetAsync("/api/shift-closures/pending")).StatusCode.Should()
+                .Be(HttpStatusCode.Forbidden);
+            (await client.GetAsync("/api/shift-staffing/operators")).StatusCode.Should()
+                .Be(HttpStatusCode.Forbidden);
         }
         finally
         {

@@ -155,7 +155,7 @@ describe('ShiftDefaultLeadsDialog', () => {
     expect(wrapper.vm.optionsFor(wrapper.vm.items[1]).map(option => option.id)).toContain('lead-1')
   })
 
-  it('показывает архивное сохранённое значение с пометкой только в его строке', async () => {
+  it('показывает недоступное сохранённое значение с нейтральной пометкой только в его строке', async () => {
     const wrapper = mountDialog()
     await flushPromises()
 
@@ -165,7 +165,7 @@ describe('ShiftDefaultLeadsDialog', () => {
     expect(archivedOption).toBeDefined()
     expect(wrapper.vm.candidateLabel(archivedOption)).toContain('Архивный Старший')
     expect(wrapper.vm.candidateLabel(archivedOption)).toContain('009')
-    expect(wrapper.vm.candidateLabel(archivedOption)).toContain('архив')
+    expect(wrapper.vm.candidateLabel(archivedOption)).toContain('недоступен')
     expect(wrapper.vm.optionsFor(wrapper.vm.items[0]).map(option => option.id)).not.toContain('archived-1')
 
     archivedRow.selectedShiftLeadId = null

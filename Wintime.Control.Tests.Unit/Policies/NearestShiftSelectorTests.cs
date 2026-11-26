@@ -121,6 +121,22 @@ public class NearestShiftSelectorTests
         NearestShiftSelector.IsNearestForManager(savedItems, withoutLead, now, EffectiveId).Should().BeFalse();
     }
 
+    [Fact]
+    public void IsNearestForManager_virtual_items_compares_date_and_position_instead_of_empty_id()
+    {
+        var now = Utc("2026-11-08T12:00:00Z");
+        var current = Item("lead", "2026-11-08T08:00:00Z", "2026-11-08T16:00:00Z", 1);
+        var future = Item("lead", "2026-11-09T08:00:00Z", "2026-11-09T16:00:00Z", 1);
+        current.Day = new ShiftPlanDay { ShiftDate = new DateOnly(2026, 11, 8) };
+        future.Day = new ShiftPlanDay { ShiftDate = new DateOnly(2026, 11, 9) };
+        current.Id = Guid.Empty;
+        future.Id = Guid.Empty;
+        var virtualItems = new[] { future, current };
+
+        NearestShiftSelector.IsNearestForManager(virtualItems, current, now).Should().BeTrue();
+        NearestShiftSelector.IsNearestForManager(virtualItems, future, now).Should().BeFalse();
+    }
+
     private static ShiftPlanItem Item(string? shiftLeadId, string start, string end, int position) => new()
     {
         ShiftLeadId = shiftLeadId,

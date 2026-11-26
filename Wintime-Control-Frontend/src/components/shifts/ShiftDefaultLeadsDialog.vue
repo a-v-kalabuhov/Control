@@ -229,7 +229,7 @@ function optionsFor(item) {
       id: selectedId,
       fullName: item.defaultShiftLeadName || selectedId,
       employeeId: item.defaultShiftLeadEmployeeId,
-      archived: true
+      unavailable: true
     })
   }
   return result
@@ -237,8 +237,8 @@ function optionsFor(item) {
 
 function candidateLabel(candidate) {
   const employee = candidate.employeeId ? ` (${candidate.employeeId})` : ''
-  const archived = candidate.archived ? ' — архив' : ''
-  return `${candidate.fullName}${employee}${archived}`
+  const unavailable = candidate.unavailable ? ' — недоступен' : ''
+  return `${candidate.fullName}${employee}${unavailable}`
 }
 
 function minutesToTime(totalMinutes) {

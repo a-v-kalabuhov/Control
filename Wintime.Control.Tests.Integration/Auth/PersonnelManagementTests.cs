@@ -232,6 +232,16 @@ public class PersonnelManagementTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task CreatePersonnel_NumericUndefinedRole_Returns400()
+    {
+        var client = await ManagerClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/personnel", NewPerson("999"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Manager_CannotCreateAdmin()
     {
         var client = await ManagerClientAsync();
@@ -318,6 +328,19 @@ public class PersonnelManagementTests : IClassFixture<IntegrationTestFactory>
             new UpdatePersonnelRequestDto { Role = "Admin" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await LoadUserAsync(id)).Role.Should().Be(UserRole.Adjuster);
+    }
+
+    [Fact]
+    public async Task UpdatePersonnel_NumericUndefinedRole_Returns400AndPreservesRole()
+    {
+        var id = await SeedUserAsync(UserRole.Adjuster);
+        var client = await ManagerClientAsync();
+
+        var response = await client.PutAsJsonAsync($"/api/personnel/{id}",
+            new UpdatePersonnelRequestDto { Role = "999" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await LoadUserAsync(id)).Role.Should().Be(UserRole.Adjuster);
     }
 

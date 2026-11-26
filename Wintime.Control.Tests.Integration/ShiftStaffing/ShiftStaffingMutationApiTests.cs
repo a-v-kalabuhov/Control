@@ -136,23 +136,19 @@ public class ShiftStaffingMutationApiTests : IClassFixture<IntegrationTestFactor
         var foreign = (await SeedDayAsync(
             Item(NextPosition(), otherLead.Id, now.AddHours(-1), now.AddHours(1)))).Items.Single();
         var leadClient = await ClientAsync(lead);
-        var manager = await ManagerClientAsync();
         var admin = await AdminClientAsync();
         var deactivatedManagers = await DeactivateManagersAsync();
         try
         {
             await RussianErrorAsync(await AssignAsync(leadClient, noLead.Id, immId, @operator.Id),
                 HttpStatusCode.Forbidden);
-            foreach (var client in new[] { manager, admin })
-            {
-                await RussianErrorAsync(await AssignAsync(client, noLead.Id, immId, @operator.Id),
-                    HttpStatusCode.BadRequest);
-            }
+            await RussianErrorAsync(await AssignAsync(admin, noLead.Id, immId, @operator.Id),
+                HttpStatusCode.BadRequest);
             await RussianErrorAsync(await AssignAsync(leadClient, foreign.Id, immId, @operator.Id),
                 HttpStatusCode.Forbidden);
             await RussianErrorAsync(await AssignAsync(leadClient, later.Id, immId, @operator.Id),
                 HttpStatusCode.Forbidden);
-            await RussianErrorAsync(await AssignAsync(manager, later.Id, immId, @operator.Id),
+            await RussianErrorAsync(await AssignAsync(admin, later.Id, immId, @operator.Id),
                 HttpStatusCode.Forbidden);
             await RussianErrorAsync(await AssignAsync(leadClient, Guid.NewGuid(), immId, @operator.Id),
                 HttpStatusCode.NotFound);

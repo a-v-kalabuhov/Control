@@ -35,24 +35,22 @@ public sealed class PersonnelService : IPersonnelService
             return new PersonnelUpdateResult(PersonnelUpdateStatus.NotFound);
 
         var initialAccessError = ValidateRoleAccess(
-            initialUser, request, callerIsAdmin, out var requestedRole);
+            initialUser, request, callerIsAdmin, out _);
         if (initialAccessError != null)
             return initialAccessError;
-
-        var requiresScheduleLock = initialUser.Role == UserRole.Manager
-            || requestedRole == UserRole.Manager
-            || (request.IsActive.HasValue && request.IsActive.Value != initialUser.IsActive);
 
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
             await using var transaction = await _context.Database.BeginTransactionAsync(ct);
-            if (requiresScheduleLock)
-                await ShiftScheduleLock.AcquireAsync(_context, ct);
+            // Даже смена между не-Manager ролями должна ждать общей блокировки:
+            // иначе решение по старой роли может перезаписать параллельно назначенного Manager.
+            // Заодно сериализуются отзывы доступа и проверка последнего активного Admin.
+            await ShiftScheduleLock.AcquireAsync(_context, ct);
 
             // FindByIdAsync может вернуть уже отслеживаемый экземпляр. Свежий no-tracking
             // запрос после advisory lock повторяет все guards по зафиксированному состоянию.
-            var user = requiresScheduleLock ? await FindUserAsync(id, ct) : initialUser;
+            var user = await FindUserAsync(id, ct);
             if (user == null)
                 return new PersonnelUpdateResult(PersonnelUpdateStatus.NotFound);
 
@@ -167,7 +165,8 @@ public sealed class PersonnelService : IPersonnelService
 
         if (request.Role != null)
         {
-            if (!Enum.TryParse<UserRole>(request.Role, out var parsedRole))
+            if (!Enum.TryParse<UserRole>(request.Role, out var parsedRole) ||
+                !Enum.IsDefined(parsedRole))
                 return BadRequestResult("Неверная роль");
             if (parsedRole == UserRole.Admin && !callerIsAdmin)
                 return new PersonnelUpdateResult(PersonnelUpdateStatus.Forbid);

@@ -39,7 +39,7 @@ public class ShiftStaffingController : ControllerBase
 
     [HttpGet("operators")]
     public Task<IReadOnlyList<StaffPersonDto>> Operators(CancellationToken ct) =>
-        _service.GetOperatorsAsync(ct);
+        _service.GetOperatorsAsync(Caller, ct);
 
     [HttpPost("items/{itemId:guid}/operators")]
     [Authorize(Policy = "ShiftLeadOrManagerOrAdmin")]

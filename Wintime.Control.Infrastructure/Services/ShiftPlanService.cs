@@ -78,8 +78,11 @@ public sealed class ShiftPlanService : IShiftPlanService
             savedItems, days.Where(d => !d.IsSaved).Select(d => d.Day).ToList(),
             shifts, now, factoryToday, to, ct);
         var nearestByPosition = NearestByPosition(nearestCandidates, now);
+        var nearestWithLeadByPosition = NearestByPosition(nearestCandidates.Where(i =>
+            EffectiveShiftLeadResolver.Resolve(i, fallback).Id != null), now);
         return days.Select(d => ToDto(
-            d.Day, d.IsSaved, factoryToday, now, nearestByPosition, indicators, fallback)).ToList();
+            d.Day, d.IsSaved, factoryToday, now, nearestByPosition, nearestWithLeadByPosition,
+            indicators, fallback)).ToList();
     }
 
     public async Task<ShiftPlanDayDto> SetLeadAsync(
@@ -156,10 +159,12 @@ public sealed class ShiftPlanService : IShiftPlanService
                     day.Items.All(i => EffectiveShiftLeadResolver.Resolve(i, fallback).Id == null) &&
                     day.Items.All(i => i.OperatorAssignments.Count == 0) &&
                     day.Items.All(i => i.Closure == null);
+                // Очистка несуществующего explicit override — no-op, а не скрытый materialize.
+                var isSaved = !deleteDay && (!isMaterializing || shiftLeadId != null);
 
                 if (isMaterializing)
                 {
-                    if (!deleteDay) _context.ShiftPlanDays.Add(day);
+                    if (isSaved) _context.ShiftPlanDays.Add(day);
                 }
                 else if (deleteDay)
                 {
@@ -169,7 +174,7 @@ public sealed class ShiftPlanService : IShiftPlanService
                 await _context.SaveChangesAsync(ct);
 
                 var currentShifts = await _context.Shifts.AsNoTracking().ToListAsync(ct);
-                if (deleteDay && !isMaterializing)
+                if (!isSaved && !isMaterializing)
                     day = ShiftPlanCandidateBuilder.BuildVirtualDay(date, currentShifts);
 
                 var savedItems = await _context.ShiftPlanItems
@@ -178,15 +183,17 @@ public sealed class ShiftPlanService : IShiftPlanService
                     .ToListAsync(ct);
                 var schedule = await _factoryClock.GetScheduleAsync(ct);
                 var factoryToday = DateOnly.FromDateTime(schedule.ToLocal(now));
-                var isSaved = !deleteDay;
                 var indicators = isSaved
                     ? await _closureIndicators.GetAsync(day.Items.Select(i => i.Id).ToList(), now, ct)
                     : new Dictionary<Guid, ShiftClosureIndicator>();
                 var nearestCandidates = ShiftPlanCandidateBuilder.BuildNearestCandidates(
-                    savedItems, deleteDay ? [day] : [], currentShifts, now, factoryToday, date, ct);
+                    savedItems, !isSaved ? [day] : [], currentShifts, now, factoryToday, date, ct);
                 var nearestByPosition = NearestByPosition(nearestCandidates, now);
+                var nearestWithLeadByPosition = NearestByPosition(nearestCandidates.Where(i =>
+                    EffectiveShiftLeadResolver.Resolve(i, fallback).Id != null), now);
                 var result = ToDto(
-                    day, isSaved, factoryToday, now, nearestByPosition, indicators, fallback);
+                    day, isSaved, factoryToday, now, nearestByPosition, nearestWithLeadByPosition,
+                    indicators, fallback);
                 await transaction.CommitAsync(ct);
                 return result;
             }
@@ -200,35 +207,46 @@ public sealed class ShiftPlanService : IShiftPlanService
     public async Task<ShiftPlanDayDto> MaterializeAsync(
         DateOnly date, int position, string _, CancellationToken ct)
     {
-        var day = await _materializer.MaterializeAsync(date, position, ct);
-        var now = DateTime.SpecifyKind(_factoryClock.UtcNow, DateTimeKind.Utc);
-        var shifts = await _context.Shifts.AsNoTracking().ToListAsync(ct);
-        var schedule = await _factoryClock.GetScheduleAsync(ct);
-        var factoryToday = DateOnly.FromDateTime(schedule.ToLocal(now));
-        var fallback = await _fallbackProvider.GetAsync(ct);
-        var savedItems = await _context.ShiftPlanItems
-            .AsNoTracking()
-            .Include(i => i.Day)
-            .ToListAsync(ct);
-        var indicators = await _closureIndicators.GetAsync(
-            day.Items.Select(i => i.Id).ToList(), now, ct);
-        var nearestCandidates = ShiftPlanCandidateBuilder.BuildNearestCandidates(
-            savedItems, [], shifts, now, factoryToday, date, ct);
-        var nearestByPosition = NearestByPosition(nearestCandidates, now);
-        var selectedItemId = day.Items.Single(i => i.Position == position).Id;
-        var persisted = await _context.ShiftPlanDays
-            .AsNoTracking()
-            .Where(d => d.ShiftDate == date)
-            .Select(d => new
-            {
-                d.Id,
-                SelectedItemId = d.Items.Where(i => i.Position == position)
-                    .Select(i => (Guid?)i.Id).SingleOrDefault()
-            })
-            .SingleOrDefaultAsync(ct);
-        if (persisted?.Id != day.Id || persisted.SelectedItemId != selectedItemId)
-            throw new ShiftConcurrencyException(ConcurrencyMessage);
-        return ToDto(day, true, factoryToday, now, nearestByPosition, indicators, fallback);
+        await _materializer.MaterializeAsync(date, position, ct);
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            // Материализатор завершает свою транзакцию. Для ответа берём свежий снимок
+            // под той же advisory lock, а не tracked-сущности, которые могли устареть после commit.
+            await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+            await ShiftScheduleLock.AcquireAsync(_context, ct);
+            var day = await _context.ShiftPlanDays
+                .AsNoTracking()
+                .Include(d => d.Items).ThenInclude(i => i.ShiftLead)
+                .Include(d => d.Items).ThenInclude(i => i.OperatorAssignments)
+                .SingleOrDefaultAsync(d => d.ShiftDate == date, ct)
+                ?? throw new ShiftConcurrencyException(ConcurrencyMessage);
+            var selectedItem = day.Items.SingleOrDefault(i => i.Position == position)
+                ?? throw new ShiftConcurrencyException(ConcurrencyMessage);
+
+            var now = DateTime.SpecifyKind(_factoryClock.UtcNow, DateTimeKind.Utc);
+            var shifts = await _context.Shifts.AsNoTracking().ToListAsync(ct);
+            var schedule = await _factoryClock.GetScheduleAsync(ct);
+            var factoryToday = DateOnly.FromDateTime(schedule.ToLocal(now));
+            var fallback = await _fallbackProvider.GetAsync(ct);
+            if (EffectiveShiftLeadResolver.Resolve(selectedItem, fallback).Id == null)
+                throw new ShiftConcurrencyException(ConcurrencyMessage);
+            var savedItems = await _context.ShiftPlanItems
+                .AsNoTracking()
+                .Include(i => i.Day)
+                .ToListAsync(ct);
+            var indicators = await _closureIndicators.GetAsync(
+                day.Items.Select(i => i.Id).ToList(), now, ct);
+            var nearestCandidates = ShiftPlanCandidateBuilder.BuildNearestCandidates(
+                savedItems, [], shifts, now, factoryToday, date, ct);
+            var nearestByPosition = NearestByPosition(nearestCandidates, now);
+            var nearestWithLeadByPosition = NearestByPosition(nearestCandidates.Where(i =>
+                EffectiveShiftLeadResolver.Resolve(i, fallback).Id != null), now);
+            var result = ToDto(day, true, factoryToday, now, nearestByPosition,
+                nearestWithLeadByPosition, indicators, fallback);
+            await transaction.CommitAsync(ct);
+            return result;
+        });
     }
 
     public async Task SynchronizeFutureDaysAsync(
@@ -277,6 +295,7 @@ public sealed class ShiftPlanService : IShiftPlanService
         DateOnly factoryToday,
         DateTime now,
         IReadOnlyDictionary<int, ShiftPlanItem> nearestByPosition,
+        IReadOnlyDictionary<int, ShiftPlanItem> nearestWithLeadByPosition,
         IReadOnlyDictionary<Guid, ShiftClosureIndicator> indicators,
         ShiftLeadFallbackSnapshot fallback) => new()
     {
@@ -287,7 +306,9 @@ public sealed class ShiftPlanService : IShiftPlanService
         {
             var indicator = isSaved ? indicators.GetValueOrDefault(item.Id) : null;
             var isNearest = nearestByPosition.TryGetValue(item.Position, out var nearest)
-                && nearest.Id == item.Id;
+                && NearestShiftSelector.RepresentsSameShift(nearest, item);
+            var isNearestWithLead = nearestWithLeadByPosition.TryGetValue(item.Position, out var nearestWithLead)
+                && NearestShiftSelector.RepresentsSameShift(nearestWithLead, item);
             var isClosed = indicator?.ClosureStatus == ShiftClosureStatus.Closed;
             var ended = now >= DateTime.SpecifyKind(item.EndAtUtc, DateTimeKind.Utc);
             var effectiveLead = EffectiveShiftLeadResolver.Resolve(item, fallback);
@@ -308,7 +329,7 @@ public sealed class ShiftPlanService : IShiftPlanService
                 State = ShiftTiming.Resolve(item.StartAtUtc, item.EndAtUtc, now),
                 CanEditLead = !isClosed,
                 CanEditOperators = effectiveLead.Id != null && !isClosed &&
-                    (ended || isNearest),
+                    (ended || isNearestWithLead),
                 OperatorAssignmentCount = item.OperatorAssignments.Count,
                 ClosureStatus = indicator?.ClosureStatus,
                 HasOrphanOutput = indicator?.HasOrphanOutput ?? false,

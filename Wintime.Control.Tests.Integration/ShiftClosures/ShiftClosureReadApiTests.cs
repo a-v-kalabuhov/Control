@@ -386,11 +386,11 @@ public class ShiftClosureReadApiTests : IClassFixture<IntegrationTestFactory>
                 .Be(HttpStatusCode.Forbidden, role.ToString());
         }
 
-        var managerClient = await ManagerClientAsync();
+        var adminClient = await AdminClientAsync();
         var deactivatedManagers = await DeactivateActiveManagersAsync();
         try
         {
-            var response = await managerClient.GetAsync(
+            var response = await adminClient.GetAsync(
                 $"/api/shift-closures/items/{withoutLead.Id}");
             response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
             var error = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);

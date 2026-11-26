@@ -1023,6 +1023,48 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
     }
 
     [Fact]
+    public async Task CanEditOperators_NearestWithLeadIgnoresCurrentPositionWithoutLead()
+    {
+        var lead = await SeedUserAsync(UserRole.ShiftLead);
+        var now = DateTime.UtcNow;
+        var currentDate = NewDate();
+        var futureDate = NewDate();
+        await SeedDayAsync(currentDate, new ShiftPlanItem
+        {
+            Position = 1,
+            StartAtUtc = now.AddHours(-1),
+            EndAtUtc = now.AddHours(1),
+            TimeZoneId = "Europe/Moscow",
+            ShiftLeadId = null
+        });
+        await SeedDayAsync(futureDate, new ShiftPlanItem
+        {
+            Position = 1,
+            StartAtUtc = now.AddHours(2),
+            EndAtUtc = now.AddHours(3),
+            TimeZoneId = "Europe/Moscow",
+            ShiftLeadId = lead.Id
+        });
+        var client = await ManagerClientAsync();
+        await using var noFallback = await NoLeadFallbackScope.CreateAsync(_factory);
+        try
+        {
+            var futureDay = await GetDayAsync(client, futureDate);
+            Item(futureDay, 1).GetProperty("canEditOperators").GetBoolean().Should().BeTrue(
+                "для редактирования nearest выбирается только среди позиций с effective lead");
+
+            var currentDay = await GetDayAsync(client, currentDate);
+            Item(currentDay, 1).GetProperty("hasMissingLeadWarning").GetBoolean().Should().BeTrue(
+                "нефильтрованный nearest по-прежнему управляет предупреждением");
+        }
+        finally
+        {
+            await DeleteDayAsync(currentDate);
+            await DeleteDayAsync(futureDate);
+        }
+    }
+
+    [Fact]
     public async Task Get_ResolvesEffectiveLeadForVirtualAndSavedDays()
     {
         var defaultLead = await SeedUserAsync(UserRole.ShiftLead);
@@ -1068,6 +1110,52 @@ public class ShiftPlanApiTests : IClassFixture<IntegrationTestFactory>
                 explicitItem.GetProperty("shiftLeadId").GetString().Should().Be(explicitLead.Id);
                 explicitItem.GetProperty("shiftLeadName").GetString().Should().Be(explicitLead.FullName);
                 explicitItem.GetProperty("shiftLeadSource").GetString().Should().Be("Explicit");
+            }
+            finally
+            {
+                await DeleteDayAsync(date);
+                using var scope = _factory.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                await db.ShiftDefaultLeads.Where(d => d.Position == 1).ExecuteDeleteAsync();
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ClearLead_OnVirtualDay_DoesNotMaterializeFallback(bool useDefault)
+    {
+        var defaultLead = await SeedUserAsync(UserRole.ShiftLead);
+        var managerId = await FirstActiveManagerIdAsync();
+        var date = NewDate();
+        var client = await ManagerClientAsync();
+
+        await WithScheduleAsync(client, TwoShifts(), async () =>
+        {
+            try
+            {
+                using (var scope = _factory.Services.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                    await db.ShiftDefaultLeads.Where(d => d.Position == 1).ExecuteDeleteAsync();
+                    if (useDefault)
+                        db.ShiftDefaultLeads.Add(new ShiftDefaultLead { Position = 1, ShiftLeadId = defaultLead.Id });
+                    await db.SaveChangesAsync();
+                }
+
+                var cleared = await RequiredJsonAsync(await PutLeadAsync(client, date, 1, null));
+
+                cleared.GetProperty("isSaved").GetBoolean().Should().BeFalse();
+                var item = Item(cleared, 1);
+                item.GetProperty("id").ValueKind.Should().Be(JsonValueKind.Null);
+                item.GetProperty("shiftLeadId").GetString().Should()
+                    .Be(useDefault ? defaultLead.Id : managerId);
+                item.GetProperty("shiftLeadSource").GetString().Should()
+                    .Be(useDefault ? "Default" : "ManagerFallback");
+                using var verifyScope = _factory.Services.CreateScope();
+                var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ControlDbContext>();
+                (await verifyDb.ShiftPlanDays.CountAsync(d => d.ShiftDate == date)).Should().Be(0);
             }
             finally
             {
