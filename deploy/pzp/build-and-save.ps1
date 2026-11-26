@@ -1,12 +1,37 @@
 param(
-    # Путь к репозиторию коннектора относительно этого скрипта (deploy/pzp)
-    [string]$ConnectorRepo = "..\..\..\Connectors\Wintime.Connector.UsrModbus"
+    # Явный путь к репозиторию коннектора относительно этого скрипта (deploy/pzp)
+    [string]$ConnectorRepo
 )
+
+function Resolve-ConnectorRepository {
+    param(
+        [string]$ControlRoot,
+        [string]$ScriptDir,
+        [string]$Override
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($Override)) {
+        $overridePath = [IO.Path]::IsPathRooted($Override) ? $Override : (Join-Path $ScriptDir $Override)
+        return (Resolve-Path $overridePath).Path
+    }
+
+    # Обычный checkout: Sources/Control -> Sources/Connectors. В native worktree
+    # поднимаемся по предкам ControlRoot до того же каталога Sources.
+    for ($ancestor = Get-Item $ControlRoot; $null -ne $ancestor.Parent; $ancestor = $ancestor.Parent) {
+        $candidate = Join-Path $ancestor.Parent.FullName "Connectors\Wintime.Connector.UsrModbus"
+        if (Test-Path (Join-Path $candidate "Dockerfile") -PathType Leaf) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    throw "Не найден репозиторий Wintime.Connector.UsrModbus. Укажите его через -ConnectorRepo."
+}
+
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true   # non-zero exit from native tools -> terminating error
 $ScriptDir   = $PSScriptRoot
 $ControlRoot = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path   # корень репо Control
-$ConnRoot    = (Resolve-Path (Join-Path $ScriptDir $ConnectorRepo)).Path
+$ConnRoot    = Resolve-ConnectorRepository -ControlRoot $ControlRoot -ScriptDir $ScriptDir -Override $ConnectorRepo
 
 $Version     = (Get-Content (Join-Path $ControlRoot "VERSION") -Raw).Trim()
 Write-Host "==> Version: $Version"
