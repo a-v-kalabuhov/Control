@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Wintime.Control.API\Wintime.Control.API.csproj" />
+    <ProjectReference Include="..\Wintime.Control.Migrations\Wintime.Control.Migrations.csproj" />
   </ItemGroup>
 
 </Project>
