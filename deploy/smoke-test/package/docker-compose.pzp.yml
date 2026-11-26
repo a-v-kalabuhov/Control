@@ -1,0 +1,119 @@
+name: wtctrl-smoke
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wtctrl-smoke-postgres
+    environment:
+      POSTGRES_DB: WintimeControl_Pzp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    command: postgres -c shared_buffers=128MB -c max_connections=20
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d WintimeControl_Pzp"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+    networks: [wtctrl]
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: wtctrl-smoke-mosquitto
+    # Для MQTT Explorer и т.п. на хосте: localhost:1883. Только 127.0.0.1 - брокер анонимный,
+    # в локальную сеть не выставляем. Если 1883 на хосте занят - сменить левую часть (напр. 11883).
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    restart: unless-stopped
+    mem_limit: 64m
+    networks: [wtctrl]
+
+  migrations:
+    image: wintime/migrations:smoke-test
+    container_name: wtctrl-smoke-migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=WintimeControl_Pzp;Username=postgres;Password=${DB_PASSWORD};"
+    restart: "no"
+    mem_limit: 256m
+    networks: [wtctrl]
+
+  api:
+    image: wintime/api:smoke-test
+    container_name: wtctrl-smoke-api
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      DemoMode: "false"
+      # Только http - для функционального теста коннектора и дашбордов HTTPS/mkcert не нужен
+      # (мобильный QR-сканер с камерой в этот стенд не входит).
+      ASPNETCORE_URLS: "http://+:8080"
+      DOTNET_gcServer: "0"
+      Https__Redirect: "false"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=WintimeControl_Pzp;Username=postgres;Password=${DB_PASSWORD};"
+      MqttSettings__BrokerUrl: mosquitto
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD}
+    ports:
+      - "5000:8080"
+    restart: unless-stopped
+    mem_limit: 768m
+    networks: [wtctrl]
+
+  connector:
+    image: wintime/connector:smoke-test
+    container_name: wtctrl-smoke-connector
+    depends_on:
+      mosquitto:
+        condition: service_started
+    environment:
+      DOTNET_gcServer: "0"
+      Connector__Source: file
+      Connector__SourcePath: config/machines.json
+      Connector__ConfigDir: config
+      Mqtt__BrokerHost: mosquitto
+      Mqtt__Port: "1883"
+    volumes:
+      # config-connector/ описывает "куда стучаться" - host: emulator (имя сервиса в этой compose-сети),
+      # порт из config-emulator/*.json того же alias'а. См. TESTING_GUIDE.md §4.
+      - ./config-connector:/app/config:ro
+    restart: unless-stopped
+    mem_limit: 256m
+    networks: [wtctrl]
+
+  # НЕ входит в 'docker compose up -d' - поднимается по требованию через 3-run-emulator.bat,
+  # т.к. это интерактивный TUI (Spectre.Console, читает клавиатуру), не фоновый сервис.
+  # См. TESTING_GUIDE.md §3.
+  emulator:
+    image: wintime/emulator:smoke-test
+    stdin_open: true
+    tty: true
+    volumes:
+      # config-emulator/ описывает, НА ЧЁМ эмулятор поднимает виртуальный ТПА (host: 0.0.0.0).
+      - ./config-emulator:/app/config:ro
+      # Пресеты/макросы сценариев (§2.3) - правятся тестировщиком без пересборки образа.
+      # Монтируются поверх /app/presets из образа; эмулятор читает из /app/config только *.json
+      # верхнего уровня, поэтому подкаталог presets/ там не мешает.
+      - ./config-emulator/presets:/app/presets:ro
+    networks: [wtctrl]
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+
+networks:
+  wtctrl:
+    driver: bridge
