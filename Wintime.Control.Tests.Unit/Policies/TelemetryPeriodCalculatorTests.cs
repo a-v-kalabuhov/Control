@@ -69,6 +69,44 @@ public class TelemetryPeriodCalculatorTests
     }
 
     [Fact]
+    public void Skipped_local_midnight_resolves_to_first_valid_instant()
+    {
+        const string zoneId = "America/Havana";
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);
+        var date = new DateOnly(2025, 3, 9);
+        var localMidnight = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        var firstValidLocal = localMidnight.AddHours(1);
+        zone.IsInvalidTime(localMidnight).Should().BeTrue();
+        zone.IsInvalidTime(firstValidLocal.AddTicks(-1)).Should().BeTrue();
+        zone.IsInvalidTime(firstValidLocal).Should().BeFalse();
+        var expectedUtc = DateTime.SpecifyKind(
+            TimeZoneInfo.ConvertTimeToUtc(firstValidLocal, zone), DateTimeKind.Utc);
+
+        var cutoff = TelemetryPeriodCalculator.GetCleanupCutoffUtc(
+            date, new DateTime(2025, 3, 10, 12, 0, 0, DateTimeKind.Utc), zoneId);
+
+        cutoff.Should().Be(expectedUtc);
+    }
+
+    [Fact]
+    public void Ambiguous_local_midnight_resolves_to_earlier_utc_instant()
+    {
+        const string zoneId = "America/Havana";
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);
+        var date = new DateOnly(2025, 11, 2);
+        var localMidnight = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        zone.IsAmbiguousTime(localMidnight).Should().BeTrue();
+        var expectedUtc = zone.GetAmbiguousTimeOffsets(localMidnight)
+            .Select(offset => DateTime.SpecifyKind(localMidnight - offset, DateTimeKind.Utc))
+            .Min();
+
+        var cutoff = TelemetryPeriodCalculator.GetCleanupCutoffUtc(
+            date, new DateTime(2025, 11, 3, 12, 0, 0, DateTimeKind.Utc), zoneId);
+
+        cutoff.Should().Be(expectedUtc);
+    }
+
+    [Fact]
     public void Week_windows_follow_spring_dst_transition()
     {
         var now = new DateTime(2026, 3, 11, 12, 0, 0, DateTimeKind.Utc);

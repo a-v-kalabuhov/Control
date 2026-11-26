@@ -83,9 +83,33 @@ public static class TelemetryPeriodCalculator
         return value;
     }
 
-    private static DateTime LocalStartUtc(DateOnly date, TimeZoneInfo zone) =>
-        DateTime.SpecifyKind(TimeZoneInfo.ConvertTimeToUtc(
-            date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), zone), DateTimeKind.Utc);
+    private static DateTime LocalStartUtc(DateOnly date, TimeZoneInfo zone)
+    {
+        var localStart = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        if (zone.IsInvalidTime(localStart))
+            localStart = FirstValidLocalTime(localStart, zone);
+        if (zone.IsAmbiguousTime(localStart))
+        {
+            var earliestUtcOffset = zone.GetAmbiguousTimeOffsets(localStart).Max();
+            return DateTime.SpecifyKind(localStart - earliestUtcOffset, DateTimeKind.Utc);
+        }
+        return DateTime.SpecifyKind(TimeZoneInfo.ConvertTimeToUtc(localStart, zone), DateTimeKind.Utc);
+    }
+
+    private static DateTime FirstValidLocalTime(DateTime invalidLocal, TimeZoneInfo zone)
+    {
+        var low = invalidLocal;
+        var high = invalidLocal.AddDays(1);
+        while (high.Ticks - low.Ticks > 1)
+        {
+            var middle = new DateTime(low.Ticks + (high.Ticks - low.Ticks) / 2, DateTimeKind.Unspecified);
+            if (zone.IsInvalidTime(middle))
+                low = middle;
+            else
+                high = middle;
+        }
+        return high;
+    }
 
     private static DateTime Min(DateTime left, DateTime right) => left <= right ? left : right;
 }

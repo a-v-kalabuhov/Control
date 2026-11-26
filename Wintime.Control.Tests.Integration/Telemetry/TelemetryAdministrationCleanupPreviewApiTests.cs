@@ -51,10 +51,49 @@ public sealed partial class TelemetryAdministrationApiTests
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    private static async Task<TelemetryCleanupPreviewDto> PreviewAsync(HttpClient client, DateOnly date)
+    [Fact]
+    public async Task CleanupPreview_SkippedDstMidnight_ReturnsFirstValidInstant()
+    {
+        const string zoneId = "America/Havana";
+        var client = await AdminClientAsync();
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);
+        var date = new DateOnly(2025, 3, 9);
+        var localMidnight = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        var firstValidLocal = localMidnight.AddHours(1);
+        zone.IsInvalidTime(localMidnight).Should().BeTrue();
+        zone.IsInvalidTime(firstValidLocal.AddTicks(-1)).Should().BeTrue();
+        zone.IsInvalidTime(firstValidLocal).Should().BeFalse();
+        var expectedUtc = DateTime.SpecifyKind(
+            TimeZoneInfo.ConvertTimeToUtc(firstValidLocal, zone), DateTimeKind.Utc);
+
+        var result = await PreviewAsync(client, date, zoneId);
+
+        result.CutoffUtc.Should().Be(expectedUtc);
+    }
+
+    [Fact]
+    public async Task CleanupPreview_AmbiguousDstMidnight_ReturnsEarlierUtcInstant()
+    {
+        const string zoneId = "America/Havana";
+        var client = await AdminClientAsync();
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);
+        var date = new DateOnly(2025, 11, 2);
+        var localMidnight = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        zone.IsAmbiguousTime(localMidnight).Should().BeTrue();
+        var expectedUtc = zone.GetAmbiguousTimeOffsets(localMidnight)
+            .Select(offset => DateTime.SpecifyKind(localMidnight - offset, DateTimeKind.Utc))
+            .Min();
+
+        var result = await PreviewAsync(client, date, zoneId);
+
+        result.CutoffUtc.Should().Be(expectedUtc);
+    }
+
+    private static async Task<TelemetryCleanupPreviewDto> PreviewAsync(
+        HttpClient client, DateOnly date, string timeZone = Moscow)
     {
         var response = await client.GetAsync(
-            $"/api/admin/telemetry/cleanup/preview?date={date:yyyy-MM-dd}&timeZone=Europe%2FMoscow");
+            $"/api/admin/telemetry/cleanup/preview?date={date:yyyy-MM-dd}&timeZone={Uri.EscapeDataString(timeZone)}");
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         return (await response.Content.ReadFromJsonAsync<TelemetryCleanupPreviewDto>())!;
     }
