@@ -193,6 +193,7 @@ builder.Services.AddScoped<IEffectiveStatusHistoryService, EffectiveStatusHistor
 builder.Services.AddScoped<IReleaseForecastService, ReleaseForecastService>();
 builder.Services.AddScoped<IPlanConflictService, PlanConflictService>();
 builder.Services.AddScoped<ITaskResultsService, TaskResultsService>();
+builder.Services.AddScoped<ITelemetryAdministrationService, TelemetryAdministrationService>();
 // Report Service
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IPdfReportService, PdfReportService>();
