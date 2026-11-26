@@ -1,0 +1,16 @@
+# Правило: любой дискретный SET-затем-clear (импульс) должен держаться минимум ~3x pollIntervalMs
+# (сэмпл-конфиг использует 200мс -> держать фронт ≥600мс), иначе периодический опрос коннектора
+# может ни разу не увидеть true между двумя соседними SyncFromBank (см. STATE_MACHINE.md, rising edge).
+# То же правило применимо к аналоговой "подушке" (минимум InjectionPosition): RAMP до минимума
+# должен выдержать дно ≥3x pollIntervalMs (≥600мс) неподвижно, прежде чем идти обратно вверх -
+# иначе значение подушки, наблюдаемое опросом, — чистая случайность фазы (см. Important-3).
+AT 0     SET MoldClosed 1
+AT 0     SET Injection 0
+AT 800   SET MoldClosed 0
+AT 800   SET Injection 1
+AT 800   RAMP InjectionPosition 5.0 400
+AT 1800  RAMP InjectionPosition 27.5 200
+AT 2000  SET Injection 0
+AT 2200  SET MoldOpened 1
+AT 2900  SET MoldOpened 0
+# дальше пресет-вызывающая сторона не запускает следующий REPEAT долгое время — "авария" эмулируется отсутствием следующего цикла, не отдельным сигналом (спека §3/UC3)

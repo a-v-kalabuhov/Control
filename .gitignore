@@ -88,11 +88,11 @@ deploy/pzp/package/CAROOT/
 deploy/pzp/package/mkcert.exe
 deploy/pzp/package/.env
 
-# Smoke-test deploy — сборочные артефакты и секреты (не в git)
-deploy/smoke-test/
+# Smoke-test deploy — сборочные артефакты, дампы и секреты (не в git)
 deploy/smoke-test/dist/
 deploy/smoke-test/package/images/
 deploy/smoke-test/package/.env
+deploy/smoke-test/package/initdb-report/
 
 # Demo VPS deploy — локальные настройки и секреты (не в git)
 deploy/demo/deploy.local.psd1

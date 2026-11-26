@@ -1,0 +1,45 @@
+{
+  "format": "wintime-control-template",
+  "formatVersion": 1,
+  "exportedAt": "2026-09-29T16:52:31.829Z",
+  "template": {
+    "name": "Test",
+    "manufacturer": "Borche",
+    "model": "Emulator (USR-IO424)",
+    "version": "1.0",
+    "author": "smoke-test",
+    "connectorType": "usr-modbus",
+    "jsonConfig": {
+      "device_timeout_seconds": 30,
+      "sensors": [
+        {
+          "name": "Смыкание формы",
+          "field": "MoldClosed",
+          "type": "boolean"
+        },
+        {
+          "name": "Впрыск",
+          "field": "Injection",
+          "type": "boolean"
+        },
+        {
+          "name": "Раскрытие формы",
+          "field": "MoldOpened",
+          "type": "boolean"
+        },
+        {
+          "name": "Положение шнека, мВ",
+          "field": "InjectionPosition",
+          "type": "float",
+          "threshold": 0.5
+        },
+        {
+          "name": "Положение платформы, мВ",
+          "field": "MoldPosition",
+          "type": "float",
+          "threshold": 0.5
+        }
+      ]
+    }
+  }
+}
