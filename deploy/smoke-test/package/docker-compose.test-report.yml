@@ -107,6 +107,7 @@ services:
   # См. TESTING_GUIDE.md §3.
   emulator:
     image: wintime/emulator:smoke-test
+    container_name: wtctrl-smoke-emulator
     stdin_open: true
     tty: true
     volumes:
