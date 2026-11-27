@@ -4,7 +4,7 @@
       <h2 class="text-2xl font-bold text-gray-800">Телеметрия</h2>
       <div class="flex gap-2">
         <el-button data-test="refresh" :loading="loading" :disabled="deleting" @click="loadStatistics">Обновить</el-button>
-        <el-button data-test="open-cleanup" type="danger" :disabled="loading || deleting" @click="openCleanup">Очистить</el-button>
+        <el-button data-test="open-cleanup" type="danger" :disabled="loading || controlsLocked" @click="openCleanup">Очистить</el-button>
       </div>
     </div>
 
@@ -39,7 +39,7 @@
     </el-card>
 
     <el-dialog v-model="cleanupDialogVisible" title="Очистка телеметрии" width="480px"
-      :before-close="beforeClose" :close-on-click-modal="!deleting" :close-on-press-escape="!deleting">
+      :before-close="beforeClose" :close-on-click-modal="!controlsLocked" :close-on-press-escape="!controlsLocked">
       <el-form label-position="top">
         <el-form-item label="Удалить записи строго раньше начала даты">
           <el-date-picker v-model="cleanupDate" data-test="cleanup-date" type="date" value-format="YYYY-MM-DD"
@@ -47,17 +47,17 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button :disabled="deleting" @click="cleanupDialogVisible = false">Отмена</el-button>
+        <el-button :disabled="controlsLocked" @click="closeCleanup">Отмена</el-button>
         <el-button data-test="run-preview" type="primary" :loading="previewLoading" :disabled="deleting" @click="runPreview">Рассчитать</el-button>
       </template>
     </el-dialog>
 
     <el-dialog v-model="confirmationVisible" title="Подтверждение очистки" width="480px" append-to-body
-      :before-close="beforeClose" :close-on-click-modal="!deleting" :close-on-press-escape="!deleting">
+      :before-close="beforeClose" :close-on-click-modal="!controlsLocked" :close-on-press-escape="!controlsLocked">
       <p>Дата: {{ cleanupDate }}</p>
       <p data-test="confirmation-text">{{ preview?.count ?? 0 }} записей будет удалено. Подтвердите удаление</p>
       <template #footer>
-        <el-button :disabled="deleting" @click="cancelConfirmation">Отмена</el-button>
+        <el-button :disabled="controlsLocked" @click="cancelConfirmation">Отмена</el-button>
         <el-button data-test="confirm-cleanup" type="danger" :loading="deleting" :disabled="!canConfirmCleanup" @click="confirmCleanup">Удалить</el-button>
       </template>
     </el-dialog>
@@ -106,7 +106,7 @@ async function loadStatistics() {
 }
 
 function openCleanup() {
-  if (loading.value || deleting.value) return
+  if (loading.value || controlsLocked.value) return
   cleanupDate.value = ''
   preview.value = null
   confirmationVisible.value = false
@@ -140,12 +140,16 @@ async function runPreview() {
   }
 }
 
+function closeCleanup() {
+  if (!controlsLocked.value) cleanupDialogVisible.value = false
+}
+
 function cancelConfirmation() {
-  if (!deleting.value) confirmationVisible.value = false
+  if (!controlsLocked.value) confirmationVisible.value = false
 }
 
 function beforeClose(done) {
-  if (!deleting.value) done()
+  if (!controlsLocked.value) done()
 }
 
 async function confirmCleanup() {

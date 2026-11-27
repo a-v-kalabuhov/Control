@@ -72,6 +72,58 @@ describe('TelemetryAdminView', () => {
     await flushPromises()
   }
 
+  async function startDeferredPreview() {
+    await mountView()
+    const request = deferred()
+    telemetryAdminApi.previewCleanup.mockReturnValueOnce(request.promise)
+    wrapper.vm.openCleanup()
+    wrapper.vm.cleanupDate = '2026-11-27'
+    await wrapper.vm.$nextTick()
+
+    const pending = wrapper.vm.runPreview()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.previewLoading).toBe(true)
+    return { request, pending }
+  }
+
+  async function attemptCleanupClose(closePath) {
+    if (closePath === 'footer') {
+      const buttons = [...document.querySelectorAll('.el-dialog__footer button')]
+      buttons.find((button) => button.textContent.trim() === 'Отмена').click()
+    } else if (closePath === 'x') {
+      document.querySelector('.el-dialog__headerbtn').click()
+    } else if (closePath === 'modal') {
+      const overlay = document.querySelector('.el-overlay-dialog')
+      for (const type of ['mousedown', 'mouseup', 'click']) {
+        overlay.dispatchEvent(new MouseEvent(type, { bubbles: true }))
+      }
+    } else if (closePath === 'escape') {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    }
+    await flushPromises()
+  }
+
+  function expectPendingPreviewForm() {
+    expect(wrapper.vm.previewLoading).toBe(true)
+    expect(wrapper.vm.cleanupDialogVisible).toBe(true)
+    expect(wrapper.vm.cleanupDate).toBe('2026-11-27')
+    expect(wrapper.vm.confirmationVisible).toBe(false)
+    expect(document.querySelector('.el-overlay').style.display).not.toBe('none')
+    expect(telemetryAdminApi.cleanup).not.toHaveBeenCalled()
+  }
+
+  async function resolvePreview(request, pending) {
+    request.resolve({ data: { count: 12 } })
+    await pending
+    await flushPromises()
+
+    expect(wrapper.vm.cleanupDialogVisible).toBe(true)
+    expect(wrapper.vm.cleanupDate).toBe('2026-11-27')
+    expect(wrapper.vm.confirmationVisible).toBe(true)
+    expect(document.body.textContent).toContain('Дата: 2026-11-27')
+    expect(document.body.textContent).toContain('12 записей будет удалено. Подтвердите удаление')
+  }
+
   it('автоматически загружает и показывает все группы показателей', async () => {
     await mountView()
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -159,6 +211,32 @@ describe('TelemetryAdminView', () => {
     expect(wrapper.vm.cleanupDialogVisible).toBe(true)
     expect(wrapper.vm.cleanupDate).toBe('2026-11-27')
     expect(ElMessage.error).toHaveBeenCalledWith('Счётчик недоступен')
+  })
+
+  it.each([
+    ['кнопку «Отмена»', 'footer'],
+    ['крестик', 'x'],
+    ['клик по фону', 'modal'],
+    ['Escape', 'escape']
+  ])('во время preview не закрывает форму через %s', async (_label, closePath) => {
+    const { request, pending } = await startDeferredPreview()
+
+    await attemptCleanupClose(closePath)
+    await wrapper.vm.confirmCleanup()
+
+    expectPendingPreviewForm()
+    await resolvePreview(request, pending)
+  })
+
+  it('во время preview не переоткрывает и не сбрасывает форму', async () => {
+    const { request, pending } = await startDeferredPreview()
+
+    wrapper.vm.openCleanup()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.confirmCleanup()
+
+    expectPendingPreviewForm()
+    await resolvePreview(request, pending)
   })
 
   it('блокирует управление во время DELETE и затем показывает фактический результат и refresh', async () => {
