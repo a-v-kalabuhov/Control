@@ -116,6 +116,7 @@
               <span>Администрирование</span>
             </template>
             <el-menu-item index="/admin/templates">Шаблоны</el-menu-item>
+            <el-menu-item index="/admin/telemetry">Телеметрия</el-menu-item>
           </el-sub-menu>      
         </el-menu>
       </nav>
