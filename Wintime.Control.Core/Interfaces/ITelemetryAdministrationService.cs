@@ -8,4 +8,7 @@ public interface ITelemetryAdministrationService
 
     Task<TelemetryCleanupPreviewDto> PreviewCleanupAsync(
         DateOnly date, string? timeZone, CancellationToken ct);
+
+    Task<TelemetryCleanupResultDto> CleanupAsync(
+        DateOnly date, string? timeZone, string adminUserId, CancellationToken ct);
 }

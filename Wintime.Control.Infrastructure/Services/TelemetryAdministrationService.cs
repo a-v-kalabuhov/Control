@@ -1,5 +1,9 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Npgsql;
 using Wintime.Control.Core.DTOs.Telemetry;
+using Wintime.Control.Core.Exceptions;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
@@ -8,9 +12,16 @@ namespace Wintime.Control.Infrastructure.Services;
 
 public sealed class TelemetryAdministrationService : ITelemetryAdministrationService
 {
+    private const int CleanupCommandTimeoutSeconds = 30 * 60;
     private readonly ControlDbContext _context;
+    private readonly ILogger<TelemetryAdministrationService> _logger;
 
-    public TelemetryAdministrationService(ControlDbContext context) => _context = context;
+    public TelemetryAdministrationService(
+        ControlDbContext context, ILogger<TelemetryAdministrationService> logger)
+    {
+        _context = context;
+        _logger = logger;
+    }
 
     public async Task<TelemetryStatisticsDto> GetStatisticsAsync(string? timeZone, CancellationToken ct)
     {
@@ -55,6 +66,51 @@ public sealed class TelemetryAdministrationService : ITelemetryAdministrationSer
         var count = await _context.Telemetry.LongCountAsync(t => t.Timestamp < cutoffUtc, ct);
         return new TelemetryCleanupPreviewDto(date, cutoffUtc, count);
     }
+
+    public async Task<TelemetryCleanupResultDto> CleanupAsync(
+        DateOnly date, string? timeZone, string adminUserId, CancellationToken ct)
+    {
+        var cutoffUtc = TelemetryPeriodCalculator.GetCleanupCutoffUtc(date, DateTime.UtcNow, timeZone);
+        var previousTimeout = _context.Database.GetCommandTimeout();
+        var stopwatch = Stopwatch.StartNew();
+        _logger.LogInformation(
+            "Начало очистки Telemetry администратором {AdminUserId}, cutoffUtc={CutoffUtc:O}",
+            adminUserId, cutoffUtc);
+        try
+        {
+            _context.Database.SetCommandTimeout(CleanupCommandTimeoutSeconds);
+            var deletedCount = await _context.Telemetry
+                .Where(t => t.Timestamp < cutoffUtc)
+                .ExecuteDeleteAsync(ct);
+            _logger.LogInformation(
+                "Очистка Telemetry завершена администратором {AdminUserId}, cutoffUtc={CutoffUtc:O}, deletedCount={DeletedCount}, duration={Duration}",
+                adminUserId, cutoffUtc, deletedCount, stopwatch.Elapsed);
+            return new TelemetryCleanupResultDto(cutoffUtc, deletedCount);
+        }
+        catch (Exception ex) when (IsCommandTimeout(ex, ct))
+        {
+            _logger.LogWarning(ex,
+                "Таймаут очистки Telemetry администратором {AdminUserId}, cutoffUtc={CutoffUtc:O}, duration={Duration}",
+                adminUserId, cutoffUtc, stopwatch.Elapsed);
+            throw new TelemetryCleanupTimeoutException("Очистка телеметрии превысила 30 минут");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Ошибка очистки Telemetry администратором {AdminUserId}, cutoffUtc={CutoffUtc:O}, duration={Duration}",
+                adminUserId, cutoffUtc, stopwatch.Elapsed);
+            throw;
+        }
+        finally
+        {
+            _context.Database.SetCommandTimeout(previousTimeout);
+        }
+    }
+
+    private static bool IsCommandTimeout(Exception exception, CancellationToken ct) =>
+        !ct.IsCancellationRequested &&
+        (exception is TimeoutException or OperationCanceledException ||
+         exception is NpgsqlException { InnerException: TimeoutException });
 
     private static PeriodCountDto ToDto(TelemetryPeriod period, long count) =>
         new(period.StartDate, period.EndDate, count, period.IsCurrent);

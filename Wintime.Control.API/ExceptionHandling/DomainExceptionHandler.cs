@@ -17,6 +17,7 @@ public sealed class DomainExceptionHandler : IExceptionHandler
         var statusCode = exception switch
         {
             ShiftClosureValidationException => StatusCodes.Status400BadRequest,
+            TelemetryCleanupTimeoutException => StatusCodes.Status504GatewayTimeout,
             DomainException => StatusCodes.Status400BadRequest,
             ShiftAccessException => StatusCodes.Status403Forbidden,
             ShiftNotFoundException => StatusCodes.Status404NotFound,

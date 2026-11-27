@@ -53,6 +53,21 @@ public class DomainExceptionHandlerTests
         error.GetProperty("code").GetString().Should().Be("required");
     }
 
+    [Fact]
+    public async Task Telemetry_cleanup_timeout_returns_504_with_message()
+    {
+        var context = CreateContext();
+
+        var handled = await new DomainExceptionHandler().TryHandleAsync(
+            context, new TelemetryCleanupTimeoutException("Очистка телеметрии превысила 30 минут"),
+            CancellationToken.None);
+        using var body = await ReadBodyAsync(context);
+
+        handled.Should().BeTrue();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status504GatewayTimeout);
+        body.RootElement.GetProperty("message").GetString().Should().Be("Очистка телеметрии превысила 30 минут");
+    }
+
     private static DefaultHttpContext CreateContext() => new()
     {
         Response = { Body = new MemoryStream() }
