@@ -178,6 +178,12 @@ const routes = [
             name: 'AdminTemplates',
             component: () => import('@/views/admin/TemplatesView.vue'),
             meta: { roles: ['Admin'], title: 'Шаблоны' }
+          },
+          {
+            path: 'telemetry',
+            name: 'AdminTelemetry',
+            component: () => import('@/views/admin/TelemetryAdminView.vue'),
+            meta: { roles: ['Admin'], title: 'Телеметрия' }
           }
         ]
       }
