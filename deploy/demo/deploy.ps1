@@ -68,11 +68,11 @@ function Assert-FreeSpace {
 }
 
 function Assert-ResetDbOnlyPrerequisites {
-    Write-Host "==> Проверка TD-06-пакета и образа migrations на VPS..."
+    Write-Host "==> Проверка TD-06-пакета и образов API и migrations на VPS..."
     try {
-        Invoke-Remote "cd $Remote && test -f .env && grep -q '^APP_VERSION=.' .env && docker compose config --services | grep -qx migrations && docker compose pull migrations"
+        Invoke-Remote "cd $Remote && test -f .env && grep -q '^APP_VERSION=.' .env && docker compose config --services | grep -qx migrations && docker compose pull api migrations"
     } catch {
-        throw "Нельзя безопасно запустить -ResetDbOnly: на VPS не подтверждены APP_VERSION, сервис migrations и доступный образ migrations. Сначала выполните обычный деплой TD-06 версии 1.38+: .\deploy\demo\deploy.ps1. Сброс не запускался, файлы пакета и БД не изменялись. $($_.Exception.Message)"
+        throw "Нельзя безопасно запустить -ResetDbOnly: на VPS не подтверждены APP_VERSION, сервис migrations и доступные образы API и migrations. Сначала выполните обычный деплой TD-06 версии 1.38+: .\deploy\demo\deploy.ps1. Сброс не запускался, файлы пакета и БД не изменялись. $($_.Exception.Message)"
     }
 }
 
