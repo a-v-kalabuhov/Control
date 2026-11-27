@@ -68,28 +68,7 @@ describe('ShiftsDictionary default leads', () => {
     wrapper.unmount()
   })
 
-  it.each(['Manager', 'Admin'])('показывает %s отдельную настройку и загружает её только по кнопке', async role => {
-    const wrapper = mountDictionary(role)
-    await flushPromises()
-
-    const button = wrapper.find('[data-test="open-default-leads"]')
-    expect(button.exists()).toBe(true)
-    expect(button.text()).toContain('Настройка')
-    expect(shiftsApi.getDefaultLeads).not.toHaveBeenCalled()
-    expect(shiftPlansApi.getLeadCandidates).not.toHaveBeenCalled()
-    expect(wrapper.text()).not.toContain('Настройка графика смен')
-
-    await button.trigger('click')
-    await flushPromises()
-
-    expect(wrapper.findComponent(ShiftDefaultLeadsDialog).props('modelValue')).toBe(true)
-    expect(wrapper.text()).toContain('Настройка графика смен')
-    expect(shiftsApi.getDefaultLeads).toHaveBeenCalledTimes(1)
-    expect(shiftPlansApi.getLeadCandidates).toHaveBeenCalledTimes(1)
-    wrapper.unmount()
-  })
-
-  it.each(['Observer', 'ShiftLead', 'Operator', 'Adjuster'])('не показывает %s настройку и не вызывает её APIs', async role => {
+  it.each(['Manager', 'Admin', 'Observer', 'ShiftLead', 'Operator', 'Adjuster'])('не показывает %s настройку старших по умолчанию', async role => {
     const wrapper = mountDictionary(role)
     await flushPromises()
 

@@ -3,13 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import ShiftPlanView from '../ShiftPlanView.vue'
+import ShiftDefaultLeadsDialog from '@/components/shifts/ShiftDefaultLeadsDialog.vue'
 import { shiftPlansApi } from '@/api/shiftPlans'
+import { shiftsApi } from '@/api/shifts'
 
 vi.mock('@/api/shiftPlans', () => ({
   shiftPlansApi: {
     getRange: vi.fn(),
     getLeadCandidates: vi.fn(),
     setLead: vi.fn()
+  }
+}))
+
+vi.mock('@/api/shifts', () => ({
+  shiftsApi: {
+    getDefaultLeads: vi.fn(),
+    saveDefaultLeads: vi.fn()
   }
 }))
 
@@ -95,12 +104,47 @@ describe('ShiftPlanView', () => {
     vi.clearAllMocks()
     shiftPlansApi.getRange.mockResolvedValue({ data: [pastDay, currentDay, futureDay] })
     shiftPlansApi.getLeadCandidates.mockResolvedValue({ data: candidates })
+    shiftsApi.getDefaultLeads.mockResolvedValue({
+      data: { items: [], fallbackManager: null }
+    })
     vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
   })
 
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  it('открывает настройку старших по умолчанию и загружает её только по кнопке', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const button = wrapper.find('[data-test="open-default-leads"]')
+    expect(button.exists()).toBe(true)
+    expect(button.text()).toContain('Настройка')
+    expect(shiftsApi.getDefaultLeads).not.toHaveBeenCalled()
+    expect(shiftPlansApi.getLeadCandidates).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).not.toContain('Настройка графика смен')
+
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(ShiftDefaultLeadsDialog).props('modelValue')).toBe(true)
+    expect(wrapper.text()).toContain('Настройка графика смен')
+    expect(shiftsApi.getDefaultLeads).toHaveBeenCalledTimes(1)
+    expect(shiftPlansApi.getLeadCandidates).toHaveBeenCalledTimes(2)
+  })
+
+  it('перечитывает план после сохранения старших по умолчанию', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('[data-test="open-default-leads"]').trigger('click')
+    await flushPromises()
+
+    wrapper.findComponent(ShiftDefaultLeadsDialog).vm.$emit('saved')
+    await flushPromises()
+
+    expect(shiftPlansApi.getRange).toHaveBeenCalledTimes(2)
   })
 
   it('показывает независимое число смен в строках и точные заголовки без пустых заглушек', async () => {
