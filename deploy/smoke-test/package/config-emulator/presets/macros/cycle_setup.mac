@@ -1,0 +1,29 @@
+# UC1 — цикл наладки без впрыска: коннектор классифицирует его как Manual.
+# Длительность цикла примерно 29 секунд; MoldOpened наступает до таймаута S1_Candidate (30 с).
+
+# Начальная конфигурация сигналов: форма разомкнута, впрыска нет.
+AT 0     SET MoldClosed 0
+AT 0     SET MoldOpened 1
+AT 0     SET FwdEjectorReached 0
+AT 0     SET BwdEjectorReached 0
+AT 0     SET Injection 0
+AT 0     SET MoldPosition 10000.0
+AT 0     SET InjectionPosition 8000.0
+
+# Закрытие пресс-формы.
+AT 1000  SET MoldOpened 0
+AT 1000  RAMP MoldPosition 0.0 3000
+AT 4000  SET MoldClosed 1
+
+# Наладочная выдержка без Injection — принципиальное отличие от CYCLE_NORMAL.
+
+# Открытие пресс-формы: 21 с после MoldClosed, с запасом до seriesGapMs=30000.
+AT 20000 SET MoldClosed 0
+AT 20000 RAMP MoldPosition 10000.0 5000
+AT 25000 SET MoldOpened 1
+
+# Выгрузка изделия.
+AT 27000 SET FwdEjectorReached 1
+AT 27400 SET FwdEjectorReached 0
+AT 29000 SET BwdEjectorReached 1
+AT 29400 SET BwdEjectorReached 0

@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+COPY ["Wintime.Control.Migrations/Wintime.Control.Migrations.csproj", "Wintime.Control.Migrations/"]
+COPY ["Wintime.Control.Core/Wintime.Control.Core.csproj", "Wintime.Control.Core/"]
+COPY ["Wintime.Control.Infrastructure/Wintime.Control.Infrastructure.csproj", "Wintime.Control.Infrastructure/"]
+COPY ["Wintime.Control.Shared/Wintime.Control.Shared.csproj", "Wintime.Control.Shared/"]
+RUN dotnet restore "Wintime.Control.Migrations/Wintime.Control.Migrations.csproj"
+
+COPY . .
+WORKDIR "/src/Wintime.Control.Migrations"
+RUN dotnet publish "Wintime.Control.Migrations.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/runtime:9.0 AS runtime
+WORKDIR /app
+COPY --from=build --chown=app:app /app/publish .
+USER app
+ENTRYPOINT ["dotnet", "Wintime.Control.Migrations.dll"]

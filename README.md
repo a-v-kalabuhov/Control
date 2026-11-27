@@ -145,7 +145,7 @@ COV (Change of Value) filtering prevents storing redundant telemetry when values
 ```powershell
 git clone https://github.com/a-v-kalabuhov/Control.git
 cd Control
-docker-compose up
+docker compose -f docker-compose.dev.yml up
 ```
 
 Services started / Запускаемые сервисы:
@@ -158,9 +158,18 @@ Services started / Запускаемые сервисы:
 | Mosquitto MQTT | localhost:1883 |
 | Mosquitto WebSocket | localhost:9001 |
 
-The database is migrated and seeded with default users on first run.
+On first run, PostgreSQL becomes healthy, the one-shot `migrations` service applies the schema
+and exits, then the API starts and runs application seeds, including default users.
 
-При первом запуске база данных создаётся автоматически и заполняется пользователями по умолчанию.
+При первом запуске PostgreSQL становится healthy, one-shot `migrations` применяет схему и
+завершается, затем запускается API и выполняет прикладные сиды, включая пользователей по умолчанию.
+
+If startup fails, inspect the one-shot service and its logs / При ошибке запуска проверьте one-shot service и его логи:
+
+```powershell
+docker compose -f docker-compose.dev.yml ps -a
+docker compose -f docker-compose.dev.yml logs migrations
+```
 
 ---
 
@@ -179,10 +188,8 @@ The database is migrated and seeded with default users on first run.
 dotnet restore
 dotnet build
 
-# Apply database migrations
-dotnet ef database update `
-  --project Wintime.Control.Infrastructure `
-  --startup-project Wintime.Control.API
+# Apply database migrations (required before starting API)
+dotnet run --project Wintime.Control.Migrations
 
 # Start API (https://localhost:7001)
 dotnet run --project Wintime.Control.API
@@ -218,11 +225,13 @@ dotnet ef migrations add <MigrationName> `
   --project Wintime.Control.Infrastructure `
   --startup-project Wintime.Control.API
 
-# Apply migrations
-dotnet ef database update `
-  --project Wintime.Control.Infrastructure `
-  --startup-project Wintime.Control.API
+# Apply database migrations (required before starting API)
+dotnet run --project Wintime.Control.Migrations
 ```
+
+The API never applies schema migrations. Use the same migrator locally and in Docker;
+`dotnet ef migrations add` is still used to create migrations; the EF CLI is not used to apply
+them. API startup retains only application seeds.
 
 ---
 

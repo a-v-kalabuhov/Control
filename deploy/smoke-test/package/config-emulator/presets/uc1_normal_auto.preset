@@ -1,0 +1,3 @@
+# UC1 — наладка (3 цикла в Manual), затем автоматический выпуск партии (495 деталей)
+AT +0       REPEAT CYCLE_SETUP FROM "macros/cycle_setup" x3
+AT +2000    REPEAT CYCLE_NORMAL FROM "macros/cycle_normal" x495

@@ -1,6 +1,8 @@
 # Сборка пакета для выгрузки (автор)
 
-1. `pwsh ./build-and-save.ps1` — образы в `dist/images/`.
+1. `pwsh ./build-and-save.ps1` — образы в `dist/images/`: `api.tar`, `migrations.tar`, `connector.tar`,
+   `postgres.tar`, `mosquitto.tar`. `1-load-images.bat` загружает все `.tar`, поэтому отдельной команды
+   для migrator не требуется.
 2. Один раз подготовить mkcert (см. MKCERT_SETUP.md) — `mkcert.exe`, `CAROOT/`,
    `certs/rootCA.pem` в `package/`.
 3. Собрать выгружаемую папку: скопировать всё из `package/` + `dist/images/` → в `package/images/`.

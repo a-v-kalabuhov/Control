@@ -4,7 +4,13 @@ setlocal
 cd /d "%~dp0"
 if not exist ".env" ( echo Нет файла .env — скопируйте .env.example в .env и заполните. & pause & exit /b 1 )
 if not exist "certs\pzp.pfx" ( echo Нет certs\pzp.pfx — сначала выполните 4-make-cert.bat. & pause & exit /b 1 )
-docker compose -f docker-compose.prod.yml up -d
-if errorlevel 1 ( echo ОШИБКА запуска & pause & exit /b 1 )
+docker compose -f docker-compose.prod.yml stop api
+if errorlevel 1 ( echo ОШИБКА остановки API & pause & exit /b 1 )
+docker compose -f docker-compose.prod.yml up -d --force-recreate migrations api connector
+if errorlevel 1 (
+  echo ОШИБКА миграций или запуска. API оставлен остановленным.
+  docker compose -f docker-compose.prod.yml logs --tail 100 migrations api
+  pause & exit /b 1
+)
 echo Стек запущен. Дашборд: http://localhost:5000
 pause >nul

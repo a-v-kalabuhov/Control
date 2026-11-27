@@ -44,12 +44,25 @@ services:
     logging: *logging
     networks: [wtctrl]
 
-  api:
-    image: ghcr.io/a-v-kalabuhov/control/api:${API_TAG:-latest}
-    container_name: wtctrl-demo-api
+  migrations:
+    image: ghcr.io/a-v-kalabuhov/control/migrations:${APP_VERSION:-latest}
+    container_name: wtctrl-demo-migrations
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=WintimeControlDb;Username=postgres;Password=${DB_PASSWORD};"
+    restart: "no"
+    mem_limit: 256m
+    logging: *logging
+    networks: [wtctrl]
+
+  api:
+    image: ghcr.io/a-v-kalabuhov/control/api:${APP_VERSION:-latest}
+    container_name: wtctrl-demo-api
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
       mosquitto:
         condition: service_started
     environment:

@@ -12,6 +12,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d WintimeControlDb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
     networks:
       - wintime-control-network
@@ -29,6 +34,20 @@ services:
     networks:
       - wintime-control-network
 
+  migrations:
+    build:
+      context: .
+      dockerfile: Wintime.Control.Migrations/Dockerfile.dev
+    container_name: wtctrl-dev-migrations
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=WintimeControlDb;Username=postgres;Password=password;
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - wintime-control-network
+
   api:
     build:
       context: .
@@ -42,8 +61,10 @@ services:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=WintimeControlDb;Username=postgres;Password=password;
       - MqttSettings__BrokerUrl=mosquitto
     depends_on:
-      - postgres
-      - mosquitto
+      migrations:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "bash -c ':> /dev/tcp/localhost/8080' 2>/dev/null || exit 1"]

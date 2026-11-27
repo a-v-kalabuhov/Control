@@ -1,6 +1,6 @@
 #Requires -Version 7.3
 # Деплой публичного демо Control на VPS (controldemo.ru). Подробно — ASSEMBLE.md.
-#   .\deploy.ps1               сборка -> push в GHCR -> пакет на VPS -> pull + up -d -> проверка
+#   .\deploy.ps1               сборка -> push двух образов в GHCR -> пакет на VPS -> pull -> stop API -> migrations -> API -> проверка
 #   .\deploy.ps1 -ResetDb      то же + сброс БД свежим сидом (45–60 мин)
 #   .\deploy.ps1 -ResetDbOnly  только сброс БД (перед показом)
 #   .\deploy.ps1 -Certs        только сертификат (fullchain + ключ) на VPS и перезапуск API
@@ -22,6 +22,7 @@ $PackageDir   = Join-Path $ScriptDir "package"
 $SeedFile     = Join-Path $ScriptDir "seed\seed_demo.sql"
 $Registry     = "ghcr.io/a-v-kalabuhov/control"
 $ApiContainer = "wtctrl-demo-api"
+$MigrationsContainer = "wtctrl-demo-migrations"
 $MinFreeMb    = 1536
 
 $cfgPath = Join-Path $ScriptDir "deploy.local.psd1"
@@ -53,9 +54,9 @@ function Invoke-Remote([string]$Command) { Invoke-WithRetry { ssh @SshOpts $Targ
 
 function Copy-ToRemote([string[]]$Files, [string]$Dest) { Invoke-WithRetry { scp @SshOpts @Files "${Target}:$Dest" } "scp" }
 
-function Get-RemoteImage {
+function Get-RemoteImage([string]$Container) {
     # контейнера может ещё не быть — тогда пустая строка
-    $img = Invoke-Remote "docker inspect -f '{{.Config.Image}}' $ApiContainer 2>/dev/null || true"
+    $img = Invoke-Remote "docker inspect -f '{{.Config.Image}}' $Container 2>/dev/null || true"
     return "$img".Trim()
 }
 
@@ -64,6 +65,15 @@ function Assert-FreeSpace {
     # Без двойных кавычек внутри: pwsh передаёт их в ssh экранированными (\"), и удалённая команда ломается
     $mb = [int]("$(Invoke-Remote "df -BM --output=avail `$(docker info -f {{.DockerRootDir}}) | tail -1")" -replace '\D', '')
     if ($mb -lt $MinFreeMb) { throw "На VPS свободно $mb МБ, нужно не меньше $MinFreeMb МБ (ASSEMBLE.md, «Диск»)" }
+}
+
+function Assert-ResetDbOnlyPrerequisites {
+    Write-Host "==> Проверка TD-06-пакета и образов API и migrations на VPS..."
+    try {
+        Invoke-Remote "cd $Remote && test -f .env && grep -q '^APP_VERSION=.' .env && docker compose config --services | grep -qx migrations && docker compose pull api migrations"
+    } catch {
+        throw "Нельзя безопасно запустить -ResetDbOnly: на VPS не подтверждены APP_VERSION, сервис migrations и доступные образы API и migrations. Сначала выполните обычный деплой TD-06 версии 1.38+: .\deploy\demo\deploy.ps1. Сброс не запускался, файлы пакета и БД не изменялись. $($_.Exception.Message)"
+    }
 }
 
 function Wait-Site {
@@ -76,7 +86,7 @@ function Wait-Site {
         } catch { $lastErr = $_.Exception.Message }
         Start-Sleep -Seconds 5
     }
-    Invoke-Remote "cd $Remote && docker compose logs --tail 100 api"
+    Invoke-Remote "cd $Remote && docker compose logs --tail 100 migrations api"
     throw "$url не отвечает 200 за 2 мин. Последняя ошибка: $lastErr"
 }
 
@@ -146,15 +156,19 @@ function Build-And-Push([string]$Version) {
     Write-Host "==> Сборка фронта..."
     Push-Location (Join-Path $ControlRoot "Wintime-Control-Frontend")
     try { npm ci; npm run build } finally { Pop-Location }
-    Write-Host "==> Publish и образ API $Version..."
+    Write-Host "==> Publish и образы API/migrations $Version..."
     Push-Location $ControlRoot
     try {
         dotnet publish Wintime.Control.API -c Release -o .\publish\api /p:UseAppHost=false /p:SkipFrontendBuild=true
+        dotnet publish Wintime.Control.Migrations -c Release -o .\publish\migrations /p:UseAppHost=false
         docker build -f Wintime.Control.API\Dockerfile.prod -t "$Registry/api:$Version" -t "$Registry/api:latest" .
+        docker build -f Wintime.Control.Migrations\Dockerfile.prod -t "$Registry/migrations:$Version" -t "$Registry/migrations:latest" .
     } finally { Pop-Location }
     Write-Host "==> Push в GHCR (нужен docker login ghcr.io)..."
     docker push "$Registry/api:$Version"
     docker push "$Registry/api:latest"
+    docker push "$Registry/migrations:$Version"
+    docker push "$Registry/migrations:latest"
 }
 
 try { Invoke-Remote "true" }
@@ -174,13 +188,16 @@ if ($resetRunning -and -not $ResetDbOnly) {
 }
 
 if ($ResetDbOnly) {
-    if (-not $resetRunning) { Copy-ToRemote @((Join-Path $PackageDir "reset-db.sh"), $SeedFile) "$Remote/" }
+    if (-not $resetRunning) {
+        Assert-ResetDbOnlyPrerequisites
+        Copy-ToRemote @((Join-Path $PackageDir "reset-db.sh"), $SeedFile) "$Remote/"
+    }
 } else {
     $Version = (Get-Content (Join-Path $ControlRoot "VERSION") -Raw).Trim()
     Write-Host "==> Версия $Version"
     if (-not $Force) {
         if (git -C $ControlRoot status --porcelain) { throw "Рабочее дерево не чистое — закоммитьте изменения (или -Force)" }
-        if ((Get-RemoteImage) -eq "$Registry/api:$Version") { throw "На VPS уже $Version — поднимите VERSION (или -Force)" }
+        if ((Get-RemoteImage $ApiContainer) -eq "$Registry/api:$Version") { throw "На VPS уже $Version — поднимите VERSION (или -Force)" }
     }
     Assert-FreeSpace
     try { Invoke-Remote "test -f $Remote/.env && test -f $Remote/certs/fullchain.pem && test -f $Remote/certs/privkey.pem" }
@@ -192,11 +209,22 @@ if ($ResetDbOnly) {
     Copy-ToRemote @((Join-Path $PackageDir "docker-compose.yml"), (Join-Path $PackageDir "mosquitto.conf"),
                     (Join-Path $PackageDir ".env.example"), (Join-Path $PackageDir "reset-db.sh"), $SeedFile) "$Remote/"
 
-    Write-Host "==> pull + up -d..."
-    Invoke-Remote "cd $Remote && sed -i '/^API_TAG=/d' .env && printf '\nAPI_TAG=%s\n' $Version >> .env && docker compose pull api && docker compose up -d"
+    Write-Host "==> pull, остановка API, миграции, запуск API..."
+    try {
+        Invoke-Remote "cd $Remote && sed -i '/^API_TAG=/d;/^APP_VERSION=/d' .env && printf '\nAPP_VERSION=%s\n' $Version >> .env && docker compose pull api migrations"
+        Invoke-Remote "cd $Remote && docker compose stop api"
+        Invoke-Remote "cd $Remote && docker compose up -d --force-recreate migrations api"
+    } catch {
+        $PSNativeCommandUseErrorActionPreference = $false
+        ssh @SshOpts $Target "cd $Remote && docker compose logs --tail 100 migrations api"
+        $PSNativeCommandUseErrorActionPreference = $true
+        throw
+    }
     Wait-Site
-    $img = Get-RemoteImage
-    if ($img -ne "$Registry/api:$Version") { throw "На VPS запущен $img, ожидался $Registry/api:$Version" }
+    $apiImage = Get-RemoteImage $ApiContainer
+    if ($apiImage -ne "$Registry/api:$Version") { throw "На VPS запущен $apiImage, ожидался $Registry/api:$Version" }
+    $migrationsImage = Get-RemoteImage $MigrationsContainer
+    if ($migrationsImage -ne "$Registry/migrations:$Version") { throw "На VPS миграции выполнены образом $migrationsImage, ожидался $Registry/migrations:$Version" }
     Invoke-Remote "docker image prune -af" | Out-Null
 }
 

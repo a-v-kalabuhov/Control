@@ -12,7 +12,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d WintimeControlDb"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d WintimeControlDb"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -30,12 +30,24 @@ services:
     mem_limit: 64m
     networks: [wtctrl]
 
+  migrations:
+    image: wintime/migrations:pilot
+    container_name: wtctrl-pzp-migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=WintimeControlDb;Username=postgres;Password=${DB_PASSWORD};"
+    restart: "no"
+    mem_limit: 256m
+    networks: [wtctrl]
+
   api:
     image: wintime/api:pilot
     container_name: wtctrl-pzp-api
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
       mosquitto:
         condition: service_started
     environment:
