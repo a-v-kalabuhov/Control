@@ -145,7 +145,7 @@ COV (Change of Value) filtering prevents storing redundant telemetry when values
 ```powershell
 git clone https://github.com/a-v-kalabuhov/Control.git
 cd Control
-docker-compose up
+docker compose -f docker-compose.dev.yml up
 ```
 
 Services started / Запускаемые сервисы:
@@ -167,8 +167,8 @@ and exits, then the API starts and runs application seeds, including default use
 If startup fails, inspect the one-shot service and its logs / При ошибке запуска проверьте one-shot service и его логи:
 
 ```powershell
-docker compose ps -a
-docker compose logs migrations
+docker compose -f docker-compose.dev.yml ps -a
+docker compose -f docker-compose.dev.yml logs migrations
 ```
 
 ---

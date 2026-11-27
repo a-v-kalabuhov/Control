@@ -64,6 +64,8 @@ services:
       ASPNETCORE_URLS: "http://+:8080"
       DOTNET_gcServer: "0"
       Https__Redirect: "false"
+      # Только smoke UC2: 30 с до Idle коннектора + 1 с Control + polling 10 с < паузы 45 с.
+      Downtime__IdleThresholdSeconds: "1"
       ConnectionStrings__DefaultConnection: "Host=postgres;Database=WintimeControl_Pzp;Username=postgres;Password=${DB_PASSWORD};"
       MqttSettings__BrokerUrl: mosquitto
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD}

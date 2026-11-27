@@ -102,7 +102,7 @@ services:
     mem_limit: 256m
     networks: [wtctrl]
 
-  # НЕ входит в 'docker compose up -d' - поднимается по требованию через 3-run-emulator.bat,
+  # НЕ входит в 'docker compose up -d' - поднимается по требованию через 3-run-emulator-report.bat,
   # т.к. это интерактивный TUI (Spectre.Console, читает клавиатуру), не фоновый сервис.
   # См. TESTING_GUIDE.md §3.
   emulator:

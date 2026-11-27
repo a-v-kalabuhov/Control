@@ -73,6 +73,7 @@ package/
 ├── 2-start.bat
 ├── 2-start-report.bat         # стенд отчётов — вместо 2-start.bat, см. ниже
 ├── 3-run-emulator.bat
+├── 3-run-emulator-report.bat   # эмулятор в сети стенда отчётов
 ├── 4-stop.bat
 └── 4-stop-report.bat          # остановка стенда отчётов
 ```
@@ -121,7 +122,7 @@ package/
 **Остановка:** `4-stop.bat` (данные БД сохраняются в Docker-volume; `docker compose ... down -v`
 для полной очистки с нуля).
 
-**Стенд отчётов.** Для проверки отчётов вместо `2-start.bat` запустите **`2-start-report.bat`**. Он поднимает отдельную БД `WintimeControl_ReportTest`, которая при первом запуске сама заполняется тестовыми данными (июнь–сентябрь 2026, 3 ТПА, ~0,9 млн циклов), ничего дополнительно выполнять не нужно. Порядок запуска: PostgreSQL healthy → one-shot `migrations` → API; `connector` запускается независимо после старта Mosquitto. Восстановление report-дампа завершается до запуска migrator благодаря healthcheck с `start_period: 15m`. Вход: `admin` / `Demo@123` (наладчики `adj1`, `adj2`, пароль тот же); `BOOTSTRAP_ADMIN_PASSWORD` на этом стенде не используется. Данные двух стендов хранятся в разных volume и друг другу не мешают, но одновременно стенды не запускаются (общие порты и имена контейнеров) — перед переключением остановите текущий. Остановка стенда отчётов — **`4-stop-report.bat`**. Вернуть исходные тестовые данные: `docker compose -f docker-compose.test-report.yml down -v`, затем снова `2-start-report.bat`.
+**Стенд отчётов.** Для проверки отчётов вместо `2-start.bat` запустите **`2-start-report.bat`**. Он поднимает отдельную БД `WintimeControl_ReportTest`, которая при первом запуске сама заполняется тестовыми данными (июнь–сентябрь 2026, 3 ТПА, ~0,9 млн циклов), ничего дополнительно выполнять не нужно. Порядок запуска: PostgreSQL healthy → one-shot `migrations` → API; `connector` запускается независимо после старта Mosquitto. Восстановление report-дампа завершается до запуска migrator благодаря healthcheck с `start_period: 15m`. Вход: `admin` / `Demo@123` (наладчики `adj1`, `adj2`, пароль тот же); `BOOTSTRAP_ADMIN_PASSWORD` на этом стенде не используется. Данные двух стендов хранятся в разных volume и друг другу не мешают, но одновременно стенды не запускаются (общие порты и имена контейнеров) — перед переключением остановите текущий. Эмулятор для стенда отчётов запускается только через **`3-run-emulator-report.bat`**: он подключает интерактивный контейнер к Compose project `wtctrl-smoke-report`. Остановка стенда отчётов — **`4-stop-report.bat`**. Вернуть исходные тестовые данные: `docker compose -f docker-compose.test-report.yml down -v`, затем снова `2-start-report.bat`.
 
 **Диагностика миграций.** При ошибке миграций или запуска API остаётся остановленным; старый API после
 ошибки не запускать. Для обычного стенда:
@@ -201,8 +202,8 @@ machine-01:
 
 ```text
 # мой сценарий
-AT +0       REPEAT CYCLE_NORMAL FROM "macros/cycle_normal" x3     # 3 цикла наладки
-AT +2000    REPEAT CYCLE_NORMAL x50                                 # затем 50 автоматических
+AT +0       REPEAT CYCLE_SETUP FROM "macros/cycle_setup" x3         # 3 цикла наладки без впрыска
+AT +2000    REPEAT CYCLE_NORMAL FROM "macros/cycle_normal" x50      # затем 50 автоматических
 ```
 
 Доступные инструкции (всегда начинаются с `AT`):
@@ -241,9 +242,9 @@ AT 4000  SET MoldClosed 1
 AT 7000  SET Injection 1
 AT 7000  RAMP InjectionPosition 1500.0 2000
 AT 9000  RAMP InjectionPosition 1200.0 4000
-# Охлаждение: впрыск закончился, шнек отходит назад за 25 с
-AT 13000 SET Injection 0
-AT 13000 RAMP InjectionPosition 8000.0 25000
+# Дно 1200 мВ держится 600 мс (13000..13600), затем охлаждение — шнек назад за 24,4 с
+AT 13600 SET Injection 0
+AT 13600 RAMP InjectionPosition 8000.0 24400
 # Раскрытие формы: плита за 5 с в крайнее положение
 AT 38000 SET MoldClosed 0
 AT 38000 RAMP MoldPosition 10000.0 5000
@@ -279,6 +280,10 @@ AT 47400 SET BwdEjectorReached 0
 3-run-emulator.bat
 ```
 (эквивалент: `docker compose -f docker-compose.test.yml run --rm -it --use-aliases emulator --config-dir /app/config`)
+
+Для стенда отчётов используй **`3-run-emulator-report.bat`** (эквивалент с
+`docker-compose.test-report.yml`), иначе эмулятор окажется в сети обычного стенда и report-коннектор
+его не увидит.
 
 Открывается **главный экран** — живая таблица всех поднятых ТПА (по одному на `*.json` в
 `config-emulator/`), обновляется раз в секунду:
@@ -334,8 +339,12 @@ AT 47400 SET BwdEjectorReached 0
 **Рекомендуемый порядок smoke-теста:**
 1. `uc1_normal_auto.preset` — базовый happy path: наладка → автовыпуск. Проверить, что циклы
    считаются, статус ТПА на дашборде переключается Наладка → Работа.
-2. `uc2_semi_auto.preset` — паузы между циклами не должны ложно фиксироваться как простой (порог
-   `seriesGapMs=30000` в тестовом конфиге), а длинная пауза — должна.
+2. `uc2_semi_auto.preset` — паузы между циклами не должны ложно фиксироваться как простой, а длинная
+   пауза 45–60 с — должна. В live smoke Compose для этого согласованы тестовые пороги:
+   `seriesGapMs=30000` у коннектора и `Downtime__IdleThresholdSeconds=1` у Control. Пороги действуют
+   последовательно: после 30 с без нового цикла коннектор публикует `Idle`, затем Control выдерживает
+   свой 1-секундный порог; polling worker добавляет до 10 с. Это только настройка стенда; боевой
+   default Control остаётся 900 с.
 3. `uc3_alarm.preset` — авария (форма не открывается) → статус на дашборде должен показать простой/
    аварию, а не «работа».
 4. «Выключить ТПА» на 10–60 секунд во время активного пресета, затем «Включить ТПА» — коннектор
