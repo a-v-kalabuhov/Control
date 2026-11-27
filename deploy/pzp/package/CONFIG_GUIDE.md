@@ -40,6 +40,12 @@
 8. Автор: вписать `immId` в `config/machines.json` → перезапустить коннектор
    (Docker Desktop → контейнер `wtctrl-pzp-connector` → Restart, либо `docker compose restart connector`).
 
+При каждом штатном запуске `2-start.bat` сначала останавливает API. One-shot контейнер
+`migrations` применяет новые EF Core-миграции и завершается; API запускается только после
+его кода `0`. При ошибке выполнить `docker compose -f docker-compose.prod.yml logs migrations`.
+Старый API после ошибки не запускать: схема могла частично обновиться. `docker restart api`
+не запускает миграции и не является способом обновления.
+
 ## Доступ
 
 - **Дашборды с любого ПК цеха:** `http://<LAN-IP>:5000` (сертификат не нужен).

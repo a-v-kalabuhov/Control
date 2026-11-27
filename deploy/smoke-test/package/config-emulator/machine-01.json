@@ -1,0 +1,24 @@
+{
+  // Эмулятор биндится на этом адресе - 0.0.0.0 = слушать на всех интерфейсах контейнера.
+  "device": {
+    "host": "0.0.0.0",
+    "port": 15020,
+    "unitId": 17,
+    "pollIntervalMs": 200,
+    "timeoutMs": 1000
+  },
+  "stateMachine": {
+    // 30с, а не производственные 15мин (900000) - намеренно короткое значение для ручного
+    // тестирования детекции простоя (UC2), не репрезентативно для продакшена.
+    "seriesGapMs": 30000
+  },
+  "registers": [
+    { "name": "MoldClosed",        "address": "0x0020", "access": "discreteInput", "role": "moldClosed", "published": true },
+    { "name": "Injection",         "address": "0x0022", "access": "discreteInput", "role": "injection", "published": true },
+    { "name": "MoldOpened",        "address": "0x0023", "access": "discreteInput", "role": "moldOpened", "published": true },
+    { "name": "FwdEjectorReached", "address": "0x0024", "access": "discreteInput", "role": "none", "published": true },
+    { "name": "BwdEjectorReached", "address": "0x0025", "access": "discreteInput", "role": "none", "published": true },
+    { "name": "InjectionPosition", "address": "0x0059", "access": "inputRegister", "role": "injectionPosition", "scale": 1.0, "unit": "mV", "published": true },
+    { "name": "MoldPosition",      "address": "0x0060", "access": "inputRegister", "role": "none",              "scale": 1.0, "unit": "mV", "published": true }
+  ]
+}

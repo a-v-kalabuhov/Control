@@ -257,11 +257,10 @@ app.MapHealthChecks("/health");
 app.MapControllers();
 app.MapFallbackToFile("index.html");
 
-// Инициализация БД (для разработки)
+// Прикладная инициализация БД. Схему заранее применяет Wintime.Control.Migrations.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
-    db.Database.Migrate();
 
     var isDemoMode = builder.Configuration.GetValue<bool>("DemoMode");
 

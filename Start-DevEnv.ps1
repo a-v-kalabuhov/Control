@@ -124,9 +124,7 @@ if (-not $SkipTests) {
 # ── 4. Применение миграций ────────────────────────────────────────────────────
 
 Write-Step "Применение миграций БД..."
-dotnet ef database update `
-    --project "$root\Wintime.Control.Infrastructure" `
-    --startup-project "$root\Wintime.Control.API"
+dotnet run --project "$root\Wintime.Control.Migrations" --no-build
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "Применение миграций завершилось с ошибкой"
     exit 1

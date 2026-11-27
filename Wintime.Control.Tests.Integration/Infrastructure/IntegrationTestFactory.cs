@@ -2,13 +2,16 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.PostgreSql;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Interfaces;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Infrastructure.Services;
+using Wintime.Control.Migrations;
 using Xunit;
 using Task = System.Threading.Tasks.Task;
 
@@ -64,7 +67,17 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
     {
         await _postgres.StartAsync();
 
-        // Доступ к Services запускает хост: выполняются миграции и базовый сид из Program.cs
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = _postgres.GetConnectionString()
+            })
+            .Build();
+        var migrationResult = await MigrationRunner.RunAsync(configuration, NullLogger.Instance);
+        Assert.Equal(0, migrationResult);
+
+        // Доступ к Services запускает хост только после успешного runner:
+        // Program.cs выполняет прикладной сид, но не меняет схему.
         using var scope = Services.CreateScope();
 
         await SeedTestUsersAsync(scope.ServiceProvider);

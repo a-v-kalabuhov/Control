@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wintime.Control.Tests.Unit"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wintime.Control.Tests.Integration", "Wintime.Control.Tests.Integration\Wintime.Control.Tests.Integration.csproj", "{D6CB4725-A15B-4E42-8B1F-D96B1DB2BE7C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wintime.Control.Migrations", "Wintime.Control.Migrations\Wintime.Control.Migrations.csproj", "{92D7297F-E89B-44D3-A960-EB4C4468AC8C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -111,6 +113,18 @@ Global
 		{D6CB4725-A15B-4E42-8B1F-D96B1DB2BE7C}.Release|x64.Build.0 = Release|Any CPU
 		{D6CB4725-A15B-4E42-8B1F-D96B1DB2BE7C}.Release|x86.ActiveCfg = Release|Any CPU
 		{D6CB4725-A15B-4E42-8B1F-D96B1DB2BE7C}.Release|x86.Build.0 = Release|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Debug|x64.Build.0 = Debug|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Debug|x86.Build.0 = Debug|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Release|x64.ActiveCfg = Release|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Release|x64.Build.0 = Release|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Release|x86.ActiveCfg = Release|Any CPU
+		{92D7297F-E89B-44D3-A960-EB4C4468AC8C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

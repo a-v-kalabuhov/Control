@@ -1,0 +1,21 @@
+{
+  // Коннектор стучится сюда - "emulator" это имя сервиса в docker-compose.test.yml (сеть wtctrl),
+  // а не IP - Docker резолвит его сам через встроенный DNS. Порт совпадает с config-emulator/machine-01.json.
+  "device": {
+    "host": "emulator",
+    "port": 15020,
+    "unitId": 17,
+    "pollIntervalMs": 200,
+    "timeoutMs": 1000
+  },
+  "stateMachine": {
+    "seriesGapMs": 30000
+  },
+  "registers": [
+    { "name": "MoldClosed",        "address": "0x0020", "access": "discreteInput", "role": "moldClosed",        "published": true },
+    { "name": "Injection",         "address": "0x0022", "access": "discreteInput", "role": "injection",         "published": true },
+    { "name": "MoldOpened",        "address": "0x0023", "access": "discreteInput", "role": "moldOpened",        "published": true },
+    { "name": "InjectionPosition", "address": "0x0059", "access": "inputRegister", "role": "injectionPosition", "scale": 1.0, "unit": "mV", "published": true },
+    { "name": "MoldPosition",      "address": "0x0060", "access": "inputRegister", "role": "none",              "scale": 1.0, "unit": "mV", "published": true }
+  ]
+}

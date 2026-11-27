@@ -1,0 +1,6 @@
+# UC2 — полуавтомат: паузы между циклами варьируются 10-20с, плюс редкие длинные паузы
+AT +0    REPEAT CYCLE_SHORT FROM "macros/cycle_normal_short_pause" x50
+AT +rand(45000,60000) REPEAT LONG_GAP FROM "macros/long_pause" x1
+AT +0    REPEAT CYCLE_SHORT x50
+AT +rand(45000,60000) REPEAT LONG_GAP x1
+AT +0    REPEAT CYCLE_SHORT x50

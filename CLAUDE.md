@@ -9,17 +9,22 @@ Backend: ASP.NET Core 9 (`API` хостит SPA + `Core` + `Infrastructure` + `S
 
 ## Команды (только неочевидное)
 ```powershell
-dotnet run --project Wintime.Control.API        # API на https://localhost:7001
+dotnet run --project Wintime.Control.Migrations  # применить миграции перед запуском API
+dotnet run --project Wintime.Control.API        # API на https://localhost:7001 (схема не меняется)
 dotnet run --project Wintime.Control.Emulator   # MQTT-эмулятор оборудования
 
 # Миграции — важны ОБА флага:
 dotnet ef migrations add <Name> --project Wintime.Control.Infrastructure --startup-project Wintime.Control.API
-dotnet ef database update       --project Wintime.Control.Infrastructure --startup-project Wintime.Control.API
 
 docker-compose up   # PostgreSQL + Mosquitto + API
 
 .\deploy\demo\deploy.ps1   # деплой демо-VPS (GHCR + ssh); ПЕРЕД ним поднять номер в VERSION (SemVer); -ResetDbOnly — сброс БД
 ```
+Схему во всех средах применяет только `Wintime.Control.Migrations` (тот же runner локально,
+в integration-тестах и one-shot Docker-контейнере). API при старте не вызывает
+`Migrate`/`MigrateAsync`; его демо-/bootstrap-сиды остаются. В Compose API запускается только
+после `migrations: service_completed_successfully`; штатный update сначала останавливает API.
+См. ADR-0033.
 Frontend: `cd Wintime-Control-Frontend && npm run dev` — порт 3000, проксирует `/api` → `https://localhost:5001`.
 
 ## Инварианты домена (нарушение = баг)

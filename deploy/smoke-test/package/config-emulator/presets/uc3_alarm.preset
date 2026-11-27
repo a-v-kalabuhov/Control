@@ -1,0 +1,4 @@
+# UC3 — авария посреди партии: несколько нормальных циклов, потом цикл-без-следующего-старта
+AT +0    REPEAT CYCLE_NORMAL FROM "macros/cycle_normal" x10
+AT +0    REPEAT ALARM_STOP FROM "macros/alarm_stop" x1
+AT +2700000 REPEAT CYCLE_NORMAL x1
