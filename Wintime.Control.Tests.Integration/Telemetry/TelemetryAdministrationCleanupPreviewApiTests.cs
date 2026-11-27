@@ -1,7 +1,14 @@
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Wintime.Control.Core.DTOs.Telemetry;
+using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Infrastructure.Services;
 using Xunit;
 
 namespace Wintime.Control.Tests.Integration.TelemetryAdministration;
@@ -89,6 +96,32 @@ public sealed partial class TelemetryAdministrationApiTests
         result.CutoffUtc.Should().Be(expectedUtc);
     }
 
+    [Fact]
+    public async Task CleanupPreview_ExtendsDatabaseTimeoutOnlyForDurationOfQuery()
+    {
+        string connectionString;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            connectionString = context.Database.GetConnectionString()!;
+        }
+
+        var interceptor = new CommandTimeoutInterceptor();
+        var options = new DbContextOptionsBuilder<ControlDbContext>()
+            .UseNpgsql(connectionString)
+            .AddInterceptors(interceptor)
+            .Options;
+        await using var db = new ControlDbContext(options);
+        db.Database.SetCommandTimeout(17);
+        var service = new TelemetryAdministrationService(
+            db, NullLogger<TelemetryAdministrationService>.Instance);
+
+        await service.PreviewCleanupAsync(new DateOnly(2000, 1, 1), Moscow, CancellationToken.None);
+
+        interceptor.Values.Should().ContainSingle().Which.Should().Be(30 * 60);
+        db.Database.GetCommandTimeout().Should().Be(17);
+    }
+
     private static async Task<TelemetryCleanupPreviewDto> PreviewAsync(
         HttpClient client, DateOnly date, string timeZone = Moscow)
     {
@@ -96,5 +129,26 @@ public sealed partial class TelemetryAdministrationApiTests
             $"/api/admin/telemetry/cleanup/preview?date={date:yyyy-MM-dd}&timeZone={Uri.EscapeDataString(timeZone)}");
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         return (await response.Content.ReadFromJsonAsync<TelemetryCleanupPreviewDto>())!;
+    }
+
+    private sealed class CommandTimeoutInterceptor : DbCommandInterceptor
+    {
+        public List<int> Values { get; } = [];
+
+        public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<object> result,
+            CancellationToken cancellationToken = default)
+        {
+            Values.Add(command.CommandTimeout);
+            return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            Values.Add(command.CommandTimeout);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
     }
 }
