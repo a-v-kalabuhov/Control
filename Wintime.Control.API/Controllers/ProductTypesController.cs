@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Wintime.Control.Core.DTOs.ProductType;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Enums;
 using Wintime.Control.Core.Policies;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Shared.Constants;
@@ -127,14 +128,16 @@ public class ProductTypesController : ControllerBase
     private static bool IsUniqueViolation(DbUpdateException e) =>
         e.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation };
 
-    /// <summary>Список типов изделий (активность, поиск и точный фильтр по заказчику).</summary>
+    /// <summary>Список типов изделий (активность, поиск, заказчик и материалы рецептов изделий).</summary>
     [HttpGet]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Manager},{Roles.Adjuster},{Roles.Observer}")]
     public async Task<ActionResult<IEnumerable<ProductTypeDto>>> GetList(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null,
         [FromQuery] string? customer = null,
-        [FromQuery] bool customerEmpty = false)
+        [FromQuery] bool customerEmpty = false,
+        [FromQuery] Guid? plasticId = null,
+        [FromQuery] Guid? colorantId = null)
     {
         var customerFilter = CustomerRules.Clean(customer);
         if (customerEmpty && customerFilter != null)
@@ -156,6 +159,12 @@ public class ProductTypesController : ControllerBase
             query = query.Where(p => p.Company == customerFilter);
         else if (customerEmpty)
             query = query.Where(p => p.Company == null);
+        if (plasticId.HasValue)
+            query = query.Where(p => p.Products.Any(product => product.RecipeIngredients.Any(i =>
+                i.MaterialId == plasticId.Value && i.Material!.Type == MaterialType.Plastic)));
+        if (colorantId.HasValue)
+            query = query.Where(p => p.Products.Any(product => product.RecipeIngredients.Any(i =>
+                i.MaterialId == colorantId.Value && i.Material!.Type == MaterialType.Colorant)));
 
         var items = await query.OrderBy(p => p.Article).ToListAsync();
         var usedIds = await UsedProductIdsAsync(items.SelectMany(t => t.Products).Select(p => p.Id).ToList());

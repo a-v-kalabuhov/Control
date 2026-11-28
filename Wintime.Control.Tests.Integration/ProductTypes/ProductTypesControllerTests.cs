@@ -1,11 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Wintime.Control.Core.DTOs.ProductType;
 using Wintime.Control.Core.Entities;
+using Wintime.Control.Core.Enums;
 using Wintime.Control.Infrastructure.Data;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
@@ -15,6 +17,11 @@ namespace Wintime.Control.Tests.Integration.ProductTypes;
 [Collection("Integration")]
 public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     private readonly IntegrationTestFactory _factory;
     public ProductTypesControllerTests(IntegrationTestFactory factory) => _factory = factory;
 
@@ -43,6 +50,177 @@ public class ProductTypesControllerTests : IClassFixture<IntegrationTestFactory>
         db.ProductTypes.Add(type);
         await db.SaveChangesAsync();
         return type;
+    }
+
+    private async Task<Material> SeedMaterialAsync(MaterialType type, bool isActive = true)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var id = Guid.NewGuid();
+        var material = new Material
+        {
+            Type = type,
+            Article = $"{type}-{id:N}".ToUpperInvariant(),
+            Name = $"Материал {id:N}",
+            ColorName = type == MaterialType.Colorant ? "Тестовый" : null,
+            IsActive = isActive
+        };
+        db.Materials.Add(material);
+        await db.SaveChangesAsync();
+        return material;
+    }
+
+    private async Task<ProductType> SeedRecipeTypeAsync(
+        string marker,
+        string suffix,
+        params (string Part, bool IsActive, Material[] Materials)[] products)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+        var article = $"RF-{marker}-{suffix}-{Guid.NewGuid():N}".ToUpperInvariant();
+        var type = new ProductType { Article = article, Name = $"Тип {marker} {suffix}", IsActive = true };
+        foreach (var productSeed in products)
+        {
+            var product = new Product
+            {
+                Article = productSeed.Part,
+                Name = $"Изделие {productSeed.Part}",
+                FullArticle = $"{article}.{productSeed.Part}",
+                IsActive = productSeed.IsActive
+            };
+            for (var index = 0; index < productSeed.Materials.Length; index++)
+            {
+                var material = productSeed.Materials[index];
+                product.RecipeIngredients.Add(new ProductRecipeIngredient
+                {
+                    MaterialId = material.Id,
+                    Percent = material.Type == MaterialType.Plastic ? 100 : 1,
+                    SortOrder = index
+                });
+            }
+            type.Products.Add(product);
+        }
+        db.ProductTypes.Add(type);
+        await db.SaveChangesAsync();
+        return type;
+    }
+
+    [Fact]
+    public async Task List_PlasticFilter_MatchesArchivedMaterialInArchivedNonDefaultProduct()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var selected = await SeedMaterialAsync(MaterialType.Plastic, isActive: false);
+        var other = await SeedMaterialAsync(MaterialType.Plastic);
+        var match = await SeedRecipeTypeAsync(marker, "match",
+            ("0", true, Array.Empty<Material>()),
+            ("OLD", false, new[] { selected }));
+        var nonMatch = await SeedRecipeTypeAsync(marker, "other",
+            ("0", true, new[] { other }));
+
+        var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?search={marker}&plasticId={selected.Id}", JsonOptions);
+
+        list!.Should().ContainSingle(t => t.Id == match.Id);
+        list.Should().NotContain(t => t.Id == nonMatch.Id);
+    }
+
+    [Fact]
+    public async Task List_ColorantFilter_MatchesNonDefaultProductRecipe()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var selected = await SeedMaterialAsync(MaterialType.Colorant);
+        var other = await SeedMaterialAsync(MaterialType.Colorant);
+        var match = await SeedRecipeTypeAsync(marker, "match",
+            ("0", true, Array.Empty<Material>()),
+            ("BLUE", true, new[] { selected }));
+        var nonMatch = await SeedRecipeTypeAsync(marker, "other",
+            ("0", true, new[] { other }));
+
+        var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?search={marker}&colorantId={selected.Id}", JsonOptions);
+
+        list!.Should().ContainSingle(t => t.Id == match.Id);
+        list.Should().NotContain(t => t.Id == nonMatch.Id);
+    }
+
+    [Fact]
+    public async Task List_MaterialFilters_CombineAtTypeLevelAcrossDifferentProducts()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var plastic = await SeedMaterialAsync(MaterialType.Plastic);
+        var colorant = await SeedMaterialAsync(MaterialType.Colorant);
+        var both = await SeedRecipeTypeAsync(marker, "both",
+            ("0", true, new[] { plastic }),
+            ("BLUE", true, new[] { colorant }));
+        var plasticOnly = await SeedRecipeTypeAsync(marker, "plastic",
+            ("0", true, new[] { plastic }));
+        var colorantOnly = await SeedRecipeTypeAsync(marker, "colorant",
+            ("0", true, new[] { colorant }));
+
+        var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?search={marker}&plasticId={plastic.Id}&colorantId={colorant.Id}", JsonOptions);
+
+        list!.Should().ContainSingle(t => t.Id == both.Id);
+        list.Should().NotContain(t => t.Id == plasticOnly.Id || t.Id == colorantOnly.Id);
+    }
+
+    [Fact]
+    public async Task List_MaterialFilters_EnforceMaterialType()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var plastic = await SeedMaterialAsync(MaterialType.Plastic);
+        var colorant = await SeedMaterialAsync(MaterialType.Colorant);
+        await SeedRecipeTypeAsync(marker, "plastic", ("0", true, new[] { plastic }));
+        await SeedRecipeTypeAsync(marker, "colorant", ("0", true, new[] { colorant }));
+
+        var wrongPlastic = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?search={marker}&plasticId={colorant.Id}", JsonOptions);
+        var wrongColorant = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?search={marker}&colorantId={plastic.Id}", JsonOptions);
+
+        wrongPlastic.Should().BeEmpty();
+        wrongColorant.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task List_MaterialFilter_DoesNotUseTaskRecipeCopies()
+    {
+        var client = await ManagerClientAsync();
+        var marker = Guid.NewGuid().ToString("N")[..12];
+        var plastic = await SeedMaterialAsync(MaterialType.Plastic);
+        var type = await SeedRecipeTypeAsync(marker, "task-only",
+            ("0", true, Array.Empty<Material>()));
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            var task = new ShiftTask
+            {
+                ImmId = _factory.TestImmId,
+                MoldId = _factory.TestMoldId,
+                ProductId = type.Products.Single().Id,
+                PlanQuantity = 1,
+                Cavities = 1,
+                PlannedFullCycleSeconds = 10,
+                PlannedDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            };
+            task.RecipeIngredients.Add(new ShiftTaskRecipeIngredient
+            {
+                MaterialId = plastic.Id,
+                OriginalMaterialId = plastic.Id,
+                Percent = 100
+            });
+            db.ShiftTasks.Add(task);
+            await db.SaveChangesAsync();
+        }
+
+        var list = await client.GetFromJsonAsync<List<ProductTypeDto>>(
+            $"/api/producttypes?search={marker}&plasticId={plastic.Id}");
+
+        list.Should().BeEmpty();
     }
 
     [Fact]

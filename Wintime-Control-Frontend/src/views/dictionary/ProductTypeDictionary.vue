@@ -27,6 +27,44 @@
             style="width: 260px;"
           />
         </el-form-item>
+        <el-form-item label="Пластик">
+          <el-select
+            v-model="filters.plasticId"
+            data-test="plastic-filter"
+            filterable
+            clearable
+            :filter-method="filterPlastics"
+            :loading="materialsLoading"
+            placeholder="Все"
+            style="width: 260px;"
+          >
+            <el-option
+              v-for="material in filteredPlasticMaterials"
+              :key="material.id"
+              :label="materialOptionLabel(material)"
+              :value="material.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Краситель">
+          <el-select
+            v-model="filters.colorantId"
+            data-test="colorant-filter"
+            filterable
+            clearable
+            :filter-method="filterColorants"
+            :loading="materialsLoading"
+            placeholder="Все"
+            style="width: 260px;"
+          >
+            <el-option
+              v-for="material in filteredColorantMaterials"
+              :key="material.id"
+              :label="materialOptionLabel(material)"
+              :value="material.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="Статус">
           <el-select v-model="filters.isActive" placeholder="Все" clearable style="width: 160px;">
             <el-option label="Активные" :value="true" />
@@ -64,7 +102,18 @@
             <el-table-column label="Рецепт" min-width="260">
               <template #default="{ row: p }">
                 <div class="flex items-start gap-1">
-                  <span class="whitespace-pre-line">{{ recipeText(p) }}</span>
+                  <div v-if="p.recipe?.length" data-test="product-recipe" class="space-y-1">
+                    <div v-for="row in p.recipe" :key="row.materialId" class="flex items-center gap-1">
+                      <span>{{ recipeIngredientText(row) }}</span>
+                      <el-tag
+                        v-if="row.materialIsActive === false"
+                        data-test="recipe-material-archive"
+                        type="warning"
+                        size="small"
+                      >Архив</el-tag>
+                    </div>
+                  </div>
+                  <span v-else data-test="product-recipe">—</span>
                   <el-tooltip v-if="!recipeSumOk(p)" :content="recipeSumHint(p.recipe)">
                     <el-tag type="danger" size="small">≠ 100 %</el-tag>
                   </el-tooltip>
@@ -260,7 +309,7 @@
       </template>
     </el-dialog>
 
-    <NomenclatureImportDialog v-model="importDialogVisible" @imported="loadItems" />
+    <NomenclatureImportDialog v-model="importDialogVisible" @imported="onImported" />
   </div>
 </template>
 
@@ -269,6 +318,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Box } from '@element-plus/icons-vue'
 import { productTypesApi } from '@/api/productTypes'
+import { materialsApi } from '@/api/materials'
 import { activeProducts } from '@/utils/productLabel'
 import { nextProductArticle } from '@/utils/productArticle'
 import { apiErrorMessage } from '@/utils/apiError'
@@ -300,12 +350,14 @@ const sortedTypes = sortedItems(items)
 const recipeDialogVisible = ref(false)
 const recipeProduct = ref(null)
 
+function recipeIngredientText(row) {
+  return `${row.materialArticle || '—'} — ${row.materialName || '—'} — ${formatPercent(row.percent)} %`
+}
+
 function recipeText(product) {
   const recipe = product?.recipe ?? []
   if (recipe.length === 0) return '—'
-  return recipe
-    .map(row => `${row.materialName || '—'} — ${formatPercent(row.percent)} %`)
-    .join('\n')
+  return recipe.map(recipeIngredientText).join('\n')
 }
 
 function recipeSumOk(product) {
@@ -347,7 +399,40 @@ const productForm = reactive({
   article: '', name: '', comment: '', partWeightGrams: 0, runnerWeightGrams: 0, cavities: null, plannedInjectionCycleSeconds: null, hasSample: false
 })
 
-const filters = reactive({ search: '', isActive: null, customer: null, customerEmpty: false })
+const plasticMaterials = ref([])
+const colorantMaterials = ref([])
+const plasticMaterialQuery = ref('')
+const colorantMaterialQuery = ref('')
+const materialsLoading = ref(false)
+
+function filterMaterials(materials, query) {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) return materials
+  return materials.filter(material =>
+    `${material.article ?? ''} ${material.name ?? ''}`.toLowerCase().includes(normalized))
+}
+
+const filteredPlasticMaterials = computed(() =>
+  filterMaterials(plasticMaterials.value, plasticMaterialQuery.value))
+const filteredColorantMaterials = computed(() =>
+  filterMaterials(colorantMaterials.value, colorantMaterialQuery.value))
+
+function filterPlastics(query) {
+  plasticMaterialQuery.value = query
+}
+
+function filterColorants(query) {
+  colorantMaterialQuery.value = query
+}
+
+function materialOptionLabel(material) {
+  const archive = material.isActive ? '' : ' (Архив)'
+  return `${material.article} — ${material.name}${archive}`
+}
+
+const filters = reactive({
+  search: '', isActive: null, customer: null, customerEmpty: false, plasticId: null, colorantId: null
+})
 const form = reactive({ article: '', name: '', company: '', packagingUnit: null })
 
 const rules = {
@@ -357,13 +442,35 @@ const rules = {
 
 const fullArticlePreview = computed(() => `${editing.value?.article ?? ''}.${productForm.article || '…'}`)
 
-onMounted(loadItems)
+onMounted(() => {
+  loadItems()
+  loadMaterials()
+})
 
 let loadItemsRequestId = 0
+let loadMaterialsRequestId = 0
 
 onBeforeUnmount(() => {
   loadItemsRequestId += 1
+  loadMaterialsRequestId += 1
 })
+
+async function loadMaterials() {
+  const requestId = ++loadMaterialsRequestId
+  materialsLoading.value = true
+  const [plastics, colorants] = await Promise.allSettled([
+    materialsApi.getList({ type: 'Plastic' }),
+    materialsApi.getList({ type: 'Colorant' })
+  ])
+  if (requestId !== loadMaterialsRequestId) return
+
+  if (plastics.status === 'fulfilled') plasticMaterials.value = plastics.value.data
+  if (colorants.status === 'fulfilled') colorantMaterials.value = colorants.value.data
+  if (plastics.status === 'rejected' || colorants.status === 'rejected') {
+    ElMessage.error('Ошибка загрузки материалов')
+  }
+  materialsLoading.value = false
+}
 
 async function loadItems() {
   const requestId = ++loadItemsRequestId
@@ -373,7 +480,9 @@ async function loadItems() {
       isActive: filters.isActive,
       search: filters.search,
       customer: filters.customer || undefined,
-      customerEmpty: filters.customerEmpty ? true : undefined
+      customerEmpty: filters.customerEmpty ? true : undefined,
+      ...(filters.plasticId ? { plasticId: filters.plasticId } : {}),
+      ...(filters.colorantId ? { colorantId: filters.colorantId } : {})
     })
     if (requestId === loadItemsRequestId) items.value = data
   } catch {
@@ -388,6 +497,10 @@ async function loadItems() {
 async function fetchCompanies(search) {
   const { data } = await productTypesApi.suggestCompanies(search)
   return data
+}
+
+async function onImported() {
+  await Promise.all([loadItems(), loadMaterials()])
 }
 
 async function showCreateModal() {
