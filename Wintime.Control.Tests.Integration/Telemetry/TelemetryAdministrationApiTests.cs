@@ -3,9 +3,11 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Wintime.Control.Core.DTOs.Telemetry;
 using Wintime.Control.Core.Entities;
 using Wintime.Control.Infrastructure.Data;
+using Wintime.Control.Infrastructure.Services;
 using Wintime.Control.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -76,6 +78,32 @@ public sealed partial class TelemetryAdministrationApiTests : IClassFixture<Inte
         {
             await DeleteTelemetryAsync(immId);
         }
+    }
+
+    [Fact]
+    public async Task GetStatistics_ExtendsDatabaseTimeoutOnlyForDurationOfQueries()
+    {
+        string connectionString;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ControlDbContext>();
+            connectionString = context.Database.GetConnectionString()!;
+        }
+
+        var interceptor = new CommandTimeoutInterceptor();
+        var options = new DbContextOptionsBuilder<ControlDbContext>()
+            .UseNpgsql(connectionString)
+            .AddInterceptors(interceptor)
+            .Options;
+        await using var db = new ControlDbContext(options);
+        db.Database.SetCommandTimeout(17);
+        var service = new TelemetryAdministrationService(
+            db, NullLogger<TelemetryAdministrationService>.Instance);
+
+        await service.GetStatisticsAsync(Moscow, CancellationToken.None);
+
+        interceptor.Values.Should().HaveCount(2).And.OnlyContain(timeout => timeout == 30 * 60);
+        db.Database.GetCommandTimeout().Should().Be(17);
     }
 
     [Theory]

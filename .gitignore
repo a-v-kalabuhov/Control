@@ -69,6 +69,7 @@ publish/
 # internal docs остаются локальными, но ADR версионируются (видны команде)
 docs/inner/
 docs/claude/
+docs/presentations/
 
 # Secrets
 .env

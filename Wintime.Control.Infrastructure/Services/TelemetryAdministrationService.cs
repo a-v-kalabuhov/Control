@@ -12,7 +12,7 @@ namespace Wintime.Control.Infrastructure.Services;
 
 public sealed class TelemetryAdministrationService : ITelemetryAdministrationService
 {
-    private const int CleanupCommandTimeoutSeconds = 30 * 60;
+    private const int TelemetryAdminCommandTimeoutSeconds = 30 * 60;
     private readonly ControlDbContext _context;
     private readonly ILogger<TelemetryAdministrationService> _logger;
 
@@ -27,44 +27,62 @@ public sealed class TelemetryAdministrationService : ITelemetryAdministrationSer
     {
         var nowUtc = DateTime.UtcNow;
         var periods = TelemetryPeriodCalculator.CreateStatisticsPeriods(nowUtc, timeZone);
-        var row = await _context.Database.SqlQuery<TelemetryStatisticsRow>($"""
-            SELECT
-              COUNT(*) AS "TotalCount",
-              COUNT(*) FILTER (WHERE "Timestamp" >= {periods.CurrentMonth.StartUtc} AND "Timestamp" < {periods.CurrentMonth.EndUtc}) AS "CurrentMonthCount",
-              COUNT(*) FILTER (WHERE "Timestamp" >= {periods.RecentWeeks[0].StartUtc} AND "Timestamp" < {periods.RecentWeeks[0].EndUtc}) AS "Week0Count",
-              COUNT(*) FILTER (WHERE "Timestamp" >= {periods.RecentWeeks[1].StartUtc} AND "Timestamp" < {periods.RecentWeeks[1].EndUtc}) AS "Week1Count",
-              COUNT(*) FILTER (WHERE "Timestamp" >= {periods.RecentWeeks[2].StartUtc} AND "Timestamp" < {periods.RecentWeeks[2].EndUtc}) AS "Week2Count",
-              COUNT(*) FILTER (WHERE "Timestamp" >= {periods.RecentWeeks[3].StartUtc} AND "Timestamp" < {periods.RecentWeeks[3].EndUtc}) AS "Week3Count",
-              COUNT(*) FILTER (WHERE "Timestamp" >= {periods.PreviousMonths[0].StartUtc} AND "Timestamp" < {periods.PreviousMonths[0].EndUtc}) AS "Month0Count",
-              COUNT(*) FILTER (WHERE "Timestamp" >= {periods.PreviousMonths[1].StartUtc} AND "Timestamp" < {periods.PreviousMonths[1].EndUtc}) AS "Month1Count",
-              COUNT(*) FILTER (WHERE "Timestamp" >= {periods.PreviousMonths[2].StartUtc} AND "Timestamp" < {periods.PreviousMonths[2].EndUtc}) AS "Month2Count"
-            FROM "Telemetry"
-            """).SingleAsync(ct);
-        var sizes = await _context.Database.SqlQuery<TelemetrySizeRow>($"""
-            SELECT
-              pg_table_size('"Telemetry"')::bigint AS "TableSizeBytes",
-              pg_indexes_size('"Telemetry"')::bigint AS "IndexesSizeBytes"
-            """).SingleAsync(ct);
+        var previousTimeout = _context.Database.GetCommandTimeout();
+        try
+        {
+            _context.Database.SetCommandTimeout(TelemetryAdminCommandTimeoutSeconds);
+            var row = await _context.Database.SqlQuery<TelemetryStatisticsRow>($"""
+                SELECT
+                  COUNT(*) AS "TotalCount",
+                  COUNT(*) FILTER (WHERE "Timestamp" >= {periods.CurrentMonth.StartUtc} AND "Timestamp" < {periods.CurrentMonth.EndUtc}) AS "CurrentMonthCount",
+                  COUNT(*) FILTER (WHERE "Timestamp" >= {periods.RecentWeeks[0].StartUtc} AND "Timestamp" < {periods.RecentWeeks[0].EndUtc}) AS "Week0Count",
+                  COUNT(*) FILTER (WHERE "Timestamp" >= {periods.RecentWeeks[1].StartUtc} AND "Timestamp" < {periods.RecentWeeks[1].EndUtc}) AS "Week1Count",
+                  COUNT(*) FILTER (WHERE "Timestamp" >= {periods.RecentWeeks[2].StartUtc} AND "Timestamp" < {periods.RecentWeeks[2].EndUtc}) AS "Week2Count",
+                  COUNT(*) FILTER (WHERE "Timestamp" >= {periods.RecentWeeks[3].StartUtc} AND "Timestamp" < {periods.RecentWeeks[3].EndUtc}) AS "Week3Count",
+                  COUNT(*) FILTER (WHERE "Timestamp" >= {periods.PreviousMonths[0].StartUtc} AND "Timestamp" < {periods.PreviousMonths[0].EndUtc}) AS "Month0Count",
+                  COUNT(*) FILTER (WHERE "Timestamp" >= {periods.PreviousMonths[1].StartUtc} AND "Timestamp" < {periods.PreviousMonths[1].EndUtc}) AS "Month1Count",
+                  COUNT(*) FILTER (WHERE "Timestamp" >= {periods.PreviousMonths[2].StartUtc} AND "Timestamp" < {periods.PreviousMonths[2].EndUtc}) AS "Month2Count"
+                FROM "Telemetry"
+                """).SingleAsync(ct);
+            var sizes = await _context.Database.SqlQuery<TelemetrySizeRow>($"""
+                SELECT
+                  pg_table_size('"Telemetry"')::bigint AS "TableSizeBytes",
+                  pg_indexes_size('"Telemetry"')::bigint AS "IndexesSizeBytes"
+                """).SingleAsync(ct);
 
-        return new TelemetryStatisticsDto(
-            row.TotalCount, sizes.TableSizeBytes, sizes.IndexesSizeBytes,
-            ToDto(periods.CurrentMonth, row.CurrentMonthCount),
-            periods.RecentWeeks.Select((period, index) => ToDto(period, index switch
-            {
-                0 => row.Week0Count, 1 => row.Week1Count, 2 => row.Week2Count, _ => row.Week3Count
-            })).ToArray(),
-            periods.PreviousMonths.Select((period, index) => ToDto(period, index switch
-            {
-                0 => row.Month0Count, 1 => row.Month1Count, _ => row.Month2Count
-            })).ToArray());
+            return new TelemetryStatisticsDto(
+                row.TotalCount, sizes.TableSizeBytes, sizes.IndexesSizeBytes,
+                ToDto(periods.CurrentMonth, row.CurrentMonthCount),
+                periods.RecentWeeks.Select((period, index) => ToDto(period, index switch
+                {
+                    0 => row.Week0Count, 1 => row.Week1Count, 2 => row.Week2Count, _ => row.Week3Count
+                })).ToArray(),
+                periods.PreviousMonths.Select((period, index) => ToDto(period, index switch
+                {
+                    0 => row.Month0Count, 1 => row.Month1Count, _ => row.Month2Count
+                })).ToArray());
+        }
+        finally
+        {
+            _context.Database.SetCommandTimeout(previousTimeout);
+        }
     }
 
     public async Task<TelemetryCleanupPreviewDto> PreviewCleanupAsync(
         DateOnly date, string? timeZone, CancellationToken ct)
     {
         var cutoffUtc = TelemetryPeriodCalculator.GetCleanupCutoffUtc(date, DateTime.UtcNow, timeZone);
-        var count = await _context.Telemetry.LongCountAsync(t => t.Timestamp < cutoffUtc, ct);
-        return new TelemetryCleanupPreviewDto(date, cutoffUtc, count);
+        var previousTimeout = _context.Database.GetCommandTimeout();
+        try
+        {
+            _context.Database.SetCommandTimeout(TelemetryAdminCommandTimeoutSeconds);
+            var count = await _context.Telemetry.LongCountAsync(t => t.Timestamp < cutoffUtc, ct);
+            return new TelemetryCleanupPreviewDto(date, cutoffUtc, count);
+        }
+        finally
+        {
+            _context.Database.SetCommandTimeout(previousTimeout);
+        }
     }
 
     public async Task<TelemetryCleanupResultDto> CleanupAsync(
@@ -78,7 +96,7 @@ public sealed class TelemetryAdministrationService : ITelemetryAdministrationSer
             adminUserId, cutoffUtc);
         try
         {
-            _context.Database.SetCommandTimeout(CleanupCommandTimeoutSeconds);
+            _context.Database.SetCommandTimeout(TelemetryAdminCommandTimeoutSeconds);
             var deletedCount = await _context.Telemetry
                 .Where(t => t.Timestamp < cutoffUtc)
                 .ExecuteDeleteAsync(ct);
