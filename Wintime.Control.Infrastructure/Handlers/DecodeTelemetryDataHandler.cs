@@ -257,9 +257,13 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
     private const long MinUnixSeconds = -62135596800L;
     private const long MaxUnixSeconds = 253402300799L;
 
+    /// <summary>Границы диапазона, который принимает <see cref="DateTimeOffset.FromUnixTimeMilliseconds"/>.</summary>
+    private const long MinUnixMilliseconds = -62135596800000L;
+    private const long MaxUnixMilliseconds = 253402300799999L;
+
     /// <summary>
     /// Разбирает поле <c>timestamp</c>: ISO-8601 строка (доли секунды сохраняются)
-    /// либо число — Unix-секунды. Результат всегда <see cref="DateTimeKind.Utc"/>.
+    /// либо число — Unix-секунды или Unix-миллисекунды. Результат всегда <see cref="DateTimeKind.Utc"/>.
     /// </summary>
     /// <param name="token">Узел JSON со значением поля <c>timestamp</c>.</param>
     /// <param name="utc">Разобранный момент времени в UTC.</param>
@@ -289,11 +293,20 @@ public class DecodeTelemetryDataHandler : IDecodeTelemetryDataHandler
                 return true;
 
             case JsonValueKind.Number:
-                if (!token.AsValue().TryGetValue<long>(out var seconds))
+                if (!token.AsValue().TryGetValue<long>(out var value))
                     return false;
-                if (seconds < MinUnixSeconds || seconds > MaxUnixSeconds)
+
+                // Секунды проверяем первыми: все ранее допустимые значения сохраняют прежний смысл.
+                // Современные 13-значные Unix-миллисекунды попадают во вторую ветку.
+                if (value >= MinUnixSeconds && value <= MaxUnixSeconds)
+                {
+                    utc = DateTimeOffset.FromUnixTimeSeconds(value).UtcDateTime;
+                    return true;
+                }
+
+                if (value < MinUnixMilliseconds || value > MaxUnixMilliseconds)
                     return false;
-                utc = DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
+                utc = DateTimeOffset.FromUnixTimeMilliseconds(value).UtcDateTime;
                 return true;
 
             default:

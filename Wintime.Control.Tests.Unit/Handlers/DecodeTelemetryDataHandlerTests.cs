@@ -173,6 +173,26 @@ public class DecodeTelemetryDataHandlerTests : IDisposable
         result.Data.TimestampUtc.Kind.Should().Be(DateTimeKind.Utc);
     }
 
+    [Fact]
+    public async Task DecodeAsync_UnixTimestampMilliseconds_PreservesMilliseconds()
+    {
+        var immId = Guid.NewGuid();
+        var templateId = Guid.NewGuid();
+        await SeedImm(immId, templateId);
+        _templateCache.GetById(templateId).Returns(PipelineTestFixtures.MakeTemplate());
+
+        var unixTsMs = 1_700_000_000_123L;
+        var topic = $"control/imm/{immId}/telemetry";
+        var payload = BuildPayload(unixTsMs, "auto", new Dictionary<string, string> { ["s"] = "1" });
+        var context = PipelineTestFixtures.MakeContext(topic, payload);
+
+        var (success, result) = await CreateSut().DecodeAsync(context);
+
+        success.Should().BeTrue();
+        result.Data!.TimestampUtc.Should().Be(DateTimeOffset.FromUnixTimeMilliseconds(unixTsMs).UtcDateTime);
+        result.Data.TimestampUtc.Kind.Should().Be(DateTimeKind.Utc);
+    }
+
     [Theory]
     [InlineData("2023-11-14T22:13:20.1230000Z", "2023-11-14T22:13:20.123")]
     [InlineData("2023-11-14T22:13:20.1230000+03:00", "2023-11-14T19:13:20.123")]
