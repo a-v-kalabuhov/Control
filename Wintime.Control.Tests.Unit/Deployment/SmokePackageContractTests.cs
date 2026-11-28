@@ -64,20 +64,19 @@ public class SmokePackageContractTests
     }
 
     [Fact]
-    public void Db_password_contract_rejects_compose_and_npgsql_metacharacters()
+    public void Db_password_contract_does_not_impose_character_whitelist()
     {
-        var template = File.ReadAllText(PackagePath(".env.example"));
-        template.Should().Contain("латиница/цифры");
-        template.Should().NotContain("любая надёжная строка");
-
         foreach (var launcher in new[] { "2-start.bat", "2-start-report.bat" })
         {
             var script = File.ReadAllText(PackagePath(launcher));
-            script.Should().Contain("powershell -NoProfile -Command");
-            script.Should().Contain(
+            script.Should().NotContain(
                 "$values[0] -notmatch '^DB_PASSWORD=[A-Za-z0-9]+$'",
-                "invalid passwords must be rejected before any containers are changed");
+                "the launchers must accept the existing database password without inventing character restrictions");
+            script.Should().NotContain("Некорректный DB_PASSWORD");
         }
+
+        var template = File.ReadAllText(PackagePath(".env.example"));
+        template.Should().Contain("Пароль PostgreSQL (любая надёжная строка)");
     }
 
     [Fact]

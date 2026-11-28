@@ -23,6 +23,10 @@ vi.mock('@/api/productTypes', () => ({
 
 import { productTypesApi } from '@/api/productTypes'
 
+vi.mock('@/api/materials', () => ({
+  materialsApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) }
+}))
+
 const typeA = {
   id: 'pt-1', article: 'A123', name: 'Крышка', isActive: true,
   products: [

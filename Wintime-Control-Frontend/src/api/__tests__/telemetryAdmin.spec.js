@@ -10,17 +10,19 @@ import { telemetryAdminApi } from '@/api/telemetryAdmin'
 describe('telemetryAdminApi', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('передаёт IANA-пояс в statistics', () => {
+  it('передаёт IANA-пояс в statistics и ждёт дольше серверного 30-минутного лимита', () => {
     telemetryAdminApi.getStatistics('Europe/Moscow')
     expect(apiClient.get).toHaveBeenCalledWith('/admin/telemetry/statistics', {
-      params: { timeZone: 'Europe/Moscow' }
+      params: { timeZone: 'Europe/Moscow' },
+      timeout: 31 * 60 * 1000
     })
   })
 
-  it('передаёт локальную дату и пояс в preview', () => {
+  it('передаёт локальную дату и пояс в preview и ждёт дольше серверного 30-минутного лимита', () => {
     telemetryAdminApi.previewCleanup('2026-11-27', 'Europe/Moscow')
     expect(apiClient.get).toHaveBeenCalledWith('/admin/telemetry/cleanup/preview', {
-      params: { date: '2026-11-27', timeZone: 'Europe/Moscow' }
+      params: { date: '2026-11-27', timeZone: 'Europe/Moscow' },
+      timeout: 31 * 60 * 1000
     })
   })
 
