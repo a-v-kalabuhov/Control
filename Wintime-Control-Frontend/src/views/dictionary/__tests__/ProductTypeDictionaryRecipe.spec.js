@@ -6,6 +6,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import ProductTypeDictionary from '../ProductTypeDictionary.vue'
 import { productTypesApi } from '@/api/productTypes'
 
+vi.mock('@/api/materials', () => ({
+  materialsApi: { getList: vi.fn(() => Promise.resolve({ data: [] })) }
+}))
+
 vi.mock('@/api/productTypes', () => ({
   productTypesApi: {
     getList: vi.fn(() => Promise.resolve({ data: [
@@ -51,10 +55,10 @@ describe('ProductTypeDictionary — рецепт (BL-36)', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Рецепт')
-    expect(wrapper.text()).toContain('Полипропилен — 100 %')
+    expect(wrapper.text()).toContain('PP-1 — Полипропилен — 100 %')
   })
 
-  it('показывает наименования материалов и переносит каждый ингредиент на новую строку', async () => {
+  it('показывает артикулы и наименования материалов и переносит каждый ингредиент на новую строку', async () => {
     const wrapper = mountView()
     await flushPromises()
     const product = wrapper.vm.items[0].products[0]
@@ -65,9 +69,24 @@ describe('ProductTypeDictionary — рецепт (BL-36)', () => {
     await wrapper.find('.el-table__expand-icon').trigger('click')
     await flushPromises()
 
-    expect(wrapper.vm.recipeText(product)).toBe('Полипропилен — 99 %\nСиний краситель — 1 %')
-    expect(wrapper.find('span.whitespace-pre-line').text())
-      .toBe('Полипропилен — 99 %\nСиний краситель — 1 %')
+    expect(wrapper.vm.recipeText(product)).toBe('ПП-1 — Полипропилен — 99 %\nКРАС-1 — Синий краситель — 1 %')
+    const recipeCell = wrapper.find('[data-test="product-recipe"]')
+    expect(recipeCell.text()).toContain('ПП-1 — Полипропилен — 99 %')
+    expect(recipeCell.text()).toContain('КРАС-1 — Синий краситель — 1 %')
+  })
+
+  it('показывает метку «Архив» у архивного материала в строке рецепта', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const product = wrapper.vm.items[0].products[0]
+    product.recipe[0].materialIsActive = false
+    await wrapper.find('.el-table__expand-icon').trigger('click')
+    await flushPromises()
+
+    const archive = wrapper.find('[data-test="recipe-material-archive"]')
+    expect(archive.exists()).toBe(true)
+    expect(archive.text()).toBe('Архив')
+    expect(wrapper.find('[data-test="product-recipe"]').text()).toContain('PP-1 — Полипропилен — 100 %')
   })
 
   it('показывает предупреждение в закрытой строке типа, если сумма неверна хотя бы в одном изделии', async () => {
