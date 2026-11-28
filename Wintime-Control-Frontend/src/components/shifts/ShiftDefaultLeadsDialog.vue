@@ -5,6 +5,8 @@
     width="1100px"
     :teleported="false"
     :close-on-click-modal="false"
+    :close-on-press-escape="!saving"
+    :show-close="!saving"
   >
     <el-alert
       v-if="errorMessage"

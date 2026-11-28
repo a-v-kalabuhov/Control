@@ -204,6 +204,26 @@ describe('ShiftDefaultLeadsDialog', () => {
     expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([false])
   })
 
+  it('блокирует закрытие крестиком и Escape во время сохранения', async () => {
+    const pendingSave = deferred()
+    shiftsApi.saveDefaultLeads.mockReturnValue(pendingSave.promise)
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    const savePromise = wrapper.vm.save()
+    await wrapper.vm.$nextTick()
+
+    const dialog = wrapper.findComponent({ name: 'ElDialog' })
+    expect(dialog.props('showClose')).toBe(false)
+    expect(dialog.props('closeOnPressEscape')).toBe(false)
+    expect(wrapper.find('[data-test="cancel-default-leads"]').attributes('disabled')).toBeDefined()
+
+    pendingSave.resolve({ data: settings() })
+    await savePromise
+    await flushPromises()
+    expect(wrapper.emitted('saved')).toHaveLength(1)
+  })
+
   it('предупреждает, если активных менеджеров для fallback нет', async () => {
     shiftsApi.getDefaultLeads.mockResolvedValue({ data: settings({ fallbackManager: null }) })
     const wrapper = mountDialog()

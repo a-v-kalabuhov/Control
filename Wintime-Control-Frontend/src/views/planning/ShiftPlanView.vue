@@ -16,6 +16,9 @@
           style="width: 280px"
         />
         <el-button :icon="'Refresh'" :loading="loading" @click="load">Обновить</el-button>
+        <el-button data-test="open-default-leads" @click="defaultLeadsDialogVisible = true">
+          Настройка
+        </el-button>
       </div>
     </div>
 
@@ -89,6 +92,8 @@
       </el-table>
     </el-card>
 
+    <ShiftDefaultLeadsDialog v-model="defaultLeadsDialogVisible" @saved="load" />
+
     <ShiftPlanItemDialog
       v-if="selectedDay && selectedItem"
       :model-value="true"
@@ -109,6 +114,7 @@ import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
 import ShiftPlanItemDialog from '@/components/planning/ShiftPlanItemDialog.vue'
+import ShiftDefaultLeadsDialog from '@/components/shifts/ShiftDefaultLeadsDialog.vue'
 import { shiftPlansApi } from '@/api/shiftPlans'
 import { apiErrorMessage } from '@/utils/apiError'
 
@@ -120,6 +126,7 @@ const to = ref(dayjs().add(14, 'day').format('YYYY-MM-DD'))
 const days = ref([])
 const candidates = ref([])
 const loading = ref(false)
+const defaultLeadsDialogVisible = ref(false)
 const selectedDay = ref(null)
 const selectedItem = ref(null)
 let loadSeq = 0
